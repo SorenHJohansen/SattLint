@@ -151,6 +151,8 @@ if _TEXTUAL_APP is not None:
             self._active_request = None
             self._active_request_callback: Any = None
             self._interaction_pane: Any = None
+            self._interaction_previous_focus: Any = None
+            self._error_modal_active = False
             self._pending_interactions: deque[tuple[Any, Any | None]] = deque()
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._last_output_line: str | None = None

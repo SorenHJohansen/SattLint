@@ -302,7 +302,8 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
         return
 
     configured_dirs = {d.resolve() for d in _config_directory_paths(self._cfg)}
-    if target_dir.resolve() not in configured_dirs:
+    directory_changed = target_dir.resolve() not in configured_dirs
+    if directory_changed:
         other_dirs = list(_stringify_list_values(self._cfg.get("other_lib_dirs")))
         self._cfg["other_lib_dirs"] = [*other_dirs, str(target_dir)]
 
@@ -313,7 +314,10 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
             message=f"Added '{stem}' as analysis target from file browser.",
         )
         return
-    self._mark_setup_changed("Updated directory configuration from file browser.", reset_candidate_selection=True)
+    if directory_changed:
+        self._mark_setup_changed("Updated directory configuration from file browser.", reset_candidate_selection=True)
+        return
+    self._write_output(f"'{target_dir}' is already one of the configured folders.")
 
 
 def _open_file_browser(self: Any) -> None:

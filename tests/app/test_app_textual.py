@@ -30,6 +30,7 @@ from sattlint.config.types import ConfigDict
 from sattlint.project.io import init_project, load_project
 from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
+from sattlint.ui import _app_textual_analyze as app_textual_analyze_module
 from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_results as app_textual_results_module
 from sattlint.ui import _app_textual_settings as app_textual_settings_module
@@ -371,14 +372,13 @@ def test_textual_ast_refresh_modal_propagates_type_errors(monkeypatch: pytest.Mo
         lambda *_args, **_kwargs: SimpleNamespace(update=lambda _text: None),
     )
     monkeypatch.setattr(modal, "dismiss", lambda _result: None)
-    # Run the UI hop inline so the raised TypeError reaches this test.
+    # Run the UI hop inline so the recorded failure reaches this assertion.
     monkeypatch.setattr(modal, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
-    with pytest.raises(TypeError, match="bad refresh wiring"):
-        modal._run_refresh()
+    modal._run_refresh()
 
     assert modal._refresh_failed is True
-    assert modal._refresh_exception is None
+    assert isinstance(modal._refresh_exception, TypeError)
 
 
 def test_textual_ast_refresh_modal_skips_ui_callback_without_running_app(
@@ -1331,7 +1331,9 @@ def test_textual_analyze_view_shows_analyzer_controls() -> None:
             assert app_instance.query_one("#view-side-actions") is not None
             assert getattr(app_instance.query_one("#analyze-run-selected"), "disabled", False) is True
             assert getattr(app_instance.query_one("#analyze-clear-selection"), "disabled", False) is True
-            assert str(app_instance.query_one("#view-note").renderable) == ""
+            assert str(app_instance.query_one("#view-note").renderable) == (
+                "No analysis targets are configured yet. Add one in Setup first. Press / to filter the analyzers."
+            )
             assert len(list(app_instance.query("#analyze-section-top-level"))) == 0
             assert len(list(app_instance.query("#analyze-section-variable-suite"))) == 0
             assert str(app_instance.query_one("#output-title").renderable) == "Session output"
@@ -1713,9 +1715,13 @@ def test_textual_analyze_running_state_calls_out_output_location() -> None:
             app_instance._active_job_label = "Run selected analyzers"
             app_instance._refresh_summary()
             app_instance._write_focused_entry_to_output()
+            app_instance._refresh_view()
             app_instance._refresh_shell_state()
 
-            assert str(app_instance.query_one("#view-note").renderable) == ""
+            assert str(app_instance.query_one("#view-note").renderable) == (
+                "Selected analyses are running. Live output is shown in Session output below. "
+                "Wait for the run to finish before starting another action."
+            )
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠋ - Run selected analyzers in progress"
             )
@@ -2079,6 +2085,12 @@ def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.M
 
         def add_done_callback(self, callback: Any) -> None:
             self._callbacks.append(callback)
+
+        def cancelled(self) -> bool:
+            return False
+
+        def exception(self) -> BaseException | None:
+            return None
 
         def finish(self) -> None:
             for callback in tuple(self._callbacks):
@@ -3200,7 +3212,9 @@ def test_textual_setup_remove_other_lib_dir_button_enabled_with_entries() -> Non
     asyncio.run(_run())
 
 
-def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_setup_prompt_updates_program_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    new_program_dir = tmp_path / "new-programs"
+    new_program_dir.mkdir()
     cfg: dict[str, Any] = {
         "analyzed_programs_and_libraries": [],
         "program_dir": "/old/programs",
@@ -3241,14 +3255,20 @@ def test_textual_setup_prompt_updates_program_dir(monkeypatch: pytest.MonkeyPatc
 
     callback = captured["callback"]
     assert callable(callback)
-    callback("/new/programs")
+    callback(str(new_program_dir))
 
-    assert cfg["program_dir"] == "/new/programs"
+    assert cfg["program_dir"] == str(new_program_dir)
     assert app_instance._dirty is True
     assert messages == ["Updated program_dir from the Setup view."]
 
 
-def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    new_lib_a = tmp_path / "new-lib-a"
+    new_lib_b = tmp_path / "new-lib-b"
+    new_lib_a.mkdir()
+    new_lib_b.mkdir()
     original_other_dirs = ["/old/lib-a", "/old/lib-b"]
     cfg: dict[str, Any] = {
         "analyzed_programs_and_libraries": [],
@@ -3286,14 +3306,14 @@ def test_textual_setup_prompt_replaces_whole_other_lib_dirs_list(monkeypatch: py
     request = captured["request"]
     assert isinstance(request, app_textual_shared_module.InteractionRequest)
     assert request.kind == "prompt"
-    assert request.message == "Enter the full comma-separated list for other_lib_dirs. Leave blank to clear the list."
-    assert request.default == "/old/lib-a, /old/lib-b"
+    assert request.message == "Enter one folder per line for other_lib_dirs. Leave blank to clear the list."
+    assert request.default == "/old/lib-a\n/old/lib-b"
 
     callback = captured["callback"]
     assert callable(callback)
-    callback("/new/lib-a, /new/lib-b")
+    callback(f"{new_lib_a}\n{new_lib_b}")
 
-    assert cfg["other_lib_dirs"] == ["/new/lib-a", "/new/lib-b"]
+    assert cfg["other_lib_dirs"] == [str(new_lib_a), str(new_lib_b)]
     assert cfg["other_lib_dirs"] is not original_other_dirs
     assert app_instance._dirty is True
     assert messages == ["Updated other_lib_dirs from the Setup view."]
@@ -3563,9 +3583,9 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
 
-    app_instance._write_output("\n".join(f"line {index}" for index in range(4005)))
+    app_instance._write_output("\n".join(f"line {index}" for index in range(6005)))
 
-    assert len(app_instance._session_output_lines) == 2000
+    assert len(app_instance._session_output_lines) == 4000
     assert app_instance._session_output_lines[0] == "line 2005"
     assert app_instance._session_output_dropped_line_count == 2005
     assert app_instance._output_title_text() == "Session output - retaining last 4000 lines"
@@ -3610,9 +3630,9 @@ def test_textual_write_output_rebuilds_in_batches_after_retention(monkeypatch: p
     for index in range(1000):
         app_instance._write_output(f"line {index}")
 
-    assert len(app_instance._session_output_lines) <= 100
+    assert len(app_instance._session_output_lines) == 100
     assert retained_sizes_at_rebuild
-    assert max(retained_sizes_at_rebuild) <= 50
+    assert set(retained_sizes_at_rebuild) == {100}
     assert len(retained_sizes_at_rebuild) <= 20
 
 
@@ -4577,3 +4597,300 @@ def test_ui_static_treats_untrusted_text_as_plain_text() -> None:
     static = app_textual_shared_module._TEXTUAL_STATIC("[bold]not markup[/bold] and [unclosed")
 
     assert str(static.renderable) == "[bold]not markup[/bold] and [unclosed"
+
+
+def test_textual_output_trim_keeps_the_readers_scroll_position() -> None:
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"], "output": {"retention_lines": 100}}
+    )
+
+    class ScrollableOutput:
+        is_vertical_scroll_end = False
+        scroll_y = 120.0
+
+        def __init__(self) -> None:
+            self.scroll_targets: list[float] = []
+
+        def clear(self) -> None:
+            return None
+
+        def write(self, _renderable: object, **_kwargs: Any) -> None:
+            return None
+
+        def scroll_to(self, y: float | None = None, **_kwargs: Any) -> None:
+            if y is not None:
+                self.scroll_targets.append(y)
+
+        def scroll_end(self, animate: bool = False) -> None:
+            return None
+
+        def append_plain_text(self, _text: str) -> None:
+            return None
+
+    output = ScrollableOutput()
+    app_instance.query_one = lambda *_args, **_kwargs: output  # type: ignore[method-assign]
+
+    app_instance._write_output("\n".join(f"line {index}" for index in range(200)))
+
+    assert len(app_instance._session_output_lines) == 100
+    assert output.scroll_targets == [120.0]
+
+
+def test_textual_lowering_output_retention_trims_the_live_log_immediately() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"], "output": {"retention_lines": 4000}}
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._session_output_lines = [f"line {index}" for index in range(300)]
+            app_instance._cfg["output"] = {"retention_lines": 100}
+
+            app_instance._mark_settings_changed("Updated session output retention.")
+
+            # The trim runs before the confirmation line is written.
+            assert app_instance._session_output_lines[0] == "line 200"
+            assert app_instance._session_output_dropped_line_count == 200
+            assert len(app_instance._session_output_lines) <= 101
+
+    asyncio.run(_run())
+
+
+def test_textual_interaction_menu_without_options_can_mount_and_close() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance.present_request(
+                app_textual_shared_module.InteractionRequest(kind="menu", title="Nothing to choose")
+            )
+            await pilot.pause()
+
+            assert app_instance._active_request is not None
+            assert app_instance.query_one("#interaction-empty") is not None
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app_instance._active_request is None
+
+    asyncio.run(_run())
+
+
+def test_textual_failed_interaction_mount_leaves_the_shell_unlocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        class _BrokenPane:
+            def __init__(self, *_args: object, **_kwargs: object) -> None:
+                raise RuntimeError("pane wiring failed")
+
+        monkeypatch.setattr(app_textual_actions_module, "_InteractionPane", _BrokenPane)
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            with pytest.raises(RuntimeError, match="pane wiring failed"):
+                app_instance.present_request(
+                    app_textual_shared_module.InteractionRequest(kind="confirm", message="Continue?")
+                )
+
+            assert app_instance._active_request is None
+            assert app_instance._interaction_pane is None
+
+    asyncio.run(_run())
+
+
+def test_textual_second_error_modal_does_not_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    pushed: list[object] = []
+    monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append(screen))
+
+    app_instance._show_error_modal("First", "first failure")
+    app_instance._show_error_modal("Second", "second failure")
+
+    assert len(pushed) == 1
+
+
+def test_textual_failed_ui_task_reports_instead_of_dropping(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    reported: list[tuple[str, str]] = []
+
+    class FailingTask:
+        def __init__(self) -> None:
+            self._callbacks: list[Any] = []
+
+        def add_done_callback(self, callback: Any) -> None:
+            self._callbacks.append(callback)
+
+        def cancelled(self) -> bool:
+            return False
+
+        def exception(self) -> BaseException | None:
+            return RuntimeError("prompt wiring failed")
+
+        def finish(self) -> None:
+            for callback in tuple(self._callbacks):
+                callback(self)
+
+    task = FailingTask()
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: reported.append((title, message)))
+
+    app_textual_actions_module._track_ui_task(app_instance, cast(Any, task))
+    task.finish()
+
+    assert reported == [("Action failed", "Action failed: prompt wiring failed")]
+
+
+def test_textual_analyzer_focus_keeps_the_session_log() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="comment-code",
+                    name="Commented-out code",
+                    description="Detect commented-out code.",
+                    category="code-quality",
+                )
+            ]
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._write_output("run output that must survive")
+            app_instance._analyze_focused_entry_id = "comment-code"
+            app_instance._write_focused_entry_to_output()
+            await pilot.pause()
+
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "run output that must survive" in output_text
+            assert "Analyzer: Commented-out code" in output_text
+
+    asyncio.run(_run())
+
+
+def test_textual_change_review_uses_its_own_action_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    launched: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app_instance,
+        "_start_action",
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: launched.append(
+            (label, action_id)
+        ),
+    )
+
+    app_instance._run_generate_change_review()
+
+    assert launched == [("Generate Change Review", "action-change-review")]
+
+
+def test_textual_dialog_close_restores_the_previous_focus() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="a", name="A", description="", category="correctness")
+            ]
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            analyzers = app_instance.query_one("#analyze-section-analyzers")
+            analyzers.focus()
+            await pilot.pause()
+
+            app_instance.present_request(
+                app_textual_shared_module.InteractionRequest(kind="confirm", message="Continue?")
+            )
+            await pilot.pause()
+
+            app_instance._resolve_request(app_instance._active_request, True)
+            await pilot.pause()
+
+            assert app_instance._active_request is None
+            assert app_instance.focused is not None
+            assert app_instance.focused.id == "analyze-section-analyzers"
+
+    asyncio.run(_run())
+
+
+def test_textual_add_target_from_path_does_not_reannounce_an_unchanged_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    library_dir = tmp_path / "library"
+    library_dir.mkdir()
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": [], "program_dir": str(library_dir)})
+    marked: list[str] = []
+    messages: list[str] = []
+    monkeypatch.setattr(app_instance, "_mark_setup_changed", lambda message, **kwargs: marked.append(message))
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(str(text)))
+
+    app_instance._add_target_from_path(library_dir)
+
+    assert marked == []
+    assert messages == [f"'{library_dir}' is already one of the configured folders."]
+
+
+def test_textual_setup_prompt_rejects_a_folder_that_does_not_exist(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg: dict[str, Any] = {"analyzed_programs_and_libraries": [], "program_dir": ""}
+    app_instance = _make_textual_app(cfg=cfg, project=False)
+    captured: dict[str, Any] = {}
+    errors: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app_instance,
+        "present_request",
+        lambda request, on_response_fn=None: captured.update(request=request, callback=on_response_fn),
+    )
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: errors.append((title, message)))
+
+    app_instance._prompt_setup_value("program_dir", label="program_dir")
+    captured["callback"]("/definitely/missing/folder")
+
+    assert cfg["program_dir"] == ""
+    assert errors == [("Invalid folder", "'/definitely/missing/folder' is not an existing folder.")]
+
+
+def test_textual_unchanged_analyzer_options_keep_the_list_scroll() -> None:
+    app_instance = _make_textual_app()
+    items = (app_textual_analyze_module._AnalyzerItem("a", "A", "", "correctness"),)
+
+    class ListStub:
+        highlighted = 0
+
+        def __init__(self) -> None:
+            self.clear_count = 0
+
+        def clear_options(self) -> None:
+            self.clear_count += 1
+
+        def add_options(self, _options: object) -> None:
+            return None
+
+    stub = ListStub()
+
+    app_instance._update_analyze_selection_list(stub, items)
+    app_instance._update_analyze_selection_list(stub, items)
+
+    assert stub.clear_count == 1
