@@ -65,10 +65,12 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
 
     collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(fake_analyzer)
 
-    assert any(variable is root_var for _path, variable, _role, _root_owned in collected)
+    assert any(entry.variable is root_var for entry in collected)
     assert any(
-        variable is context_var and path == ["BasePicture", "Nested", "Display"] and role == "moduleparameter"
-        for path, variable, role, _root_owned in collected
+        entry.variable is context_var
+        and entry.path == ["BasePicture", "Nested", "Display"]
+        and entry.role == "moduleparameter"
+        for entry in collected
     )
 
 
@@ -115,8 +117,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
             )
         },
         type_graph=SimpleNamespace(
-            iter_leaf_field_paths=lambda _datatype: [("CleanCycle",), ("WaitCleanCycle",)],
-            record=lambda _datatype: None,
+            iter_leaf_field_paths=lambda _datatype, library=None: [("CleanCycle",), ("WaitCleanCycle",)],
+            record=lambda _datatype, library=None: None,
         ),
         is_from_root_origin=lambda origin_file, origin_lib=None: True,
         get_usage=lambda variable: usage_by_id[id(variable)],

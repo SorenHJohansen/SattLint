@@ -172,7 +172,9 @@ def test_type_graph_reuses_cached_builtin_record_shells():
     left = TypeGraph.from_datatypes(())
     right = TypeGraph.from_datatypes(())
 
-    builtin_name = next(iter(left._records_by_key.values())).name
+    builtin_records = left._builtin_records()
+    assert builtin_records is right._builtin_records()
+    builtin_name = next(iter(builtin_records.values())).name
 
     assert left.record(builtin_name) is right.record(builtin_name)
 

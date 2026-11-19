@@ -427,13 +427,13 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
         _selected_issue_kinds=None,
         _is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
         type_graph=SimpleNamespace(
-            iter_leaf_field_paths=lambda name: {
+            iter_leaf_field_paths=lambda name, library=None: {
                 "EmptyPayload": [],
                 "LibraryPayload": [("FieldA",)],
                 "PayloadNoAccess": [("FieldA",)],
                 "PayloadPartial": [("Used",), ("Unused",)],
             }.get(name, []),
-            record=lambda name: None,
+            record=lambda name, library=None: None,
         ),
         _analyzed_target_is_library=True,
         _get_usage=lambda variable: usage_by_id[id(variable)],
@@ -478,8 +478,9 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
         is_from_root_origin=lambda origin, origin_lib=None: True,
         limit_to_module_path=None,
         type_graph=SimpleNamespace(
-            field=lambda record_type, field_name: None,
-            iter_leaf_field_paths=lambda name: (
+            field=lambda record_type, field_name, library=None: None,
+            record=lambda record_type, library=None: None,
+            iter_leaf_field_paths=lambda name, library=None: (
                 [
                     ("OutletProd_Def", "Std"),
                     ("OutletProd_X_Def", "Std"),
@@ -830,7 +831,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     detached_var = Variable(name="Detached", datatype="DetachedPayload")
 
     nested_state = {
-        "innerpayload": variable_issue_collection_module._DatatypeDefinitionState(
+        ("", "innerpayload"): variable_issue_collection_module._DatatypeDefinitionState(
             datatype_name="InnerPayload",
             module_path=("Root", "DataType:InnerPayload"),
             index=variable_issue_collection_module.LeafPathIndex.empty(),
@@ -838,10 +839,16 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         )
     }
     type_records = {
-        "OuterPayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}),
-        "MissingFieldPayload": SimpleNamespace(fields_by_key={}),
-        "DetachedPayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="DetachedInner")}),
-        "WholePayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}),
+        "OuterPayload": SimpleNamespace(
+            fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}, library=None
+        ),
+        "MissingFieldPayload": SimpleNamespace(fields_by_key={}, library=None),
+        "DetachedPayload": SimpleNamespace(
+            fields_by_key={"inner": SimpleNamespace(datatype="DetachedInner")}, library=None
+        ),
+        "WholePayload": SimpleNamespace(
+            fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}, library=None
+        ),
     }
     issues: list[VariableIssue] = []
     helper: Any = SimpleNamespace(
@@ -888,8 +895,8 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         contexts_by_module_path={},
         is_from_root_origin=lambda *args, **kwargs: True,
         type_graph=SimpleNamespace(
-            record=lambda name: type_records.get(name),
-            iter_leaf_field_paths=lambda name: {"WholePayload": [("Inner", "Leaf")]}.get(name, []),
+            record=lambda name, library=None: type_records.get(name),
+            iter_leaf_field_paths=lambda name, library=None: {"WholePayload": [("Inner", "Leaf")]}.get(name, []),
         ),
         get_usage=lambda variable: {
             id(whole_access_var): _UsageStub(usage_locations=[("Root", "read")]),
@@ -900,7 +907,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     )
 
     collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(helper)
-    collected_names = [variable.name for _, variable, _, _ in collected]
+    collected_names = [entry.variable.name for entry in collected]
     assert collected_names == ["NestedParam", "NestedLocal", "ChildLocal"]
 
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, nested_param, "")
@@ -908,8 +915,8 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, missing_field_var, "Inner")
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, detached_var, "Inner")
     variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, nested_param, "Inner")
-    assert nested_state["innerpayload"].accessed_prefixes == set()
-    assert nested_state["innerpayload"].has_whole_access is True
+    assert nested_state[("", "innerpayload")].accessed_prefixes == set()
+    assert nested_state[("", "innerpayload")].has_whole_access is True
 
     helper.bp.localvariables = [whole_access_var]
     helper.bp.submodules = []

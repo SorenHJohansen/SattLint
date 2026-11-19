@@ -51,14 +51,22 @@ class CanonicalSymbolTable:
         var: Variable,
         kind: SymbolKind,
         type_graph: TypeGraph,
+        *,
+        library: str | None = None,
     ) -> None:
+        """Register a variable and every addressable leaf field below it.
+
+        ``library`` is the library that declares the variable. Without it the
+        record layout resolves by name only, so the name must not be shared by
+        several libraries.
+        """
         if not self.collect:
             return
         root = CanonicalPath((*module_path, var.name))
         self.add(SymbolDef(kind=kind, canonical_path=root, datatype=var.datatype))
 
         # Expand nested record fields to represent every addressable leaf field as a fully-qualified path.
-        for field_path in type_graph.iter_leaf_field_paths(var.datatype):
+        for field_path in type_graph.iter_leaf_field_paths(var.datatype, library=library):
             if not field_path:
                 continue
             cp = CanonicalPath((*module_path, var.name, *list(field_path)))

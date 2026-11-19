@@ -16,6 +16,7 @@ from sattlint.parser_api import (
 )
 
 from ...core.call_signatures import resolve_call_signature
+from ...resolution import AmbiguousRecordError
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport
@@ -239,7 +240,11 @@ class DataflowAnalyzer(
         variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
         if variable is None:
             return None
-        resolved_state = self._resolve_state_flag(variable, field_path)
+        resolved_state = self._resolve_state_flag(
+            variable,
+            field_path,
+            library=getattr(variable, "origin_lib", None) or context.current_library,
+        )
         display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
         state_access = requested_state_access
         if requested_state_access and resolved_state is not None and not resolved_state:
@@ -266,16 +271,28 @@ class DataflowAnalyzer(
         self,
         variable: Any,
         field_path: str,
+        *,
+        library: str | None = None,
     ) -> bool | None:
+        """Resolve a field's STATE flag.
+
+        ``library`` is the library whose code references the variable; it keeps
+        same-named records from different libraries on their own layouts.
+        """
         resolved_state = getattr(variable, "state", None)
         current_datatype = getattr(variable, "datatype", None)
         for field_name in (segment for segment in field_path.split(".") if segment):
             if current_datatype is None or not isinstance(current_datatype, str):
                 return None
-            field = self._type_graph.field(current_datatype, field_name)
-            if field is None:
+            try:
+                record = self._type_graph.record(current_datatype, library=library)
+            except AmbiguousRecordError:
+                return None
+            field = record.fields_by_key.get(field_name.casefold()) if record is not None else None
+            if record is None or field is None:
                 return None
             current_datatype = field.datatype
+            library = record.library
             resolved_state = field.state
         return resolved_state
 
