@@ -218,10 +218,10 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
 
     class MutableReport:
         def __init__(self) -> None:
-            self.name = "BasePicture"
+            self.basepicture_name = "BasePicture"
 
         def summary(self) -> str:
-            return f"state inference summary for {self.name}"
+            return f"state inference summary for {self.basepicture_name}"
 
     report = MutableReport()
 
@@ -538,11 +538,11 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
 
     class MutableReport:
         def __init__(self, name: str) -> None:
-            self.name = name
+            self.basepicture_name = name
             self.issues: list[object] = []
 
         def summary(self) -> str:
-            return f"state inference summary for {self.name}"
+            return f"state inference summary for {self.basepicture_name}"
 
     cached_report = MutableReport("BasePicture")
 
@@ -616,11 +616,11 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
 
     class MutableReport:
         def __init__(self, name: str) -> None:
-            self.name = name
+            self.basepicture_name = name
             self.issues: list[object] = []
 
         def summary(self) -> str:
-            return f"state inference summary for {self.name}"
+            return f"state inference summary for {self.basepicture_name}"
 
     class FakeReportCache:
         def __init__(self, cache_dir):

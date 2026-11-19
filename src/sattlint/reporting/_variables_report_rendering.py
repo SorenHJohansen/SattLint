@@ -32,12 +32,13 @@ def format_location(module_path: list[str]) -> str:
     return ".".join(module_path) if module_path else "?"
 
 
-def display_location(module_path: list[str]) -> str:
-    if len(module_path) <= 2:
-        return format_location(module_path)
-    return format_location(
-        [segment.removeprefix("TypeDef:") if segment.startswith("TypeDef:") else segment for segment in module_path]
-    )
+def _display_path(module_path: list[str], preserve_typedef_path: bool) -> list[str]:
+    return module_path if preserve_typedef_path else singlemodule_display_path(module_path)
+
+
+def _column_width(label: str, values: list[str]) -> int:
+    """Width of a table column, never narrower than its header label."""
+    return max(len(label), *(len(value) for value in values))
 
 
 def split_moduletype_and_singlemodule_issues(
@@ -233,6 +234,7 @@ def render_formatted_issue_rows(lines: list[str], issues: list[VariableIssue], p
 def render_table_issue_rows(
     lines: list[str],
     issues: list[VariableIssue],
+    preserve_typedef_path: bool,
     *,
     include_target_type: bool,
 ) -> None:
@@ -240,15 +242,18 @@ def render_table_issue_rows(
         lines.append("        none")
         return
 
-    location_width = max(len(display_location(issue.module_path)) for issue in issues)
-    source_name_width = max(len(issue.source_variable.name) if issue.source_variable else 0 for issue in issues)
+    locations = [format_location(_display_path(issue.module_path, preserve_typedef_path)) for issue in issues]
+    source_names = [issue.source_variable.name if issue.source_variable else "?" for issue in issues]
+    target_names = [issue.variable.name if issue.variable else "?" for issue in issues]
+    location_width = _column_width("Location", locations)
+    source_name_width = _column_width("Source Var", source_names)
+    target_name_width = _column_width("Target Var", target_names)
 
     if include_target_type:
-        source_type_width = max(
-            len(issue.source_variable.datatype_text) if issue.source_variable else 0 for issue in issues
-        )
-        target_name_width = max(len(issue.variable.name) if issue.variable else 0 for issue in issues)
-        target_type_width = max(len(issue.variable.datatype_text) if issue.variable else 0 for issue in issues)
+        source_types = [issue.source_variable.datatype_text if issue.source_variable else "?" for issue in issues]
+        target_types = [issue.variable.datatype_text if issue.variable else "?" for issue in issues]
+        source_type_width = _column_width("Type", source_types)
+        target_type_width = _column_width("Type", target_types)
         header = (
             f"        {'Location':<{location_width}}  "
             f"{'Source Var':<{source_name_width}}  {'Type':<{source_type_width}}  =>  "
@@ -256,12 +261,14 @@ def render_table_issue_rows(
         )
         lines.append(header)
         lines.append("        " + "-" * len(header.strip()))
-        for issue in issues:
-            location = display_location(issue.module_path)
-            source_name = issue.source_variable.name if issue.source_variable else "?"
-            source_type = issue.source_variable.datatype_text if issue.source_variable else "?"
-            target_name = issue.variable.name if issue.variable else "?"
-            target_type = issue.variable.datatype_text if issue.variable else "?"
+        for location, source_name, source_type, target_name, target_type in zip(
+            locations,
+            source_names,
+            source_types,
+            target_names,
+            target_types,
+            strict=True,
+        ):
             lines.append(
                 f"        {location:<{location_width}}  "
                 f"{source_name:<{source_name_width}}  {source_type:<{source_type_width}}  =>  "
@@ -269,17 +276,13 @@ def render_table_issue_rows(
             )
         return
 
-    target_name_width = max(len(issue.variable.name) if issue.variable else 0 for issue in issues)
     header = (
         f"        {'Location':<{location_width}}  "
         f"{'Source Var':<{source_name_width}}  =>  {'Target Var':<{target_name_width}}"
     )
     lines.append(header)
     lines.append("        " + "-" * len(header.strip()))
-    for issue in issues:
-        location = display_location(issue.module_path)
-        source_name = issue.source_variable.name if issue.source_variable else "?"
-        target_name = issue.variable.name if issue.variable else "?"
+    for location, source_name, target_name in zip(locations, source_names, target_names, strict=True):
         lines.append(
             f"        {location:<{location_width}}  {source_name:<{source_name_width}}  =>  {target_name:<{target_name_width}}"
         )
@@ -364,10 +367,6 @@ def append_variable_issue_list(lines: list[str], title: str, issues: list[Variab
     append_grouped_issue_blocks(lines, title, issues, render_formatted_issue_rows)
 
 
-def append_unused_variable_issue_list(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    append_grouped_issue_blocks(lines, title, issues, render_formatted_issue_rows)
-
-
 def append_unused_datatype_fields(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
     if not issues:
         append_empty_section(lines, title)
@@ -434,9 +433,9 @@ def render_datatype_duplication_rows(
     for issue in sorted(
         issues,
         key=lambda item: (
-            item.variable.datatype_text if item.variable else "?",
-            ".".join(item.module_path),
-            item.variable.name if item.variable else "?",
+            (item.variable.datatype_text if item.variable else "?").casefold(),
+            ".".join(item.module_path).casefold(),
+            (item.variable.name if item.variable else "?").casefold(),
         ),
     ):
         location_path = issue.module_path if preserve_typedef_path else singlemodule_display_path(issue.module_path)
@@ -465,9 +464,10 @@ def append_min_max_mapping_mismatch(lines: list[str], title: str, issues: list[V
         lines,
         title,
         issues,
-        lambda grouped_lines, grouped_issues, _preserve_typedef_path: render_table_issue_rows(
+        lambda grouped_lines, grouped_issues, preserve_typedef_path: render_table_issue_rows(
             grouped_lines,
             grouped_issues,
+            preserve_typedef_path,
             include_target_type=False,
         ),
     )
@@ -478,14 +478,12 @@ def append_magic_numbers(lines: list[str], title: str, issues: list[VariableIssu
 
 
 def append_record_component_order_dependence(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    datatype_names = sorted(
-        {
-            issue.datatype_name
-            for issue in issues
-            if issue.datatype_name is not None and issue.datatype_name.casefold() != "anytype"
-        },
-        key=str.casefold,
-    )
+    unique_names: dict[str, str] = {}
+    for issue in issues:
+        if issue.datatype_name is None or issue.datatype_name.casefold() == "anytype":
+            continue
+        unique_names.setdefault(issue.datatype_name.casefold(), issue.datatype_name)
+    datatype_names = sorted(unique_names.values(), key=str.casefold)
 
     if not datatype_names:
         append_empty_section(lines, title)
