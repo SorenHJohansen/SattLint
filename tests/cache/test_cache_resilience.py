@@ -47,6 +47,12 @@ def test_build_ast_cache_returns_none_for_unusable_directory(tmp_path: Path) -> 
     assert cache_module.build_ast_cache(blocked) is None
 
 
+def test_build_analysis_report_cache_returns_none_for_unusable_directory(tmp_path: Path) -> None:
+    blocked = _blocked_cache_dir(tmp_path)
+
+    assert cache_module.build_analysis_report_cache(blocked) is None
+
+
 def test_get_cache_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     blocked = _blocked_cache_dir(tmp_path)
     monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)

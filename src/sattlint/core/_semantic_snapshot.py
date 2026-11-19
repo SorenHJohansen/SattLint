@@ -17,9 +17,10 @@ from sattlint.parser_api import BasePicture, ModuleTypeDef, SourceSpan
 from ..models.project_graph import ProjectGraph
 from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
 from ._semantic_helpers import (
+    SourceFileKey,
     cf,
     identifier_contains_column,
-    source_file_key,
+    reference_file_key,
 )
 from .call_signatures import CallSignatureOccurrence
 
@@ -99,7 +100,7 @@ class _ReferenceOccurrence:
 ReferenceOccurrence = _ReferenceOccurrence
 
 DefinitionKey = CanonicalPathKey
-ReferencesByFile = dict[str, tuple[ReferenceOccurrence, ...]]
+ReferencesByFile = dict[SourceFileKey, tuple[ReferenceOccurrence, ...]]
 ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
 
 
@@ -111,7 +112,7 @@ def _references_by_definition_key_factory() -> ReferencesByDefinitionKey:
     return {}
 
 
-def _references_by_file_factory() -> ReferencesByFile:
+def _references_by_source_factory() -> ReferencesByFile:
     return {}
 
 
@@ -146,8 +147,8 @@ class SemanticSnapshot:
         repr=False,
         compare=False,
     )
-    _references_by_file: ReferencesByFile = field(
-        default_factory=_references_by_file_factory,
+    _references_by_source: ReferencesByFile = field(
+        default_factory=_references_by_source_factory,
         repr=False,
         compare=False,
     )
@@ -156,6 +157,18 @@ class SemanticSnapshot:
         repr=False,
         compare=False,
     )
+
+    @property
+    def _references_by_file(self) -> dict[str, tuple[ReferenceOccurrence, ...]]:
+        """Basename view of the reference index, merged across libraries.
+
+        The authoritative index is library-qualified; this merge keeps the
+        per-file consumers working where a single file is walked at a time.
+        """
+        merged: dict[str, list[ReferenceOccurrence]] = {}
+        for (_library, name), occurrences in self._references_by_source.items():
+            merged.setdefault(name, []).extend(occurrences)
+        return {name: tuple(items) for name, items in merged.items()}
 
     def list_symbols(
         self, query: str = "", *, roots_only: bool = False, limit: int | None = None
@@ -206,27 +219,25 @@ class SemanticSnapshot:
         *,
         source_library: str | None = None,
     ) -> list[SymbolDefinition]:
-        file_key = source_file_key(source_file)
-        if file_key is None:
-            return []
-
-        # The file index is keyed by name, so same-named files from different
-        # libraries share a bucket. Filter by the query's library to keep a
-        # definition from another library out of the answer.
         library_key = (
             source_library.casefold() if source_library is not None else self._library_key_for_source(source_file)
         )
+        file_key = reference_file_key(source_file, library_key)
+        if file_key is None:
+            return []
+
+        # The index is library-qualified, so a lookup can only reach occurrences
+        # recorded for the queried library. Occurrences recorded without a known
+        # library share one unqualified bucket, which is checked as a fallback.
+        occurrences = [
+            *self._references_by_source.get(file_key, ()),
+            *(() if file_key[0] is None else self._references_by_source.get((None, file_key[1]), ())),
+        ]
 
         matches: list[SymbolDefinition] = []
         seen: set[tuple[str, ...]] = set()
-        for occurrence in self._references_by_file.get(file_key, ()):
+        for occurrence in occurrences:
             if not occurrence.matches(line, column):
-                continue
-            if (
-                library_key
-                and occurrence.source_library is not None
-                and occurrence.source_library.casefold() != library_key
-            ):
                 continue
             definition_key = occurrence.definition_key_for_column(column)
             definition = self._definitions_by_key.get(definition_key)
@@ -344,21 +355,17 @@ class SemanticSnapshot:
         limit: int | None = None,
     ) -> list[CallSignatureOccurrence]:
         needle = query.strip().casefold()
-        file_key = source_file_key(source_path) if source_path is not None else None
         library_key = None if source_path is None else self._library_key_for_source(source_path)
+        file_key = reference_file_key(source_path, library_key) if source_path is not None else None
 
         matches: list[CallSignatureOccurrence] = []
         for occurrence in self.call_signatures:
             if needle and occurrence.name.casefold() != needle:
                 continue
-            if file_key is not None and source_file_key(occurrence.source_file) != file_key:
-                continue
-            if (
-                library_key is not None
-                and occurrence.source_library is not None
-                and occurrence.source_library.casefold() != library_key
-            ):
-                continue
+            if file_key is not None:
+                occurrence_key = reference_file_key(occurrence.source_file, occurrence.source_library)
+                if occurrence_key != file_key and occurrence_key != (None, file_key[1]):
+                    continue
             matches.append(occurrence)
         if limit is not None:
             return matches[:limit]

@@ -4,27 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
+from importlib import import_module
 from typing import TypedDict
 
-from ...utils.repo_paths import repo_root_from
 from .._registry_specs import build_default_analyzers
-from ..alarm_integrity import analyze_alarm_integrity
-from ..comment_code import analyze_comment_code
-from ..cyclomatic_complexity import analyze_cyclomatic_complexity
-from ..dataflow import analyze_dataflow
-from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
-from ..icf.analyzer import analyze_icf_configuration
-from ..modules import analyze_version_drift
-from ..moduletype_usage import analyze_moduletype_usage
-from ..picture_display_paths import analyze_picture_display_paths
 from ..plugin import get_plugin_registry_generation, get_registered_plugin_analyzers, register_analyzer
-from ..same_cycle import analyze_same_cycle
-from ..sfc import analyze_sfc
-from ..spec_compliance import analyze_spec_compliance
-from ..variables import analyze_variables
-from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
+from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata
 
 # Policy (analyzer execution refactor B4.9): every registered analyzer is
 # selectable, and is either in the default CLI set below or deliberately opt-in
@@ -42,14 +28,38 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
 )
 
 
-def _registry_repo_root() -> Path:
-    try:
-        return repo_root_from(Path(__file__))
-    except RuntimeError:
-        return Path(__file__).resolve().parent
+#: Analyzer entry points resolved on first attribute access. Building the
+#: catalogue needs every one of them, but merely importing the registry must
+#: not import every analyzer (and, through them, the project loader).
+_LAZY_ANALYZER_EXPORTS: dict[str, tuple[str, str]] = {
+    "analyze_alarm_integrity": ("sattlint.analyzers.alarm_integrity", "analyze_alarm_integrity"),
+    "analyze_comment_code": ("sattlint.analyzers.comment_code", "analyze_comment_code"),
+    "analyze_cyclomatic_complexity": (
+        "sattlint.analyzers.cyclomatic_complexity",
+        "analyze_cyclomatic_complexity",
+    ),
+    "analyze_dataflow": ("sattlint.analyzers.dataflow", "analyze_dataflow"),
+    "analyze_datatype_fields": ("sattlint.analyzers.datatype_fields", "analyze_datatype_fields"),
+    "analyze_icf_configuration": ("sattlint.analyzers.icf.analyzer", "analyze_icf_configuration"),
+    "analyze_moduletype_usage": ("sattlint.analyzers.moduletype_usage", "analyze_moduletype_usage"),
+    "analyze_picture_display_paths": ("sattlint.analyzers.picture_display_paths", "analyze_picture_display_paths"),
+    "analyze_same_cycle": ("sattlint.analyzers.same_cycle", "analyze_same_cycle"),
+    "analyze_sfc": ("sattlint.analyzers.sfc", "analyze_sfc"),
+    "analyze_spec_compliance": ("sattlint.analyzers.spec_compliance", "analyze_spec_compliance"),
+    "analyze_variables": ("sattlint.analyzers.variables", "analyze_variables"),
+    "analyze_version_drift": ("sattlint.analyzers.modules", "analyze_version_drift"),
+}
 
 
-REPO_ROOT = _registry_repo_root()
+def __getattr__(name: str) -> object:
+    target = _LAZY_ANALYZER_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value
+
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
     "same_cycle": "same-cycle",
@@ -135,7 +145,7 @@ def canonicalize_analyzer_key(key: str) -> str:
 
 
 def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
-    return tuple(canonicalize_analyzer_key(key) for key in keys if key.strip())
+    return tuple(canonicalize_analyzer_key(key.strip()) for key in keys if key.strip())
 
 
 def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
@@ -198,43 +208,18 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
     ]
 
 
-def get_correctness_analyzer_keys() -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            analyzer.spec.key
-            for analyzer in get_default_analyzer_catalog().analyzers
-            if analyzer.spec.enabled and analyzer.spec.category == "correctness"
-        )
-    )
-
-
 __all__ = [
     "DEFAULT_CLI_ANALYZER_KEYS",
-    "LEGACY_ANALYZER_KEY_ALIASES",
-    "REPO_ROOT",
     "AnalyzerCatalog",
+    "AnalyzerCatalogReport",
     "AnalyzerDeliveryMetadata",
     "AnalyzerMetadata",
+    "AnalyzerMetadataDict",
     "AnalyzerSpec",
-    "analyze_alarm_integrity",
-    "analyze_comment_code",
-    "analyze_cyclomatic_complexity",
-    "analyze_dataflow",
-    "analyze_datatype_fields",
-    "analyze_icf_configuration",
-    "analyze_moduletype_usage",
-    "analyze_picture_display_paths",
-    "analyze_same_cycle",
-    "analyze_sfc",
-    "analyze_spec_compliance",
-    "analyze_variables",
-    "analyze_version_drift",
-    "build_default_analyzers",
     "build_delivery_metadata",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
     "get_actual_cli_analyzer_keys",
-    "get_correctness_analyzer_keys",
     "get_declared_cli_analyzer_keys",
     "get_default_analyzer_catalog",
     "get_default_analyzers",
@@ -243,5 +228,4 @@ __all__ = [
     "get_registered_plugin_analyzers",
     "get_selectable_analyzers",
     "register_analyzer",
-    "summary_output_for_analyzer",
 ]

@@ -52,6 +52,11 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
                         detail="nested failure",
                         line=20,
                     ),
+                    "dep_d": ProjectFailure(
+                        "dep_d",
+                        "Missing code file for 'dep_d' (draft)",
+                        detail="code file is missing (draft)",
+                    ),
                 },
             )
         return "bp-working", working_graph
@@ -80,6 +85,7 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
     assert "  - Broken: root failed (line 7, column 2)" in out
     assert "Failed direct dependencies (2):" in out
     assert "  - dep_c: something bad happened (line 12, column 4, length 3)" in out
+    assert "  - dep_d: code file is missing (draft)" in out
     assert "Direct dependency warnings (1):" in out
     assert "Transitive dependency failures (1):" in out
     assert "  - transitive_lib: nested failure (line 20)" in out

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
-from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
+from ..models._variable_issues import IssueKind, VariableIssue, variable_issue_metadata
 from ..reporting.variables_report import VariablesReport
 
 type FindingDataValue = str | int | float | bool | list[FindingDataValue] | dict[str, FindingDataValue] | None
@@ -204,12 +204,9 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
         if visible_kinds is not None and _kind_value(item) not in visible_kinds:
             continue
         module_path = _module_path_value(item)
-        explanation = _issue_metadata_value(item, "explanation")
-        if explanation is None:
-            explanation = _variable_issue_text(item, "explanation")
-        suggestion = _issue_metadata_value(item, "suggestion")
-        if suggestion is None:
-            suggestion = _variable_issue_text(item, "suggestion")
+        metadata = variable_issue_metadata(_kind_object(item))
+        explanation = _issue_metadata_value(item, "explanation") or metadata.explanation
+        suggestion = _issue_metadata_value(item, "suggestion") or metadata.suggestion
         findings.append(
             AnalysisFinding(
                 kind=_kind_value(item),
@@ -224,14 +221,11 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
     return tuple(findings)
 
 
-def _variable_issue_text(item: object, field_name: str) -> str | None:
-    try:
-        metadata = materialize_variable_issue_metadata(item)
-    except Exception:  # noqa: BLE001 - best-effort enrichment for heterogeneous issue models
-        return None
-    value = getattr(metadata, field_name, None)
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+def _kind_object(item: object) -> IssueKind | str | None:
+    """The raw issue kind of a heterogeneous report model, if it carries one."""
+    kind = getattr(item, "kind", None)
+    if isinstance(kind, IssueKind | str):
+        return kind
     return None
 
 
@@ -256,7 +250,6 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "shadowing": "Variable shadowing",
     "record_component_order_dependence": "Record component order dependence",
     "sfc_parallel_write_race": "Parallel write race",
-    "sfc_unreachable_sequence_node": "Unreachable sequence node",
     "sfc_unreachable_transition": "Unreachable transition",
     "sfc_duplicate_transition_guard": "Duplicate transition guard",
     "dataflow.dead_overwrite": "Dead overwrite",
@@ -284,7 +277,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "spec.equation_block_prefix": "Equation block name prefix",
     "unsafe_boolean_default": "Unsafe boolean default",
     "sfc_missing_initial_step": "Missing initial step at sequence start",
-    "same_cycle_shared_access_hazard": "Same-cycle shared access",
+    "sfc_unreachable_sequence_node": "Unreachable sequence node",
     "same_cycle_parallel_read_write_hazard": "Parallel read/write hazard",
     "dataflow.non_state_multi_site": "Non-state multi-site access",
     "picture_display_paths.unresolved": "Unresolved PictureDisplay path",
@@ -299,12 +292,6 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "icf.unit_structure_drift": "ICF unit structure drift",
     "icf.value_prefix_inconsistency": "ICF value prefix inconsistency",
     "icf.program_load_failed": "ICF program load failed",
-    "duplicate_sibling_name": "Duplicate sibling name",
-    "unexpected_submodule_type": "Unexpected submodule type",
-    "unreachable_sequence_node": "Unreachable sequence node",
-    "scan_cycle_shared_access_hazard": "Same-cycle shared access",
-    "scan_cycle_parallel_read_write_hazard": "Parallel read/write hazard",
-    "scan_cycle_non_state_multi_site_hazard": "Non-state multi-site access",
 }
 
 

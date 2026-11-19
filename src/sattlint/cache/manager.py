@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Lock
 
 from .. import cache as cache_module
 from .classes import AnalysisReportCache, ASTCache
@@ -89,6 +90,9 @@ class CacheManager:
 # caller that asks for many cache roots must not grow it without bound.
 _CACHE_MANAGERS: dict[Path, CacheManager] = {}
 _CACHE_MANAGER_LIMIT = 4
+#: Analysis runs can share the process with a worker thread; the memo is small,
+#: so a single lock around lookups keeps two builders from racing the eviction.
+_CACHE_MANAGERS_LOCK = Lock()
 
 
 def _uses_default_cache_types(
@@ -117,12 +121,13 @@ def get_cache_manager(
             analysis_report_cache_cls=analysis_report_cache_cls,
         )
 
-    manager = _CACHE_MANAGERS.get(resolved_cache_dir)
-    if manager is None:
-        if len(_CACHE_MANAGERS) >= _CACHE_MANAGER_LIMIT:
-            _CACHE_MANAGERS.pop(next(iter(_CACHE_MANAGERS)))
-        manager = CacheManager(resolved_cache_dir)
-        _CACHE_MANAGERS[resolved_cache_dir] = manager
+    with _CACHE_MANAGERS_LOCK:
+        manager = _CACHE_MANAGERS.get(resolved_cache_dir)
+        if manager is None:
+            if len(_CACHE_MANAGERS) >= _CACHE_MANAGER_LIMIT:
+                _CACHE_MANAGERS.pop(next(iter(_CACHE_MANAGERS)))
+            manager = CacheManager(resolved_cache_dir)
+            _CACHE_MANAGERS[resolved_cache_dir] = manager
     return manager
 
 
@@ -141,11 +146,19 @@ def build_ast_cache(cache_dir: Path, ast_cache_cls: type[ASTCache] = ASTCache) -
 def build_analysis_report_cache(
     cache_dir: Path,
     analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
-) -> AnalysisReportCache:
-    return get_cache_manager(
-        cache_dir,
-        analysis_report_cache_cls=analysis_report_cache_cls,
-    ).analysis_report_cache
+) -> AnalysisReportCache | None:
+    """Build the analysis-report cache, or return ``None`` when the location is unusable.
+
+    The report cache is an optimisation, exactly like the AST cache, so an
+    unwritable or blocked cache location must not stop an analysis run.
+    """
+    try:
+        return get_cache_manager(
+            cache_dir,
+            analysis_report_cache_cls=analysis_report_cache_cls,
+        ).analysis_report_cache
+    except OSError:
+        return None
 
 
 def prune_cache_dir(cache_dir: Path | None = None) -> cache_module.CachePruneResult:

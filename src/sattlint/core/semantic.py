@@ -58,7 +58,7 @@ def _build_semantic_snapshot(
     definitions = builder_result.definitions
     definitions_by_key = builder_result.definitions_by_key
     moduletype_index = builder_result.moduletype_index
-    references_by_file = builder_result.references_by_file
+    references_by_source = builder_result.references_by_source
     references_by_definition_key = builder_result.references_by_definition_key
     call_signatures = builder_result.call_signatures
 
@@ -73,7 +73,7 @@ def _build_semantic_snapshot(
         call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
-        _references_by_file=references_by_file,
+        _references_by_source=references_by_source,
         _references_by_definition_key=references_by_definition_key,
     )
 

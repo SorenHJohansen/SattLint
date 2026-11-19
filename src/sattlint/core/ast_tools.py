@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Literal
 
 from sattlint.parser_api import FuncCall, LitStringTail, ProcedureCall, VarRef, VarTail, walk
 
 type CallKind = Literal["function", "procedure"]
-type CallSite = tuple[CallKind, str, tuple[object, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class CallSite:
+    """One function or procedure call, identified by kind and callee name."""
+
+    kind: CallKind
+    name: str
 
 
 def iter_variable_refs(node: object) -> Iterator[VarRef]:
@@ -29,7 +37,10 @@ def iter_call_sites(node: object) -> Iterator[CallSite]:
     for event in walk(node):
         current = event.node
         if isinstance(current, FuncCall):
-            yield ("function", current.name, tuple(current.args))
+            yield CallSite(kind="function", name=current.name)
             continue
         if isinstance(current, ProcedureCall):
-            yield ("procedure", current.name, tuple(current.args))
+            yield CallSite(kind="procedure", name=current.name)
+
+
+__all__ = ["CallKind", "CallSite", "iter_call_sites", "iter_variable_refs"]

@@ -1,18 +1,99 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
-from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan, Variable
+from sattlint.parser_api import (
+    BasePicture,
+    FrameModule,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 
-from ..resolution import CanonicalPath, decorate_segment
+from ..resolution import CanonicalPath, ContextBuilder, decorate_segment
 from ..resolution.scope import ScopeContext
-from ._semantic_helpers import source_file_key, try_resolve_instance_typedef
-from ._semantic_snapshot import ReferenceOccurrence
+from ._semantic_helpers import SourceFileKey, reference_file_key, try_resolve_instance_typedef
+from ._semantic_snapshot import ReferenceOccurrence, SymbolReference
 from .ast_tools import iter_call_sites, iter_variable_refs
 from .call_signatures import CallSignatureOccurrence, resolve_call_signature
+
+
+class SemanticIndexHost(Protocol):
+    """The builder state the reference-support mixin operates on."""
+
+    base_picture: BasePicture
+    build_reference_index: bool
+    context_builder: ContextBuilder
+    unavailable_libraries: set[str]
+    _references_by_source: dict[SourceFileKey, list[ReferenceOccurrence]]
+    _references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]]
+    _call_signatures: list[CallSignatureOccurrence]
+    _moduletype_index: dict[str, list[ModuleTypeDef]]
+    _known_typedef_ids: set[int]
+
+    def _record_variables(
+        self,
+        variables: list[Variable],
+        *,
+        module_path: tuple[str, ...],
+        display_module_path: tuple[str, ...],
+        kind: str,
+        origin_file: str | None,
+        origin_library: str | None,
+    ) -> None: ...
+
+    def _record_scope_references(
+        self,
+        node: object,
+        *,
+        context: ScopeContext,
+        source_file: str | None,
+        source_library: str | None,
+        variable_filter: Callable[[Variable], bool] | None = None,
+    ) -> None: ...
+
+    def _record_call_signatures(
+        self,
+        node: object,
+        *,
+        module_path: tuple[str, ...],
+        source_file: str | None,
+        source_library: str | None,
+    ) -> None: ...
+
+    def _walk_submodules(
+        self,
+        modules: list[SingleModule | FrameModule | ModuleTypeInstance],
+        *,
+        parent_context: ScopeContext,
+        module_path: tuple[str, ...],
+        display_module_path: tuple[str, ...],
+        current_origin_file: str | None,
+        current_origin_library: str | None,
+        record_frame_code: bool = True,
+    ) -> None: ...
+
+    def _walk_moduletype_defs(
+        self,
+        moduletype_defs: list[ModuleTypeDef],
+        *,
+        parent_context: ScopeContext,
+    ) -> None: ...
+
+    def _symbol_kind_parameter(self) -> str: ...
+
+    def _symbol_kind_local(self) -> str: ...
+
+    def _is_root_origin(self, origin_file: str | None, origin_lib: str | None) -> bool: ...
+
+    def _synthetic_module_header(self, name: str) -> ModuleHeader: ...
 
 
 def _is_frame_variable(env: dict[str, Variable], variable: Variable) -> bool:
@@ -21,7 +102,7 @@ def _is_frame_variable(env: dict[str, Variable], variable: Variable) -> bool:
 
 class SemanticIndexReferenceSupportMixin:
     def _record_scope_references(
-        self: Any,
+        self: SemanticIndexHost,
         node: object,
         *,
         context: ScopeContext,
@@ -29,7 +110,7 @@ class SemanticIndexReferenceSupportMixin:
         source_library: str | None,
         variable_filter: Callable[[Variable], bool] | None = None,
     ) -> None:
-        file_key = source_file_key(source_file)
+        file_key = reference_file_key(source_file, source_library)
         if file_key is None or node is None:
             return
 
@@ -71,7 +152,7 @@ class SemanticIndexReferenceSupportMixin:
                 segment_texts=reference_segments,
                 definition_keys=tuple(definition_keys),
             )
-            self._references_by_file.setdefault(file_key, []).append(occurrence)
+            self._references_by_source.setdefault(file_key, []).append(occurrence)
 
             if not self.build_reference_index:
                 continue
@@ -86,7 +167,7 @@ class SemanticIndexReferenceSupportMixin:
                 self._references_by_definition_key.setdefault(definition_key, []).append(symbol_reference)
 
     def _record_call_signatures(
-        self: Any,
+        self: SemanticIndexHost,
         node: object,
         *,
         module_path: tuple[str, ...],
@@ -94,14 +175,14 @@ class SemanticIndexReferenceSupportMixin:
         source_library: str | None,
     ) -> None:
         source_file_name = Path(str(source_file)).name if source_file is not None else None
-        for call_kind, call_name, _args in iter_call_sites(node):
-            signature = resolve_call_signature(call_name)
+        for site in iter_call_sites(node):
+            signature = resolve_call_signature(site.name)
             if signature is None:
                 continue
             self._call_signatures.append(
                 CallSignatureOccurrence(
-                    name=call_name,
-                    call_kind=call_kind,
+                    name=site.name,
+                    call_kind=site.kind,
                     module_path=module_path,
                     source_file=source_file_name,
                     source_library=source_library,
@@ -110,7 +191,7 @@ class SemanticIndexReferenceSupportMixin:
             )
 
     def _walk_submodules(
-        self: Any,
+        self: SemanticIndexHost,
         modules: list[SingleModule | FrameModule | ModuleTypeInstance],
         *,
         parent_context: ScopeContext,
@@ -332,7 +413,7 @@ class SemanticIndexReferenceSupportMixin:
             )
 
     def _walk_moduletype_defs(
-        self: Any,
+        self: SemanticIndexHost,
         moduletype_defs: list[ModuleTypeDef],
         *,
         parent_context: ScopeContext,

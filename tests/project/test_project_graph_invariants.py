@@ -100,6 +100,9 @@ def test_record_missing_library_non_strict_records_missing(graph: ProjectGraph) 
 
     assert any("Missing code file for 'MissingLib'" in message for message in graph.missing)
     assert "missinglib" in graph.unavailable_libraries
+    failure = graph.failures["missinglib"]
+    assert failure.name == "MissingLib"
+    assert failure.message == graph.missing[0]
 
 
 def test_record_missing_library_strict_raises_without_side_effects(graph: ProjectGraph) -> None:

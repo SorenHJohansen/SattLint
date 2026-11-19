@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from sattlint.parser_api import (
     BasePicture,
@@ -54,12 +54,16 @@ from ._variables_execution import VariablesExecutionMixin
 from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin
 from ._variables_submodules import VariablesSubmodulesMixin
 
-if TYPE_CHECKING:
-    from ...core.tracing import AnalysisTraceRecorder
-
 log = logging.getLogger("SattLint")
 
-__all__ = ["ScopeContext", "VariablesAnalyzer", "analyze_variables", "filter_variable_report"]
+
+class TraceRecorder(Protocol):
+    """The recording surface the analyzer lifecycle forwards events to."""
+
+    def event(self, phase: str, action: str, **data: object) -> None: ...
+
+
+__all__ = ["ScopeContext", "TraceRecorder", "VariablesAnalyzer", "analyze_variables", "filter_variable_report"]
 
 
 def _collect_module_vars_for_artifacts(module: object, any_var_index: dict[str, list[Variable]]) -> None:
@@ -162,7 +166,7 @@ def analyze_variables(
     analyzed_target_is_library: bool = False,
     include_dependency_moduletype_usage: bool | None = None,
     selected_issue_kinds: AbstractSet[IssueKind | str] | None = None,
-    trace_recorder: AnalysisTraceRecorder | None = None,
+    trace_recorder: TraceRecorder | None = None,
     config: dict[str, Any] | None = None,
     status_update_fn: Callable[[str], None] | None = None,
     field_usage_only: bool = False,
@@ -371,7 +375,7 @@ class VariablesAnalyzer(
         analyzed_target_is_library: bool = False,
         include_dependency_moduletype_usage: bool = False,
         selected_issue_kinds: AbstractSet[IssueKind | str] | None = None,
-        trace_recorder: AnalysisTraceRecorder | None = None,
+        trace_recorder: TraceRecorder | None = None,
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,

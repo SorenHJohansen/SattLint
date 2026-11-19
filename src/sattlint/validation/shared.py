@@ -9,7 +9,6 @@ from sattlint.parser_api import SourceSpan, VarRef
 from ..models._validation_notice import ValidationNotice
 
 __all__ = [
-    "RawSourceValidationError",
     "StructuralValidationError",
     "ValidationNotice",
     "ValidationWarning",
@@ -26,21 +25,6 @@ type ValidationWarningSink = Callable[[ValidationWarning], None]
 
 
 class StructuralValidationError(ValueError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        length: int | None = None,
-    ):
-        super().__init__(message)
-        self.line = line
-        self.column = column
-        self.length = length
-
-
-class RawSourceValidationError(StructuralValidationError):
     def __init__(
         self,
         message: str,

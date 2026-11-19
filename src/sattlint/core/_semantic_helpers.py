@@ -133,10 +133,32 @@ def _normalize_mode(mode: CodeMode | str) -> CodeMode:
     return CodeMode(str(mode).strip().lower())
 
 
+type SourceFileKey = tuple[str | None, str]
+
+
 def _source_file_key(value: Path | str | None) -> str | None:
+    """Basename identity of a source file, casefolded.
+
+    Callers that must distinguish same-named files from different libraries use
+    :func:`_reference_file_key` instead: this basename key is only an index for
+    consumers that resolve references within one file at a time.
+    """
     if value is None:
         return None
     return Path(str(value)).name.casefold()
+
+
+def _reference_file_key(value: Path | str | None, library: str | None) -> SourceFileKey | None:
+    """Library-qualified identity of a source file, casefolded.
+
+    Two libraries can each hold ``Main.s``; keying reference occurrences by the
+    pair keeps their occurrences in separate buckets so a lookup for one
+    library can never return the other library's references.
+    """
+    name = _source_file_key(value)
+    if name is None:
+        return None
+    return (library.casefold() if library else None, name)
 
 
 def _identifier_contains_column(start_column: int, text: str, column: int) -> bool:
@@ -219,6 +241,7 @@ dedupe_moduletype_defs = _dedupe_moduletype_defs
 path_startswith = _path_startswith
 normalize_mode = _normalize_mode
 source_file_key = _source_file_key
+reference_file_key = _reference_file_key
 identifier_contains_column = _identifier_contains_column
 child_module_items = _child_module_items
 resolve_field_datatype = _resolve_field_datatype

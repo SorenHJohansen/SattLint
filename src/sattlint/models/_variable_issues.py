@@ -13,7 +13,7 @@ __all__ = [
     "IssueKind",
     "VariableIssue",
     "VariableIssueMetadata",
-    "materialize_variable_issue_metadata",
+    "variable_issue_metadata",
 ]
 
 
@@ -44,130 +44,112 @@ class IssueKind(Enum):
 
 @dataclass(frozen=True, slots=True)
 class VariableIssueMetadata:
-    label: str
     explanation: str | None = None
     suggestion: str | None = None
 
 
-_DEFAULT_VARIABLE_ISSUE_METADATA = VariableIssueMetadata(label="SattLint issue")
+_DEFAULT_VARIABLE_ISSUE_METADATA = VariableIssueMetadata()
 
 
 _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
     IssueKind.UNUSED: VariableIssueMetadata(
-        label="Unused variable",
         explanation="Stale declarations add noise and make it harder to tell which signals still matter.",
         suggestion="Delete the declaration, or add the missing read/write path if it is still part of the design.",
     ),
     IssueKind.UNUSED_DATATYPE_FIELD: VariableIssueMetadata(
-        label="Unused datatype field",
         explanation="Unused fields make shared datatypes drift away from the actual interface the code relies on.",
         suggestion="Remove the field from the datatype, or add the missing read/write path that should use it.",
     ),
     IssueKind.FIELD_READ_ONLY: VariableIssueMetadata(
-        label="Read-only field",
         explanation="A record field that is only read often points at a sibling-mapping mistake or a missing write path.",
         suggestion="Reconnect the field to the writer that should update it, or remove the dead read path if the field is obsolete.",
     ),
     IssueKind.READ_ONLY_NON_CONST: VariableIssueMetadata(
-        label="Read-only variable should be CONST",
         explanation="A writable declaration that is only read obscures intent and weakens constant-safety checks.",
         suggestion="Mark the declaration CONST, or add the write path that is supposed to update it.",
     ),
     IssueKind.PROCEDURE_STATUS: VariableIssueMetadata(
-        label="Procedure status output is not handled",
         explanation="Procedure status channels are intended to drive control decisions, retries, or escalation paths rather than disappearing into dead storage or UI-only state.",
         suggestion="Read the status in control logic or propagate it to the caller that owns the error path, or remove the unused status output if the contract does not require it.",
     ),
     IssueKind.FIELD_NEVER_READ: VariableIssueMetadata(
-        label="Field is written but never read",
         explanation="A record field that is only written is usually dead logic or a sign that the read side is connected to the wrong sibling field.",
         suggestion="Reconnect the consuming read to this field, or remove the dead write if nothing should observe it.",
     ),
     IssueKind.NEVER_READ: VariableIssueMetadata(
-        label="Variable is written but never read",
         explanation="Writes that are never observed usually mean dead logic or a missing connection to the real output path.",
         suggestion="Remove the dead write, or connect the variable to the code, parameter mapping, or output that should consume it.",
     ),
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: VariableIssueMetadata(
-        label="Positional record component access",
         explanation="These builtins make record field declaration order part of the runtime contract, so reordering datatype fields can silently read from or write to a different field.",
         suggestion="Replace ordinal record-component access with named-field logic, or document and isolate the order-dependent contract if it cannot be removed.",
     ),
     IssueKind.WRITE_WITHOUT_EFFECT: VariableIssueMetadata(
-        label="Variable write has no observable output effect",
         explanation="The value changes internally but never escapes to a root-visible output or module contract.",
         suggestion="Map the value to an output or parent parameter, or remove the intermediate write chain if it is dead logic.",
     ),
     IssueKind.GLOBAL_SCOPE_MINIMIZATION: VariableIssueMetadata(
-        label="Root global can be localized",
         explanation="A root global that is only accessed inside one module subtree widens scope unnecessarily and makes the real owning scope less explicit.",
         suggestion="Move the declaration into the narrowest owning module or moduletype scope, and only expose it upward through explicit parameter mappings when needed.",
     ),
     IssueKind.HIDDEN_GLOBAL_COUPLING: VariableIssueMetadata(
-        label="Root global creates hidden coupling",
         explanation="When multiple modules share a root global directly, the dependency bypasses the explicit parameter contract and becomes harder to trace safely.",
         suggestion="Replace the shared global access with explicit parameter mappings or local coordination state so the interface stays visible in the module wiring.",
     ),
     IssueKind.HIGH_FAN_IN_OUT: VariableIssueMetadata(
-        label="High fan-in or fan-out",
         explanation="Signals with many readers or writers become coordination hubs that are harder to reason about and easier to break accidentally.",
         suggestion="Split separate responsibilities into narrower signals, or introduce explicit interface boundaries around the shared state.",
     ),
     IssueKind.UNKNOWN_PARAMETER_TARGET: VariableIssueMetadata(
-        label="Unknown parameter mapping target",
         explanation="A mapping that points at a parameter name the target module does not declare leaves the intended interface unresolved.",
         suggestion="Fix the target parameter name, or update the moduletype so the declared contract matches the mapping.",
     ),
     IssueKind.STRING_MAPPING_MISMATCH: VariableIssueMetadata(
-        label="String mapping datatype mismatch",
         explanation="Mismatched string-like datatypes can truncate values or break parameter expectations between modules.",
         suggestion="Use matching string datatypes on both sides of the mapping, or change the contract to the correct string type.",
     ),
     IssueKind.DATATYPE_DUPLICATION: VariableIssueMetadata(
-        label="Datatype duplication",
         explanation="Duplicate datatype layouts are easy to let drift apart and make structural changes harder to maintain.",
         suggestion="Promote the shared layout to one named RECORD datatype and reuse that definition.",
     ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: VariableIssueMetadata(
-        label="Min/Max mapping name mismatch",
         explanation="Mismatched Min_/Max_ mappings suggest the parameter contract no longer describes the same base signal.",
         suggestion="Reconnect the matching Min_/Max_ pair, or rename the parameters so the pair lines up again.",
     ),
     IssueKind.MAGIC_NUMBER: VariableIssueMetadata(
-        label="Magic number",
         explanation="Unlabeled literals hide intent and make calibration or recipe changes harder to review safely.",
         suggestion="Extract the literal into a named constant, engineering parameter, or recipe parameter.",
     ),
     IssueKind.SHADOWING: VariableIssueMetadata(
-        label="Variable shadows outer scope",
         explanation="Shadowing hides which declaration is actually being referenced and increases the risk of accidental scope capture.",
         suggestion="Rename the inner declaration, or reference the intended outer symbol more explicitly.",
     ),
     IssueKind.UNSAFE_BOOLEAN_DEFAULT: VariableIssueMetadata(
-        label="Unsafe boolean default",
         explanation="A boolean that enables logic or bypasses safeguards from startup can activate equipment without an explicit command.",
         suggestion="Default the flag to False and require an explicit operator or logic path to enable it.",
     ),
     IssueKind.READ_BEFORE_WRITE: VariableIssueMetadata(
-        label="Read before write",
         explanation="A local value consumed before any known write in the same scope can depend on undefined startup state or scan order.",
         suggestion="Initialize the value at declaration, or write it before the consuming read.",
     ),
     IssueKind.RESET_CONTAMINATION: VariableIssueMetadata(
-        label="Variable is contaminated across reset",
         explanation="Partial reset handling can leave stale state behind when the sequence or step is expected to restart cleanly.",
         suggestion="Write the reset value on every reset path, or centralize the reset assignment in the step or sequence cleanup path.",
     ),
     IssueKind.IMPLICIT_LATCH: VariableIssueMetadata(
-        label="Boolean value may latch unexpectedly",
         explanation="A one-sided TRUE assignment can leave a boolean latched longer than intended when the complementary path never clears it.",
         suggestion="Add the matching FALSE assignment in the ELSE, alternate branch, or step exit path, or document the intentional latch behavior.",
     ),
 }
 
 
-def materialize_variable_issue_metadata(issue: object) -> VariableIssueMetadata:
-    kind = getattr(issue, "kind", None)
+def variable_issue_metadata(kind: IssueKind | str | None) -> VariableIssueMetadata:
+    """Metadata for an issue kind, or the empty default for an unknown one."""
+    if isinstance(kind, str):
+        try:
+            kind = IssueKind(kind)
+        except ValueError:
+            return _DEFAULT_VARIABLE_ISSUE_METADATA
     if isinstance(kind, IssueKind):
         return _VARIABLE_ISSUE_METADATA.get(kind, _DEFAULT_VARIABLE_ISSUE_METADATA)
     return _DEFAULT_VARIABLE_ISSUE_METADATA

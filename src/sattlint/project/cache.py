@@ -41,12 +41,11 @@ def create_analysis_report_cache(
     if cache_dir is None:
         log.debug("Analysis report cache unavailable: the cache directory cannot be created")
         return None
-    try:
-        return cache_module.build_analysis_report_cache(cache_dir, analysis_report_cache_cls)
-    except OSError as exc:
+    report_cache = cache_module.build_analysis_report_cache(cache_dir, analysis_report_cache_cls)
+    if report_cache is None:
         # An unusable cache location must degrade to "no cache", not abort the analysis.
-        log.debug("Analysis report cache unavailable: %s", exc)
-        return None
+        log.debug("Analysis report cache unavailable: the cache directory cannot be used")
+    return report_cache
 
 
 def graph_analysis_cache_metadata(graph: ProjectGraph) -> tuple[str, frozenset[Path]] | None:
