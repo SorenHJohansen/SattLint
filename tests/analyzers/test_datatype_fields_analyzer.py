@@ -22,7 +22,14 @@ from sattlint.analyzers.registry import (
     get_selectable_analyzers,
 )
 from sattlint.analyzers.variables import analyze_variables
-from sattlint.reporting.variables_report import IssueKind, VariablesReport
+from sattlint.reporting.variables_report import (
+    FieldPathVariableIssue,
+    IssueKind,
+    UnusedDatatypeFieldIssue,
+    UnusedDatatypeIssue,
+    VariablesReport,
+    VariableTargetIssue,
+)
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -122,11 +129,9 @@ def test_dependency_typedef_does_not_emit_field_findings() -> None:
 
 def _unused_field_names(report: VariablesReport) -> set[str]:
     return {
-        str(issue.field_path)
+        issue.field_path
         for issue in report.issues
-        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
-        and issue.datatype_name == "RecType"
-        and issue.field_path is not None
+        if isinstance(issue, UnusedDatatypeFieldIssue) and issue.datatype_name == "RecType"
     }
 
 
@@ -211,7 +216,9 @@ def test_field_asymmetry_ignores_module_parameter_contract_fields():
     param_issues = [
         issue
         for issue in report.issues
-        if issue.variable is param_rec and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+        if isinstance(issue, FieldPathVariableIssue)
+        and issue.variable is param_rec
+        and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
     ]
 
     assert param_issues == []
@@ -224,7 +231,9 @@ def test_field_asymmetry_still_reports_local_record_fields():
     local_kinds = {
         issue.kind
         for issue in report.issues
-        if issue.variable is local_rec and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+        if isinstance(issue, FieldPathVariableIssue)
+        and issue.variable is local_rec
+        and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
     }
 
     assert local_kinds == {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
@@ -248,15 +257,12 @@ def test_reduced_mode_reuses_published_variables_analyzer_and_keeps_findings():
     assert full.accesses_by_definition_key != {}
 
     def issue_key(report: VariablesReport) -> set[tuple[object, ...]]:
-        return {
-            (
-                issue.kind,
-                tuple(issue.module_path or ()),
-                issue.field_path,
-                issue.variable.name if issue.variable else None,
-            )
-            for issue in report.issues
-        }
+        keys: set[tuple[object, ...]] = set()
+        for issue in report.issues:
+            field_path = issue.field_path if isinstance(issue, FieldPathVariableIssue) else None
+            variable_name = issue.variable.name if isinstance(issue, VariableTargetIssue) else None
+            keys.add((issue.kind, tuple(issue.module_path or ()), field_path, variable_name))
+        return keys
 
     assert issue_key(reduced) == issue_key(full)
 
@@ -291,8 +297,8 @@ def test_unused_datatype_is_reported_once_for_the_definition():
 
     assert [issue.kind for issue in report.issues] == [IssueKind.UNUSED_DATATYPE]
     issue = report.issues[0]
+    assert isinstance(issue, UnusedDatatypeIssue)
     assert issue.datatype_name == "DeadType"
-    assert issue.field_path is None
 
 
 def test_used_datatype_does_not_emit_the_record_level_finding():

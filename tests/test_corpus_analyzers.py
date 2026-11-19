@@ -31,7 +31,7 @@ from sattlint.analyzers.framework import (
     AnalysisSharedArtifacts,
     build_analysis_context,
 )
-from sattlint.models._variable_issues import VariableIssue
+from sattlint.models._variable_issues import VariableIssueBase
 from tests.helpers.project_loading import load_target_project
 
 MANIFESTS_DIR = Path(__file__).resolve().parent / "fixtures" / "corpus" / "manifests"
@@ -112,7 +112,7 @@ def _finding_id(issue: Any) -> str | None:
     if rule_id:
         return str(rule_id)
 
-    if isinstance(issue, VariableIssue):
+    if isinstance(issue, VariableIssueBase):
         kind_value = getattr(issue.kind, "value", None)
         if isinstance(kind_value, str):
             return kind_value

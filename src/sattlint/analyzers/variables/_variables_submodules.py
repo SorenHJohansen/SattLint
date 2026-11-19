@@ -15,7 +15,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import DatatypeDuplicationIssue, DuplicateLocation
 from ...resolution import decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.paths import path_startswith_casefold
@@ -470,11 +470,13 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
             continue
 
         first_var, first_path, first_role = occurrences[0]
-        duplicate_locs = [(path, role, VariableId(variable.name)) for variable, path, role in occurrences[1:]]
+        duplicate_locs = [
+            DuplicateLocation(module_path=path, role=role, variable_id=VariableId(variable.name))
+            for variable, path, role in occurrences[1:]
+        ]
 
         self.append_issue(
-            VariableIssue(
-                kind=IssueKind.DATATYPE_DUPLICATION,
+            DatatypeDuplicationIssue(
                 module_path=first_path,
                 variable=first_var,
                 role=first_role,

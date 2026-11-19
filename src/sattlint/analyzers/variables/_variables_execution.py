@@ -19,7 +19,15 @@ from sattlint.parser_api import (
 )
 
 from ...core.timings import PhaseTiming
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import (
+    IssueKind,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadOnlyNonConstIssue,
+    UnusedIssue,
+    VariableIssue,
+    WriteWithoutEffectIssue,
+)
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
 from ..reset_contamination import detect_implicit_latching, detect_reset_contamination
@@ -397,12 +405,19 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
         role = "localvariable"
         usage = self._get_usage(variable)
         if collect_unused and usage.is_unused:
-            self._add_issue(IssueKind.UNUSED, bp_path, variable, role=role)
+            self._append_issue(UnusedIssue(module_path=bp_path.copy(), variable=variable, role=role))
             continue
         procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
         if collect_procedure_status and procedure_status is not None:
             status_role, field_path = procedure_status
-            self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, variable, role=status_role, field_path=field_path)
+            self._append_issue(
+                ProcedureStatusIssue(
+                    module_path=bp_path.copy(),
+                    variable=variable,
+                    role=status_role,
+                    field_path=field_path,
+                )
+            )
             continue
         if (
             collect_read_only_non_const
@@ -410,18 +425,18 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             and not bool(variable.const)
             and self._is_const_candidate(variable)
         ):
-            self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, variable, role=role)
+            self._append_issue(ReadOnlyNonConstIssue(module_path=bp_path.copy(), variable=variable, role=role))
         elif (
             collect_never_read and usage.written and not usage.read and not self._has_ignorable_output_binding(variable)
         ):
-            self._add_issue(IssueKind.NEVER_READ, bp_path, variable, role=role)
+            self._append_issue(NeverReadIssue(module_path=bp_path.copy(), variable=variable, role=role))
         elif collect_write_without_effect and (
             usage.read
             and usage.written
             and not self._has_output_effect(variable, bp_path)
             and not self._has_procedure_status_binding(variable)
         ):
-            self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, variable, role=role)
+            self._append_issue(WriteWithoutEffectIssue(module_path=bp_path.copy(), variable=variable, role=role))
 
     if (
         collect_unused
@@ -483,12 +498,19 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             role = "moduleparameter"
             usage = self._get_usage(variable)
             if collect_unused and usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, td_path, variable, role=role)
+                self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
+                self._append_issue(
+                    ProcedureStatusIssue(
+                        module_path=td_path.copy(),
+                        variable=variable,
+                        role=status_role,
+                        field_path=field_path,
+                    )
+                )
                 continue
         for module in moduletype.submodules or []:
             self._collect_issues_from_module(module, path=td_path, current_library=current_library)
@@ -497,12 +519,19 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             role = "localvariable"
             usage = self._get_usage(variable)
             if collect_unused and usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, td_path, variable, role=role)
+                self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
+                self._append_issue(
+                    ProcedureStatusIssue(
+                        module_path=td_path.copy(),
+                        variable=variable,
+                        role=status_role,
+                        field_path=field_path,
+                    )
+                )
                 continue
             if (
                 collect_read_only_non_const
@@ -510,21 +539,21 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 and not bool(variable.const)
                 and self._is_const_candidate(variable)
             ):
-                self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, variable, role=role)
+                self._append_issue(ReadOnlyNonConstIssue(module_path=td_path.copy(), variable=variable, role=role))
             elif (
                 collect_never_read
                 and usage.written
                 and not usage.read
                 and not self._has_ignorable_output_binding(variable)
             ):
-                self._add_issue(IssueKind.NEVER_READ, td_path, variable, role=role)
+                self._append_issue(NeverReadIssue(module_path=td_path.copy(), variable=variable, role=role))
             elif collect_write_without_effect and (
                 usage.read
                 and usage.written
                 and not self._has_output_effect(variable, td_path)
                 and not self._has_procedure_status_binding(variable)
             ):
-                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, td_path, variable, role=role)
+                self._append_issue(WriteWithoutEffectIssue(module_path=td_path.copy(), variable=variable, role=role))
 
 
 def run(  # noqa: PLR0915

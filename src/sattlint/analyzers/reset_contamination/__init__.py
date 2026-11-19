@@ -24,7 +24,7 @@ from sattlint.parser_api import (
     walk,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import ResetContaminationIssue, VariableIssue
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.paths import path_startswith_casefold
 from ...types import VariableId
@@ -286,8 +286,7 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                     continue
 
                 issues.append(
-                    VariableIssue(
-                        kind=IssueKind.RESET_CONTAMINATION,
+                    ResetContaminationIssue(
                         module_path=path.copy(),
                         variable=var,
                         role="localvariable",

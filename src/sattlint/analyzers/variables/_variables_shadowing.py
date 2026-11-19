@@ -16,7 +16,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import ShadowingIssue
 from ...resolution.common import resolve_moduletype_def_strict
 from ...utils.casefolding import casefold_key
 
@@ -155,8 +155,7 @@ def _check_shadowing(
         if _is_integer_status_indicator(self, var) or _is_integer_status_indicator(self, parent.variable):
             continue
         parent_path = ".".join(parent.module_path)
-        issue = VariableIssue(
-            kind=IssueKind.SHADOWING,
+        issue = ShadowingIssue(
             module_path=module_path.copy(),
             variable=var,
             role=f"shadows {parent.variable.name!r} from {parent_path}",

@@ -20,9 +20,13 @@ from sattlint.analyzers.variables import (
     _variables_execution as variables_execution_module,
 )
 from sattlint.reporting.variables_report import (
-    VariableIssue,
+    DuplicateLocation,
+    NeverReadIssue,
+    StringMappingMismatchIssue,
+    UnusedIssue,
     VariablesReport,
 )
+from sattlint.types import VariableId
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
 )
@@ -86,7 +90,13 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     assert issue.variable.name == "PhaseTimer"
     assert issue.variable.datatype_text == "Timer"
     assert issue.duplicate_count == 2
-    assert issue.duplicate_locations == [(["BasePicture", "TypeDef:Fyld"], "localvariable", "PhaseTimerCopy")]
+    assert issue.duplicate_locations == [
+        DuplicateLocation(
+            module_path=["BasePicture", "TypeDef:Fyld"],
+            role="localvariable",
+            variable_id=VariableId("PhaseTimerCopy"),
+        )
+    ]
 
     summary = VariablesReport(basepicture_name=bp.header.name, issues=duplication_issues).summary()
     assert "Datatype 'Timer' declared 2 times in BasePicture.TypeDef:Fyld:" in summary
@@ -172,7 +182,7 @@ def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
     matching_issues = [
         issue
         for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "EnableInteraktion"
+        if isinstance(issue, UnusedIssue) and issue.variable.name == "EnableInteraktion"
     ]
     assert len(matching_issues) == 1
     assert matching_issues[0].module_path == ["BasePicture", "TypeDef:InfoPanelType"]
@@ -222,9 +232,7 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         ),
         _get_usage=lambda variable: usage_by_id[id(variable)],
         _procedure_status_issue=lambda *_args, **_kwargs: None,
-        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
-            (kind, tuple(path), variable.name)
-        ),
+        _append_issue=lambda issue: issues.append((issue.kind, tuple(issue.module_path), issue.role)),
         _has_output_effect=lambda *args, **kwargs: False,
         _has_procedure_status_binding=lambda *args, **kwargs: False,
         _is_const_candidate=lambda *args, **kwargs: True,
@@ -240,14 +248,12 @@ def test_unused_summary_splits_moduletype_and_singlemodule_groups():
     moduletype_var = Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)
     singlemodule_var = Variable(name="MinMax", datatype=ScalarDatatype.INTEGER)
     issues = [
-        VariableIssue(
-            kind=IssueKind.UNUSED,
+        UnusedIssue(
             module_path=["BasePicture", "TypeDef:InfoPanelType"],
             variable=moduletype_var,
             role="moduleparameter",
         ),
-        VariableIssue(
-            kind=IssueKind.UNUSED,
+        UnusedIssue(
             module_path=["BasePicture", "TypeDef:Column", "L1", "L2", "RPDisp"],
             variable=singlemodule_var,
             role="localvariable",
@@ -267,14 +273,12 @@ def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
     moduletype_var = Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)
     singlemodule_var = Variable(name="MinMax", datatype=ScalarDatatype.INTEGER)
     issues = [
-        VariableIssue(
-            kind=IssueKind.NEVER_READ,
+        NeverReadIssue(
             module_path=["BasePicture", "TypeDef:InfoPanelType"],
             variable=moduletype_var,
             role="moduleparameter",
         ),
-        VariableIssue(
-            kind=IssueKind.NEVER_READ,
+        NeverReadIssue(
             module_path=["BasePicture", "TypeDef:Column", "L1", "L2", "RPDisp"],
             variable=singlemodule_var,
             role="localvariable",
@@ -432,8 +436,7 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
 
 
 def test_string_mapping_summary_uses_resolved_field_source_and_target_names():
-    issue = VariableIssue(
-        kind=IssueKind.STRING_MAPPING_MISMATCH,
+    issue = StringMappingMismatchIssue(
         module_path=["Root", "Parent", "Panel", "ActivateButton"],
         variable=Variable(name="Text", datatype=ScalarDatatype.IDENTSTRING),
         source_variable=Variable(name="DV.StopText", datatype=ScalarDatatype.IDENTSTRING),

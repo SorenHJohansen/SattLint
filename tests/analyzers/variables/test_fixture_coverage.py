@@ -18,7 +18,16 @@ from sattlint.analyzers.variables import (
     _variables_execution as variables_execution_module,
 )
 from sattlint.parser_api import parse_source_file
-from sattlint.reporting.variables_report import ALL_VARIABLE_ANALYSIS_KINDS
+from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    FieldNeverReadIssue,
+    FieldPathVariableIssue,
+    ImplicitLatchIssue,
+    NeverReadIssue,
+    ReadOnlyNonConstIssue,
+    VariableTargetIssue,
+    WriteWithoutEffectIssue,
+)
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
 )
@@ -73,8 +82,14 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         _procedure_status_issue=lambda variable, usage: (
             ("procedure-status", "Status") if variable is procedure_local else None
         ),
-        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
-            (kind, tuple(path), variable.name, role, field_path)
+        _append_issue=lambda issue: issues.append(
+            (
+                issue.kind,
+                tuple(issue.module_path),
+                issue.variable.name if isinstance(issue, VariableTargetIssue) else "",
+                issue.role or "",
+                issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
+            )
         ),
         _has_output_effect=lambda *args, **kwargs: False,
         _has_ignorable_output_binding=lambda *args, **kwargs: False,
@@ -133,9 +148,7 @@ def test_variable_quality_issues_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    never_read = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
-    }
+    never_read = {issue.variable.name for issue in issues if isinstance(issue, NeverReadIssue)}
 
     assert "DisplayValue" in never_read
     assert "UnusedWrite" in never_read
@@ -152,11 +165,7 @@ def test_module_structure_issues_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    write_without_effect = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and issue.variable is not None
-    }
+    write_without_effect = {issue.variable.name for issue in issues if isinstance(issue, WriteWithoutEffectIssue)}
 
     assert not any(issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET for issue in issues)
     assert "Internal" in write_without_effect
@@ -186,14 +195,8 @@ def test_sequence_lifetime_fixture_contains_expected_issue_kinds():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
-    implicit_latch = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.IMPLICIT_LATCH and issue.variable is not None
-    }
-    field_never_read = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
-    }
+    implicit_latch = {issue.variable.name for issue in issues if isinstance(issue, ImplicitLatchIssue)}
+    field_never_read = {issue.variable.name for issue in issues if isinstance(issue, FieldNeverReadIssue)}
 
     assert "LatchValue" in implicit_latch
     assert "CleanValue" not in implicit_latch
@@ -206,11 +209,7 @@ def test_misc_issues_fixture_contains_expected_issue_kinds():
     issues = VariablesAnalyzer(bp).run()
 
     magic_number = len([i for i in issues if i.kind is IssueKind.MAGIC_NUMBER])
-    read_only_non_const = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
-    }
+    read_only_non_const = {issue.variable.name for issue in issues if isinstance(issue, ReadOnlyNonConstIssue)}
 
     assert magic_number > 0
     assert "Shadowed" in read_only_non_const

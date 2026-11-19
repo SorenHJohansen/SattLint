@@ -15,6 +15,7 @@ from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 from sattlint.core.timings import PhaseTiming
+from sattlint.reporting.variables_report import FieldPathVariableIssue, VariableIssue, VariableTargetIssue
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import hdr as _hdr
 from tests.helpers.variable_test_support import ns as _ns
@@ -48,15 +49,16 @@ def _raise_should_not_run(*_args: object, **_kwargs: object) -> None:
     raise AssertionError("should not run")
 
 
-def _append_issue(
-    issues: list[_IssueTuple],
-    kind: IssueKind,
-    path: list[str],
-    variable: Variable,
-    role: str,
-    field_path: str | None = None,
-) -> None:
-    issues.append((kind, tuple(path), variable.name, role, field_path))
+def _capture_issue(issues: list[_IssueTuple], issue: VariableIssue) -> None:
+    issues.append(
+        (
+            issue.kind,
+            tuple(issue.module_path),
+            issue.variable.name if isinstance(issue, VariableTargetIssue) else "",
+            issue.role or "",
+            issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
+        )
+    )
 
 
 def _append_phase_timing(
@@ -99,21 +101,15 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
             return ("procedure-status", "Status")
         return None
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
         _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_procedure_status_issue,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,
@@ -141,21 +137,15 @@ def test_variables_execution_collect_basepicture_issues_covers_write_without_eff
     def _get_usage(variable: Variable) -> _UsageStub:
         return _UsageStub(read=True, written=True) if variable is effect_var else _UsageStub()
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
         _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_noop,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,
@@ -199,14 +189,8 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
             return ("procedure-status", "Status")
         return None
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
@@ -218,7 +202,7 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         _is_from_root_origin=_always_root_origin,
         _get_usage=_get_usage,
         _procedure_status_issue=_procedure_status_issue,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,

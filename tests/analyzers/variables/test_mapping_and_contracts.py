@@ -17,6 +17,7 @@ from sattlint.analyzers.variables import (
     IssueKind,
     VariablesAnalyzer,
 )
+from sattlint.reporting.variables_report import UnusedIssue
 from sattlint.resolution.type_graph import TypeGraph
 from tests.helpers.variable_test_support import (
     hdr as _hdr,
@@ -690,9 +691,7 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
     analyzer.run()
 
     unused = {
-        (tuple(issue.module_path), issue.variable.name)
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED and issue.variable is not None
+        (tuple(issue.module_path), issue.variable.name) for issue in analyzer.issues if isinstance(issue, UnusedIssue)
     }
 
     assert (("Root", "Parent"), "ParentGroup") not in unused

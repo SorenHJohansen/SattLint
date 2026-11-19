@@ -14,7 +14,8 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.reporting.variables_report import UnusedIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -88,7 +89,7 @@ def test_initvariable_source_is_not_reported_unused() -> None:
     picture, _, _ = _build_initvariable_picture()
 
     issues = VariablesAnalyzer(picture).run()
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
 
     assert "InitRec" not in unused
 

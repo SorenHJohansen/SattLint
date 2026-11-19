@@ -4,15 +4,45 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import ClassVar, Literal
 
 from sattlint.parser_api import ScalarDatatype, SourceSpan, Variable
 
 from ..types import VariableId
 
 __all__ = [
+    "DatatypeDuplicationIssue",
+    "DatatypeIssue",
+    "DuplicateLocation",
+    "FieldNeverReadIssue",
+    "FieldPathVariableIssue",
+    "FieldReadOnlyIssue",
+    "GlobalScopeMinimizationIssue",
+    "HiddenGlobalCouplingIssue",
+    "HighFanInOutIssue",
+    "ImplicitLatchIssue",
     "IssueKind",
+    "MagicNumberIssue",
+    "MinMaxMappingMismatchIssue",
+    "NeverReadIssue",
+    "ProcedureStatusIssue",
+    "ReadBeforeWriteIssue",
+    "ReadOnlyNonConstIssue",
+    "RecordComponentOrderIssue",
+    "RelatedVariableIssue",
+    "ResetContaminationIssue",
+    "ShadowingIssue",
+    "StringMappingMismatchIssue",
+    "UnknownParameterTargetIssue",
+    "UnsafeBooleanDefaultIssue",
+    "UnusedDatatypeFieldIssue",
+    "UnusedDatatypeIssue",
+    "UnusedIssue",
     "VariableIssue",
+    "VariableIssueBase",
     "VariableIssueMetadata",
+    "VariableTargetIssue",
+    "WriteWithoutEffectIssue",
     "variable_issue_metadata",
 ]
 
@@ -160,48 +190,285 @@ def variable_issue_metadata(kind: IssueKind | str | None) -> VariableIssueMetada
     return _DEFAULT_VARIABLE_ISSUE_METADATA
 
 
-@dataclass
-class VariableIssue:
-    kind: IssueKind
+def _variable_issue_text(
+    module_path: list[str],
+    variable: Variable,
+    role: str | None,
+    *,
+    field_path: str | None = None,
+    sequence_name: str | None = None,
+    reset_variable: VariableId | None = None,
+) -> str:
+    mp = ".".join(module_path)
+    dt = variable.datatype.value if isinstance(variable.datatype, ScalarDatatype) else str(variable.datatype)
+    role_txt = f"{role} "
+    field_txt = f".{field_path}" if field_path else ""
+    seq_txt = f" seq={sequence_name!r}" if sequence_name else ""
+    reset_txt = f" reset={reset_variable!r}" if reset_variable else ""
+    return f"[{mp}] {role_txt} {variable.name!r}{field_txt} ({dt}){seq_txt}{reset_txt}"
+
+
+def _datatype_issue_text(module_path: list[str], datatype_name: str, field_path: str | None) -> str:
+    mp = ".".join(module_path)
+    field_txt = f".{field_path}" if field_path else ""
+    return f"[{mp}] datatype {datatype_name!r}{field_txt}"
+
+
+def _role_issue_text(module_path: list[str], role: str | None) -> str:
+    mp = ".".join(module_path)
+    return f"[{mp}] {role}" if role is not None else f"[{mp}]"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class VariableIssueBase:
+    """Fields shared by every variable issue record."""
+
     module_path: list[str]
-    variable: Variable | None
-    datatype_name: str | None = None
     role: str | None = None
-    source_variable: Variable | None = None
-    duplicate_count: int | None = None
-    duplicate_locations: list[tuple[list[str], str, VariableId]] | None = None
-    literal_value: int | float | None = None
-    literal_span: SourceSpan | None = None
-    site: str | None = None
+    kind: ClassVar[IssueKind]
+
+    def __str__(self) -> str:
+        return f"[{'.'.join(self.module_path)}]"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class VariableTargetIssue(VariableIssueBase):
+    """An issue raised about a declared variable."""
+
+    variable: Variable
+
+    def __str__(self) -> str:
+        return _variable_issue_text(self.module_path, self.variable, self.role)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FieldPathVariableIssue(VariableTargetIssue):
+    """A variable issue that can also name the record field it concerns."""
+
     field_path: str | None = None
-    sequence_name: str | None = None
-    reset_variable: VariableId | None = None
+
+    def __str__(self) -> str:
+        return _variable_issue_text(self.module_path, self.variable, self.role, field_path=self.field_path)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RelatedVariableIssue(VariableTargetIssue):
+    """A variable issue that also names the variable it relates to."""
+
+    source_variable: Variable | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DatatypeIssue(VariableIssueBase):
+    """An issue raised about a datatype declaration rather than a variable."""
+
+    datatype_name: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UnusedIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.UNUSED]] = IssueKind.UNUSED
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UnusedDatatypeIssue(DatatypeIssue):
+    kind: ClassVar[Literal[IssueKind.UNUSED_DATATYPE]] = IssueKind.UNUSED_DATATYPE
+
+    def __str__(self) -> str:
+        return _datatype_issue_text(self.module_path, self.datatype_name, None)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UnusedDatatypeFieldIssue(DatatypeIssue):
+    kind: ClassVar[Literal[IssueKind.UNUSED_DATATYPE_FIELD]] = IssueKind.UNUSED_DATATYPE_FIELD
+    field_path: str
+
+    def __str__(self) -> str:
+        return _datatype_issue_text(self.module_path, self.datatype_name, self.field_path)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FieldReadOnlyIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.FIELD_READ_ONLY]] = IssueKind.FIELD_READ_ONLY
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReadOnlyNonConstIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.READ_ONLY_NON_CONST]] = IssueKind.READ_ONLY_NON_CONST
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ProcedureStatusIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.PROCEDURE_STATUS]] = IssueKind.PROCEDURE_STATUS
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FieldNeverReadIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.FIELD_NEVER_READ]] = IssueKind.FIELD_NEVER_READ
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NeverReadIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.NEVER_READ]] = IssueKind.NEVER_READ
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RecordComponentOrderIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE]] = IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE
+    datatype_name: str
+    site: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WriteWithoutEffectIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.WRITE_WITHOUT_EFFECT]] = IssueKind.WRITE_WITHOUT_EFFECT
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class GlobalScopeMinimizationIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.GLOBAL_SCOPE_MINIMIZATION]] = IssueKind.GLOBAL_SCOPE_MINIMIZATION
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class HiddenGlobalCouplingIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.HIDDEN_GLOBAL_COUPLING]] = IssueKind.HIDDEN_GLOBAL_COUPLING
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class HighFanInOutIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.HIGH_FAN_IN_OUT]] = IssueKind.HIGH_FAN_IN_OUT
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UnknownParameterTargetIssue(VariableIssueBase):
+    kind: ClassVar[Literal[IssueKind.UNKNOWN_PARAMETER_TARGET]] = IssueKind.UNKNOWN_PARAMETER_TARGET
+
+    def __str__(self) -> str:
+        return _role_issue_text(self.module_path, self.role)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class StringMappingMismatchIssue(RelatedVariableIssue):
+    kind: ClassVar[Literal[IssueKind.STRING_MAPPING_MISMATCH]] = IssueKind.STRING_MAPPING_MISMATCH
+    context: str | None = None
     source_decl_module_path: list[str] | None = None
     source_role: str | None = None
     source_display_name: str | None = None
     target_display_name: str | None = None
     validation_source_variable: Variable | None = None
     validation_source_module_path: list[str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DuplicateLocation:
+    """One additional declaration that repeats a complex datatype."""
+
+    module_path: list[str]
+    role: str
+    variable_id: VariableId
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DatatypeDuplicationIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.DATATYPE_DUPLICATION]] = IssueKind.DATATYPE_DUPLICATION
+    duplicate_count: int
+    duplicate_locations: list[DuplicateLocation]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MinMaxMappingMismatchIssue(RelatedVariableIssue):
+    kind: ClassVar[Literal[IssueKind.MIN_MAX_MAPPING_MISMATCH]] = IssueKind.MIN_MAX_MAPPING_MISMATCH
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MagicNumberIssue(VariableIssueBase):
+    kind: ClassVar[Literal[IssueKind.MAGIC_NUMBER]] = IssueKind.MAGIC_NUMBER
+    literal_value: int | float
+    literal_span: SourceSpan | None = None
+    site: str | None = None
     context: str | None = None
 
     def __str__(self) -> str:
-        mp = ".".join(self.module_path)
-        if self.variable is None and self.datatype_name is not None:
-            field_txt = f".{self.field_path}" if self.field_path else ""
-            return f"[{mp}] datatype {self.datatype_name!r}{field_txt}"
-        if self.variable is None and self.literal_value is not None:
-            return f"[{mp}] magic number {self.literal_value}"
-        if self.variable is None and self.role is not None:
-            return f"[{mp}] {self.role}"
-        if self.variable is None:
-            return f"[{mp}]"
-        dt = (
-            self.variable.datatype.value
-            if isinstance(self.variable.datatype, ScalarDatatype)
-            else str(self.variable.datatype)
+        return f"[{'.'.join(self.module_path)}] magic number {self.literal_value}"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ShadowingIssue(RelatedVariableIssue):
+    kind: ClassVar[Literal[IssueKind.SHADOWING]] = IssueKind.SHADOWING
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UnsafeBooleanDefaultIssue(VariableTargetIssue):
+    kind: ClassVar[Literal[IssueKind.UNSAFE_BOOLEAN_DEFAULT]] = IssueKind.UNSAFE_BOOLEAN_DEFAULT
+    site: str
+    context: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReadBeforeWriteIssue(VariableIssueBase):
+    kind: ClassVar[Literal[IssueKind.READ_BEFORE_WRITE]] = IssueKind.READ_BEFORE_WRITE
+    site: str
+    context: str
+
+    def __str__(self) -> str:
+        return _role_issue_text(self.module_path, self.role)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResetContaminationIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.RESET_CONTAMINATION]] = IssueKind.RESET_CONTAMINATION
+    sequence_name: str | None = None
+    reset_variable: VariableId | None = None
+
+    def __str__(self) -> str:
+        return _variable_issue_text(
+            self.module_path,
+            self.variable,
+            self.role,
+            field_path=self.field_path,
+            sequence_name=self.sequence_name,
+            reset_variable=self.reset_variable,
         )
-        role_txt = f"{self.role} "
-        field_txt = f".{self.field_path}" if self.field_path else ""
-        seq_txt = f" seq={self.sequence_name!r}" if self.sequence_name else ""
-        reset_txt = f" reset={self.reset_variable!r}" if self.reset_variable else ""
-        return f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt}){seq_txt}{reset_txt}"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ImplicitLatchIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.IMPLICIT_LATCH]] = IssueKind.IMPLICIT_LATCH
+    site: str
+    sequence_name: str | None = None
+
+    def __str__(self) -> str:
+        return _variable_issue_text(
+            self.module_path,
+            self.variable,
+            self.role,
+            field_path=self.field_path,
+            sequence_name=self.sequence_name,
+        )
+
+
+type VariableIssue = (
+    UnusedIssue
+    | UnusedDatatypeIssue
+    | UnusedDatatypeFieldIssue
+    | FieldReadOnlyIssue
+    | ReadOnlyNonConstIssue
+    | ProcedureStatusIssue
+    | FieldNeverReadIssue
+    | NeverReadIssue
+    | RecordComponentOrderIssue
+    | WriteWithoutEffectIssue
+    | GlobalScopeMinimizationIssue
+    | HiddenGlobalCouplingIssue
+    | HighFanInOutIssue
+    | UnknownParameterTargetIssue
+    | StringMappingMismatchIssue
+    | DatatypeDuplicationIssue
+    | MinMaxMappingMismatchIssue
+    | MagicNumberIssue
+    | ShadowingIssue
+    | UnsafeBooleanDefaultIssue
+    | ReadBeforeWriteIssue
+    | ResetContaminationIssue
+    | ImplicitLatchIssue
+)

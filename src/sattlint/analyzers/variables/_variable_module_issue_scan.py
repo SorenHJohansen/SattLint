@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 
 from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import (
+    IssueKind,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadOnlyNonConstIssue,
+    UnusedIssue,
+    WriteWithoutEffectIssue,
+)
 from ._variables_contracts import (
     should_collect_any_issue_kinds as _should_collect_any_issue_kinds,
 )
@@ -28,25 +35,6 @@ _MODULE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.WRITE_WITHOUT_EFFECT,
     }
 )
-
-
-def _append_issue(
-    self: VariablesAnalyzer,
-    kind: IssueKind,
-    path: list[str],
-    variable: Variable,
-    role: str,
-    field_path: str | None = None,
-) -> None:
-    self.append_issue(
-        VariableIssue(
-            kind=kind,
-            module_path=path.copy(),
-            variable=variable,
-            role=role,
-            field_path=field_path,
-        )
-    )
 
 
 def _collect_variable_issues(
@@ -74,19 +62,19 @@ def _collect_variable_issues(
     for variable in variables or []:
         usage = self.get_usage(variable)
         if collect_unused and usage.is_unused:
-            _append_issue(self, IssueKind.UNUSED, path, variable, role=role)
+            self.append_issue(UnusedIssue(module_path=path.copy(), variable=variable, role=role))
             continue
 
         procedure_status = self.procedure_status_issue(variable, usage) if collect_procedure_status else None
         if collect_procedure_status and procedure_status is not None:
             status_role, field_path = procedure_status
-            _append_issue(
-                self,
-                IssueKind.PROCEDURE_STATUS,
-                path,
-                variable,
-                role=status_role,
-                field_path=field_path,
+            self.append_issue(
+                ProcedureStatusIssue(
+                    module_path=path.copy(),
+                    variable=variable,
+                    role=status_role,
+                    field_path=field_path,
+                )
             )
             continue
 
@@ -97,7 +85,7 @@ def _collect_variable_issues(
             and not bool(variable.const)
             and self.is_const_candidate(variable)
         ):
-            _append_issue(self, IssueKind.READ_ONLY_NON_CONST, path, variable, role=role)
+            self.append_issue(ReadOnlyNonConstIssue(module_path=path.copy(), variable=variable, role=role))
             continue
 
         if (
@@ -107,7 +95,7 @@ def _collect_variable_issues(
             and not usage.read
             and not self.has_ignorable_output_binding(variable)
         ):
-            _append_issue(self, IssueKind.NEVER_READ, path, variable, role=role)
+            self.append_issue(NeverReadIssue(module_path=path.copy(), variable=variable, role=role))
             continue
 
         if (
@@ -118,7 +106,7 @@ def _collect_variable_issues(
             and not self.has_output_effect(variable, path)
             and not self.has_procedure_status_binding(variable)
         ):
-            _append_issue(self, IssueKind.WRITE_WITHOUT_EFFECT, path, variable, role=role)
+            self.append_issue(WriteWithoutEffectIssue(module_path=path.copy(), variable=variable, role=role))
 
 
 def collect_issues_from_module(

@@ -18,7 +18,7 @@ from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
 from sattlint.analyzers import reset_contamination as reset_contamination_module
 from sattlint.analyzers.framework import AnalysisSharedArtifacts
-from sattlint.reporting.variables_report import VariableIssue
+from sattlint.reporting.variables_report import ImplicitLatchIssue, ResetContaminationIssue, VariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -168,13 +168,15 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
     reset_issues: list[VariableIssue] = []
     reset_contamination_module.detect_reset_contamination(bp, reset_issues)
 
-    assert [(issue.module_path, issue.variable.name) for issue in reset_issues if issue.variable is not None] == [
-        (["Root", "TypeDef:ResetType"], "Counter")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in reset_issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:ResetType"], "Counter")]
 
     latch_issues: list[VariableIssue] = []
     reset_contamination_module.detect_implicit_latching(bp, latch_issues)
-    assert sorted((issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None) == [
+    assert sorted(
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ) == [
         (["Root"], "RootLatched"),
         (["Root", "TypeDef:LatchType"], "AlarmLatched"),
     ]
@@ -250,14 +252,14 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     )
 
     assert any(
-        issue.module_path == ["Root", "Frame", "Child"]
-        and issue.variable is not None
+        isinstance(issue, ResetContaminationIssue)
+        and issue.module_path == ["Root", "Frame", "Child"]
         and issue.variable.name == "Counter"
         for issue in reset_issues
     )
-    assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
-        (["Root", "Frame", "Child"], "Latch")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ] == [(["Root", "Frame", "Child"], "Latch")]
 
 
 def test_reset_contamination_can_consume_shared_indexes() -> None:
@@ -369,9 +371,9 @@ def test_typedef_without_origin_file_uses_the_library_to_decide_ownership() -> N
     issues: list[VariableIssue] = []
     reset_contamination_module.detect_reset_contamination(bp, issues)
 
-    assert [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None] == [
-        (["Root", "TypeDef:LocalType"], "Counter")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:LocalType"], "Counter")]
 
 
 def test_recursive_module_type_is_analyzed_once_without_overflow() -> None:
@@ -404,7 +406,9 @@ def test_recursive_module_type_is_analyzed_once_without_overflow() -> None:
     issues: list[VariableIssue] = []
     reset_contamination_module.detect_reset_contamination(bp, issues)
 
-    reported = [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None]
+    reported = [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ]
     # The instance path is analyzed once; the recursive inner instance and the
     # root typedef list do not duplicate the finding.
     assert reported == [(["Root", "Outer"], "Counter")]
@@ -460,5 +464,7 @@ def test_compound_reset_guard_classifies_the_branch_as_a_reset_path() -> None:
     # ``OpSeq.Reset AND Guard`` only runs while the sequence is resetting, so the
     # write inside that branch is a reset write and covers the run write in the
     # alternative branch.
-    reported = [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None]
+    reported = [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ]
     assert reported == []

@@ -17,8 +17,28 @@ from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
+    DatatypeDuplicationIssue,
+    DuplicateLocation,
+    FieldNeverReadIssue,
+    FieldReadOnlyIssue,
+    GlobalScopeMinimizationIssue,
+    HiddenGlobalCouplingIssue,
+    HighFanInOutIssue,
+    ImplicitLatchIssue,
+    MagicNumberIssue,
+    MinMaxMappingMismatchIssue,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadOnlyNonConstIssue,
+    ResetContaminationIssue,
+    ShadowingIssue,
+    StringMappingMismatchIssue,
+    UnknownParameterTargetIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedIssue,
     VariableIssue,
     VariablesReport,
+    WriteWithoutEffectIssue,
 )
 from sattlint.resolution.scope import ScopeContext
 from sattlint.types import VariableId
@@ -54,16 +74,14 @@ def test_variables_report_summary_formats_string_mapping_and_minmax_tables():
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            StringMappingMismatchIssue(
                 module_path=["BasePicture", "ChildA"],
                 variable=string_target,
                 source_variable=string_source,
                 source_decl_module_path=["BasePicture", "ParentA"],
                 source_role="localvariable",
             ),
-            VariableIssue(
-                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            MinMaxMappingMismatchIssue(
                 module_path=["BasePicture", "ChildB"],
                 variable=min_target,
                 source_variable=min_source,
@@ -96,14 +114,12 @@ def test_variables_report_summary_splits_minmax_moduletype_and_singlemodule_grou
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            MinMaxMappingMismatchIssue(
                 module_path=["BasePicture", "TypeDef:PanelType"],
                 variable=typedef_target,
                 source_variable=min_source,
             ),
-            VariableIssue(
-                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            MinMaxMappingMismatchIssue(
                 module_path=["BasePicture", "TypeDef:Column", "L1", "L2", "Panel"],
                 variable=singlemodule_target,
                 source_variable=min_source,
@@ -128,16 +144,14 @@ def test_variables_report_summary_splits_string_mapping_moduletype_and_singlemod
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            StringMappingMismatchIssue(
                 module_path=["BasePicture", "TypeDef:PanelType"],
                 variable=typedef_target,
                 source_variable=string_source,
                 source_decl_module_path=["BasePicture", "TypeDef:PanelType"],
                 source_role="moduleparameter",
             ),
-            VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            StringMappingMismatchIssue(
                 module_path=["BasePicture", "TypeDef:Column", "L1", "L2", "Panel"],
                 variable=singlemodule_target,
                 source_variable=string_source,
@@ -161,17 +175,15 @@ def test_variables_report_summary_splits_string_mapping_moduletype_and_singlemod
 
 def test_variables_report_summary_dedupes_string_mapping_rows_by_source_variable_owner():
     shared_source = Variable(name="Name", datatype=ScalarDatatype.STRING)
-    issues = [
-        VariableIssue(
-            kind=IssueKind.STRING_MAPPING_MISMATCH,
+    issues: list[VariableIssue] = [
+        StringMappingMismatchIssue(
             module_path=["BasePicture", "TypeDef:EtOH_Conc", "L1", "L2", "TrendLog"],
             variable=Variable(name="TagSuffix", datatype=ScalarDatatype.IDENTSTRING),
             source_variable=shared_source,
             source_decl_module_path=["BasePicture", "TypeDef:EtOH_Conc"],
             source_role="localvariable",
         ),
-        VariableIssue(
-            kind=IssueKind.STRING_MAPPING_MISMATCH,
+        StringMappingMismatchIssue(
             module_path=["BasePicture", "TypeDef:EtOH_Conc", "L1", "L2", "CMP_AlarmPar"],
             variable=Variable(name="TagSuffix", datatype=ScalarDatatype.IDENTSTRING),
             source_variable=shared_source,
@@ -193,16 +205,14 @@ def test_variables_report_summary_dedupes_string_mapping_rows_by_source_variable
 
 
 def test_variables_report_summary_splits_string_mismatch_severity_by_declaration_vs_destination():
-    declaration_match = VariableIssue(
-        kind=IssueKind.STRING_MAPPING_MISMATCH,
+    declaration_match = StringMappingMismatchIssue(
         module_path=["BasePicture", "TypeDef:RelayType", "Leaf"],
         variable=Variable(name="FinalValue", datatype=ScalarDatatype.IDENTSTRING),
         source_variable=Variable(name="OriginalValue", datatype=ScalarDatatype.IDENTSTRING),
         source_decl_module_path=["BasePicture", "TypeDef:RelayType"],
         source_role="moduleparameter",
     )
-    declaration_mismatch = VariableIssue(
-        kind=IssueKind.STRING_MAPPING_MISMATCH,
+    declaration_mismatch = StringMappingMismatchIssue(
         module_path=["BasePicture", "TypeDef:RelayType", "Alarm"],
         variable=Variable(name="EventTagPrefix", datatype=ScalarDatatype.TAGSTRING),
         source_variable=Variable(name="OriginalValue", datatype=ScalarDatatype.LINESTRING),
@@ -222,8 +232,7 @@ def test_variables_report_summary_splits_string_mismatch_severity_by_declaration
 
 
 def test_variables_report_summary_renders_literal_string_mismatch_rows():
-    literal_issue = VariableIssue(
-        kind=IssueKind.STRING_MAPPING_MISMATCH,
+    literal_issue = StringMappingMismatchIssue(
         module_path=["BasePicture", "Child"],
         variable=Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING),
         source_variable=Variable(name="'LiteralText'", datatype=ScalarDatatype.STRING),
@@ -245,49 +254,53 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     duplicated = Variable(name="ValueA", datatype="SharedRecord")
     duplicated_typedef = Variable(name="ValueType", datatype="SharedRecord")
     implicit = Variable(name="Stage1", datatype=ScalarDatatype.BOOLEAN)
-    report = VariablesReport(
-        basepicture_name="BasePicture",
-        issues=[
-            VariableIssue(
-                kind=IssueKind.DATATYPE_DUPLICATION,
-                module_path=["BasePicture", "TypeDef:PanelType"],
-                variable=duplicated_typedef,
-                role="localvariable",
-                duplicate_count=2,
-                duplicate_locations=[
-                    (["BasePicture", "TypeDef:PanelType"], "moduleparameter", VariableId("ParamType"))
-                ],
-            ),
-            VariableIssue(
-                kind=IssueKind.DATATYPE_DUPLICATION,
-                module_path=["BasePicture", "TypeDef:Column", "UnitA"],
-                variable=duplicated,
-                role="localvariable",
-                duplicate_count=3,
-                duplicate_locations=[
-                    (["BasePicture", "TypeDef:Column", "UnitA"], "moduleparameter", VariableId("ValueB")),
-                    (["BasePicture", "TypeDef:Column", "UnitB"], "localvariable", VariableId("ValueC")),
-                ],
-            ),
-            VariableIssue(
-                kind=IssueKind.MAGIC_NUMBER,
-                module_path=["BasePicture", "TypeDef:Column", "UnitA"],
-                variable=None,
-                literal_value=42,
-                literal_span=SourceSpan(start=0, end=0, line=9, column=4),
-                site="EquationBlock",
-            ),
-            VariableIssue(
-                kind=IssueKind.IMPLICIT_LATCH,
-                module_path=["BasePicture", "SequenceA"],
-                variable=implicit,
-                role="localvariable",
-                sequence_name="MainSeq",
-                reset_variable=VariableId("ResetCmd"),
-            ),
-        ],
-    )
-
+    issues: list[VariableIssue] = [
+        DatatypeDuplicationIssue(
+            module_path=["BasePicture", "TypeDef:PanelType"],
+            variable=duplicated_typedef,
+            role="localvariable",
+            duplicate_count=2,
+            duplicate_locations=[
+                DuplicateLocation(
+                    module_path=["BasePicture", "TypeDef:PanelType"],
+                    role="moduleparameter",
+                    variable_id=VariableId("ParamType"),
+                )
+            ],
+        ),
+        DatatypeDuplicationIssue(
+            module_path=["BasePicture", "TypeDef:Column", "UnitA"],
+            variable=duplicated,
+            role="localvariable",
+            duplicate_count=3,
+            duplicate_locations=[
+                DuplicateLocation(
+                    module_path=["BasePicture", "TypeDef:Column", "UnitA"],
+                    role="moduleparameter",
+                    variable_id=VariableId("ValueB"),
+                ),
+                DuplicateLocation(
+                    module_path=["BasePicture", "TypeDef:Column", "UnitB"],
+                    role="localvariable",
+                    variable_id=VariableId("ValueC"),
+                ),
+            ],
+        ),
+        MagicNumberIssue(
+            module_path=["BasePicture", "TypeDef:Column", "UnitA"],
+            literal_value=42,
+            literal_span=SourceSpan(start=0, end=0, line=9, column=4),
+            site="EquationBlock",
+        ),
+        ImplicitLatchIssue(
+            module_path=["BasePicture", "SequenceA"],
+            variable=implicit,
+            role="localvariable",
+            sequence_name="MainSeq",
+            site="SEQ:MainSeq > STEP:One",
+        ),
+    ]
+    report = VariablesReport(basepicture_name="BasePicture", issues=issues)
     summary = report.summary()
 
     assert "Duplicated complex datatypes (should be RECORD)" in summary
@@ -302,15 +315,14 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     assert "Magic numbers in code" in summary
     assert "BasePicture.Column.UnitA [EquationBlock] :: 42 (line 9, col 4)" in summary
     assert "Implicit latching (missing matching False writes)" in summary
-    assert "BasePicture.SequenceA :: localvariable Stage1 (boolean) | sequence=MainSeq | reset=ResetCmd" in summary
+    assert "BasePicture.SequenceA :: localvariable Stage1 (boolean) | sequence=MainSeq" in summary
 
 
 def test_variables_report_summary_includes_shadowing_section():
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.SHADOWING,
+            ShadowingIssue(
                 module_path=["BasePicture", "TypeDef:Column", "ChildC"],
                 variable=Variable(name="Mode", datatype=ScalarDatatype.INTEGER),
                 role="local shadows moduleparameter",
@@ -331,109 +343,95 @@ def test_variables_report_summary_includes_shadowing_section():
 
 
 def test_variables_report_properties_visible_kinds_and_empty_sections_cover_remaining_branches():
-    issues = [
-        VariableIssue(kind=IssueKind.UNUSED, module_path=["BasePicture", "Unused"], variable=Variable("A", "integer")),
-        VariableIssue(
-            kind=IssueKind.UNUSED_DATATYPE_FIELD,
+    issues: list[VariableIssue] = [
+        UnusedIssue(module_path=["BasePicture", "Unused"], variable=Variable("A", "integer")),
+        UnusedDatatypeFieldIssue(
             module_path=["BasePicture", "Datatype"],
-            variable=None,
             datatype_name="Payload",
             field_path="FieldA",
         ),
-        VariableIssue(
-            kind=IssueKind.FIELD_READ_ONLY,
+        FieldReadOnlyIssue(
             module_path=["BasePicture", "FieldReadOnly"],
             variable=Variable("PayloadA", "Payload"),
             field_path="Std",
         ),
-        VariableIssue(
-            kind=IssueKind.READ_ONLY_NON_CONST,
+        ReadOnlyNonConstIssue(
             module_path=["BasePicture", "ReadOnly"],
             variable=Variable("B", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.PROCEDURE_STATUS,
+        ProcedureStatusIssue(
             module_path=["BasePicture", "Procedure"],
             variable=Variable("OperationStatus", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.FIELD_NEVER_READ,
+        FieldNeverReadIssue(
             module_path=["BasePicture", "FieldNeverRead"],
             variable=Variable("PayloadB", "Payload"),
             field_path="Std",
         ),
-        VariableIssue(
-            kind=IssueKind.NEVER_READ,
+        NeverReadIssue(
             module_path=["BasePicture", "NeverRead"],
             variable=Variable("WrittenOnly", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.WRITE_WITHOUT_EFFECT,
+        WriteWithoutEffectIssue(
             module_path=["BasePicture", "WriteOnly"],
             variable=Variable("NoEffect", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+        GlobalScopeMinimizationIssue(
             module_path=["BasePicture", "Global"],
             variable=Variable("GlobalA", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
+        HiddenGlobalCouplingIssue(
             module_path=["BasePicture", "Coupling"],
             variable=Variable("SharedState", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.HIGH_FAN_IN_OUT,
+        HighFanInOutIssue(
             module_path=["BasePicture", "Fan"],
             variable=Variable("Busy", "boolean"),
             role="fan-out exceeds threshold",
         ),
-        VariableIssue(
-            kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+        UnknownParameterTargetIssue(
             module_path=["BasePicture", "Mapping"],
-            variable=None,
             role="unknown target parameter 'Mode'",
         ),
-        VariableIssue(
-            kind=IssueKind.STRING_MAPPING_MISMATCH,
+        StringMappingMismatchIssue(
             module_path=["BasePicture", "Strings"],
             variable=Variable("TargetText", ScalarDatatype.TAGSTRING),
             source_variable=Variable("SourceText", ScalarDatatype.STRING),
         ),
-        VariableIssue(
-            kind=IssueKind.DATATYPE_DUPLICATION,
+        DatatypeDuplicationIssue(
             module_path=["BasePicture", "Dup"],
             variable=Variable("LocalA", "Payload"),
             role="localvariable",
             duplicate_count=2,
-            duplicate_locations=[(["BasePicture", "Dup"], "moduleparameter", VariableId("ParamA"))],
+            duplicate_locations=[
+                DuplicateLocation(
+                    module_path=["BasePicture", "Dup"],
+                    role="moduleparameter",
+                    variable_id=VariableId("ParamA"),
+                )
+            ],
         ),
-        VariableIssue(
-            kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+        MinMaxMappingMismatchIssue(
             module_path=["BasePicture", "MinMax"],
             variable=Variable("TargetMax", ScalarDatatype.REAL),
             source_variable=Variable("SourceMin", ScalarDatatype.REAL),
         ),
-        VariableIssue(
-            kind=IssueKind.MAGIC_NUMBER,
+        MagicNumberIssue(
             module_path=["BasePicture", "Magic"],
-            variable=None,
             literal_value=7,
             literal_span=SourceSpan(start=0, end=0, line=12, column=8),
             site="EquationBlock",
         ),
-        VariableIssue(
-            kind=IssueKind.RESET_CONTAMINATION,
+        ResetContaminationIssue(
             module_path=["BasePicture", "Reset"],
             variable=Variable("Counter", "integer"),
         ),
-        VariableIssue(
-            kind=IssueKind.IMPLICIT_LATCH,
+        ImplicitLatchIssue(
             module_path=["BasePicture", "Latch"],
             variable=Variable("State", ScalarDatatype.BOOLEAN),
             role="localvariable",
             sequence_name="SeqA",
-            reset_variable=VariableId("ResetCmd"),
+            site="SEQ:SeqA > STEP:One",
         ),
     ]
     report = VariablesReport(
@@ -498,8 +496,7 @@ def test_variables_report_summary_includes_metadata_and_init_values():
     summary = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
-            VariableIssue(
-                kind=IssueKind.UNUSED,
+            UnusedIssue(
                 module_path=["BasePicture"],
                 variable=Variable(name="Timeout", datatype=ScalarDatatype.INTEGER, init_value=10),
                 role="moduleparameter",

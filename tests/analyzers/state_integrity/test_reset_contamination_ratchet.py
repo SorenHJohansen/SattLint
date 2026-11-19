@@ -59,7 +59,7 @@ from sattlint.analyzers.reset_contamination._reset_path_writes import (
     record_write,
     split_var_ref,
 )
-from sattlint.reporting.variables_report import VariableIssue
+from sattlint.reporting.variables_report import ImplicitLatchIssue, ResetContaminationIssue, VariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -210,9 +210,9 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         trace_fn=lambda action, **data: trace_events.append((action, data)),
     )
 
-    assert [(issue.module_path, issue.variable.name) for issue in reset_issues if issue.variable is not None] == [
-        (["Root", "TypeDef:ResetType"], "Counter")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in reset_issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:ResetType"], "Counter")]
     assert any(action == "reset-contamination-modulecode-path-summary" for action, _data in trace_events)
 
     limited_reset_issues: list[VariableIssue] = []
@@ -225,7 +225,9 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
 
     latch_issues: list[VariableIssue] = []
     detect_implicit_latching(bp, latch_issues)
-    assert sorted((issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None) == [
+    assert sorted(
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ) == [
         (["Root"], "RootLatched"),
         (["Root", "TypeDef:LatchType"], "AlarmLatched"),
     ]
@@ -237,7 +239,9 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         limit_to_module_path=["Root", "NoMatch"],
     )
     assert [
-        (issue.module_path, issue.variable.name) for issue in limited_latch_issues if issue.variable is not None
+        (issue.module_path, issue.variable.name)
+        for issue in limited_latch_issues
+        if isinstance(issue, ImplicitLatchIssue)
     ] == [(["Root"], "RootLatched")]
 
 

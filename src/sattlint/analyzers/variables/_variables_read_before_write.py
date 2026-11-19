@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import ReadBeforeWriteIssue
 from ...resolution import AccessKind
 from ..shared._dependency_usage_facts import FactRef, StatementFact, collect_statement_facts
 from ..shared.instance_paths import collect_instance_paths
@@ -115,10 +115,8 @@ def _report_issue(
     sites: set[str],
 ) -> None:
     sorted_sites = sorted(sites)
-    issue = VariableIssue(
-        kind=IssueKind.READ_BEFORE_WRITE,
+    issue = ReadBeforeWriteIssue(
         module_path=list(module_path),
-        variable=None,
         role=f"{display_name} is read before any write in {', '.join(sorted_sites)}",
         site=sorted_sites[0],
         context=display_name,
