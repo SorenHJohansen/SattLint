@@ -534,7 +534,7 @@ def test_run_checks_success_path_pauses(monkeypatch):
                     (
                         "TargetA",
                         SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(unavailable_libraries=set()),
+                        AnalysisGraphStub(unavailable_libraries=set()),
                     )
                 ]
             ),
@@ -587,3 +587,91 @@ def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavai
     )
 
     assert result == (root_bp, graph)
+
+
+def test_load_project_ignores_a_cache_write_failure(monkeypatch):
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
+        ast_by_name={"TargetA": root_bp},
+        missing=[],
+        warnings=[],
+        source_files={Path("programs/TargetA.s")},
+    )
+
+    class FailingCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load_validated(self, key):
+            return None
+
+        def manifest_paths(self, key):
+            return frozenset()
+
+        def save(self, key, **kwargs):
+            raise OSError("disk full")
+
+    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
+        return SimpleNamespace()
+
+    monkeypatch.setattr(project_application, "ASTCache", FailingCache)
+    monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
+
+    result = project_application.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+    )
+
+    assert result == (root_bp, graph)
+
+
+def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch):
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
+        ast_by_name={"TargetA": root_bp},
+        load_stage_timings={"load_or_parse": 0.1},
+        load_stage_timings_by_program={"TargetA": {"load_or_parse": 0.1}},
+        graphics_load_timings={"attach_graphics": 0.2},
+    )
+
+    class CachedCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load_validated(self, key):
+            return {"project": (root_bp, graph)}
+
+        def manifest_paths(self, key):
+            return frozenset()
+
+    monkeypatch.setattr(project_application, "ASTCache", CachedCache)
+    monkeypatch.setattr(project_application, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
+
+    project_application.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+    )
+
+    assert graph.load_stage_timings == {}
+    assert graph.load_stage_timings_by_program == {}
+    assert graph.graphics_load_timings == {}

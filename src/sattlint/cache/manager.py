@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
 
 from .. import cache as cache_module
 from .classes import AnalysisReportCache, ASTCache
@@ -86,7 +85,10 @@ class CacheManager:
         return result
 
 
+# The manager memo is a small process cache, not a permanent registry: a
+# caller that asks for many cache roots must not grow it without bound.
 _CACHE_MANAGERS: dict[Path, CacheManager] = {}
+_CACHE_MANAGER_LIMIT = 4
 
 
 def _uses_default_cache_types(
@@ -117,30 +119,32 @@ def get_cache_manager(
 
     manager = _CACHE_MANAGERS.get(resolved_cache_dir)
     if manager is None:
+        if len(_CACHE_MANAGERS) >= _CACHE_MANAGER_LIMIT:
+            _CACHE_MANAGERS.pop(next(iter(_CACHE_MANAGERS)))
         manager = CacheManager(resolved_cache_dir)
         _CACHE_MANAGERS[resolved_cache_dir] = manager
     return manager
 
 
-def build_ast_cache(cache_dir: Path, ast_cache_cls: type[Any] = ASTCache) -> Any:
+def build_ast_cache(cache_dir: Path, ast_cache_cls: type[ASTCache] = ASTCache) -> ASTCache | None:
     """Build the AST cache, or return ``None`` when the cache directory is unusable.
 
     A cache is an optimisation: an unwritable or blocked cache location must
     not stop an analysis run.
     """
     try:
-        return get_cache_manager(
-            cache_dir,
-            ast_cache_cls=cast(type[ASTCache], ast_cache_cls),
-        ).ast_cache
+        return get_cache_manager(cache_dir, ast_cache_cls=ast_cache_cls).ast_cache
     except OSError:
         return None
 
 
-def build_analysis_report_cache(cache_dir: Path, analysis_report_cache_cls: type[Any] = AnalysisReportCache) -> Any:
+def build_analysis_report_cache(
+    cache_dir: Path,
+    analysis_report_cache_cls: type[AnalysisReportCache] = AnalysisReportCache,
+) -> AnalysisReportCache:
     return get_cache_manager(
         cache_dir,
-        analysis_report_cache_cls=cast(type[AnalysisReportCache], analysis_report_cache_cls),
+        analysis_report_cache_cls=analysis_report_cache_cls,
     ).analysis_report_cache
 
 

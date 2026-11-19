@@ -335,3 +335,31 @@ def test_reverse_consumer_scan_prefers_the_mode_sidecar_and_falls_back(tmp_path)
         {"program_dir": str(program_dir), "other_lib_dirs": [], "mode": "official"}
     )
     assert list(official) == [("Both", program_dir / "Both.z"), ("OfficialOnly", program_dir / "OfficialOnly.z")]
+
+
+def test_cache_manifest_uses_one_mode_for_both_companion_families():
+    graph = AnalysisGraphStub(source_files={Path("programs/Target.s")})
+    seen: dict[str, object] = {}
+
+    def graphics_companion(_source, *, mode=None):
+        seen["graphics"] = mode
+        return None
+
+    def distribution_companion(_source, *, mode=None):
+        seen["distribution"] = mode
+        return None
+
+    analysis_loading_module.cache_manifest_files(
+        {},
+        cast(Any, graph),
+        find_dependency_path_fn=lambda _name: None,
+        resolve_graphics_companion_path_fn=graphics_companion,
+        resolve_distribution_companion_path_fn=distribution_companion,
+    )
+
+    assert str(seen["graphics"]) == "CodeMode.OFFICIAL"
+    assert str(seen["distribution"]) == "LoadMode.OFFICIAL"
+
+
+def test_reverse_consumer_scan_ignores_a_missing_program_dir():
+    assert list(loading_support_module._iter_workspace_reverse_library_consumer_dependency_files({})) == []

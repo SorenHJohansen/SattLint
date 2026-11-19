@@ -172,3 +172,12 @@ def test_disabled_run_history_still_prunes_stored_runs():
 
     assert stored is None
     assert len(runs_module.list_runs(runs_dir=runs_dir)) == 1
+
+
+def test_ambiguous_origin_file_falls_through_to_the_target_name():
+    project_bp = named_object("TargetA", origin_file="Dup.s")
+    graph = AnalysisGraphStub(source_files={Path("libs/Dup.s"), Path("programs/Dup.s"), Path("programs/TargetA.s")})
+
+    result = project_application.source_paths_for_current_target(cast(Any, project_bp), cast(Any, graph))
+
+    assert result == {Path("programs/TargetA.s")}

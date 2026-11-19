@@ -10,7 +10,11 @@ import pytest
 
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
+from sattlint.cache.manager import _CACHE_MANAGER_LIMIT, _CACHE_MANAGERS, get_cache_manager
 from sattlint.runs import RunRecord, save_run
+
+# Captured before the shared fixture isolates the cache location per test.
+_REAL_GET_CACHE_DIR = cache_module.get_cache_dir
 
 
 def _mode(path: Path) -> int:
@@ -94,3 +98,59 @@ def test_reading_a_cache_does_not_create_the_signing_key(tmp_path: Path) -> None
     assert cache.load("missing") is None
 
     assert not key_path.exists()
+
+
+def test_ast_cache_validates_the_manifest_before_unpickling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _source(tmp_path)
+    cache = ASTCache(tmp_path / "caches")
+    cache.save("key", project={"generation": 1}, files=[source])
+
+    def fail_load(_key: str) -> object:
+        raise AssertionError("a stale manifest must not pay the unpickle cost")
+
+    cache.load = fail_load  # type: ignore[method-assign]
+    source.write_text("a longer body", encoding="utf-8")
+
+    assert cache.load_validated("key") is None
+
+
+def test_ast_cache_does_not_store_an_entry_without_files(tmp_path: Path) -> None:
+    cache = ASTCache(tmp_path / "caches")
+
+    cache.save("key", project={"generation": 1}, files=[])
+
+    assert cache.has_payload("key") is False
+    assert cache.has_manifest("key") is False
+
+
+def test_ast_cache_clear_tolerates_missing_artifacts(tmp_path: Path) -> None:
+    cache = ASTCache(tmp_path / "caches")
+
+    cache.clear("never-written")
+
+    source = _source(tmp_path)
+    cache.save("key", project={"generation": 1}, files=[source])
+    cache.clear("key")
+    cache.clear("key")
+
+    assert cache.has_cache_artifact("key") is False
+
+
+def test_legacy_cache_migration_runs_once_per_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+    monkeypatch.setattr(cache_module, "_legacy_migration_attempted", False)
+    monkeypatch.setattr(cache_module, "_migrate_legacy_cache_dir", calls.append)
+    monkeypatch.setattr(cache_module, "cache_dir_location", lambda: tmp_path / "cache")
+
+    _REAL_GET_CACHE_DIR()
+    _REAL_GET_CACHE_DIR()
+
+    assert calls == [tmp_path / "cache"]
+
+
+def test_cache_manager_memo_stays_bounded(tmp_path: Path) -> None:
+    _CACHE_MANAGERS.clear()
+    for index in range(_CACHE_MANAGER_LIMIT + 3):
+        get_cache_manager(tmp_path / f"cache-{index}")
+
+    assert len(_CACHE_MANAGERS) == _CACHE_MANAGER_LIMIT

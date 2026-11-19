@@ -25,7 +25,6 @@ from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
-    _call_load_project_compat,
     _collect_analysis_timings,
     _emit_debug_load_summary,
     _include_reverse_library_consumers,
@@ -57,8 +56,7 @@ def iter_loaded_projects(
 ) -> Iterator[LoadedProject]:
     for target_name in require_analyzed_targets_fn(cfg):
         try:
-            project_bp, graph = _call_load_project_compat(
-                load_project_fn,
+            project_bp, graph = load_project_fn(
                 cfg,
                 target_name=target_name,
                 use_cache=use_cache,
@@ -91,7 +89,9 @@ def source_paths_for_current_target(
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
         matches = {path for path in source_files if casefold_equal_fn(path.name, origin_file)}
-        if matches:
+        # Several libraries can hold a file with that name; a single match
+        # identifies the target, a crowd does not, so fall through instead.
+        if len(matches) == 1:
             return matches
 
     target_name = casefold_key_fn(
@@ -129,10 +129,13 @@ def cache_manifest_files(
     resolve_distribution_companion_path_fn: Callable[..., Path | None] = resolve_distribution_companion_path,
 ) -> set[Path]:
     manifest_files: set[Path] = set(graph.source_files)
-    parser_mode = LoadMode((normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL).value)
+    # One resolved mode for both companion families: an absent mode takes the
+    # configured default instead of a different default per resolver.
+    mode = normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL
+    parser_mode = LoadMode(mode.value)
 
     for source_path in tuple(manifest_files):
-        companion_path = resolve_graphics_companion_path_fn(source_path, mode=cfg.get("mode"))
+        companion_path = resolve_graphics_companion_path_fn(source_path, mode=mode)
         if companion_path is not None and companion_path != source_path:
             manifest_files.add(companion_path)
 
@@ -279,6 +282,12 @@ def load_project(  # noqa: PLR0915
             with contextlib.suppress(AttributeError):
                 # Test doubles may use slotted graph stubs without this field; it's diagnostic-only.
                 graph.loaded_from_cache = True
+            # The cached entry carries the timings of the load that produced it;
+            # reporting them as this run's stages would be a fabricated number.
+            graph.load_stage_timings = {}
+            graph.load_stage_timings_by_program = {}
+            graph.graphics_load_timings = {}
+            graph.graphics_load_timings_by_program = {}
             _attach_analysis_cache_metadata(
                 graph,
                 cache_key=key,
@@ -379,12 +388,14 @@ def load_project(  # noqa: PLR0915
         manifest_files=manifest_files,
     )
     if cache is not None:
-        with contextlib.suppress(OSError):
+        try:
             cache.save(
                 key,
                 project=(root_bp, graph),
                 files=manifest_files,
             )
+        except OSError as exc:
+            log.debug("AST cache write failed for %s: %s", selected_target, exc)
     return project_bp, graph
 
 
@@ -484,10 +495,10 @@ def ensure_ast_cache(
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nChecking AST cache for {target_name}... ({index}/{total_targets})")
         key = cache_key_for_target_fn(cfg, target_name)
-        has_payload = cast(bool, cache.has_payload(key))
-        has_manifest = cast(bool, cache.has_manifest(key))
+        has_payload = cache.has_payload(key)
+        has_manifest = cache.has_manifest(key)
         if has_payload:
-            is_valid = has_manifest and cast(bool, cache.has_cache_artifact(key))
+            is_valid = has_manifest and cache.has_cache_artifact(key)
             if is_valid:
                 emit_output_fn("✔ AST cache OK")
                 continue
@@ -500,8 +511,7 @@ def ensure_ast_cache(
             emit_output_fn("⚠ AST cache missing; building (this may take a while)...")
 
         try:
-            _call_load_project_compat(
-                load_project_fn,
+            load_project_fn(
                 cfg,
                 target_name=target_name,
                 use_cache=False,

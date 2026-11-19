@@ -46,6 +46,7 @@ __all__ = [
 ]
 
 CACHE_VERSION = 17  # Bump when cached AST semantics or attached graphics companion record shapes change.
+_legacy_migration_attempted = False
 ANALYSIS_REPORT_CACHE_VERSION = 5
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".pickle-hmac-key"
@@ -106,7 +107,9 @@ def _snapshot_manifest(files: Iterable[Path]) -> dict[str, tuple[int, int]] | No
         if stat_result is None:
             return None
         manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size)
-    return manifest
+    # Nothing to validate against means nothing can ever go stale, so an empty
+    # file set is not a cache entry at all.
+    return manifest or None
 
 
 def _load_manifest_payload(path: Path) -> dict[str, tuple[int, int]] | None:
@@ -353,8 +356,13 @@ def cache_dir_location() -> Path:
 
 
 def get_cache_dir() -> Path:
+    global _legacy_migration_attempted
+
     cache_dir = cache_dir_location()
-    if os.name != "nt":
+    if os.name != "nt" and not _legacy_migration_attempted:
+        # The old layout is migrated once per process: a lookup should not walk
+        # and move a legacy tree on every cache access.
+        _legacy_migration_attempted = True
         _migrate_legacy_cache_dir(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
