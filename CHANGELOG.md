@@ -19,6 +19,50 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Root symbol paths are qualified by the program's identity, and record
+  definitions are keyed by library, name, and file, so same-named records and
+  programs in different libraries stay distinct. Failure detail is carried by
+  the typed failure record instead of being re-read from prose markers, and the
+  unused workspace-discovery surface is gone.
+- Reset-contamination classifies compound guards, so a reset written under
+  `NOT Seq.Reset AND Guard` is reported as a reset rather than run code. A
+  shared procedure-status sink names every call binding, shadowing includes
+  module parameters, and compound-condition flags travel as a typed record.
+- Per-typedef usage facts are keyed by library and type name, aliases propagate
+  deepest link first so mapping chains no longer depend on link order, and the
+  datatype leaf-path rule is shared by both callers instead of living twice with
+  different cycle and unknown-record behavior.
+- String inference reads SFC step, branch, and subsequence code, and a frame
+  module scope is built from its own parameters and locals.
+- Cross-site dataflow scanning groups accesses by symbol path instead of
+  comparing every pair and re-walking the module tree, with unchanged findings.
+- Frame modules get one scope builder shared by the analyzer, the semantic
+  snapshot, and dependency-usage resolution, so all three agree on parameters,
+  parent chain, and keys.
+- The CLI streams NDJSON records as they are produced, uses one JSON document
+  encoder for stdout, NDJSON, and the stderr error envelope, treats blank filter
+  values, a negative `--limit`, and `--exact-module` without `--module` as usage
+  errors, and reports project settings, version, and config path in text.
+- Report sections are rendered from the same set that is counted, table widths
+  follow the rendered cells, ordering is case-insensitive where identifiers are,
+  and an empty module path has a single label.
+- Cache payloads are signed before their manifests are published, cache and run
+  files are owner-only, the signing key lives outside the cache root, a read
+  never creates it, and a manifest is validated before its payload is
+  unpickled. An empty file set stores no entry, and cache-keying carries an
+  explicit schema version.
+- Run ids must be a single path segment, unsafe ids are rejected, listing a run
+  store never writes, orphan sidecars are pruned, and corrupt scalar fields
+  reject the record instead of degrading silently.
+- The TUI keeps the open project path separate from the user configuration path,
+  so a run started before a project is opened is no longer attributed to the
+  configuration file. Session-log trimming keeps the reader's position, error
+  dialogs do not stack, focus returns after a dialog, and the guidance notes
+  render again.
+- Change Review resolves a relative output folder against the configuration
+  directory, names artifacts from the review's UTC timestamp, searches block
+  headers case-insensitively, reads each source file once, and keeps blocks and
+  calls that stopped being touched in the related context.
 - Root origins are keyed by program name, so a project with several programs
   reports each target's own source file and library. A graph with unavailable
   libraries or target failures is no longer cached, and an unusable cache
@@ -63,6 +107,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- A completed run keeps its findings when one analyzer fails; only the failing
+  analyzer is reported. Duplicate module-type names resolve within their own
+  library, and datatype-field findings stay inside the analyzed target.
 - The UI treats view text as plain text, so a message with brackets cannot lose
   text or abort the error dialog.
 - File-open, new-configuration, and quit actions respect the busy and modal
