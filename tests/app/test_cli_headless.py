@@ -451,6 +451,8 @@ def test_analyzers_list_text(capsys: pytest.CaptureFixture[str], tmp_path: Path)
     code = run_cli(["analyzers", "list"])
     assert code == 0
     out = capsys.readouterr().out
+    assert out.startswith("Analyzers (* = enabled by default):\n")
+    assert "Key" in out and "Category" in out and "Name" in out
     assert "* variables" in out
     assert "correctness" in out
 

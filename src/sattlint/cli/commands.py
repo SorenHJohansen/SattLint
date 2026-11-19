@@ -211,7 +211,10 @@ def command_analyzers_list(args: argparse.Namespace) -> int:
 
 
 def _analyzers_text(analyzers: list[AnalyzerInfo]) -> list[str]:
-    lines: list[str] = []
+    lines = [
+        "Analyzers (* = enabled by default):",
+        f"  {'Key':<24} {'Category':<12} Name",
+    ]
     for entry in analyzers:
         marker = "*" if entry["default"] else " "
         lines.append(f"{marker} {entry['key']:<24} {entry['category']:<12} {entry['name']}")
