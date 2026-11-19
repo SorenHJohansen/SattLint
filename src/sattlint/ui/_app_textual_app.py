@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, ClassVar
 
 from ..config.types import ConfigDict
@@ -55,12 +56,6 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         description="Click targets to add or remove them, then adjust directories and runtime settings inline.",
         note="Changes are saved automatically to the configuration file.",
     ),
-    "help": _ShellViewState(
-        action_id="action-help",
-        title="Help",
-        description="See first-run guidance and the recommended workflow for setup and analysis.",
-        note="Open the guide to review the recommended setup and analysis workflow.",
-    ),
     "output": _ShellViewState(
         action_id="action-output",
         title="Output",
@@ -89,7 +84,7 @@ if _TEXTUAL_APP is not None:
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
-            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items() if view_name != "help"
+            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items()
         }
 
         CSS = TEXTUAL_SHELL_CSS
@@ -116,7 +111,11 @@ if _TEXTUAL_APP is not None:
             self._summarize_targets_fn = summarize_targets_fn
             self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
+            # ``_config_path`` always names the user config file. The open
+            # project file lives in ``_project_path`` so a run started before
+            # any project is opened is not attributed to the user config.
             self._config_path = config_path
+            self._project_path: Path | None = None
             self._quit_app_error = quit_app_error
             self._busy = False
             self._dirty = False
@@ -124,7 +123,6 @@ if _TEXTUAL_APP is not None:
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
             self._active_job_started_at: float | None = None
-            self._active_job_worker: Any | None = None
             self._project: Any | None = None
             self._ast_refresh_pending = False
             self._analyze_focused_entry_id: str | None = None
@@ -134,6 +132,7 @@ if _TEXTUAL_APP is not None:
             self._suppress_analyze_events = False
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
+            self._results_empty_state_written = False
             self._results_tree_widget = None
             self._results_pending_run_id: str | None = None
             self._results_findings_widget = None
@@ -146,6 +145,8 @@ if _TEXTUAL_APP is not None:
             self._active_request = None
             self._active_request_callback: Any = None
             self._interaction_pane: Any = None
+            self._interaction_previous_focus: Any = None
+            self._error_modal_active = False
             self._pending_interactions: deque[tuple[Any, Any | None]] = deque()
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._last_output_line: str | None = None
@@ -286,7 +287,7 @@ if _TEXTUAL_APP is not None:
                                             yield _TEXTUAL_STATIC("Run History", classes="settings-card-title")
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Save run history",
+                                                    "Run history",
                                                     id="settings-toggle-run-history",
                                                     classes="raised-button settings-row-button",
                                                 )
@@ -295,7 +296,7 @@ if _TEXTUAL_APP is not None:
                                                 )
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Keep last N runs",
+                                                    "Run history limit",
                                                     id="settings-edit-run-history-limit",
                                                     classes="raised-button settings-row-button",
                                                 )

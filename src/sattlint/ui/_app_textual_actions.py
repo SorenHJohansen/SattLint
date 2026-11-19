@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import threading
 import time
 from collections import deque
 from contextlib import redirect_stderr, redirect_stdout, suppress
@@ -204,10 +203,14 @@ def present_request(self: Any, request: InteractionRequest, on_response_fn: Any 
         self._resolve_request(request, response)
 
     pane = _InteractionPane(request, submit_response_fn=_resolve_response)
+    previous_focus = getattr(self, "focused", None)
+    # Mount before recording the request: a mount that raises must not leave
+    # the shell locked behind a request that never reached the screen.
+    interaction_host.mount(pane)
     self._active_request = request
     self._active_request_callback = on_response_fn
     self._interaction_pane = pane
-    interaction_host.mount(pane)
+    self._interaction_previous_focus = previous_focus
     self._refresh_shell_state()
 
 
@@ -222,7 +225,18 @@ def _track_ui_task(self: Any, task: asyncio.Task[object]) -> None:
         pending_ui_tasks = set()
         self._pending_ui_tasks = pending_ui_tasks
     pending_ui_tasks.add(task)
-    task.add_done_callback(pending_ui_tasks.discard)
+
+    def _on_task_done(done_task: asyncio.Task[object]) -> None:
+        pending_ui_tasks.discard(done_task)
+        if done_task.cancelled():
+            return
+        exception = done_task.exception()
+        if exception is not None:
+            # The coroutine runs on the UI loop, so report here rather than
+            # dropping the failure with the task.
+            self._report_error("Action failed", f"Action failed: {exception}")
+
+    task.add_done_callback(_on_task_done)
 
 
 def _schedule_ui_coroutine(self: Any, coroutine_factory: Any, *, fallback_fn: Any | None = None) -> None:
@@ -248,9 +262,11 @@ def _resolve_request(self: Any, request: InteractionRequest, response: object) -
 
     pane = self._interaction_pane
     request_callback = self._active_request_callback
+    previous_focus = getattr(self, "_interaction_previous_focus", None)
     self._active_request = None
     self._active_request_callback = None
     self._interaction_pane = None
+    self._interaction_previous_focus = None
     if pane is not None:
         pane.remove()
     self._refresh_shell_state()
@@ -261,6 +277,14 @@ def _resolve_request(self: Any, request: InteractionRequest, response: object) -
     if pending:
         next_request, next_callback = pending.popleft()
         self.present_request(next_request, next_callback)
+    elif (
+        self._active_request is None
+        and previous_focus is not None
+        and bool(getattr(previous_focus, "is_mounted", True))
+    ):
+        # Only take focus back when no other request or callback took the
+        # screen; restoring it would otherwise steal focus from the new pane.
+        self.call_after_refresh(previous_focus.focus)
 
 
 def _refresh_summary(self: Any) -> None:
@@ -317,14 +341,15 @@ def _trim_session_output_lines(self: Any) -> bool:
     overflow = len(retained_lines) - retention
     if overflow <= 0:
         return False
-    # Rebuilding the widget is the expensive half of trimming, so drop a batch
-    # down to roughly half the retention window instead of shaving off the
-    # overflow. The widget then rebuilds once per half-retention lines rather
-    # than once per arriving line.
-    keep_count = max(retention // 2, 1)
-    drop_count = len(retained_lines) - keep_count
-    del retained_lines[:drop_count]
-    self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + drop_count
+    # Rebuilding the widget is the expensive half of trimming, so wait for a
+    # batch of overflow (roughly half the retention window) before trimming.
+    # The trim then drops exactly the overflow, so the pane never holds fewer
+    # lines than the retention it advertises.
+    batch = max(retention // 2, 1)
+    if overflow < batch:
+        return False
+    del retained_lines[:overflow]
+    self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + overflow
     return True
 
 
@@ -372,7 +397,16 @@ def _capture_error_modal_output(self: Any, text: str) -> str | None:
 
 
 def _show_error_modal(self: Any, title: str, message: str) -> None:
-    self.push_screen(_ErrorScreen(title=title, message=message))
+    if bool(getattr(self, "_error_modal_active", False)):
+        # One modal is enough to report the failure; stacking a second makes the
+        # first one impossible to dismiss without closing both.
+        return
+    self._error_modal_active = True
+    self.push_screen(_ErrorScreen(title=title, message=message), self._on_error_modal_closed)
+
+
+def _on_error_modal_closed(self: Any, _result: object | None = None) -> None:
+    self._error_modal_active = False
 
 
 def _report_error(self: Any, title: str, message: str) -> None:
@@ -387,12 +421,18 @@ def _write_output(self: Any, text: str) -> None:
         return
 
     follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True))
+    scroll_y = None if follow_output else getattr(output_widget, "scroll_y", None)
     line_texts = [chunk[:-1] if chunk.endswith("\n") else chunk for chunk in normalized.splitlines(keepends=True)]
     error_message = self._capture_error_modal_output(normalized)
     self._session_output_lines.extend(line_texts)
     trimmed = self._trim_session_output_lines()
     if trimmed:
         self._rebuild_output_widget(output_widget)
+        # A rebuild replaces every line, so restore the reader's place in the
+        # log instead of jumping to the oldest retained line.
+        if isinstance(scroll_y, (int, float)):
+            with suppress(AttributeError, TypeError):
+                output_widget.scroll_to(y=scroll_y, animate=False)
     else:
         previous_line = getattr(self, "_last_output_line", None)
         for line_text in line_texts:
@@ -415,6 +455,12 @@ def _clear_session_output(self: Any) -> None:
     self._session_output_lines.clear()
     self._session_output_dropped_line_count = 0
     self._last_output_line = None
+    # Target-load error detection carries state between output chunks; clear it
+    # so a marker from one project's output cannot decorate another's.
+    self._pending_error_target_name = None
+    self._last_output_target_name = None
+    self._analyze_help_entry_id = None
+    self._results_empty_state_written = False
     _query_required(self, "#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
 
 
@@ -431,8 +477,6 @@ def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bo
     self._busy = False
     self._active_job_label = None
     self._active_job_started_at = None
-    self._active_job_worker = None
-    self._active_job_thread = None
     if clear_dirty_on_success:
         self._dirty = False
     else:
@@ -559,33 +603,15 @@ def action_save_config(self: Any) -> None:
         self._dirty = False
         self._write_output("App settings saved to your user config.")
         return
+    if getattr(self, "_project_path", None) is not None:
+        if self._persist_project():
+            self._write_output("Configuration saved.")
+        return
     raw_path = self._config_path
     if raw_path is None:
         return
-    config_path = Path(raw_path)
-    if config_path.suffix == ".slproj":
-        root = config_path.parent.resolve()
-        cfg_raw: dict[str, object] = self._cfg
-        project_data: dict[str, object] = {
-            "slproj_version": 1,
-            "analyzed_programs_and_libraries": list(
-                cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
-            ),
-            "mode": str(cfg_raw.get("mode", "official")),
-            "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
-            "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
-            "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
-            "other_lib_dirs": [
-                _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
-            ],
-            "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
-        }
-        _save_slproj(config_path, cast(ProjectDict, project_data))
-        self._dirty = False
-        self._write_output("Configuration saved.")
-        return
     try:
-        self._save_config_fn(self._config_path, self._cfg)
+        self._save_config_fn(raw_path, self._cfg)
     except ValueError as exc:
         self._report_error("Save failed", f"Save failed: {exc}")
         return
@@ -638,14 +664,9 @@ def _start_action(
         self._write_output("Another action is still running. Wait for it to finish first.")
         return
 
-    def _register_action_thread(worker_thread: threading.Thread) -> None:
-        self._active_job_thread = worker_thread
-
     self._busy = True
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
-    self._active_job_worker = None
-    self._active_job_thread = None
     self._set_active_action(action_id)
     self._refresh_summary()
     self._refresh_shell_state()
@@ -655,7 +676,6 @@ def _start_action(
     self._write_output(f"Starting {label}... Live output is shown in this panel.")
 
     def _run() -> None:
-        self.call_from_thread(_register_action_thread, threading.current_thread())
         output_stream = _TextualOutput(emit_text_fn=self._emit_output_from_thread)
         dirty = False
         clear_dirty = False
@@ -674,7 +694,7 @@ def _start_action(
         finally:
             self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
 
-    self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
+    self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
 def _show_setup_no_project(self: Any) -> None:
@@ -730,8 +750,12 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     view_host.set_class(settings_view or results_view or output_view, "no-view-box")
     title_widget.update(view.title)
     description_widget.update(view.description)
-    if analyze_view or setup_view or settings_view or results_view or output_view:
-        note_widget.update("")
+    if analyze_view:
+        note_widget.update(self._analyze_note_text())
+    elif setup_view:
+        note_widget.update(self._setup_note_text())
+    elif settings_view:
+        note_widget.update(self._settings_note_text())
     else:
         note_widget.update(view.note)
     workspace_host.set_class(analyze_view, "analyze-split")
@@ -790,7 +814,7 @@ def _interaction_locked(self: Any) -> bool:
 def _load_project_object(self: Any, project: Any) -> None:
     self._project = project
     self._cfg = project.to_default_merged_config_dict(cast(dict[str, object], self._app_only_cfg))
-    self._config_path = project.path
+    self._project_path = project.path
     self._dirty = False
     self._startup_output = ""
     self._analyze_selected_entry_ids.clear()
@@ -867,8 +891,8 @@ def _confirm_delete_configuration(self: Any, path: Path) -> None:
         project = getattr(self, "_project", None)
         if project is not None and getattr(project, "path", None) == path:
             self._project = None
+            self._project_path = None
             self._cfg = dict(cast(dict[str, object], getattr(self, "_app_only_cfg", {})))
-            self._config_path = None
             self._dirty = False
             self._analyze_selected_entry_ids.clear()
             self._clear_session_output()
@@ -1142,6 +1166,7 @@ if TYPE_CHECKING:
         def _rebuild_output_widget(self, output_widget: Any) -> None: ...
         def _capture_error_modal_output(self, text: str) -> str | None: ...
         def _show_error_modal(self, title: str, message: str) -> None: ...
+        def _on_error_modal_closed(self, _result: object | None = None) -> None: ...
         def _report_error(self, title: str, message: str) -> None: ...
         def _write_output(self, text: str) -> None: ...
         def _emit_output_from_thread(self, text: str) -> None: ...
@@ -1209,6 +1234,7 @@ else:
         _rebuild_output_widget = _rebuild_output_widget
         _capture_error_modal_output = _capture_error_modal_output
         _show_error_modal = _show_error_modal
+        _on_error_modal_closed = _on_error_modal_closed
         _report_error = _report_error
         _write_output = _write_output
         _emit_output_from_thread = _emit_output_from_thread

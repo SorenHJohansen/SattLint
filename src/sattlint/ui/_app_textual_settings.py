@@ -74,7 +74,7 @@ def _refresh_settings_labels(self: Any) -> None:
 def _settings_note_text(self: Any) -> str:
     return (
         "App-level settings are saved automatically to your user config (config.toml) and apply to every "
-        "configuration. Configuration settings stay in the Setup view and are saved automatically."
+        "configuration. Configuration settings stay in the Configuration Settings view and are saved automatically."
     )
 
 
@@ -89,11 +89,24 @@ def _mark_settings_changed(self: Any, message: str) -> None:
         self._report_error("Save failed", f"App settings could not be saved: {exc}")
     else:
         self._dirty = False
+    self._apply_output_retention()
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
     self._refresh_shell_state()
     self._write_output(message)
+
+
+def _apply_output_retention(self: Any) -> None:
+    """Trim the live session output after the retention setting changed."""
+    if not tuple(getattr(self, "children", ())):
+        return
+    try:
+        output_widget = self.query_one("#output")
+    except _TEXTUAL_QUERY_ERRORS:
+        return
+    if self._trim_session_output_lines():
+        self._rebuild_output_widget(output_widget)
 
 
 def _open_review_output_dir_picker(self: Any) -> None:
@@ -272,6 +285,7 @@ if TYPE_CHECKING:
         def _refresh_settings_labels(self) -> None: ...
         def _settings_note_text(self) -> str: ...
         def _mark_settings_changed(self, message: str) -> None: ...
+        def _apply_output_retention(self) -> None: ...
         def _open_review_output_dir_picker(self) -> None: ...
         def _toggle_app_section_flag(self, key: str, subkey: str, *, label: str) -> None: ...
         def _toggle_app_debug(self) -> None: ...
@@ -289,6 +303,7 @@ else:
         _refresh_settings_labels = _refresh_settings_labels
         _settings_note_text = _settings_note_text
         _mark_settings_changed = _mark_settings_changed
+        _apply_output_retention = _apply_output_retention
         _open_review_output_dir_picker = _open_review_output_dir_picker
         _toggle_app_section_flag = _toggle_app_section_flag
         _toggle_app_debug = _toggle_app_debug

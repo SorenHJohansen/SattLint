@@ -228,10 +228,13 @@ def _update_analyze_selection_list(
     selection_list: Any,
     items: tuple[_AnalyzerItem, ...],
 ) -> None:
+    options = [(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items]
+    if getattr(selection_list, "_sattlint_analyze_options", None) == options:
+        # The visible list did not change, so leave its scroll position alone.
+        return
     selection_list.clear_options()
-    selection_list.add_options(
-        [(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items]
-    )
+    selection_list.add_options(options)
+    selection_list._sattlint_analyze_options = options
     if items:
         highlighted_index = 0
         if self._analyze_focused_entry_id is not None:
@@ -348,10 +351,13 @@ def _write_focused_entry_to_output(self: Any) -> None:
     self._normalize_analyze_state()
     focused_entry = self._analyzer_entry(self._analyze_focused_entry_id)
     self._analyze_help_shown = True
-    self._clear_session_output()
+    focused_entry_id = None if focused_entry is None else focused_entry.entry_id
+    if focused_entry_id is not None and focused_entry_id == getattr(self, "_analyze_help_entry_id", None):
+        return
     if focused_entry is None:
         self._write_output("Select an analyzer on the left to see what it reports.")
         return
+    self._analyze_help_entry_id = focused_entry_id
     description = self._analyzer_entry_description(focused_entry)
     segments: list[tuple[str, str]] = [
         ("Analyzer", focused_entry.label),
@@ -437,7 +443,7 @@ def _run_selected_analyzers(self: Any) -> None:
     # Snapshot the inputs so a project swap during the run cannot attribute
     # the result to a different project than the one that was analyzed.
     cfg = deepcopy(self._cfg)
-    project_path = str(getattr(self, "_config_path", "") or "")
+    project_path = "" if self._project_path is None else str(self._project_path)
     self._start_action(
         "Run selected analyzers",
         lambda keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
@@ -457,7 +463,7 @@ def _execute_analyzers(
     if cfg is None:
         cfg = self._cfg
     if project_path is None:
-        project_path = str(getattr(self, "_config_path", "") or "")
+        project_path = "" if self._project_path is None else str(self._project_path)
     self._emit_output_from_thread(f"Running {len(selected_keys)} selected analyzer(s).")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
@@ -538,7 +544,7 @@ def _run_generate_change_review(self: Any) -> None:
     self._start_action(
         "Generate Change Review",
         lambda cfg=cfg, targets=targets: self._execute_generate_change_review(cfg, targets),
-        action_id="action-analyze",
+        action_id="action-change-review",
     )
 
 

@@ -76,17 +76,23 @@ if _TEXTUAL_APP is not None:
                 yield _TEXTUAL_STATIC("", id="interaction-ledger")
 
                 if self._request.kind == "menu":
-                    with _TEXTUAL_VERTICAL(id="interaction-options"):
-                        for option in self._request.options:
-                            label = f"{getattr(option, 'key', '')}) {getattr(option, 'label', '')}".strip()
-                            description = getattr(option, "description", "")
-                            if description:
-                                label = f"{label} - {description}"
-                            yield _TEXTUAL_BUTTON(
-                                label,
-                                id=f"option-{getattr(option, 'key', '')}",
-                                classes="raised-button menu-button",
-                            )
+                    if self._request.options:
+                        with _TEXTUAL_VERTICAL(id="interaction-options"):
+                            for option in self._request.options:
+                                label = f"{getattr(option, 'key', '')}) {getattr(option, 'label', '')}".strip()
+                                description = getattr(option, "description", "")
+                                if description:
+                                    label = f"{label} - {description}"
+                                yield _TEXTUAL_BUTTON(
+                                    label,
+                                    id=f"option-{getattr(option, 'key', '')}",
+                                    classes="raised-button menu-button",
+                                )
+                    else:
+                        # A menu with nothing to choose still needs a control to
+                        # leave, or the pane cannot mount.
+                        yield _TEXTUAL_STATIC("No options are available.", id="interaction-empty")
+                        yield _TEXTUAL_BUTTON("Continue", id="continue", classes="raised-button dialog-button")
                 elif self._request.kind == "prompt":
                     yield _TEXTUAL_INPUT(value=self._request.default or "", id="interaction-input")
                     with _TEXTUAL_HORIZONTAL(id="interaction-actions"):
@@ -743,11 +749,7 @@ if _TEXTUAL_APP is not None:
             refresh_exception: BaseException | None = None
             try:
                 refresh_ok = bool(self._refresh_fn(self._emit_status))
-            except (
-                OSError,
-                RuntimeError,
-                ValueError,
-            ) as exc:  # pragma: no cover - exercised through direct method test
+            except Exception as exc:  # noqa: BLE001 - never let a worker traceback reach the TUI
                 refresh_ok = False
                 refresh_exception = exc
                 self._call_on_ui(self._update_status, f"AST cache refresh failed: {exc}")
@@ -764,23 +766,10 @@ if _TEXTUAL_APP is not None:
             super().__init__(id="menubar")
             self._menu_items = menus or []
 
-        def set_menus(self, menus: list[tuple[str, str]]) -> None:
-            self._menu_items = menus
-            self._rebuild_buttons()
-
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_HORIZONTAL(id="menubar-actions"):
                 for label, action_id in self._menu_items:
                     yield _TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button")
-
-        def on_mount(self) -> None:
-            return None
-
-        def _rebuild_buttons(self) -> None:
-            actions = self.query_one("#menubar-actions", _TEXTUAL_HORIZONTAL)
-            actions.remove_children()
-            for label, action_id in self._menu_items:
-                actions.mount(_TEXTUAL_BUTTON(label, id=action_id, classes="menubar-button"))
 
     _InteractionPane = _InteractionPaneImpl
     _HelpScreen = _HelpScreenImpl

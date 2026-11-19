@@ -30,7 +30,7 @@ from .facts import (
     SymbolFact,
 )
 from .loader import VersionSnapshot
-from .semantic_diff import ChangeChange
+from .semantic_diff import ChangeChange, ChangeKind
 
 _BlockIdentity = tuple[tuple[str, ...], str, str]
 
@@ -59,6 +59,19 @@ def _touch_reason(block: BlockModel, key: tuple[str, ...], symbol: str) -> str |
         return f"Writes {symbol}"
     if reads:
         return f"Reads {symbol}"
+    return None
+
+
+def _combined_touch_reason(official_reason: str | None, draft_reason: str | None) -> str | None:
+    """Describe why a block relates, even when only the official revision did.
+
+    A block that used a variable before the draft edit must stay in the review
+    context, or the change that removed the use has no surrounding block.
+    """
+    if draft_reason is not None:
+        return draft_reason
+    if official_reason is not None:
+        return f"No longer {official_reason[0].lower()}{official_reason[1:]} (official revision)"
     return None
 
 
@@ -94,6 +107,8 @@ class _RelevanceBuilder:
         self._read_sites: dict[tuple[str, ...], set[str]] = {}
         self._write_sites: dict[tuple[str, ...], set[str]] = {}
         self._blocks: dict[_BlockIdentity, BlockModel] = {}
+        self._official_blocks: dict[_BlockIdentity, BlockModel] = dict(official.code_model.blocks_by_key)
+        self._draft_blocks: dict[_BlockIdentity, BlockModel] = dict(draft.code_model.blocks_by_key)
         self._blocks_touching: dict[tuple[str, ...], set[_BlockIdentity]] = {}
         self._module_code_source: dict[tuple[str, ...], int] = {}
         for version in (official, draft):
@@ -131,7 +146,6 @@ class _RelevanceBuilder:
             declared_by=fact.declared_by or existing.declared_by,
             written_by=tuple(dict.fromkeys((*existing.written_by, *fact.written_by))),
             read_by=tuple(dict.fromkeys((*existing.read_by, *fact.read_by))),
-            containing_object=fact.containing_object or existing.containing_object,
             declaration_source=fact.declaration_source or existing.declaration_source,
             official_definition_source=(fact.official_definition_source or existing.official_definition_source),
             draft_definition_source=fact.draft_definition_source or existing.draft_definition_source,
@@ -183,12 +197,11 @@ class _RelevanceBuilder:
         code_source = self._module_code_source.get(block.module_path, -1)
         return self._block_registry[(code_source, block.kind, block.name)]
 
-    def _callees_for(self, module_path: tuple[str, ...]) -> tuple[SymbolFact, ...]:
+    def _callees_for(self, module_path: tuple[str, ...], snapshot: VersionSnapshot) -> tuple[SymbolFact, ...]:
         names: set[str] = set()
-        for version in (self._official, self._draft):
-            for occurrence in version.snapshot.call_signatures:
-                if tuple(occurrence.module_path) == module_path:
-                    names.add(occurrence.name)
+        for occurrence in snapshot.snapshot.call_signatures:
+            if tuple(occurrence.module_path) == module_path:
+                names.add(occurrence.name)
         module_symbol = _module_symbol(module_path)
         return tuple(
             SymbolFact(
@@ -228,7 +241,10 @@ class _RelevanceBuilder:
             produces.append(fact)
             self._register_variable(fact)
 
-        callees = self._callees_for(change.module_path)
+        # A removed change no longer exists in the draft, so its callees come
+        # from the revision that still contains it.
+        callee_version = self._official if change.kind is ChangeKind.REMOVED else self._draft
+        callees = self._callees_for(change.module_path, callee_version)
         for fact in callees:
             self._register_variable(fact)
 
@@ -248,10 +264,14 @@ class _RelevanceBuilder:
                 for identity in self._blocks_touching.get(key, ()):
                     if identity == containing_identity:
                         continue
-                    block = self._blocks.get(identity)
+                    official_block = self._official_blocks.get(identity)
+                    draft_block = self._draft_blocks.get(identity)
+                    block = draft_block if draft_block is not None else official_block
                     if block is None:
                         continue
-                    reason = _touch_reason(block, key, symbol)
+                    official_reason = None if official_block is None else _touch_reason(official_block, key, symbol)
+                    draft_reason = None if draft_block is None else _touch_reason(draft_block, key, symbol)
+                    reason = _combined_touch_reason(official_reason, draft_reason)
                     if reason is None:
                         continue
                     related_blocks.append(self._block_context(block, role="related", reasons=(reason,)))

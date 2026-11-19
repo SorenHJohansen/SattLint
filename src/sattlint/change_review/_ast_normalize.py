@@ -38,7 +38,9 @@ def _field_is_ignored(field: Field[object]) -> bool:
 def normalize_ast_value(value: object) -> object:
     """Return a canonical, hashable fingerprint with spans/layout stripped."""
     if value is None:
-        return None
+        # Tagged so every normalized value is a tuple: dict keys and values are
+        # sorted by their normalized form, and ``None`` would not compare.
+        return ("none",)
 
     # Enum members of ``StrEnum`` and ``IntEnum`` are instances of ``str`` and
     # ``int``, so the kind tag has to be decided before the primitive check.
@@ -56,6 +58,12 @@ def normalize_ast_value(value: object) -> object:
     if isinstance(value, list):
         typed_items = cast(list[object], value)
         return ("list", tuple(normalize_ast_value(item) for item in typed_items))
+
+    if isinstance(value, (set, frozenset)):
+        # Set iteration order is arbitrary, so sort the normalized members.
+        typed_items = cast(set[object], value)
+        normalized_set = tuple(normalize_ast_value(item) for item in typed_items)
+        return ("set", tuple(sorted(normalized_set, key=repr)))
 
     if isinstance(value, dict):
         typed_items = cast(dict[object, object], value)

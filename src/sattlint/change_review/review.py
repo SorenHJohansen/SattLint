@@ -57,6 +57,12 @@ class ReviewContextBlock:
     file: str | None
     line_start: int | None
     line_end: int | None
+    official_file: str | None = None
+    official_line_start: int | None = None
+    official_line_end: int | None = None
+    draft_file: str | None = None
+    draft_line_start: int | None = None
+    draft_line_end: int | None = None
     official_source: str | None = None
     draft_source: str | None = None
     source: str | None = None
@@ -93,7 +99,7 @@ def _end_line_for_span(
     return span_line + text[start:end].count("\n")
 
 
-_HEADER_PATTERN = re.compile(r"(EQUATIONBLOCK|SEQUENCE)\s+(\S+)")
+_HEADER_PATTERN = re.compile(r"(EQUATIONBLOCK|SEQUENCE)\s+(\S+)", re.IGNORECASE)
 
 
 def _expand_block_start(
@@ -111,7 +117,9 @@ def _expand_block_start(
     start_line = block.line_start
     if start_line is None or block.source_file is None or block.kind not in {"equation", "sequence"}:
         return start_line or 1
-    for candidate in range(max(1, start_line - 8), start_line):
+    # Search downwards from the line just above the first statement so the
+    # nearest matching header wins.
+    for candidate in range(start_line - 1, max(0, start_line - 9), -1):
         line = provider.lines(block.source_file, candidate, candidate, library=block.source_library)
         if line is None:
             break
@@ -281,6 +289,9 @@ def _context_block_for(
     if official_block is None and draft_block is None:
         return None
 
+    official_location = _block_source(provider, official_block) if official_block is not None else None
+    draft_location = _block_source(provider, draft_block) if draft_block is not None else None
+
     official_source = None
     draft_source = None
     source = None
@@ -289,10 +300,10 @@ def _context_block_for(
     line_end = None
 
     if context.role == "changed":
-        if official_block is not None:
-            official_source, file_name, line_start, line_end = _block_source(provider, official_block)
-        if draft_block is not None:
-            draft_source, draft_file, draft_start, draft_end = _block_source(provider, draft_block)
+        if official_location is not None:
+            official_source, file_name, line_start, line_end = official_location
+        if draft_location is not None:
+            draft_source, draft_file, draft_start, draft_end = draft_location
             if file_name is None:
                 file_name = draft_file
             if line_start is None:
@@ -300,9 +311,9 @@ def _context_block_for(
             if line_end is None:
                 line_end = draft_end
     else:
-        preferred = draft_block if draft_block is not None else official_block
+        preferred = draft_location if draft_location is not None else official_location
         if preferred is not None:
-            source, file_name, line_start, line_end = _block_source(provider, preferred)
+            source, file_name, line_start, line_end = preferred
 
     if file_name is None:
         fallback_block = draft_block if draft_block is not None else official_block
@@ -312,6 +323,8 @@ def _context_block_for(
             if line_end is None and fallback_block.last_span is not None:
                 line_end = fallback_block.last_span.line
 
+    official_file = official_location[1] if official_location is not None else None
+    draft_file = draft_location[1] if draft_location is not None else None
     return ReviewContextBlock(
         symbol=context.symbol,
         module_path=context.module_path,
@@ -324,6 +337,12 @@ def _context_block_for(
         file=file_name,
         line_start=line_start,
         line_end=line_end,
+        official_file=official_file,
+        official_line_start=official_location[2] if official_location is not None else None,
+        official_line_end=official_location[3] if official_location is not None else None,
+        draft_file=draft_file,
+        draft_line_start=draft_location[2] if draft_location is not None else None,
+        draft_line_end=draft_location[3] if draft_location is not None else None,
         official_source=official_source,
         draft_source=draft_source,
         source=source,
@@ -343,6 +362,11 @@ def _attach_contexts(
         context = context_by_index.get(index)
         enriched.append(replace(change, semantic_context=context) if context is not None else change)
     return tuple(enriched)
+
+
+def _source_size(source: str | None) -> int:
+    """UTF-8 byte size, the same unit the project source size is measured in."""
+    return 0 if source is None else len(source.encode("utf-8"))
 
 
 def build_change_review(
@@ -369,7 +393,8 @@ def build_change_review(
 
     total_size = official.total_source_size + draft.total_source_size
     selected_source_size = sum(
-        len(block.source or "") + len(block.official_source or "") + len(block.draft_source or "") for block in context
+        _source_size(block.source) + _source_size(block.official_source) + _source_size(block.draft_source)
+        for block in context
     )
     reduction = 1.0 - (selected_source_size / total_size) if total_size else 0.0
 
@@ -387,7 +412,7 @@ def build_change_review(
         project=official.snapshot.entry_file.stem or official.snapshot.base_picture.name,
         official_revision=official.label,
         draft_revision=draft.label,
-        generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
+        generated_at=datetime.now(UTC).isoformat(timespec="microseconds"),
     )
     size_stats = ReviewSizeStats(
         total_project_source_size=total_size,
@@ -396,7 +421,7 @@ def build_change_review(
         artifact_size=0,
         source_reduction_percent=round(reduction * 100.0, 2),
         semantic_change_count=len(changes),
-        relevant_block_count=len(relevance.relevant_blocks),
+        relevant_block_count=len(context),
         relevant_variable_count=len(relevance.relevant_variables),
         contextual_block_count=contextual_count,
     )

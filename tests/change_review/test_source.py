@@ -139,3 +139,23 @@ def test_provider_returns_none_for_unreadable_file(tmp_path: Path):
 
     assert provider.text("Missing.s") is None
     assert provider.lines("Missing.s", 1, 1) is None
+
+
+def test_repeated_line_reads_decode_the_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_path = tmp_path / "Repeated.s"
+    source_path.write_text(_SOURCE, encoding="windows-1252")
+    calls: list[Path] = []
+
+    def _counting_read(path: Path) -> str:
+        calls.append(path)
+        return source_text_for_parse(path)
+
+    monkeypatch.setattr("sattlint.change_review.source.source_text_for_parse", _counting_read)
+    provider = SourceTextProvider({source_key("Repeated.s", None): source_path})
+
+    first = provider.lines("Repeated.s", 8, 9)
+    second = provider.lines("Repeated.s", 9, 9)
+
+    assert first is not None and "EQUATIONBLOCK B0" in first
+    assert second == "      Value = 1;"
+    assert calls == [source_path]

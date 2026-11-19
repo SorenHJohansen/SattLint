@@ -9,7 +9,6 @@ from ..__version__ import __version__ as _sattlint_version
 from ..core.syntax import CodeMode, code_ext_candidates, deps_ext_candidates, normalize_code_mode
 from ._app_textual_setup_display import (
     _configured_target_names,
-    _setup_candidate_display_paths,
     _setup_filter_value,
     _setup_mode_text,
     _setup_other_dirs_text,
@@ -206,30 +205,6 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     self._request_results_run_selection(summary.run_id)
 
 
-def _setup_browser_detail_text(self: Any) -> str:
-    candidate = self._selected_setup_candidate()
-    directories = _config_directory_paths(self._cfg)
-    lines = [
-        "Selected Target Detail",
-        f"Mode: {self._cfg.get('mode', 'official')}",
-    ]
-    if candidate is None:
-        lines.append("Target: none")
-    else:
-        lines.append(f"Target: {candidate.name}")
-        lines.append(f"Status: {self._setup_candidate_status(candidate)}")
-        lines.append("Locations:")
-        lines.extend(f"- {path}" for path in _setup_candidate_display_paths(candidate))
-
-    lines.append("")
-    lines.append("Directories")
-    if directories:
-        lines.extend(f"- {path}" for path in directories)
-    else:
-        lines.append("(none configured)")
-    return "\n".join(lines)
-
-
 def _add_selected_setup_target(self: Any, target_name: str | None = None) -> None:
     if target_name is not None:
         self._set_setup_candidate_by_name(target_name)
@@ -302,7 +277,8 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
         return
 
     configured_dirs = {d.resolve() for d in _config_directory_paths(self._cfg)}
-    if target_dir.resolve() not in configured_dirs:
+    directory_changed = target_dir.resolve() not in configured_dirs
+    if directory_changed:
         other_dirs = list(_stringify_list_values(self._cfg.get("other_lib_dirs")))
         self._cfg["other_lib_dirs"] = [*other_dirs, str(target_dir)]
 
@@ -313,7 +289,10 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
             message=f"Added '{stem}' as analysis target from file browser.",
         )
         return
-    self._mark_setup_changed("Updated directory configuration from file browser.", reset_candidate_selection=True)
+    if directory_changed:
+        self._mark_setup_changed("Updated directory configuration from file browser.", reset_candidate_selection=True)
+        return
+    self._write_output(f"'{target_dir}' is already one of the configured folders.")
 
 
 def _open_file_browser(self: Any) -> None:

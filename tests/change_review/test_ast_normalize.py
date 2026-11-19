@@ -131,3 +131,10 @@ def test_enum_fingerprints_distinguish_str_enum_members() -> None:
     assert normalize_ast_value(Mode.OFFICIAL) != normalize_ast_value("official")
     assert normalize_ast_value(Code.ONE) != normalize_ast_value(1)
     assert normalize_ast_value(Mode.OFFICIAL) != normalize_ast_value(Mode.DRAFT)
+
+
+def test_none_and_set_members_have_stable_fingerprints() -> None:
+    assert normalize_ast_value(None) == ("none",)
+    assert normalize_ast_value({3, 1, 2}) == normalize_ast_value({1, 2, 3})
+    assert normalize_ast_value(frozenset({"b", "a"})) == normalize_ast_value({"a", "b"})
+    assert normalize_ast_value({"a": None, None: "b"}) == normalize_ast_value({None: "b", "a": None})
