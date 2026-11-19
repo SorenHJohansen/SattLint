@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
 """Focused tests for the opt-in ``datatype-fields`` analyzer."""
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -14,6 +15,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.analyzers.datatype_fields import analyze_datatype_fields
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.registry import (
     DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
@@ -221,3 +223,41 @@ def test_field_asymmetry_still_reports_local_record_fields():
     }
 
     assert local_kinds == {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+
+
+def test_reduced_mode_reuses_published_variables_analyzer_and_keeps_findings():
+    bp = _picture_with_unused_field()
+    shared = AnalysisSharedArtifacts()
+    context = AnalysisContext(base_picture=bp, shared_artifacts=shared)
+
+    analyze_variables(bp, analysis_context=context)
+    published = shared.variable_analyzer
+    assert published is not None
+    assert getattr(published, "_field_usage_only", False) is False
+
+    reduced = analyze_datatype_fields(bp, analysis_context=context)
+    full = analyze_datatype_fields(bp)
+
+    assert shared.variable_analyzer is published
+    assert reduced.accesses_by_definition_key == {}
+    assert full.accesses_by_definition_key != {}
+
+    def issue_key(report: VariablesReport) -> set[tuple[object, ...]]:
+        return {
+            (
+                issue.kind,
+                tuple(issue.module_path or ()),
+                issue.field_path,
+                issue.variable.name if issue.variable else None,
+            )
+            for issue in report.issues
+        }
+
+    assert issue_key(reduced) == issue_key(full)
+
+
+def test_field_usage_only_rejects_non_field_issue_kinds():
+    bp = _picture_with_unused_field()
+
+    with pytest.raises(ValueError, match="field_usage_only"):
+        analyze_variables(bp, selected_issue_kinds={IssueKind.UNUSED}, field_usage_only=True)

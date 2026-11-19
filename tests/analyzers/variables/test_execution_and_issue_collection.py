@@ -72,7 +72,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _add_global_scope_minimization_issues=lambda: None,
         _add_hidden_global_coupling_issues=lambda: None,
         _add_high_fan_in_out_issues=lambda: None,
-        _add_unused_datatype_field_issues=lambda: None,
+        _add_unused_datatype_field_issues=lambda *_args, **_kwargs: None,
     )
 
     assert variables_execution_module.run(runner) == []
@@ -782,7 +782,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         "innerpayload": variable_issue_collection_module._DatatypeDefinitionState(
             datatype_name="InnerPayload",
             module_path=("Root", "DataType:InnerPayload"),
-            leaf_paths=set(),
+            index=variable_issue_collection_module.LeafPathIndex.empty(),
             accessed_prefixes=set(),
         )
     }

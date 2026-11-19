@@ -22,6 +22,7 @@ from sattlint.parser_api import (
 
 from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
+    DATATYPE_FIELD_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     IssueKind,
     VariableIssue,
@@ -41,6 +42,7 @@ from ..framework import (
 from ..shared._dedupe import get_or_register_index
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from ..shared.variable_utils import VariablesConstMixin
+from ._datatype_leaf_index import LeafPathIndex
 from ._usage_tracker import UsageTracker
 from ._variable_issue_collection import VariablesIssueCollectionMixin
 from ._variable_traversal import VariablesTraversalMixin
@@ -163,6 +165,8 @@ def analyze_variables(
     trace_recorder: AnalysisTraceRecorder | None = None,
     config: dict[str, Any] | None = None,
     status_update_fn: Callable[[str], None] | None = None,
+    field_usage_only: bool = False,
+    publish_shared_artifacts: bool = True,
 ) -> VariablesReport:
     effective_include_dependency_moduletype_usage = (
         analyzed_target_is_library
@@ -170,6 +174,14 @@ def analyze_variables(
         else include_dependency_moduletype_usage
     )
     normalized_selected_issue_kinds = _normalize_selected_issue_kinds(selected_issue_kinds)
+    # The reduced mode skips access, location, and effect-flow bookkeeping, so
+    # it is only valid for the datatype-field issue kinds that do not consume
+    # that evidence.
+    if field_usage_only and (
+        normalized_selected_issue_kinds is None
+        or not normalized_selected_issue_kinds <= frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)
+    ):
+        raise ValueError("field_usage_only requires only datatype-field issue kinds")
     init_started_at = time.perf_counter()
     analyzer = VariablesAnalyzer(
         base_picture,
@@ -187,14 +199,20 @@ def analyze_variables(
         library_dependencies=(
             getattr(analysis_context.graph, "library_dependencies", None) if analysis_context is not None else None
         ),
+        field_usage_only=field_usage_only,
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
-    _publish_shared_artifacts(analysis_context, analyzer)
+    if publish_shared_artifacts:
+        _publish_shared_artifacts(analysis_context, analyzer)
     return VariablesReport(
         basepicture_name=base_picture.header.name,
         issues=issues,
-        accesses_by_definition_key={key: tuple(events) for key, events in analyzer.access_graph.by_path_key.items()},
+        accesses_by_definition_key=(
+            {}
+            if field_usage_only
+            else {key: tuple(events) for key, events in analyzer.access_graph.by_path_key.items()}
+        ),
         effect_flow_edges=analyzer.effect_flow_edges,
         effect_flow_display_names=analyzer.effect_flow_display_names,
         selected_issue_kinds=normalized_selected_issue_kinds,
@@ -297,7 +315,10 @@ class VariablesAnalyzer(
         self._issues: list[VariableIssue] = []
         self._param_mapping_issue_indexes: dict[tuple[IssueKind, int], int] = {}
         self._record_component_order_datatypes_seen: set[str] = set()
-        self.usage_tracker = UsageTracker()
+        self.usage_tracker = UsageTracker(
+            record_access_graph=not self._field_usage_only,
+            record_locations=not self._field_usage_only,
+        )
         self._site_stack: list[str] = []
         self._current_stmt_text: str = ""
 
@@ -329,11 +350,13 @@ class VariablesAnalyzer(
             get_usage_fn=self._get_usage,
             canonical_path_fn=self._canonical_path,
             record_access_fn=self._record_access,
+            enabled=not self._field_usage_only,
         )
         self._contexts_by_module_path: dict[tuple[str, ...], ScopeContext] = {}
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
         self._analyzing_typedefs: set[str] = set()
+        self.datatype_leaf_index_cache: dict[str, tuple[object, LeafPathIndex]] = {}
 
         self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()
@@ -354,8 +377,10 @@ class VariablesAnalyzer(
         shared_artifacts: AnalysisSharedArtifacts | None = None,
         graphics_attachments: GraphicsAttachments | None = None,
         library_dependencies: Mapping[str, Iterable[str]] | None = None,
+        field_usage_only: bool = False,
     ):
         self.bp = base_picture
+        self._field_usage_only = field_usage_only
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.library_dependencies = library_dependencies
         self.debug = debug
@@ -385,7 +410,9 @@ class VariablesAnalyzer(
         variable_artifacts = self._resolve_variable_artifacts(shared_artifacts)
 
         self.type_graph = variable_artifacts.type_graph
-        self.symbol_table = CanonicalSymbolTable()
+        # Analyzer resolution goes through ScopeContext env/mappings; the
+        # symbol table is consumed by semantic snapshots, not by analyzers.
+        self.symbol_table = CanonicalSymbolTable(collect=False)
         self.context_builder = ContextBuilder(
             base_picture=self.bp,
             symbol_table=self.symbol_table,

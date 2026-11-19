@@ -12,6 +12,10 @@ from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
 
 
+def _noop(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
 def test_variables_execution_filters_noisy_unresolved_debug_names(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -76,7 +80,7 @@ def test_variables_execution_filters_noisy_unresolved_debug_names(
         _add_global_scope_minimization_issues=lambda: None,
         _add_hidden_global_coupling_issues=lambda: None,
         _add_high_fan_in_out_issues=lambda: None,
-        _add_unused_datatype_field_issues=lambda: None,
+        _add_unused_datatype_field_issues=_noop,
     )
 
     with caplog.at_level(logging.DEBUG, logger="SattLint"):

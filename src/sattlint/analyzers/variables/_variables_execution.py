@@ -251,7 +251,11 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     self._limit_to_module_path = None
     _clear_or_set("_phase_timings", [])
     _clear_or_set("_record_component_order_datatypes_seen", set[str]())
-    self.usage_tracker = UsageTracker()
+    previous_tracker = getattr(self, "usage_tracker", None)
+    self.usage_tracker = UsageTracker(
+        record_access_graph=getattr(previous_tracker, "record_access_graph", True),
+        record_locations=getattr(previous_tracker, "record_locations", True),
+    )
     _clear_or_set("_site_stack", [])
     _clear_or_set("_used_dependency_libraries", set[str]())
     _clear_or_set("used_params_by_typedef", {})
@@ -268,6 +272,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
     _clear_or_set("_analyzing_typedefs", set[str]())
+    _clear_or_set("datatype_leaf_index_cache", {})
     self._root_variable_access_summary_cache_token = None
     self._root_variable_access_summary_cache = {}
 
@@ -641,9 +646,13 @@ def run(  # noqa: PLR0915
     if should_collect_datatype_field_issues:
 
         def _collect_datatype_field_issues() -> None:
-            self._add_unused_datatype_field_issues()
+            # Both passes need the same variable inventory. Build it once; the
+            # inventory is the expensive part when the dependency closure is
+            # large, and each pass only reads it.
+            variables = self.iter_variables_for_datatype_field_analysis()
+            self._add_unused_datatype_field_issues(variables)
             if hasattr(self, "_add_field_usage_asymmetry_issues"):
-                self._add_field_usage_asymmetry_issues()
+                self._add_field_usage_asymmetry_issues(variables)
 
         _run_timed_phase(self, "datatype-field-scan", _collect_datatype_field_issues)
     if not should_finalize_issues:

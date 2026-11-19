@@ -59,8 +59,10 @@ class EffectFlowTracker:
         get_usage_fn: GetUsageCallback,
         canonical_path_fn: CanonicalPathFn,
         record_access_fn: RecordAccessFn,
+        enabled: bool = True,
     ):
         """Initialize with references to analyzer's data structures and methods."""
+        self.enabled = enabled
         self._effect_flow_edges = effect_flow_edges
         self._effect_flow_display_names = effect_flow_display_names
         self._external_effect_sinks = external_effect_sinks
@@ -82,7 +84,8 @@ class EffectFlowTracker:
         """Get the canonical effect key for a variable declaration."""
         display_segments = (*decl_module_path, variable.name)
         key = tuple(segment.casefold() for segment in display_segments)
-        self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
+        if self.enabled:
+            self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
         return key
 
     def resolve_effect_key(
@@ -163,6 +166,8 @@ class EffectFlowTracker:
         parent_env: dict[str, Variable],
         parent_context: ScopeContext,
     ) -> None:
+        if not self.enabled:
+            return
         key = self.mapping_source_effect_key(mapping, parent_env=parent_env, parent_context=parent_context)
         if key is not None:
             self._external_effect_sinks.add(key)
@@ -186,12 +191,15 @@ class EffectFlowTracker:
         target_key: tuple[str, ...] | None,
     ) -> None:
         """Record a flow edge from source to target key."""
-        if source_key is None or target_key is None:
+        if not self.enabled or source_key is None or target_key is None:
             return
         self._effect_flow_edges[source_key].add(target_key)
 
     @contextmanager
     def conditional_effects(self, conditions: object, context: ScopeContext) -> Generator[None]:
+        if not self.enabled:
+            yield
+            return
         self._control_sources.append(self.collect_expression_effect_sources(conditions, context))
         try:
             yield
@@ -199,6 +207,8 @@ class EffectFlowTracker:
             self._control_sources.pop()
 
     def record_controlled_write(self, full_ref: str, context: ScopeContext) -> None:
+        if not self.enabled:
+            return
         target = self.resolve_effect_key(full_ref, context)
         for sources in self._control_sources:
             for source in sources:
@@ -211,6 +221,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Collect effect keys for function inputs based on signature."""
+        if not self.enabled:
+            return set()
         return _collect_function_input_effect_keys(
             fn_name,
             args,
@@ -224,6 +236,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Recursively collect effect keys from an expression."""
+        if not self.enabled:
+            return set()
         return _collect_expression_effect_sources(
             obj,
             context,
@@ -237,6 +251,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> None:
         """Record effect flow from an expression to an assignment target."""
+        if not self.enabled:
+            return
         target_key = self.resolve_effect_key(target_ref, context)
         for source_key in self.collect_expression_effect_sources(expr, context):
             self.record_effect_flow(source_key, target_key)
@@ -248,7 +264,7 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> None:
         """Record effect flows for a function call based on parameter directions."""
-        if not fn_name:
+        if not self.enabled or not fn_name:
             return
 
         fn_key = fn_name.casefold()
@@ -324,6 +340,8 @@ class EffectFlowTracker:
         is_from_root_origin_fn: Callable[[str | None], bool],
     ) -> set[tuple[str, ...]]:
         """Collect all variables that should be treated as effect sinks."""
+        if not self.enabled:
+            return set()
         sink_keys = set(self._external_effect_sinks)
 
         if not analyzed_target_is_library:
@@ -342,7 +360,7 @@ class EffectFlowTracker:
 
     def compute_effective_output_keys(self, sink_keys: set[tuple[str, ...]]) -> set[tuple[str, ...]]:
         """Compute all variables that have effect flows reaching the sinks."""
-        if not sink_keys:
+        if not self.enabled or not sink_keys:
             return set()
 
         incoming_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
