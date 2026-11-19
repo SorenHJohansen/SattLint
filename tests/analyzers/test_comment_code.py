@@ -3,7 +3,18 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sattlint.analyzers import comment_code as comment_code_module
-from sattlint.analyzers.comment_code import analyze_comment_code_files
+from sattlint.analyzers.comment_code import _comment_module_paths, analyze_comment_code_files
+from sattlint.parser_api import (
+    BasePicture,
+    CodeComment,
+    Equation,
+    ModuleCode,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+    SourceSpan,
+)
 from sattlint.utils import text_processing
 from sattlint.utils.text_processing import find_comments_with_code
 
@@ -106,6 +117,85 @@ ENDDEF (*BasePicture*);
     assert issue1_data["step_name"] == "Running"
 
 
+def _header(name: str) -> ModuleHeader:
+    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+
+
+def test_comment_module_paths_anchor_typedef_owned_code() -> None:
+    comment = CodeComment(
+        text="(* Counter = Counter + 1; *)",
+        span=SourceSpan(start=0, end=0, line=42, column=1),
+    )
+    inner = SingleModule(
+        header=_header("Inner"),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(name="Work", position=(0.0, 0.0), size=(1.0, 1.0), code=[comment]),
+            ]
+        ),
+    )
+    worker = ModuleTypeDef(name="Worker", submodules=[inner])
+    instance = ModuleTypeInstance(header=_header("Worker1"), moduletype_name="Worker")
+    base_picture = BasePicture(
+        header=_header("Program"),
+        moduletype_defs=[worker],
+        submodules=[instance],
+    )
+
+    paths = _comment_module_paths(base_picture)
+
+    assert paths[42] == ("Program", "TypeDef:Worker", "Inner")
+
+
+def test_source_base_picture_prefers_unmerged_target_ast() -> None:
+    target = BasePicture(
+        header=_header("BasePicture"),
+        program_name="Program",
+        modulecode=None,
+        moduletype_defs=[],
+        submodules=[],
+    )
+    merged = BasePicture(
+        header=_header("BasePicture"),
+        program_name="Program",
+        modulecode=None,
+        moduletype_defs=[ModuleTypeDef(name="Dependency")],
+        submodules=[],
+    )
+    context = SimpleNamespace(
+        base_picture=merged,
+        graph=SimpleNamespace(ast_by_name={"Program": target}),
+    )
+
+    assert comment_code_module._source_base_picture(context) is target
+
+
+def test_comment_code_analysis_prefers_supplied_ast_module_paths(tmp_path: Path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+(* IF Start THEN
+    Running = True;
+ENDIF; *)
+ENDDEF (*BasePicture*);
+"""
+    path = tmp_path / "Program.s"
+    path.write_text(source, encoding="utf-8")
+
+    report = analyze_comment_code_files(
+        [path],
+        basepicture_name="Program",
+        module_paths_by_line={7: ("Program", "TypeDef:Worker", "Inner")},
+    )
+
+    assert len(report.hits) == 1
+    assert report.hits[0].module_path == ("Program", "TypeDef:Worker", "Inner")
+    assert report.issues[0].module_path == ["Program", "TypeDef:Worker", "Inner"]
+
+
 def test_comment_code_analysis_skips_missing_and_unsupported_paths(tmp_path: Path):
     txt_path = tmp_path / "Notes.txt"
     txt_path.write_text("(* Counter = Counter + 1; *)", encoding="utf-8")
@@ -142,7 +232,12 @@ def test_comment_code_format_line_range_handles_single_line_and_range() -> None:
 
 def test_analyze_comment_code_handles_missing_graph() -> None:
     context = SimpleNamespace(
-        base_picture=SimpleNamespace(header=SimpleNamespace(name="Program")),
+        base_picture=SimpleNamespace(
+            header=SimpleNamespace(name="Program"),
+            moduletype_defs=[],
+            submodules=[],
+            modulecode=None,
+        ),
         graph=None,
     )
 

@@ -7,6 +7,8 @@ from sattline_parser.models.ast_model import (
     IntLiteral,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     ScalarDatatype,
     Sequence,
     SFCCodeBlocks,
@@ -23,6 +25,7 @@ from sattlint.analyzers.cyclomatic_complexity import (
     analyze_cyclomatic_complexity,
 )
 from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.shared.instance_paths import rewrite_typedef_paths
 from sattlint.config.analysis import (
     cyclomatic_equation_block_threshold,
     cyclomatic_module_threshold,
@@ -268,6 +271,55 @@ def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
     assert issues[0].data is not None
     assert issues[0].data["complexity"] == 4
     assert issues[0].data["threshold"] == 2
+
+
+def test_cyclomatic_complexity_moduletype_findings_land_on_the_invocation() -> None:
+    decisions: list[CodeItem] = [
+        IfStmt(
+            branches=((_varref(f"Cond{index}"), (Assignment(target=_varref("Output"), value=IntLiteral(index)),)),),
+            else_block=(),
+        )
+        for index in range(20)
+    ]
+    moduletype = ModuleTypeDef(
+        name="Worker",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(name="Work", position=(0.0, 0.0), size=(1.0, 1.0), code=decisions),
+            ]
+        ),
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker1"),
+        moduletype_name="Worker",
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[moduletype],
+        localvariables=[],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Program", "TypeDef:Worker"]
+    assert issues[0].data is not None
+    assert issues[0].data["site"] == "Program.TypeDef:Worker"
+
+    rewrite_typedef_paths(report.issues, bp)
+
+    assert issues[0].module_path == ["Program", "Worker1"]
+    assert issues[0].data["site"] == "Program.Worker1"
 
 
 def test_complexity_defaults_and_project_overrides_are_consistent() -> None:

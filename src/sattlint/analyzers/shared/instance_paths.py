@@ -92,8 +92,10 @@ def rewrite_typedef_paths(
 ) -> None:
     """Replace any ``TypeDef:Name`` segment in each issue's module path in place.
 
-    Also rewrites the same ``TypeDef:Name`` tokens inside the issue's message and
-    ``data`` so leaf text agrees with the rewritten branch. Only invocations
+    List-backed paths are mutated in place; tuple-backed paths on frozen records
+    (for example report hits) are replaced on the instance. Also rewrites the
+    same ``TypeDef:Name`` tokens inside the issue's message and ``data`` so leaf
+    text agrees with the rewritten branch. Only invocations
     inside the analyzed picture are used: a reverse consumer or dependency that
     happens to invoke the same type is outside the reported target, and routing
     a finding through its tree would name a unit the user did not analyze. If
@@ -103,6 +105,16 @@ def rewrite_typedef_paths(
     index: dict[str, list[list[str]]] | None = None
     for issue in issues:
         raw_path = getattr(issue, "module_path", None)
+        if isinstance(raw_path, tuple):
+            module_path = list(cast(tuple[object, ...], raw_path))
+            if not any(isinstance(seg, str) and seg.startswith(_TYPEDEF_PREFIX) for seg in module_path):
+                continue
+            if index is None:
+                index = collect_instance_paths(base_picture)
+            rewritten = _rewrite_typedef_path(module_path, index)
+            object.__setattr__(issue, "module_path", tuple(rewritten))
+            _rewrite_typedef_text(issue, index)
+            continue
         if not isinstance(raw_path, list):
             continue
         module_path = cast(list[object], raw_path)

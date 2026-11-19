@@ -9,6 +9,7 @@ span-normalized fingerprints.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -374,23 +375,20 @@ def _align_replacement_run(
     removal; pairing the leftovers by position is what created the misleading
     ``A = 1`` -> ``B = 2`` replacements in the review.
     """
-    draft_by_identity: dict[tuple[object, ...], list[int]] = {}
+    draft_by_identity: dict[tuple[object, ...], deque[int]] = {}
     for index, statement in enumerate(draft_run):
-        draft_by_identity.setdefault(_statement_identity(statement), []).append(index)
+        draft_by_identity.setdefault(_statement_identity(statement), deque()).append(index)
 
     paired: list[tuple[StatementModel, StatementModel]] = []
     used_draft: set[int] = set()
     paired_official: set[int] = set()
     for official_index, official_statement in enumerate(official_run):
-        candidates = draft_by_identity.get(_statement_identity(official_statement), [])
-        while candidates:
-            draft_index = candidates.pop(0)
-            if draft_index in used_draft:
-                continue
+        candidates = draft_by_identity.get(_statement_identity(official_statement))
+        if candidates:
+            draft_index = candidates.popleft()
             paired.append((official_statement, draft_run[draft_index]))
             used_draft.add(draft_index)
             paired_official.add(official_index)
-            break
 
     removed = [statement for index, statement in enumerate(official_run) if index not in paired_official]
     added = [statement for index, statement in enumerate(draft_run) if index not in used_draft]

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTypeDef, ModuleTypeInstance
 
 from sattlint.analyzers.framework import Issue
@@ -5,6 +7,7 @@ from sattlint.analyzers.shared.instance_paths import (
     first_instance_path_for_moduletype,
     rewrite_typedef_paths,
 )
+from sattlint.reporting.comment_code_report import CommentCodeHit
 
 
 def _header(name: str) -> ModuleHeader:
@@ -91,6 +94,27 @@ def test_rewrite_resolves_nested_typedef_instance_chains() -> None:
 
     assert issue.module_path == ["Root", "VarInst", "Inner Invocation"]
     assert issue.message == "[BasePicture.VarInst.Inner Invocation] localvariable 'Setting'"
+
+
+def test_rewrite_handles_frozen_tuple_paths() -> None:
+    bp = BasePicture(
+        header=_header("Root"),
+        submodules=[_instance("InstA", "MyType")],
+    )
+    hit = CommentCodeHit(
+        file_path=Path("Main.s"),
+        start_line=10,
+        end_line=10,
+        start_col=1,
+        end_col=20,
+        indicators=("assignment",),
+        preview="Value = 1;",
+        module_path=("Root", "TypeDef:MyType", "Sub"),
+    )
+
+    rewrite_typedef_paths([hit], bp)
+
+    assert hit.module_path == ("Root", "InstA", "Sub")
 
 
 def test_rewrite_leaves_non_typedef_paths_unchanged() -> None:

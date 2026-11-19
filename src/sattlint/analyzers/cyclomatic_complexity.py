@@ -101,7 +101,7 @@ class CyclomaticComplexityAnalyzer:
         *,
         parent_path: list[str],
     ) -> None:
-        module_path = [*parent_path, moduletype.name]
+        module_path = [*parent_path, f"TypeDef:{moduletype.name}"]
         self._record_scope_complexity_issue(
             module_path=module_path,
             scope_kind="module type",
