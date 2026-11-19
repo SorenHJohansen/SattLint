@@ -196,6 +196,7 @@ def test_collect_run_checks_result_streams_each_line_while_the_run_is_in_progres
     streamed_before_yield: list[str] = []
 
     def _projects(*_args, emit_output_fn=None, **_kwargs):
+        assert callable(emit_output_fn)
         emit_output_fn("Loading TargetA")
         streamed_before_yield.extend(streamed)
         yield ("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))
