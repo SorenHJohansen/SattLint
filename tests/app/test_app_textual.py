@@ -4395,12 +4395,14 @@ def test_sanitize_project_name_preserves_spaces_and_strips_path_separators() -> 
     assert app_textual_actions_module._sanitize_project_name("  ") == "project"
 
 
-def test_textual_make_project_relative_keeps_empty_paths_empty() -> None:
-    assert app_textual_actions_module._make_project_relative("", Path("/tmp/proj")) == ""
-    assert app_textual_actions_module._make_project_relative("   ", Path("/tmp/proj")) == ""
-    assert app_textual_actions_module._make_project_relative("relative/dir", Path("/tmp/proj")) == "relative/dir"
-    assert app_textual_actions_module._make_project_relative("/tmp/proj/icf", Path("/tmp/proj")) == "icf"
-    assert app_textual_actions_module._make_project_relative("/elsewhere", Path("/tmp/proj")) == "/elsewhere"
+def test_textual_make_project_relative_keeps_empty_paths_empty(tmp_path: Path) -> None:
+    project_dir = tmp_path / "proj"
+    elsewhere = tmp_path / "elsewhere"
+    assert app_textual_actions_module._make_project_relative("", project_dir) == ""
+    assert app_textual_actions_module._make_project_relative("   ", project_dir) == ""
+    assert app_textual_actions_module._make_project_relative("relative/dir", project_dir) == "relative/dir"
+    assert app_textual_actions_module._make_project_relative(str(project_dir / "icf"), project_dir) == "icf"
+    assert app_textual_actions_module._make_project_relative(str(elsewhere), project_dir) == str(elsewhere)
 
 
 def test_textual_menu_definitions_have_open_and_new_but_not_save() -> None:

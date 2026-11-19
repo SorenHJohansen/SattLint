@@ -1,6 +1,6 @@
 """Shared pytest fixtures and test utilities."""
 
-# pyright: reportUnusedFunction=false
+# pyright: reportUnusedFunction=false, reportPrivateUsage=false
 import sys
 from collections.abc import Iterator
 from pathlib import Path

@@ -7,7 +7,6 @@ from sattline_parser.models.ast_model import (
     CodeItem,
     Equation,
     ModuleCode,
-    ModuleHeader,
     ScalarDatatype,
     Sequence,
     SFCAlternative,
@@ -34,10 +33,6 @@ from sattlint.analyzers.reset_contamination._reset_latching import (
     scan_stmt_for_latching,
 )
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
 def _varref(name: str) -> VarRef:
