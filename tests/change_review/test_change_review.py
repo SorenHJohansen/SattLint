@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from sattline_parser.models.ast_model import (
@@ -16,6 +18,7 @@ from sattline_parser.models.ast_model import (
     ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
+    ModuleTypeInstance,
     ScalarDatatype,
     Sequence,
     SFCBodyItem,
@@ -27,6 +30,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.change_review import (
+    ChangeKind,
     ChangeReviewResult,
     build_change_review,
     compute_relevance,
@@ -34,7 +38,9 @@ from sattlint.change_review import (
     generate_change_review,
     load_version_snapshot,
 )
-from sattlint.change_review._code_model import _iter_code_statements
+from sattlint.change_review._code_model import _iter_code_statements, build_code_model
+from sattlint.change_review.artifacts import write_review_artifacts
+from sattlint.change_review.review import ChangeReview, ReviewMetadata, ReviewSizeStats, _expand_block_start
 from sattlint.change_review.serialization.json_serializer import review_to_json
 from sattlint.change_review.source import SourceTextProvider
 from sattlint.core.semantic import build_snapshot_from_loaded_project
@@ -312,3 +318,218 @@ def test_artifacts_include_module_connection_changes(tmp_path: Path):
     assert "Connection 'Open' changed" in markdown
     assert "Open => StartCmd" in markdown
     assert "Open => AltCmd" in markdown
+
+
+WATCH_PROGRAM = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   Flow: integer := 0;
+   ValveOpen: boolean := False;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      ValveOpen = Flow > 0;
+   EQUATIONBLOCK Watch COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Flow = Flow + 1;
+
+ENDDEF (*BasePicture*);
+"""
+
+WATCH_PROGRAM_DRAFT = """\
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Demo"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   Flow: integer := 0;
+   ValveOpen: boolean := False;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      ValveOpen = Flow > 5;
+   EQUATIONBLOCK Watch COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      ValveOpen = False;
+
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_block_that_stopped_touching_a_variable_stays_in_context(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, WATCH_PROGRAM, WATCH_PROGRAM_DRAFT)
+    provider = SourceTextProvider({**official.source_files, **draft.source_files})
+    changes = compute_semantic_diff(official, draft)
+    relevance = compute_relevance(official, draft, changes)
+    review = build_change_review(official, draft, changes, relevance, snippet_provider=provider)
+
+    watch_reasons = [reason for block in review.context if block.name == "Watch" for reason in block.reasons]
+    assert any("No longer" in reason and "Flow" in reason for reason in watch_reasons)
+
+
+def test_removed_call_is_not_listed_as_a_callee(tmp_path: Path):
+    official_text = OFFICIAL_PROGRAM.replace(
+        "      ValveOpen = Flow > 0;",
+        "      ValveOpen = Flow > 0;\n      Flow = GetTime();",
+    )
+    draft_text = OFFICIAL_PROGRAM.replace(
+        "      ValveOpen = Flow > 0;",
+        "      ValveOpen = Flow > 5;",
+    )
+    official, draft, _cfg = load_pair(tmp_path, official_text, draft_text)
+    changes = compute_semantic_diff(official, draft)
+    relevance = compute_relevance(official, draft, changes)
+
+    assert changes
+    contexts = dict(relevance.change_contexts)
+    for index, change in enumerate(changes):
+        if change.kind is ChangeKind.REMOVED:
+            continue
+        context = contexts.get(index)
+        if context is not None:
+            assert "GetTime" not in {fact.symbol for fact in context.callees}
+
+
+def test_selected_source_size_uses_utf8_bytes(tmp_path: Path):
+    official_text = OFFICIAL_PROGRAM.replace(
+        "   Flow: integer := 0;",
+        '   Flow: integer := 0;\n   Msg: string := "Grüße";',
+    ).replace("      Flow = 0;", '      Flow = 0;\n      Msg = "Grüße";')
+    draft_text = official_text.replace('Msg = "Grüße";', 'Msg = "Grüße!";')
+    official, draft, _cfg = load_pair(tmp_path, official_text, draft_text)
+    provider = SourceTextProvider({**official.source_files, **draft.source_files})
+    changes = compute_semantic_diff(official, draft)
+    relevance = compute_relevance(official, draft, changes)
+    review = build_change_review(official, draft, changes, relevance, snippet_provider=provider)
+
+    sources = [
+        text
+        for block in review.context
+        for text in (block.source, block.official_source, block.draft_source)
+        if text is not None
+    ]
+    assert any(any(ord(character) > 127 for character in source) for source in sources)
+    assert review.size_stats.selected_source_size == sum(len(source.encode("utf-8")) for source in sources)
+    assert review.size_stats.selected_source_size > sum(len(source) for source in sources)
+
+
+def test_context_reports_the_official_and_draft_location_of_a_changed_block(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, OFFICIAL_PROGRAM, DRAFT_PROGRAM)
+    provider = SourceTextProvider({**official.source_files, **draft.source_files})
+    changes = compute_semantic_diff(official, draft)
+    relevance = compute_relevance(official, draft, changes)
+    review = build_change_review(official, draft, changes, relevance, snippet_provider=provider)
+
+    changed = next(block for block in review.context if block.role == "changed")
+    assert changed.official_file == "Demo.x"
+    assert changed.draft_file == "Demo.s"
+    assert changed.official_line_start is not None
+    assert changed.draft_line_start is not None
+
+
+def test_relevant_block_stat_matches_the_blocks_the_review_renders(tmp_path: Path):
+    official, draft, _cfg = load_pair(tmp_path, WATCH_PROGRAM, WATCH_PROGRAM_DRAFT)
+    provider = SourceTextProvider({**official.source_files, **draft.source_files})
+    changes = compute_semantic_diff(official, draft)
+    relevance = compute_relevance(official, draft, changes)
+    review = build_change_review(official, draft, changes, relevance, snippet_provider=provider)
+
+    assert review.size_stats.relevant_block_count == len(review.context)
+
+
+def test_ambiguous_root_module_type_fails_instead_of_picking_one(tmp_path: Path) -> None:
+    first = _moduletype("Dup", origin_file="Demo.s", origin_lib="DemoLib")
+    second = _moduletype("Dup", origin_file="nested/Demo.s", origin_lib="DemoLib")
+    instance = ModuleTypeInstance(
+        header=ModuleHeader(name="Unit", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        moduletype_name="Dup",
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=ModuleHeader(name="Demo", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Demo",
+        moduletype_defs=[first, second],
+        submodules=[instance],
+        moduledef=ModuleDef(),
+        origin_file="Demo.s",
+        origin_lib="DemoLib",
+    )
+    snapshot = build_snapshot_from_loaded_project(
+        bp,
+        ProjectGraph(),
+        entry_file=tmp_path / "Demo.s",
+        workspace_root=tmp_path,
+        include_dependency_modules=False,
+    )
+
+    with pytest.raises(ValueError, match="Ambiguous module type 'Dup'"):
+        build_code_model(snapshot, include_dependency_modules=False)
+
+
+def _review_with_timestamp(generated_at: str):
+    return ChangeReview(
+        metadata=ReviewMetadata(
+            project="Demo",
+            official_revision="official",
+            draft_revision="draft",
+            generated_at=generated_at,
+        ),
+        changes=(),
+        context=(),
+        variable_definitions=(),
+        size_stats=ReviewSizeStats(
+            total_project_source_size=0,
+            selected_source_size=0,
+            metadata_size=0,
+            artifact_size=0,
+            source_reduction_percent=0.0,
+            semantic_change_count=0,
+            relevant_block_count=0,
+            relevant_variable_count=0,
+            contextual_block_count=0,
+        ),
+    )
+
+
+def test_artifact_names_use_the_review_utc_timestamp(tmp_path: Path):
+    review = _review_with_timestamp("2026-11-19T10:20:30.123456+02:00")
+    json_path, markdown_path = write_review_artifacts(review, tmp_path)
+
+    assert "20261119T082030.123456Z" in json_path.name
+    assert json_path.stem == markdown_path.stem
+
+    same_second = _review_with_timestamp("2026-11-19T08:20:30.654321+00:00")
+    later_json, _markdown = write_review_artifacts(same_second, tmp_path)
+
+    assert later_json.name != json_path.name
+
+
+def test_block_header_search_is_case_insensitive_and_prefers_the_nearest_match():
+    source = {
+        1: "EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :",
+        2: "   X = 1;",
+        3: "   equationblock main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :",
+        4: "   X = 2;",
+        6: "   X = 3;",
+    }
+
+    class _Provider:
+        def lines(self, _file: str, start: int, _end: int, *, library: str | None = None) -> str | None:
+            return source.get(start, "")
+
+    block = SimpleNamespace(kind="equation", name="Main", line_start=6, source_file="Demo.x", source_library=None)
+
+    assert _expand_block_start(cast(Any, _Provider()), cast(Any, block)) == 3

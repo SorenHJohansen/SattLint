@@ -190,10 +190,8 @@ def _render_definition_sources(fact: SymbolFact) -> list[str]:
         lines.extend(["**Draft:**", "", _code_block(draft)])
     elif official:
         lines.extend(["**Official:**", "", _code_block(official)])
-    elif draft:
-        lines.extend(["**Draft:**", "", _code_block(draft)])
     else:
-        lines.extend([_code_block(official)])
+        lines.extend(["**Draft:**", "", _code_block(draft)])
     return lines
 
 

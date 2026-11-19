@@ -717,12 +717,26 @@ class _ModuleTreeWalker:
         matches = self._typedef_index.get(instance.moduletype_name.casefold(), [])
         if len(matches) == 1:
             return matches[0]
-        for candidate in matches:
-            if candidate.origin_lib is not None:
-                return candidate
-        if matches:
-            return matches[0]
-        return None
+        if not matches:
+            return None
+        # Same-named types from different libraries are legitimate, but only a
+        # root-origin definition describes code the review can diff. When more
+        # than one root definition shares the name, no choice is safe, so fail
+        # loudly instead of diffing an arbitrary one.
+        root_matches = [
+            candidate for candidate in matches if self._is_root_origin(candidate.origin_file, candidate.origin_lib)
+        ]
+        if len(root_matches) == 1:
+            return root_matches[0]
+        if len(root_matches) > 1:
+            libraries = ", ".join(sorted({candidate.origin_lib or "" for candidate in root_matches}))
+            raise ValueError(
+                f"Ambiguous module type '{instance.moduletype_name}' in {libraries or 'the analyzed project'}: "
+                "more than one definition matches."
+            )
+        # Every match belongs to a dependency library, so the instance's code is
+        # outside the reviewed origin regardless of which one is chosen.
+        return matches[0]
 
     def build(self) -> CodeModel:
         root = self._snapshot.base_picture

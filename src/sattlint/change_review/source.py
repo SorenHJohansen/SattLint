@@ -37,6 +37,7 @@ class SourceTextProvider:
     def __init__(self, source_files: dict[SourceKey, Path]):
         self._source_files = dict(source_files)
         self._cache: dict[SourceKey, str] = {}
+        self._lines_cache: dict[SourceKey, tuple[str, ...]] = {}
         by_name: dict[str, list[SourceKey]] = {}
         for key in self._source_files:
             by_name.setdefault(key[1], []).append(key)
@@ -107,10 +108,16 @@ class SourceTextProvider:
         """Return original source lines ``start_line``..``end_line`` inclusive."""
         if file_name is None:
             return None
-        text = self.text(file_name, library=library)
-        if text is None:
+        key = self._key(file_name, library)
+        if key is None:
             return None
-        all_lines = text.splitlines()
+        all_lines = self._lines_cache.get(key)
+        if all_lines is None:
+            text = self.text(file_name, library=library)
+            if text is None:
+                return None
+            all_lines = tuple(text.splitlines())
+            self._lines_cache[key] = all_lines
         if not all_lines:
             return ""
         start = max(1, start_line)
