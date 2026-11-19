@@ -311,8 +311,6 @@ class VariablesAnalyzer(
             return variable_artifacts
 
         variable_artifacts = shared_artifacts.ensure_foundation(lambda: _build_variable_analysis_artifacts(self.bp))
-        if variable_artifacts is None:
-            raise RuntimeError("foundation build produced no artifacts")
         return variable_artifacts
 
     def _initialize_usage_state(self) -> None:

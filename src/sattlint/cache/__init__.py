@@ -11,13 +11,14 @@ import pickle
 import secrets
 import shutil
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from .. import parser_api
 from ..config.defaults import PROJECT_CACHE_CONFIG_KEYS
-from .classes import AnalysisReportCache, ASTCache, FoundationCache
+from .classes import AnalysisReportCache, ASTCache
 from .manager import (
     CacheManager,
     build_analysis_report_cache,
@@ -28,17 +29,16 @@ from .manager import (
 
 __all__ = [
     "ANALYSIS_REPORT_CACHE_VERSION",
+    "CACHE_KEY_SCHEMA_VERSION",
     "CACHE_VERSION",
     "ASTCache",
     "AnalysisReportCache",
     "CacheManager",
     "CachePruneResult",
-    "FoundationCache",
     "build_analysis_report_cache",
     "build_ast_cache",
     "cache_dir_location",
     "compute_analysis_report_cache_key",
-    "compute_foundation_cache_key",
     "get_cache_dir",
     "get_cache_dir_or_none",
     "get_cache_manager",
@@ -58,23 +58,16 @@ class CachePruneResult:
     ast_payload_entries: int = 0
     ast_manifest_entries: int = 0
     analysis_report_entries: int = 0
-    foundation_entries: int = 0
 
     @property
     def removed_entries(self) -> int:
-        return (
-            self.ast_payload_entries
-            + self.ast_manifest_entries
-            + self.analysis_report_entries
-            + self.foundation_entries
-        )
+        return self.ast_payload_entries + self.ast_manifest_entries + self.analysis_report_entries
 
     def combine(self, other: CachePruneResult) -> CachePruneResult:
         return CachePruneResult(
             ast_payload_entries=self.ast_payload_entries + other.ast_payload_entries,
             ast_manifest_entries=self.ast_manifest_entries + other.ast_manifest_entries,
             analysis_report_entries=self.analysis_report_entries + other.analysis_report_entries,
-            foundation_entries=self.foundation_entries + other.foundation_entries,
         )
 
 
@@ -302,25 +295,39 @@ def _legacy_cache_dir() -> Path:
     return base / "sattlint" / "cache"
 
 
+def _discard_cache_entry(path: Path) -> None:
+    """Remove one legacy cache entry that the destination already owns."""
+    if path.is_dir():
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            return
+        return
+    _remove_file(path)
+
+
 def _merge_cache_directories(source: Path, destination: Path) -> None:
+    """Move every entry of *source* into *destination*, resolving name collisions.
+
+    Cache payloads are content-addressed, so a name that exists in both trees is
+    the same logical entry: the destination copy wins and the source copy is
+    discarded. Consuming the collision is what lets the caller finish the
+    migration; leaving the source entry behind kept the legacy tree alive and
+    every later run walked it again.
+    """
     for child in source.iterdir():
         target = destination / child.name
-        if child.is_dir():
-            if target.exists():
-                if target.is_dir():
-                    _merge_cache_directories(child, target)
-            else:
-                shutil.move(str(child), str(target))
-                continue
+        if not target.exists():
+            shutil.move(str(child), str(target))
+            continue
+        if child.is_dir() and target.is_dir():
+            _merge_cache_directories(child, target)
             try:
                 child.rmdir()
             except OSError:
                 continue
             continue
-
-        if target.exists():
-            continue
-        shutil.move(str(child), str(target))
+        _discard_cache_entry(child)
 
 
 def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
@@ -389,8 +396,10 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
         return expanded
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-11-16-program-root-origins"
-ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-11-16-analyzer-settings"
+# One schema tag for every cache key. The parser version is read from the installed
+# parser rather than embedded by hand, so a parser upgrade invalidates the key on its
+# own; bump this tag only when the key's inputs or their encoding change.
+CACHE_KEY_SCHEMA_VERSION = 1
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-18-file-scoped-ast-paths",
     "cyclomatic-complexity": "2026-11-18-typedef-paths",
@@ -401,10 +410,66 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "moduletype-usage": "2026-11-18-private-visibility",
     "picture-display-paths": "2026-11-18-private-visibility",
 }
-# Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
-# skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
-# must be bumped whenever the serialized foundation shape or its derivation changes.
-FOUNDATION_CACHE_SCHEMA_VERSION = "2026-11-15-root-parameters"
+# The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
+# derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol
+# objects from a different parse than the one the analyzers hold, so identity-based lookups
+# silently miss. AST reuse is the supported cold-start saving.
+
+_SINGLE_PATH_CONFIG_KEYS = frozenset({"program_dir", "ABB_lib_dir", "icf_dir"})
+_PATH_LIST_CONFIG_KEYS = frozenset({"other_lib_dirs"})
+
+
+def _canonical_cache_path(raw_value: object) -> str:
+    """A path as the cache sees it: expanded, trimmed, and whatever the user meant."""
+    text = str(raw_value).strip()
+    if not text:
+        return ""
+    try:
+        return str(Path(text).expanduser())
+    except (OSError, RuntimeError):
+        return text
+
+
+def _canonical_cache_path_list(raw_value: object) -> list[str]:
+    """Path list with duplicates dropped, keeping the first position.
+
+    Order stays significant because the parser searches earlier roots first; a
+    repeated root is the only ordering the parser itself folds away.
+    """
+    if not isinstance(raw_value, (list, tuple)):
+        return [_canonical_cache_path(raw_value)]
+    paths: list[str] = []
+    seen: set[str] = set()
+    for raw_path in cast(Sequence[object], raw_value):
+        path = _canonical_cache_path(raw_path)
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        paths.append(path)
+    return paths
+
+
+def _canonical_cache_value(raw_value: object) -> object:
+    """A JSON-encodable value with a stable encoding for types ``repr`` orders badly."""
+    if raw_value is None or isinstance(raw_value, (bool, int, float, str)):
+        return raw_value
+    if isinstance(raw_value, Path):
+        return str(raw_value)
+    if isinstance(raw_value, Mapping):
+        return {
+            str(key): _canonical_cache_value(value) for key, value in cast(Mapping[object, object], raw_value).items()
+        }
+    if isinstance(raw_value, (set, frozenset)):
+        return sorted((_canonical_cache_value(item) for item in cast(Iterable[object], raw_value)), key=repr)
+    if isinstance(raw_value, (list, tuple)):
+        return [_canonical_cache_value(item) for item in cast(Sequence[object], raw_value)]
+    return repr(raw_value)
+
+
+def _cache_key_digest(payload: object) -> str:
+    """Hash a key payload: JSON with sorted object keys and no incidental spacing."""
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=repr)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:
@@ -412,14 +477,23 @@ def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None 
     Fast cache key based only on configuration.
     File changes are handled by manifest validation.
     """
-    h = hashlib.sha256()
-    h.update(PROJECT_CACHE_SCHEMA_VERSION.encode())
-    h.update(repr(analysis_target).encode())
-
-    for k in PROJECT_CACHE_CONFIG_KEYS:
-        h.update(repr(cfg.get(k)).encode())
-
-    return h.hexdigest()
+    payload: dict[str, object] = {
+        "schema": CACHE_KEY_SCHEMA_VERSION,
+        "parser": parser_api.PARSER_VERSION,
+        "target": str(analysis_target).strip() if analysis_target is not None else None,
+    }
+    for key in PROJECT_CACHE_CONFIG_KEYS:
+        raw_value = cfg.get(key)
+        if key in _SINGLE_PATH_CONFIG_KEYS:
+            payload[key] = _canonical_cache_path(raw_value)
+        elif key in _PATH_LIST_CONFIG_KEYS:
+            payload[key] = _canonical_cache_path_list(raw_value)
+        elif key == "mode":
+            # The loader accepts the mode case-insensitively, so the key must too.
+            payload[key] = str(raw_value or "").strip().casefold()
+        else:
+            payload[key] = _canonical_cache_value(raw_value)
+    return _cache_key_digest(payload)
 
 
 def compute_analysis_report_cache_key(
@@ -435,15 +509,15 @@ def compute_analysis_report_cache_key(
     a stable form; non-JSON values fall back to ``repr`` so an unrepresentable
     value still invalidates the cache instead of silently sharing an entry.
     """
-    h = hashlib.sha256()
-    h.update(ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
-    h.update(project_cache_key.encode("utf-8", errors="ignore"))
-    h.update(analyzer_key.encode("utf-8", errors="ignore"))
-    analyzer_version = _ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
-    if analyzer_version is not None:
-        h.update(analyzer_version.encode())
-    h.update(_analysis_settings_fingerprint(analysis_settings).encode("utf-8", errors="ignore"))
-    return h.hexdigest()
+    payload: dict[str, object] = {
+        "schema": CACHE_KEY_SCHEMA_VERSION,
+        "parser": parser_api.PARSER_VERSION,
+        "project": project_cache_key,
+        "analyzer": analyzer_key,
+        "analyzer_version": _ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key),
+        "settings": _analysis_settings_fingerprint(analysis_settings),
+    }
+    return _cache_key_digest(payload)
 
 
 def _analysis_settings_fingerprint(analysis_settings: object) -> str:
@@ -453,21 +527,3 @@ def _analysis_settings_fingerprint(analysis_settings: object) -> str:
         return json.dumps(analysis_settings, sort_keys=True, default=repr, separators=(",", ":"))
     except (TypeError, ValueError):
         return repr(analysis_settings)
-
-
-def compute_foundation_cache_key(project_cache_key: str, source_manifest: Mapping[str, tuple[int, int]]) -> str:
-    """Content-derived key for the cached analysis foundation.
-
-    Distinct from the rule/config-derived report key (see keep_foundation_key_distinct in the
-    architecture doc): editing a source file changes this key, while changing a lint rule must not.
-    The manifest is the same source-content/mtime snapshot the AST cache keys on, so foundation
-    staleness risk matches the already-proven AST cache.
-    """
-    h = hashlib.sha256()
-    h.update(FOUNDATION_CACHE_SCHEMA_VERSION.encode())
-    h.update(project_cache_key.encode("utf-8", errors="ignore"))
-    for path in sorted(source_manifest):
-        h.update(path.encode("utf-8", errors="ignore"))
-        h.update(b"\x00")
-        h.update(repr(source_manifest[path]).encode())
-    return h.hexdigest()

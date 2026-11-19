@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from sattlint import cache as cache_module
-from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
+from sattlint.cache.classes import AnalysisReportCache, ASTCache
 from sattlint.cache.manager import _CACHE_MANAGER_LIMIT, _CACHE_MANAGERS, get_cache_manager
 from sattlint.runs import RunRecord, save_run
 
@@ -56,8 +56,6 @@ def test_cache_artifacts_are_owner_only(tmp_path: Path) -> None:
     ast_cache.save("key", project={"generation": 1}, files=[source])
     report_cache = AnalysisReportCache(tmp_path / "caches")
     assert report_cache.save("key", report={"report": True}, files=[source]) is True
-    foundation_cache = FoundationCache(tmp_path / "caches")
-    foundation_cache.save("key", {"foundation": True})
 
     artifacts = sorted(path for path in (tmp_path / "caches").rglob("*") if path.is_file())
     assert artifacts
@@ -146,6 +144,31 @@ def test_legacy_cache_migration_runs_once_per_process(tmp_path: Path, monkeypatc
     _REAL_GET_CACHE_DIR()
 
     assert calls == [tmp_path / "cache"]
+
+
+def test_legacy_cache_migration_finishes_when_a_destination_name_collides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy = tmp_path / "legacy"
+    destination = tmp_path / "cache"
+    (legacy / "nested").mkdir(parents=True)
+    (legacy / "shared.pickle").write_bytes(b"legacy")
+    (legacy / "nested" / "moved.pickle").write_bytes(b"moved")
+    (legacy / "nested" / "shared.pickle").write_bytes(b"legacy-nested")
+    destination.mkdir()
+    (destination / "shared.pickle").write_bytes(b"current")
+    (destination / "nested").mkdir()
+    (destination / "nested" / "shared.pickle").write_bytes(b"current-nested")
+
+    monkeypatch.setattr(cache_module, "_legacy_cache_dir", lambda: legacy)
+    cache_module._migrate_legacy_cache_dir(destination)
+
+    # A collision must not leave the legacy tree behind: an unfinished tree is
+    # walked again on every later run.
+    assert not legacy.exists()
+    assert (destination / "shared.pickle").read_bytes() == b"current"
+    assert (destination / "nested" / "shared.pickle").read_bytes() == b"current-nested"
+    assert (destination / "nested" / "moved.pickle").read_bytes() == b"moved"
 
 
 def test_cache_manager_memo_stays_bounded(tmp_path: Path) -> None:

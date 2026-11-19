@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import pytest
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 
-from sattlint import cache as cache_module
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers._registry_dispatch import run_registry_analyzer
 from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
@@ -21,6 +20,7 @@ from sattlint.analyzers.framework import (
     AnalyzerLifecycleMixin,
     BasePictureAnalyzer,
     SimpleReport,
+    VariableAnalysisArtifacts,
     build_analysis_context,
 )
 from sattlint.analyzers.plugin import (
@@ -355,20 +355,7 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
     assert context.unavailable_libraries == {"ControlLib"}
 
 
-class _FakeFoundationCache:
-    def __init__(self) -> None:
-        self.store: dict[str, object] = {}
-        self.saved: list[tuple[str, object]] = []
-
-    def load(self, key: str) -> object | None:
-        return self.store.get(key)
-
-    def save(self, key: str, foundation: object) -> None:
-        self.store[key] = foundation
-        self.saved.append((key, foundation))
-
-
-def _make_foundation():
+def _make_foundation() -> VariableAnalysisArtifacts:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         datatype_defs=[],
@@ -383,9 +370,9 @@ def _make_foundation():
 
 def test_ensure_foundation_builds_once_and_memoizes() -> None:
     shared = AnalysisSharedArtifacts()
-    build_calls = []
+    build_calls: list[int] = []
 
-    def build_fn():
+    def build_fn() -> VariableAnalysisArtifacts:
         build_calls.append(1)
         return _make_foundation()
 
@@ -396,46 +383,6 @@ def test_ensure_foundation_builds_once_and_memoizes() -> None:
     assert second is first
     assert len(build_calls) == 1
     assert shared.counters.variable_foundation_builds == 1
-
-
-def test_ensure_foundation_restores_from_cache_hit_without_rebuild() -> None:
-    shared = AnalysisSharedArtifacts()
-    fake_cache = _FakeFoundationCache()
-    cached = _make_foundation()
-    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
-    fake_cache.save(key, cached)
-    shared.foundation_cache = fake_cache
-    shared.foundation_project_cache_key = "proj"
-    shared.foundation_source_manifest = {"a.sl": (1, 2)}
-    build_calls = []
-
-    def build_fn():
-        build_calls.append(1)
-        return _make_foundation()
-
-    result = shared.ensure_foundation(build_fn)
-
-    assert result is cached
-    assert build_calls == []
-    assert shared.counters.variable_foundation_builds == 0
-    assert fake_cache.saved == [(key, cached)]
-
-
-def test_ensure_foundation_persists_build_on_cache_miss() -> None:
-    shared = AnalysisSharedArtifacts()
-    fake_cache = _FakeFoundationCache()
-    shared.foundation_cache = fake_cache
-    shared.foundation_project_cache_key = "proj"
-    shared.foundation_source_manifest = {"a.sl": (1, 2)}
-    foundation = _make_foundation()
-
-    result = shared.ensure_foundation(lambda: foundation)
-
-    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
-    assert result is foundation
-    assert shared.counters.variable_foundation_builds == 1
-    assert fake_cache.saved == [(key, foundation)]
-    assert fake_cache.load(key) is foundation
 
 
 # ---- Phase G: public register_analyzer developer API ----

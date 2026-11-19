@@ -10,7 +10,6 @@ import pytest
 from sattlint import cache as cache_module
 from sattlint import runs as runs_module
 from sattlint.cache import AnalysisReportCache
-from sattlint.cache.manager import CacheManager
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 from sattlint.project.cache import create_analysis_report_cache
@@ -71,15 +70,3 @@ def test_get_runs_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monk
     monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
 
     assert runs_module.get_runs_dir_or_none() is None
-
-
-def test_clear_all_removes_the_foundation_cache(tmp_path: Path) -> None:
-    manager = CacheManager(tmp_path)
-    foundation_dir = tmp_path / "foundation"
-    foundation_dir.mkdir(parents=True, exist_ok=True)
-    (foundation_dir / "stale.pickle").write_bytes(b"payload")
-
-    result = manager.clear_all()
-
-    assert not list(foundation_dir.glob("*.pickle"))
-    assert result.foundation_entries == 1

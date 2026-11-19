@@ -164,8 +164,7 @@ These fail at import or at first use, so fix them before the silent losses.
    - [resolution/_moduletype_resolution.py](src/sattlint/resolution/_moduletype_resolution.py)
 6. Bump cache identity:
    - `CACHE_VERSION` in [`cache/__init__.py`](src/sattlint/cache/__init__.py)
-   - `PROJECT_CACHE_SCHEMA_VERSION`
-   - `FOUNDATION_CACHE_SCHEMA_VERSION`
+   - `CACHE_KEY_SCHEMA_VERSION`
 
    A cached project graph pickles ASTs, so reusing 2026.11.3 entries under the
    new model is unsafe.
