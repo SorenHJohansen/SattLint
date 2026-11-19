@@ -1,7 +1,34 @@
 # pyright: reportPrivateUsage=false
+from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    Equation,
+    FloatLiteral,
+    IntLiteral,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
+    Sequence,
+    SFCTransition,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 from sattline_parser.models.expressions import BoolOp, Compare, UnaryOp
 
-from tests.helpers.analyzers_variables_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+    analyze_variables,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_magic_number_detection_in_equations_and_sfc():

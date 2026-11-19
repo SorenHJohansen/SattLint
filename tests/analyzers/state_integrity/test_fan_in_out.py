@@ -1,4 +1,30 @@
-from tests.helpers.analyzers_state_support import *
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
+from sattline_parser.models.expressions import Assignment
+
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    VariableIssue,
+    VariablesReport,
+)
+from sattlint.types import VariableId
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_global_scope_minimization_is_suppressed_for_library_targets():

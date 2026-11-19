@@ -1,7 +1,28 @@
+from typing import (
+    Any,
+    cast,
+)
+
 from sattline_parser.ast import MappingSource
 
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
-from tests.helpers.analyzers_state_support import *
+from sattline_parser.models.ast_model import (
+    ParameterMapping,
+    ScalarDatatype,
+    SourceSpan,
+    Variable,
+)
+
+from sattlint.analyzers.variables import IssueKind
+from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker
+from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    VariableIssue,
+    VariablesReport,
+)
+from sattlint.resolution.scope import ScopeContext
+from sattlint.types import VariableId
+from tests.helpers.variable_test_support import varref as _varref
 
 
 def test_variables_report_coerces_visible_kinds_and_handles_unknown_selector_kind():

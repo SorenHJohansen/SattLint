@@ -3,8 +3,35 @@ from types import SimpleNamespace
 from typing import Any
 
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    Variable,
+)
 
-from tests.helpers.analyzers_variables_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.analyzers.variables import (
+    _variables_execution as variables_execution_module,
+)
+from sattlint.reporting.variables_report import (
+    VariableIssue,
+    VariablesReport,
+)
+from tests.helpers.variable_test_support import (
+    UsageStub as _UsageStub,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():

@@ -5,12 +5,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from sattline_parser import parse_source_text as parser_core_parse_source_text
+
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.core._semantic_index import SemanticIndexBuilder
+from sattlint.models.project_graph import program_identity
 from sattlint.parser_api import BasePicture, FrameModule, Variable
 from sattlint.resolution import CanonicalSymbolTable, ContextBuilder, TypeGraph
 from sattlint.resolution.context_builder import build_frame_scope
-from tests.helpers.analyzers_variables_support import parser_core_parse_source_text
 
 FRAME_SCOPE_SOURCE = """
 "Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
@@ -74,8 +76,9 @@ def test_semantic_snapshot_attributes_frame_references_to_the_frame_declaration(
     base_picture = _parse_frame_scope()
     index = SemanticIndexBuilder(base_picture).build()
 
-    frame_key = (base_picture.header.name.casefold(), "panel", "scoped")
-    parent_key = (base_picture.header.name.casefold(), "scoped")
+    program = program_identity(base_picture).casefold()
+    frame_key = (program, "panel", "scoped")
+    parent_key = (program, "scoped")
 
     assert frame_key in index.references_by_definition_key
     assert parent_key not in index.references_by_definition_key

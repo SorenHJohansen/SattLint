@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -34,9 +35,6 @@ from sattlint.models._variable_issues import VariableIssue
 from tests.helpers.project_loading import load_target_project
 
 MANIFESTS_DIR = Path(__file__).resolve().parent / "fixtures" / "corpus" / "manifests"
-
-# Some manifests carry a degenerate trace-finding marker that is not a real rule id.
-_IGNORED_FINDING_IDS = frozenset({"unknown"})
 
 
 def _load_manifests() -> list[tuple[str, dict[str, Any]]]:
@@ -98,39 +96,39 @@ def _build_context(
     )
 
 
-def _ordered_finding_ids(issue: Any) -> list[str]:
-    """All canonical ids an issue may be asserted against, in priority order.
+def _finding_id(issue: Any) -> str | None:
+    """The one identifier a finding is asserted and counted under.
 
-    Analyzers report findings under different conventions: some expose a
-    ``rule_id``, some a ``rule.id`` (for rule-shaped issues), and the
-    ``variables`` analyzer emits ``VariableIssue`` enums. Collect the union so
-    manifest expectations can use either convention; the first entry is the id
-    used for counting, so one issue never counts twice.
+    A rule-backed finding uses its rule id; a finding without a rule uses its
+    own id, then the variable issue kind, then the issue kind. Only this first
+    identifier is used, so a manifest cannot pass by pinning a coarse kind
+    while the analyzer actually fired a different rule.
     """
-    ids: list[str] = []
-
     rule = getattr(issue, "rule", None)
     if rule is not None and getattr(rule, "id", None):
-        ids.append(str(rule.id))
+        return str(rule.id)
 
     rule_id = getattr(issue, "rule_id", None)
     if rule_id:
-        ids.append(str(rule_id))
+        return str(rule_id)
 
     if isinstance(issue, VariableIssue):
         kind_value = getattr(issue.kind, "value", None)
         if isinstance(kind_value, str):
-            ids.append(kind_value)
+            return kind_value
 
     kind = getattr(issue, "kind", None)
     if isinstance(kind, str):
-        ids.append(kind)
+        return kind
+    return None
 
-    ordered: list[str] = []
-    for finding_id in ids:
-        if finding_id not in _IGNORED_FINDING_IDS and finding_id not in ordered:
-            ordered.append(finding_id)
-    return ordered
+
+def test_finding_id_prefers_the_rule_over_a_coarse_kind() -> None:
+    """A rule-backed finding is matched by its rule id, never by its kind."""
+    rule = SimpleNamespace(id="module.version_drift")
+    assert _finding_id(SimpleNamespace(rule=rule, kind="module")) == "module.version_drift"
+    assert _finding_id(SimpleNamespace(rule_id="read_before_write", kind="variables")) == "read_before_write"
+    assert _finding_id(SimpleNamespace(kind="comment_code")) == "comment_code"
 
 
 def _collect_findings(report: Any, case_id: str) -> tuple[set[str], list[str]]:
@@ -139,15 +137,17 @@ def _collect_findings(report: Any, case_id: str) -> tuple[set[str], list[str]]:
     counted: list[str] = []
 
     for issue in getattr(report, "issues", ()) or ():
-        ids = _ordered_finding_ids(issue)
-        assert ids, f"{case_id}: finding has no rule id or kind: {issue!r}"
-        emitted.update(ids)
-        counted.append(ids[0])
+        finding_id = _finding_id(issue)
+        assert finding_id, f"{case_id}: finding has no rule id or kind: {issue!r}"
+        emitted.add(finding_id)
+        counted.append(finding_id)
 
     # Raw analyzer hits are evidence, not findings, so they contribute ids for
     # expectation matching but never to the finding count.
     for hit in getattr(report, "hits", ()) or ():
-        emitted.update(_ordered_finding_ids(hit))
+        hit_id = _finding_id(hit)
+        if hit_id:
+            emitted.add(hit_id)
 
     return emitted, counted
 
@@ -170,7 +170,7 @@ def _run_analyzer(manifest: dict[str, Any]) -> tuple[set[str], list[str]]:
 def test_corpus_manifest_analyzer_run(case_id: str, manifest: dict[str, Any]) -> None:
     """The analyzer matches the manifest's finding ids and summary counts."""
     expectation = manifest["expectation"]
-    expected = set(expectation.get("expected_finding_ids", [])) - _IGNORED_FINDING_IDS
+    expected = set(expectation.get("expected_finding_ids", []))
     forbidden = set(expectation.get("forbidden_finding_ids", []))
 
     emitted, counted = _run_analyzer(manifest)

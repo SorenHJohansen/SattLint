@@ -3,7 +3,28 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from tests.helpers.analyzers_variables_support import *
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleTypeDef,
+    ScalarDatatype,
+    Variable,
+)
+
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.analyzers.variables import (
+    _variables_execution as variables_execution_module,
+)
+from sattlint.parser_api import parse_source_file
+from sattlint.reporting.variables_report import ALL_VARIABLE_ANALYSIS_KINDS
+from tests.helpers.variable_test_support import (
+    UsageStub as _UsageStub,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
 
 
 def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles():

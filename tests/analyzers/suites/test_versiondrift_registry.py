@@ -1,71 +1,12 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
-from tests.helpers.analyzers_suites_support import *
+from types import SimpleNamespace
+from typing import (
+    Any,
+    cast,
+)
 
-
-def test_version_drift_ignores_datecode_only_differences():
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    assert report.issues == []
-
-
-def test_version_drift_analyzer_is_enabled_by_default():
-    specs = {spec.key: spec for spec in get_default_analyzers()}
-
-    assert "version-drift" in specs
-    assert specs["version-drift"].enabled is True
+from sattlint.analyzers import registry as registry_module
+from sattlint.analyzers.framework import AnalyzerSpec
 
 
 def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():

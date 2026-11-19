@@ -11,6 +11,7 @@ Usage::
 
 from __future__ import annotations
 
+import fnmatch
 import re
 import sys
 from pathlib import Path
@@ -36,24 +37,27 @@ SKIP_DIRS = frozenset(
     }
 )
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp:", "git@")
-# The upgrade plan is a historical record that intentionally names paths that
-# were later removed or renamed, so its links are not part of the live docs set.
-IGNORED_PATHS = frozenset(
-    {
-        "docs/parser-upgrade-plan.md",
-        "docs/parser-upgrade-plan-2026.11.5.md",
-    }
-)
-LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+# The upgrade plans are historical records that intentionally name paths that
+# were later removed or renamed, so their links are not part of the live docs
+# set. New versioned plans are matched by pattern rather than by exact name.
+IGNORED_PATTERNS = ("docs/parser-upgrade-plan*.md",)
+# Allow one level of balanced parentheses inside a link target, which is how
+# paths such as ``docs/api_(old).md`` appear in Markdown.
+LINK_RE = re.compile(r"\[[^\]]*\]\(((?:[^()\\]|\\.|\([^()]*\))*)\)")
 FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 
 
 def markdown_files() -> list[Path]:
-    """Every Markdown file the gate owns, excluding generated trees."""
+    """Every Markdown file the gate owns, excluding generated root trees."""
     files: list[Path] = []
     for path in ROOT.rglob("*.md"):
         relative = path.relative_to(ROOT)
-        if str(relative) in IGNORED_PATHS or SKIP_DIRS.intersection(relative.parts):
+        posix = relative.as_posix()
+        # Only root-level generated trees are skipped: a documentation
+        # directory named ``build`` is still part of the docs set.
+        if relative.parts and relative.parts[0] in SKIP_DIRS:
+            continue
+        if any(fnmatch.fnmatchcase(posix, pattern) for pattern in IGNORED_PATTERNS):
             continue
         files.append(path)
     return sorted(files)

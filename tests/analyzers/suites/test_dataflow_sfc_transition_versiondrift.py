@@ -1,12 +1,36 @@
-from sattline_parser.models.expressions import (
+from sattline_parser.models.ast_model import (
     Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    Sequence,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    SFCTransition,
+    Variable,
+)
+from sattline_parser.models.expressions import (
     BoolOp,
     Compare,
     IfStmt,
     NotOp,
 )
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.same_cycle import analyze_same_cycle
+from sattlint.analyzers.sfc import analyze_sfc
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    issue_kinds as _issue_kinds,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
@@ -226,119 +250,3 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["transition_names"] == ["OpenPrimary", "OpenBackup"]
-
-
-def test_version_drift_detects_small_code_delta_between_same_named_modules():
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=2)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["module_name"] == "Mixer"
-    assert issues[0].data["unique_variants"] == 2
-    assert "code" in issues[0].data["material_differences"]
-    assert "modified_equations" in issues[0].data["material_differences"]["code"]
-    assert "Logic" in issues[0].data["material_differences"]["code"]["modified_equations"]
-    assert issues[0].data["material_differences"]["code"]["modified_equations"]["Logic"]
-    assert any("Equation 'Logic' changed" in note for note in issues[0].data["upgrade_notes"])
-
-
-def test_version_drift_records_modified_variable_shape_diffs():
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.REAL)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert "localvariables" in issues[0].data["material_differences"]
-    assert "Output" in issues[0].data["material_differences"]["localvariables"]["modified"]
-    assert any(
-        detail["path"] == "datatype"
-        for detail in issues[0].data["material_differences"]["localvariables"]["modified"]["Output"]
-    )
-    assert any("Local variable 'Output' changed" in note for note in issues[0].data["upgrade_notes"])

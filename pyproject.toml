@@ -66,8 +66,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Leave the timeout method unset: pytest-timeout then uses signals where they
+# exist (so a blocked C call or PTY read is interrupted) and the timer thread
+# elsewhere (Windows).
 timeout = 60
-timeout_method = "thread"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -112,8 +114,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["S101", "F403", "F405"]
-"tests/**/*.py" = ["S101", "F403", "F405"]
+"tests/*.py" = ["S101"]
+"tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.pylint]
 max-statements = 50

@@ -1,14 +1,12 @@
+# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
 from collections.abc import Sequence as Seq
 
 from sattline_parser.models.ast_model import (
-    BasePicture,
     CodeItem,
     Equation,
-    FrameModule,
     ModuleCode,
-    ModuleHeader,
     ScalarDatatype,
     Sequence,
     SFCAlternative,
@@ -19,17 +17,22 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt, NotOp, VarRef
 
+from sattlint.analyzers.reset_contamination import (
+    ResetContaminationAnalyzer,
+)
+from sattlint.analyzers.reset_contamination._reset_latching import (
+    BooleanPathState,
+    collect_boolean_seq_block_paths,
+    collect_boolean_stmt_paths,
+    merge_boolean_parallel_branch_results,
+    scan_seq_nodes_for_latching,
+    scan_stmt_for_latching,
+)
 from sattlint.reporting.variables_report import IssueKind, VariableIssue
-from tests.helpers.reset_contamination_api import reset_contamination_module
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
 def _varref(name: str) -> VarRef:
@@ -46,82 +49,6 @@ def _seq(name: str, code: Seq[SFCBodyItem]) -> Sequence:
 
 def _bool_step(name: str, statements: Seq[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=list(statements)))
-
-
-def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
-    child = SingleModule(
-        header=_hdr("Child"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[
-            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
-            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
-            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
-            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                _eq(
-                    "ResetEq",
-                    [
-                        IfStmt(
-                            branches=(
-                                (
-                                    NotOp(operand=_varref("OpSeq.Reset")),
-                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                ),
-                                (
-                                    NotOp(operand=_varref("SeqResetOld")),
-                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                ),
-                            ),
-                            else_block=None,
-                        ),
-                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                    ],
-                ),
-                _eq(
-                    "LatchEq",
-                    [
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
-                            else_block=None,
-                        ),
-                    ],
-                ),
-            ],
-            sequences=[_seq("OpSeq", [])],
-        ),
-        parametermappings=[],
-    )
-    picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
-
-    reset_issues: list[VariableIssue] = []
-    latch_issues: list[VariableIssue] = []
-
-    reset_contamination_module.detect_reset_contamination(
-        picture,
-        reset_issues,
-        limit_to_module_path=["Root", "Frame", "Child"],
-    )
-    reset_contamination_module.detect_implicit_latching(
-        picture,
-        latch_issues,
-        limit_to_module_path=["Root", "Frame", "Child"],
-    )
-
-    assert any(
-        issue.module_path == ["Root", "Frame", "Child"]
-        and issue.variable is not None
-        and issue.variable.name == "Counter"
-        for issue in reset_issues
-    )
-    assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
-        (["Root", "Frame", "Child"], "Latch")
-    ]
 
 
 def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
@@ -177,11 +104,11 @@ def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
     )
 
     issues: list[VariableIssue] = []
-    reset_contamination_module._check_for_modulecode(modulecode, env, ["Root"], issues)
+    ResetContaminationAnalyzer._check_for_modulecode(modulecode, env, ["Root"], issues)
 
     assert issues == []
-    assert "opseq.reset" in reset_contamination_module._collect_var_refs(modulecode)
-    assert reset_contamination_module._collect_reset_old_vars(modulecode, "opseq.reset") == {"SeqResetOld"}
+    assert "opseq.reset" in ResetContaminationAnalyzer._collect_var_refs(modulecode)
+    assert ResetContaminationAnalyzer._collect_reset_old_vars(modulecode, "opseq.reset") == {"SeqResetOld"}
 
 
 def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
@@ -189,7 +116,7 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
         "flag": Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
         "otherflag": Variable(name="OtherFlag", datatype=ScalarDatatype.BOOLEAN),
     }
-    states = reset_contamination_module._collect_boolean_stmt_paths(
+    states = collect_boolean_stmt_paths(
         IfStmt(
             branches=(
                 (True, (Assignment(target=_varref("Flag"), value=True),)),
@@ -201,9 +128,9 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
             else_block=(FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("Flag"), False))),),
         ),
         env,
-        [reset_contamination_module._BooleanPathState()],
+        [BooleanPathState()],
     )
-    seq_states = reset_contamination_module._collect_boolean_seq_block_paths(
+    seq_states = collect_boolean_seq_block_paths(
         [
             SFCStep(
                 kind="step",
@@ -236,18 +163,18 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
             SFCTransitionSub(name="SubGate", body=[Assignment(target=_varref("OtherFlag"), value=False)]),  # pyright: ignore[reportArgumentType]
         ],
         env,
-        [reset_contamination_module._BooleanPathState()],
+        [BooleanPathState()],
     )
-    merged_states = reset_contamination_module._merge_boolean_parallel_branch_results(
+    merged_states = merge_boolean_parallel_branch_results(
         [
-            [reset_contamination_module._BooleanPathState(true_writes={("flag", ""): (env["flag"], "")})],
-            [reset_contamination_module._BooleanPathState(false_writes={("otherflag", ""): (env["otherflag"], "")})],
+            [BooleanPathState(true_writes={("flag", ""): (env["flag"], "")})],
+            [BooleanPathState(false_writes={("otherflag", ""): (env["otherflag"], "")})],
         ]
     )
-    assert reset_contamination_module._merge_boolean_parallel_branch_results([]) == []
+    assert merge_boolean_parallel_branch_results([]) == []
 
     issues: list[VariableIssue] = []
-    reset_contamination_module._scan_stmt_for_latching(
+    scan_stmt_for_latching(
         IfStmt(
             branches=((True, (Assignment(target=_varref("Flag"), value=True),)),),
             else_block=(FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("Flag"), False))),),
@@ -259,7 +186,7 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
         site="EQ:Guard",
         sequence_name="SeqA",
     )
-    reset_contamination_module._scan_seq_nodes_for_latching(
+    scan_seq_nodes_for_latching(
         [
             _bool_step("LatchStep", [Assignment(target=_varref("Flag"), value=True)]),
             SFCAlternative(
@@ -295,18 +222,14 @@ def test_latching_helpers_cover_boolean_paths_and_sequence_recursion() -> None:
 
 
 def test_boolean_parallel_merge_caps_the_frontier() -> None:
-    def _branch(prefix: str) -> list[object]:
-        states: list[object] = []
+    def _branch(prefix: str) -> list[BooleanPathState]:
+        states: list[BooleanPathState] = []
         for index in range(10):
             variable = Variable(name=f"{prefix}{index}", datatype=ScalarDatatype.BOOLEAN)
-            states.append(
-                reset_contamination_module._BooleanPathState(
-                    true_writes={(f"{prefix}{index}".casefold(), ""): (variable, "")}
-                )
-            )
+            states.append(BooleanPathState(true_writes={(f"{prefix}{index}".casefold(), ""): (variable, "")}))
         return states
 
-    merged = reset_contamination_module._merge_boolean_parallel_branch_results([_branch("Left"), _branch("Right")])
+    merged = merge_boolean_parallel_branch_results([_branch("Left"), _branch("Right")])
 
     assert len(merged) == 1
     assert len(merged[0].true_writes) == 20

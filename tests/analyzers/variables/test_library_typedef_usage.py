@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.ast import (
     AssignClause,
     Assignment,
@@ -26,9 +27,36 @@ from sattline_parser.ast import (
     SFCTransitionSub,
     VarTail,
 )
+from sattline_parser.grammar import constants as const
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    GraphObject,
+    InteractObject,
+    IntLiteral,
+    ModuleCode,
+    ModuleDef,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    Variable,
+)
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+    analyze_variables,
+)
 from sattlint.analyzers.variables._variables_contracts import TypedefUsageKey
-from tests.helpers.analyzers_variables_support import *
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_interact_enable_expression_counts_mapped_parent_input_as_read() -> None:

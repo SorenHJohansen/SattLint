@@ -9,6 +9,8 @@ A violation fails the suite via plain ``assert``, independent of grep.
 from __future__ import annotations
 
 import ast
+import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src" / "sattlint"
@@ -54,6 +56,13 @@ def _resolve_imports(node: ast.AST, base_dotted: str) -> set[str]:
     return resolved
 
 
+def _import_nodes(module: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
+    """Every import in the module, including nested and ``TYPE_CHECKING`` ones."""
+    for node in ast.walk(module):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            yield node
+
+
 def _hits_target(module_name: str, target: str) -> bool:
     if not module_name.startswith("sattlint."):
         return False
@@ -68,9 +77,7 @@ def test_forbidden_layer_links_are_absent() -> None:
         for path in sorted(layer_root.rglob("*.py")):
             base_dotted = _module_dotted_name(path)
             module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in module.body:
-                if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                    continue
+            for node in _import_nodes(module):
                 for imported in _resolve_imports(node, base_dotted):
                     for target in forbidden_targets:
                         if _hits_target(imported, target):
@@ -79,15 +86,32 @@ def test_forbidden_layer_links_are_absent() -> None:
     assert violations == []
 
 
+def test_guard_sees_imports_nested_in_type_checking_and_functions() -> None:
+    module = ast.parse(
+        textwrap.dedent(
+            """
+            from typing import TYPE_CHECKING
+
+            if TYPE_CHECKING:
+                from sattlint.cli import startup
+
+            def load() -> None:
+                from sattlint.core.syntax import parse_source_file
+            """
+        )
+    )
+    imported = {name for node in _import_nodes(module) for name in _resolve_imports(node, "sattlint.core.example")}
+    assert "sattlint.cli.startup" in imported
+    assert "sattlint.core.syntax.parse_source_file" in imported
+
+
 def test_analyzers_use_only_the_public_reporting_surface() -> None:
     violations: list[str] = []
     analyzers_root = SRC_DIR / "analyzers"
     for path in sorted(analyzers_root.rglob("*.py")):
         base_dotted = _module_dotted_name(path)
         module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in module.body:
-            if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
+        for node in _import_nodes(module):
             for imported in _resolve_imports(node, base_dotted):
                 if imported.startswith("sattlint.reporting._"):
                     violations.append(f"{path.relative_to(SRC_DIR)}: imports reporting internals {imported}")
@@ -105,9 +129,7 @@ def test_engine_is_not_imported_below_the_top_layers() -> None:
             continue
         base_dotted = _module_dotted_name(path)
         module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in module.body:
-            if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
+        for node in _import_nodes(module):
             for imported in _resolve_imports(node, base_dotted):
                 if _hits_target(imported, "engine"):
                     violations.append(f"{path.relative_to(SRC_DIR)}: imports {imported} (forbidden: engine)")

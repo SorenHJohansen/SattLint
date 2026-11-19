@@ -702,7 +702,9 @@ def test_findings_differing_only_in_data_payload_stay_separate() -> None:
     findings = flat_findings(_run_record(first, second))
 
     assert len(findings) == 2
-    assert {finding.finding.data["previous"] for finding in findings} == {"IF First THEN", "IF Second THEN"}
+    previous = [finding.finding.data["previous"] for finding in findings]
+    assert "IF First THEN" in previous
+    assert "IF Second THEN" in previous
 
 
 def test_finding_filters_and_all_groupings() -> None:

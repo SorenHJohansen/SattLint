@@ -1,6 +1,25 @@
-from sattline_parser.models.expressions import Assignment
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    IntLiteral,
+    ModuleCode,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.variable_usage_reporting import (
+    debug_variable_usage,
+    report_datatype_usage,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_opt_in_analyzer_is_not_in_default_cli_keys():

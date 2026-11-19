@@ -19,6 +19,8 @@ CI runs a short bounded session (see .github/workflows/ci.yml fuzz-smoke).
 
 from __future__ import annotations
 
+import atexit
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -27,18 +29,29 @@ import atheris  # type: ignore[import-untyped]
 
 from sattlint.graphics.validation import validate_graphics_text
 
+# One file per process: rewriting it per input is cheaper than creating and
+# deleting a temporary file for every test case.
+_SPOOL_FD, _SPOOL_NAME = tempfile.mkstemp(prefix="sattlint-fuzz-", suffix=".g")
+os.close(_SPOOL_FD)
+_SPOOL = Path(_SPOOL_NAME)
+atexit.register(_SPOOL.unlink, missing_ok=True)
+
 
 def test_one_input(data: bytes) -> None:
     text = data.decode("utf-8", errors="replace")
-    with tempfile.NamedTemporaryFile(suffix=".g", delete=False) as handle:
-        handle.write(data)
-        tmp_path = Path(handle.name)
-    try:
-        validate_graphics_text(text, tmp_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    _SPOOL.write_bytes(data)
+    validate_graphics_text(text, _SPOOL)
+
+
+def _is_bounded(argv: list[str]) -> bool:
+    return any(argument.startswith(("-runs=", "-max_total_time=")) for argument in argv)
+
+
+def main() -> None:
+    argv = sys.argv if _is_bounded(sys.argv) else [*sys.argv, "-max_total_time=60"]
+    atheris.Setup(argv, test_one_input)
+    atheris.Fuzz()
 
 
 if __name__ == "__main__":
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    main()

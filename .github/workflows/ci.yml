@@ -47,6 +47,14 @@ jobs:
       - name: Pyright on production code and tests
         run: uv run --frozen pyright src/sattlint tests
 
+      # Ruff and Pyright run above; the remaining hooks keep whitespace,
+      # end-of-file, YAML/TOML, merge-conflict, line-ending and large-file
+      # checks on CI instead of only on developer machines.
+      - name: Pre-commit hygiene hooks
+        env:
+          SKIP: ruff,ruff-format,pyright
+        run: uv run --frozen pre-commit run --all-files --show-diff-on-failure
+
       - name: Full pytest with coverage
         run: >-
           uv run --frozen python -m pytest -q --tb=short --cov=sattlint
@@ -123,6 +131,16 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
+
+      # atheris publishes manylinux x86_64 wheels only. Fail with a clear
+      # message if the job ever moves to another architecture or OS rather than
+      # letting dependency resolution fail with an unrelated error.
+      - name: Require a Linux x86_64 runner
+        run: |
+          if [ "$(uname -s)/$(uname -m)" != "Linux/x86_64" ]; then
+            echo "::error::the fuzz extra requires a Linux x86_64 runner (atheris wheels)"
+            exit 1
+          fi
 
       - name: Install the locked fuzz environment
         run: uv sync --locked --extra fuzz

@@ -7,10 +7,8 @@ import contextlib
 import logging
 import os
 import select
-import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -835,7 +833,7 @@ def test_textual_chrome_project_label_shows_project_name() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
             label = str(app_instance.query_one("#status-project").renderable)
-            assert "sattlint-test-project-" in label
+            assert "project-1" in label
 
     asyncio.run(_run())
 
@@ -1211,14 +1209,18 @@ def _make_textual_app(
     return app_instance
 
 
+_test_project_root: Path | None = None
+_test_project_sequence = 0
+
+
 def _attach_test_project(app_instance: Any) -> None:
-    project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
-    _TEMP_TEST_DIRS.append(str(project_dir))
+    global _test_project_sequence
+    if _test_project_root is None:
+        raise RuntimeError("the per-test project root fixture is not active")
+    _test_project_sequence += 1
+    project_dir = _test_project_root / f"project-{_test_project_sequence}"
     app_instance._project = init_project(project_dir / ".slproj")
     app_instance._project_path = app_instance._project.path
-
-
-_TEMP_TEST_DIRS: list[str] = []
 
 
 @pytest.fixture(autouse=True)
@@ -1233,18 +1235,21 @@ def _isolate_app_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     yield
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _cleanup_temp_test_dirs() -> Iterator[None]:
-    """Remove temporary project directories created by the Textual app tests.
+@pytest.fixture(autouse=True)
+def _isolate_test_projects(tmp_path: Path) -> Iterator[None]:
+    """Keep every throwaway project inside the test's own ``tmp_path``.
 
-    The shell attaches a throwaway ``.slproj`` project (and some tests create
-    project/``projects`` dirs directly) under ``/tmp``; without this the full
-    suite leaks hundreds of ``sattlint-test-project-*`` directories.
+    ``_make_textual_app`` attaches a real ``.slproj`` project; creating it in
+    the shared temp area left one directory per app on every run.
     """
+    global _test_project_root, _test_project_sequence
+    root = tmp_path / "projects"
+    root.mkdir()
+    _test_project_root = root
+    _test_project_sequence = 0
     yield
-    for directory in _TEMP_TEST_DIRS:
-        shutil.rmtree(directory, ignore_errors=True)
-    _TEMP_TEST_DIRS.clear()
+    _test_project_root = None
+    _test_project_sequence = 0
 
 
 def _widget_text_lines(widget: Any) -> int | None:
@@ -2642,7 +2647,7 @@ def test_textual_review_output_dir_button_opens_folder_picker() -> None:
     asyncio.run(_run())
 
 
-def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2651,7 +2656,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
-        project_path="/tmp/sattlint-test.slproj",
+        project_path=str(tmp_path / "sattlint-test.slproj"),
         selected_analyzers=("variables",),
         targets=(
             RunTargetRecord(
@@ -2679,7 +2684,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
+        app_instance._project_path = tmp_path / "sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2722,7 +2727,9 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
     asyncio.run(_run())
 
 
-def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_results_module_selection_updates_findings_pane(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2731,7 +2738,7 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
-        project_path="/tmp/sattlint-test.slproj",
+        project_path=str(tmp_path / "sattlint-test.slproj"),
         targets=(
             RunTargetRecord(
                 target_name="TargetA",
@@ -2778,7 +2785,7 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
+        app_instance._project_path = tmp_path / "sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2817,7 +2824,7 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
     asyncio.run(_run())
 
 
-def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2826,13 +2833,13 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
         started_at="s",
         finished_at="f",
         project_tag="TargetA",
-        project_path="/tmp/sattlint-test.slproj",
+        project_path=str(tmp_path / "sattlint-test.slproj"),
     )
     summary = RunSummary.from_record(record)
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
+        app_instance._project_path = tmp_path / "sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda _run_id: record)
 
@@ -4060,13 +4067,15 @@ def test_textual_file_browser_directory_only_tree_hides_files(tmp_path: Path) ->
 
 
 def test_textual_file_browser_directory_only_go_up_navigates_to_parent(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[Path("/home/sorenhj")], directory_only=True)
-    tree = SimpleNamespace(path="/home/sorenhj")
+    start_path = tmp_path / "start"
+    start_path.mkdir()
+    browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[start_path], directory_only=True)
+    tree = SimpleNamespace(path=str(start_path))
     select_button = SimpleNamespace(label="Select folder", disabled=True)
     up_button = SimpleNamespace(disabled=True)
     widgets: dict[str, object] = {
@@ -4083,21 +4092,22 @@ def test_textual_file_browser_directory_only_go_up_navigates_to_parent(
 
     browser.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="file-browser-up")))
 
-    assert Path(tree.path) == Path("/home")
-    assert browser._current_path == Path("/home")
+    assert Path(tree.path) == tmp_path
+    assert browser._current_path == tmp_path
     assert select_button.label == "Select folder"
     assert select_button.disabled is False
     assert up_button.disabled is False
 
 
 def test_textual_file_browser_directory_only_up_button_disabled_at_root(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[Path("/")], directory_only=True)
-    tree = SimpleNamespace(path="/")
+    filesystem_root = Path(tmp_path.anchor)
+    browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[filesystem_root], directory_only=True)
+    tree = SimpleNamespace(path=str(filesystem_root))
     up_button = SimpleNamespace(disabled=False)
     widgets: dict[str, object] = {
         "#file-browser-tree": tree,
@@ -4111,11 +4121,11 @@ def test_textual_file_browser_directory_only_up_button_disabled_at_root(
         lambda _owner, selector, _expected_type=None: widgets[selector],
     )
 
-    browser._refresh_up_button(Path("/"))
+    browser._refresh_up_button(filesystem_root)
     assert up_button.disabled is True
 
     browser.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="file-browser-up")))
-    assert tree.path == "/"
+    assert tree.path == str(filesystem_root)
     assert browser._current_path is None
 
 
@@ -4179,9 +4189,8 @@ def test_textual_toolbar_actions_are_ignored_while_interaction_screen_is_open(mo
 
 
 def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    projects_dir = tmp_path / "projects"
+    projects_dir = tmp_path / "new-project-root"
     projects_dir.mkdir(parents=True, exist_ok=True)
-    _TEMP_TEST_DIRS.append(str(projects_dir))
     monkeypatch.setattr(
         "sattlint.config.paths.get_projects_dir",
         lambda: projects_dir,
@@ -4429,12 +4438,14 @@ def test_sanitize_project_name_preserves_spaces_and_strips_path_separators() -> 
     assert app_textual_actions_module._sanitize_project_name("  ") == "project"
 
 
-def test_textual_make_project_relative_keeps_empty_paths_empty() -> None:
-    assert app_textual_actions_module._make_project_relative("", Path("/tmp/proj")) == ""
-    assert app_textual_actions_module._make_project_relative("   ", Path("/tmp/proj")) == ""
-    assert app_textual_actions_module._make_project_relative("relative/dir", Path("/tmp/proj")) == "relative/dir"
-    assert app_textual_actions_module._make_project_relative("/tmp/proj/icf", Path("/tmp/proj")) == "icf"
-    assert app_textual_actions_module._make_project_relative("/elsewhere", Path("/tmp/proj")) == "/elsewhere"
+def test_textual_make_project_relative_keeps_empty_paths_empty(tmp_path: Path) -> None:
+    project_dir = tmp_path / "proj"
+    elsewhere = tmp_path / "elsewhere"
+    assert app_textual_actions_module._make_project_relative("", project_dir) == ""
+    assert app_textual_actions_module._make_project_relative("   ", project_dir) == ""
+    assert app_textual_actions_module._make_project_relative("relative/dir", project_dir) == "relative/dir"
+    assert app_textual_actions_module._make_project_relative(str(project_dir / "icf"), project_dir) == "icf"
+    assert app_textual_actions_module._make_project_relative(str(elsewhere), project_dir) == str(elsewhere)
 
 
 def test_textual_menu_definitions_have_open_and_new_but_not_save() -> None:
@@ -4512,6 +4523,13 @@ def test_textual_shell_does_not_crash_within_window(tmp_path: Path) -> None:
         env["TERM"] = "xterm-256color"
         env["COLUMNS"] = "100"
         env["LINES"] = "30"
+        # The child must not read or write the developer's configuration or
+        # cache; every per-user location points at this test's temp directory.
+        env["HOME"] = str(tmp_path)
+        env["USERPROFILE"] = str(tmp_path)
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "config")
+        env["XDG_CACHE_HOME"] = str(tmp_path / "cache")
+        env["APPDATA"] = str(tmp_path / "appdata")
         # The child runs in ``tmp_path``. A relative ``PYTHONPATH=src`` would
         # resolve against that directory and import a stale installed package
         # instead of this checkout.

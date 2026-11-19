@@ -1,5 +1,4 @@
 import logging
-from typing import Any, cast
 
 import pytest
 from sattline_parser.ast import MappingSource, ParameterMapping, SourceSpan
@@ -20,7 +19,6 @@ from sattlint.analyzers.modules import (
     ComparisonResult,
     SubmoduleDiff,
     VariableDiff,
-    analyze_version_drift,
     compare_modules,
     compare_variable_lists,
     create_fingerprint,
@@ -35,114 +33,6 @@ def _hdr(name: str) -> ModuleHeader:
 
 def _varref(name: str) -> VarRef:
     return VarRef(name=name)
-
-
-def test_version_drift_detects_small_code_delta_between_same_named_modules() -> None:
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=2)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["module_name"] == "Mixer"
-    assert issues[0].data["unique_variants"] == 2
-    assert "code" in issues[0].data["material_differences"]
-    assert any("Equation 'Logic' changed" in note for note in issues[0].data["upgrade_notes"])
-
-
-def test_version_drift_records_modified_variable_shape_diffs() -> None:
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.REAL)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert "localvariables" in issues[0].data["material_differences"]
-    assert any("Local variable 'Output' changed" in note for note in issues[0].data["upgrade_notes"])
 
 
 def test_variable_difference_ignores_declaration_location() -> None:
@@ -162,65 +52,6 @@ def test_variable_difference_ignores_declaration_location() -> None:
     diff = compare_variable_lists([create_fingerprint(module, ["Root", "Panel"]) for module in modules])
     assert diff.common == ["Name"]
     assert diff.modified == {}
-
-
-def test_version_drift_ignores_datecode_only_differences() -> None:
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                Equation(
-                    name="Logic",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Output"), value=1)],
-                )
-            ],
-            sequences=[],
-        ),
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    assert report.issues == []
 
 
 def test_module_comparison_summary_lists_variant_differences() -> None:

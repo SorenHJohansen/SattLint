@@ -1,10 +1,53 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+from types import SimpleNamespace
+from typing import (
+    Any,
+    cast,
+)
+
 import pytest
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 from sattline_parser.models.expressions import NotOp
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.analyzers.variables import (
+    _variable_issue_collection as variable_issue_collection_module,
+)
+from sattlint.analyzers.variables import (
+    _variables_execution as variables_execution_module,
+)
 from sattlint.analyzers.variables._variables_contracts import TypedefUsageKey
-from tests.helpers.analyzers_variables_support import *
+from sattlint.reporting.variables_report import VariableIssue
+from sattlint.resolution.scope import ScopeContext
+from tests.helpers.variable_test_support import (
+    UsageStub as _UsageStub,
+)
+from tests.helpers.variable_test_support import (
+    access_event as _access_event,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:

@@ -23,9 +23,13 @@ MANIFEST_DIR = CORPUS_DIR / "manifests"
 FIXTURES_DIR = CORPUS_DIR.parent
 
 MANIFEST_PATHS = sorted(MANIFEST_DIR.glob("*.json"))
-assert MANIFEST_PATHS, f"no corpus manifests found under {MANIFEST_DIR}"
 
 _MANIFEST_IDS = [path.stem for path in MANIFEST_PATHS]
+
+
+def test_manifest_directory_contains_manifests() -> None:
+    """A missing or empty manifest directory fails as a test, not at collection."""
+    assert MANIFEST_PATHS, f"no corpus manifests found under {MANIFEST_DIR}"
 
 
 def _load(path: Path) -> dict[str, object]:
