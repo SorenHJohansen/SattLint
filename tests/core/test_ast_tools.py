@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.ast import BasePicture, BinOp, VarRef
+from sattline_parser.ast import BasePicture
 
-from sattlint.core.ast_tools import iter_call_sites, iter_variable_refs
+from sattlint.core.ast_tools import CallSite, iter_call_sites, iter_variable_refs
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "parser_surface" / "ParserSurfaceShapes.s"
 
@@ -92,20 +92,14 @@ ENDDEF (*BasePicture*);
     sites = list(iter_call_sites(base_picture))
 
     assert sites == [
-        ("function", "Abs_", (-1,)),
-        ("function", "Abs_", (VarRef("Counter"),)),
+        CallSite(kind="function", name="Abs_"),
+        CallSite(kind="function", name="Abs_"),
     ]
 
 
-def test_iter_call_sites_reports_a_procedure_call_with_an_expression_argument() -> None:
+def test_iter_call_sites_reports_a_procedure_call() -> None:
     sites = list(iter_call_sites(_parse_fixture()))
 
-    procedure_sites = [site for site in sites if site[0] == "procedure"]
+    procedure_sites = [site for site in sites if site.kind == "procedure"]
 
-    assert len(procedure_sites) == 1
-    _kind, name, args = procedure_sites[0]
-    assert name == "ToggleWindow"
-    assert len(args) == 1
-    assert isinstance(args[0], BinOp)
-    assert isinstance(args[0].left, VarRef)
-    assert args[0].left.name == "ProcArg"
+    assert procedure_sites == [CallSite(kind="procedure", name="ToggleWindow")]

@@ -94,14 +94,14 @@ class SemanticIndexReferenceSupportMixin:
         source_library: str | None,
     ) -> None:
         source_file_name = Path(str(source_file)).name if source_file is not None else None
-        for call_kind, call_name, _args in iter_call_sites(node):
-            signature = resolve_call_signature(call_name)
+        for site in iter_call_sites(node):
+            signature = resolve_call_signature(site.name)
             if signature is None:
                 continue
             self._call_signatures.append(
                 CallSignatureOccurrence(
-                    name=call_name,
-                    call_kind=call_kind,
+                    name=site.name,
+                    call_kind=site.kind,
                     module_path=module_path,
                     source_file=source_file_name,
                     source_library=source_library,
