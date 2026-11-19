@@ -54,12 +54,22 @@ class CommentCodeReport:
     hits: list[CommentCodeHit]
     issues: list[Issue] = field(default_factory=empty_issues)
     files_scanned: int = 0
+    skipped_reason: str | None = None
 
     @property
     def name(self) -> str:
         return self.basepicture_name
 
     def summary(self) -> str:
+        if self.skipped_reason is not None:
+            lines = format_report_header(
+                "Commented-out code",
+                self.basepicture_name,
+                status="not computed",
+            )
+            lines.append(self.skipped_reason)
+            return "\n".join(lines)
+
         if not self.hits and not self.issues:
             lines = format_report_header(
                 "Commented-out code",

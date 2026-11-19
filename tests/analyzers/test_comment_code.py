@@ -2,8 +2,6 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from sattlint.analyzers import comment_code as comment_code_module
 from sattlint.analyzers.comment_code import _comment_module_paths, analyze_comment_code_files
 from sattlint.models.project_graph import ProjectGraph
@@ -233,7 +231,7 @@ def test_comment_code_format_line_range_handles_single_line_and_range() -> None:
     assert comment_code_module._format_line_range(4, 6) == "4-6"
 
 
-def test_analyze_comment_code_reports_a_missing_graph_instead_of_an_empty_clean_report() -> None:
+def test_analyze_comment_code_marks_a_missing_graph_as_not_computed() -> None:
     context = SimpleNamespace(
         base_picture=SimpleNamespace(
             header=SimpleNamespace(name="Program"),
@@ -244,8 +242,14 @@ def test_analyze_comment_code_reports_a_missing_graph_instead_of_an_empty_clean_
         graph=None,
     )
 
-    with pytest.raises(TypeError, match="requires a loaded project graph"):
-        comment_code_module.analyze_comment_code(context)
+    report = comment_code_module.analyze_comment_code(context)
+
+    assert report.basepicture_name == "Program"
+    assert report.files_scanned == 0
+    assert report.hits == []
+    assert report.skipped_reason is not None
+    assert "Status: not computed" in report.summary()
+    assert "No code-like comments found." not in report.summary()
 
 
 def test_comments_outside_modulecode_are_ignored():

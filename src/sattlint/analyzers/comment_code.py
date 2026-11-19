@@ -186,16 +186,20 @@ def analyze_comment_code_files(
     )
 
 
-def _target_source_paths(context: AnalysisContext) -> set[Path]:
+def _target_source_paths(context: AnalysisContext) -> set[Path] | None:
+    """Return the target's source files, or ``None`` when nothing was loaded.
+
+    ``None`` is distinct from an empty set: a loaded target always has at least
+    one source file, so an absent graph or source set means the analysis did not
+    run. The report renders that as "not computed" instead of a clean result.
+    """
     graph = context.graph
     if not isinstance(graph, ProjectGraph):
-        raise TypeError("Comment-code analysis requires a loaded project graph.")
+        return None
     root_source_path = graph.root_source_path_for_basepicture(context.base_picture)
     if root_source_path is not None:
         return {root_source_path}
-    if graph.source_files:
-        return set(graph.source_files)
-    raise ValueError(f"Comment-code analysis has no source file for target {program_identity(context.base_picture)!r}.")
+    return set(graph.source_files) or None
 
 
 def _source_base_picture(context: AnalysisContext) -> BasePicture:
@@ -207,7 +211,7 @@ def _source_base_picture(context: AnalysisContext) -> BasePicture:
     """
     graph = context.graph
     if not isinstance(graph, ProjectGraph):
-        raise TypeError("Comment-code analysis requires a loaded project graph.")
+        return context.base_picture
     root = graph.ast_by_name.get(program_identity(context.base_picture))
     if isinstance(root, BasePicture):
         return root
@@ -216,6 +220,12 @@ def _source_base_picture(context: AnalysisContext) -> BasePicture:
 
 def analyze_comment_code(context: AnalysisContext) -> CommentCodeReport:
     paths = _target_source_paths(context)
+    if paths is None:
+        return CommentCodeReport(
+            basepicture_name=context.base_picture.header.name,
+            hits=[],
+            skipped_reason="Source files were not available, so comment-code analysis did not run.",
+        )
     return analyze_comment_code_files(
         paths,
         context.base_picture.header.name,
