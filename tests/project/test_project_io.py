@@ -197,10 +197,10 @@ def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> Non
     project = init_project(tmp_path / "proj.slproj")
 
     project.data["analyzed_programs_and_libraries"].append("Demo")
-    project.data["analysis"]["validate"] = True
+    project.data["other_lib_dirs"].append("libs")
 
     assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
-    assert "validate" not in DEFAULT_PROJECT_DICT["analysis"]
+    assert DEFAULT_PROJECT_DICT["other_lib_dirs"] == []
 
 
 def test_normalize_converters() -> None:
