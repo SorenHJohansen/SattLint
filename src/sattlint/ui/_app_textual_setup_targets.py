@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from importlib.resources import files as _resource_files
 from pathlib import Path
 from typing import Any, cast
 
 from ..__version__ import __version__ as _sattlint_version
+from ..assets import sqhj_banner
 from ..core.syntax import CodeMode, code_ext_candidates, deps_ext_candidates, normalize_code_mode
 from ._app_textual_setup_display import (
     _configured_target_names,
@@ -388,14 +388,6 @@ def _apply_setup_dir_choice(self: Any, field_key: str, selected_path: Path, *, l
     self._write_output(f"Updated {label} from the Setup view.")
 
 
-def _load_sqhj_banner() -> str:
-    raw_banner = _resource_files("sattlint.assets").joinpath("sqhj").read_text(encoding="utf-8")
-    return raw_banner.replace("\u00a0", " ").strip("\n")
-
-
-_SQHJ_ASCII = _load_sqhj_banner()
-
-
 def _open_help_popup(self: Any) -> None:
     get_help_text_fn = getattr(self, "_get_help_text_fn", None)
     if not callable(get_help_text_fn):
@@ -425,7 +417,7 @@ def _open_help_popup(self: Any) -> None:
         + "\n\n"
         + "Made by:"
         + "\n\n"
-        + _SQHJ_ASCII
+        + sqhj_banner()
     )
     self._show_help_modal(help_text)
 
