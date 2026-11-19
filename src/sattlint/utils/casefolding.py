@@ -5,19 +5,19 @@ from collections.abc import Iterable
 ANYTYPE_NAME = "anytype"
 
 
-def casefold_key(value: object) -> str:
-    return str(value).casefold()
+def casefold_key(value: str) -> str:
+    return value.casefold()
 
 
-def casefold_equal(left: object, right: object) -> bool:
+def casefold_equal(left: str, right: str) -> bool:
     return casefold_key(left) == casefold_key(right)
 
 
-def dedupe_casefolded_strings(values: Iterable[object]) -> list[str]:
+def dedupe_casefolded_strings(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
     for raw in values:
-        value = str(raw).strip()
+        value = raw.strip()
         if not value:
             continue
         key = casefold_key(value)

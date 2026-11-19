@@ -1,7 +1,6 @@
 """Console and terminal primitives for SattLint.
 
-CLI-independent helpers for clearing and inspecting the terminal, elevated
-from the old flat ``app_base`` module as part of the Phase 2 layered refactor.
+CLI-independent helpers for clearing and inspecting the terminal.
 """
 
 from __future__ import annotations

@@ -205,7 +205,7 @@ class ProjectGraph:
     # Program name -> SattLint's graphics view of that program.
     graphics_attachments: dict[str, GraphicsAttachments] = field(default_factory=_graphics_attachments_factory)
     # True only when this whole graph was replayed from the project-level analysis-result cache
-    # (see _app_analysis_loading.py); all timing/count fields above are then stale/historical,
+    # (see project/loading.py); all timing/count fields above are then stale/historical,
     # not measurements of the current call.
     loaded_from_cache: bool = False
 

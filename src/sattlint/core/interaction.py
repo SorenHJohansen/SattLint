@@ -1,8 +1,7 @@
 """Interactive console I/O primitives for SattLint.
 
-Plain ``input``-driven defaults for prompting, confirming, pausing, choosing a
-menu option, and quitting the app, elevated from the old flat ``app_base``
-module as part of the Phase 2 layered refactor.
+Plain ``input``-driven defaults for prompting, confirming, pausing, and
+quitting the app.
 """
 
 from __future__ import annotations
