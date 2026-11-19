@@ -7,14 +7,21 @@ module as part of the Phase 2 layered refactor.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from typing import Any
+from collections.abc import Callable
 
 from . import terminal as terminal_module
 
 
 def pause() -> None:
-    input("\nPress Enter to continue...")
+    """Wait for the operator to acknowledge.
+
+    A closed stdin has nobody left to press Enter, so the wait degrades to a
+    no-op instead of raising from a shutdown path.
+    """
+    try:
+        input("\nPress Enter to continue...")
+    except EOFError:
+        return
 
 
 class QuitAppError(Exception):
@@ -37,15 +44,3 @@ def prompt(msg: str, default: str | None = None) -> str:
     if default is not None:
         return input(f"{msg} [{default}]: ").strip() or default
     return input(f"{msg}: ").strip()
-
-
-def choose_menu_option(
-    title: str,
-    options: Sequence[Any],
-    *,
-    print_menu_fn: Callable[..., None],
-    intro: str | None = None,
-    note: str | None = None,
-) -> str:
-    print_menu_fn(title, options, intro=intro, note=note)
-    return input("> ").strip().lower()

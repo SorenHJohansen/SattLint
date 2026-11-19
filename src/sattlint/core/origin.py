@@ -14,15 +14,17 @@ def is_root_origin(
 ) -> bool:
     """Return True when an entity's origin belongs to the analyzed root.
 
-    A different library disqualifies the entity. Within the same library, the
-    source-file stem decides, so a root module type and its instances match even
-    when one side reports a relative and the other an absolute path. Missing
-    origin data is treated as root-owned.
+    A different library disqualifies the entity. Within the same library the
+    file name decides, so a root module type and its instances match even when
+    one side reports a relative and the other an absolute path. The full name
+    is compared, not the stem, because the draft and official bodies of one
+    program share a stem but are different artifacts. Missing origin data is
+    treated as root-owned.
     """
     if root_origin_library and origin_lib and origin_lib.casefold() != root_origin_library.casefold():
         return False
     if origin_file and root_origin_file:
-        return Path(origin_file).stem.casefold() == Path(root_origin_file).stem.casefold()
+        return Path(origin_file).name.casefold() == Path(root_origin_file).name.casefold()
     return True
 
 

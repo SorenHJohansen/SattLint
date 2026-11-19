@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from sattlint.parser_api import BuiltinFunction, BuiltinParameter, get_function_signature
@@ -55,6 +55,11 @@ class CallSignature:
 
     builtin: BuiltinFunction
     source: str = "builtin"
+    #: Built once: analyzers index this tuple per call site.
+    parameters: tuple[CallParameter, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", tuple(CallParameter(parameter) for parameter in self.builtin.parameters))
 
     @property
     def name(self) -> str:
@@ -67,10 +72,6 @@ class CallSignature:
     @property
     def return_type(self) -> str | None:
         return self.builtin.return_type
-
-    @property
-    def parameters(self) -> tuple[CallParameter, ...]:
-        return tuple(CallParameter(parameter) for parameter in self.builtin.parameters)
 
     @property
     def status_parameters(self) -> tuple[CallParameter, ...]:

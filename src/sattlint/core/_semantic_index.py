@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from sattlint.parser_api import (
@@ -91,8 +91,15 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self._known_typedef_ids = {
             id(moduletype) for moduletypes in self._moduletype_index.values() for moduletype in moduletypes
         }
+        # Resolution derives the root module path from ``header.name``, which is
+        # the literal keyword for a loaded program. Give it a root view named by
+        # the program's identity so reference keys match definition keys.
+        root_picture = base_picture
+        identity = program_identity(base_picture)
+        if base_picture.header.name != identity:
+            root_picture = replace(base_picture, header=replace(base_picture.header, name=identity))
         self.context_builder = ContextBuilder(
-            base_picture=base_picture,
+            base_picture=root_picture,
             symbol_table=self.symbol_table,
             type_graph=self.type_graph,
             issues=self._issues,

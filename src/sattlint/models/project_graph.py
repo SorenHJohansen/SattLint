@@ -110,6 +110,38 @@ class ProjectFailure:
     length: int | None = None
 
 
+def _moduletype_with_origin(
+    moduletype: ModuleTypeDef,
+    *,
+    source_name: str | None,
+    library_name: str | None,
+) -> ModuleTypeDef:
+    """Return a copy with any missing provenance filled in.
+
+    The parser owns these nodes, so a definition that omits its origin gets a
+    copy here instead of being written back into the parser's tree.
+    """
+    origin_file = moduletype.origin_file or source_name
+    origin_lib = moduletype.origin_lib or library_name
+    if origin_file == moduletype.origin_file and origin_lib == moduletype.origin_lib:
+        return moduletype
+    return replace(moduletype, origin_file=origin_file, origin_lib=origin_lib)
+
+
+def _datatype_with_origin(
+    datatype: DataType,
+    *,
+    source_name: str | None,
+    library_name: str | None,
+) -> DataType:
+    """Record type counterpart of the module-type provenance copy."""
+    origin_file = datatype.origin_file or source_name
+    origin_lib = datatype.origin_lib or library_name
+    if origin_file == datatype.origin_file and origin_lib == datatype.origin_lib:
+        return datatype
+    return replace(datatype, origin_file=origin_file, origin_lib=origin_lib)
+
+
 @dataclass(frozen=True)
 class RootOrigin:
     source_path: Path | None = None
@@ -307,23 +339,25 @@ class ProjectGraph:
                 self.source_file_libraries[source_path] = library_name
 
         for m in bp.moduletype_defs:
-            if source_path and not m.origin_file:
-                m.origin_file = source_path.name
-            if library_name and not m.origin_lib:
-                m.origin_lib = library_name
-            lib_key = (m.origin_lib or "").casefold()
-            name_key = m.name.casefold()
-            file_key = (m.origin_file or "").casefold()
-            self.moduletype_defs[(lib_key, name_key, file_key)] = m
+            moduletype = _moduletype_with_origin(
+                m,
+                source_name=source_path.name if source_path is not None else None,
+                library_name=library_name,
+            )
+            lib_key = (moduletype.origin_lib or "").casefold()
+            name_key = moduletype.name.casefold()
+            file_key = (moduletype.origin_file or "").casefold()
+            self.moduletype_defs[(lib_key, name_key, file_key)] = moduletype
         for d in bp.datatype_defs:
-            if source_path and not d.origin_file:
-                d.origin_file = source_path.name
-            if library_name and not d.origin_lib:
-                d.origin_lib = library_name
-            lib_key = (d.origin_lib or "").casefold()
-            name_key = d.name.casefold()
-            file_key = (d.origin_file or "").casefold()
-            self.datatype_defs[(lib_key, name_key, file_key)] = d
+            datatype = _datatype_with_origin(
+                d,
+                source_name=source_path.name if source_path is not None else None,
+                library_name=library_name,
+            )
+            lib_key = (datatype.origin_lib or "").casefold()
+            name_key = datatype.name.casefold()
+            file_key = (datatype.origin_file or "").casefold()
+            self.datatype_defs[(lib_key, name_key, file_key)] = datatype
 
 
 def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:

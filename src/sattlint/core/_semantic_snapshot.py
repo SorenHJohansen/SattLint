@@ -310,6 +310,20 @@ class SemanticSnapshot:
             ],
         }
 
+    def _library_key_for_source(self, source_path: Path | str) -> str:
+        """The declared library for a source file, falling back to its directory.
+
+        The loader records the library a program was loaded from, which can
+        differ from the directory that holds the file. Prefer that declaration
+        so a query and an occurrence agree about library identity.
+        """
+        source = Path(str(source_path))
+        resolved = source.resolve()
+        for known_path, library in self.project_graph.source_file_libraries.items():
+            if known_path.resolve() == resolved:
+                return library.casefold()
+        return source.parent.name.casefold()
+
     def find_call_signatures(
         self,
         query: str = "",
@@ -319,10 +333,7 @@ class SemanticSnapshot:
     ) -> list[CallSignatureOccurrence]:
         needle = query.strip().casefold()
         file_key = source_file_key(source_path) if source_path is not None else None
-        library_key = None
-        if source_path is not None:
-            source = Path(str(source_path))
-            library_key = source.parent.name.casefold()
+        library_key = None if source_path is None else self._library_key_for_source(source_path)
 
         matches: list[CallSignatureOccurrence] = []
         for occurrence in self.call_signatures:

@@ -99,8 +99,8 @@ def _format_workspace_snapshot_failure(
         lines.append(f"Validation warnings ({len(graph.warnings)}):")
         for message in graph.warnings[:8]:
             lines.append(f"- {message}")
-        if len(dependency_issues) > 8:
-            lines.append(f"- ... (+{len(dependency_issues) - 8} more)")
+        if len(graph.warnings) > 8:
+            lines.append(f"- ... (+{len(graph.warnings) - 8} more)")
 
     return "\n".join(lines)
 
