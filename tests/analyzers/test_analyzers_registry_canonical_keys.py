@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
+
 import pytest
 
 from sattlint.analyzers import dispatch as dispatch_module
@@ -13,6 +17,27 @@ def test_canonicalize_analyzer_key_maps_legacy_aliases() -> None:
     assert registry_module.canonicalize_analyzer_key("same_cycle") == "same-cycle"
     assert registry_module.canonicalize_analyzer_key("SAME_CYCLE") == "same-cycle"
     assert registry_module.canonicalize_analyzer_key("variables") == "variables"
+
+
+def test_canonicalize_analyzer_keys_strips_and_canonicalizes() -> None:
+    assert registry_module.canonicalize_analyzer_keys([" variables ", " SAME_CYCLE "]) == ("variables", "same-cycle")
+
+
+def test_importing_the_registry_does_not_import_analyzers_or_the_loader() -> None:
+    script = textwrap.dedent(
+        """
+        import sys
+        import sattlint.analyzers.registry
+
+        loaded = {"variables" if "sattlint.analyzers.variables" in sys.modules else "",
+                  "project" if "sattlint.project.loading" in sys.modules else ""}
+        print(",".join(sorted(name for name in loaded if name)))
+        """
+    )
+
+    result = subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+    assert result.stdout.strip() == ""
 
 
 def test_default_cli_analyzers_are_keyed_by_canonical_keys() -> None:
