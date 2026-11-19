@@ -705,3 +705,53 @@ ENDDEF (*BasePicture*);
     assert analyzer.param_writes_by_typedef[reader_key] == set()
     assert analyzer.param_writes_by_typedef[writer_key] == {"value"}
     assert analyzer.param_reads_by_typedef[writer_key] == set()
+
+
+def test_usage_travels_through_a_multi_hop_parameter_mapping_chain() -> None:
+    source = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Chain"
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+   LeafType = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      LeafParam: integer;
+   LOCALVARIABLES
+      Sink: integer := 0;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+   EQUATIONBLOCK Eq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+      Sink = LeafParam;
+   ENDDEF (*LeafType*);
+
+   MiddleType = MODULEDEFINITION DateCode_ 2
+   MODULEPARAMETERS
+      Mapped: integer;
+   SUBMODULES
+      Leaf Invocation
+         ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+          ) : LeafType (
+         LeafParam => Mapped);
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*MiddleType*);
+LOCALVARIABLES
+   RootValue: integer := 0;
+SUBMODULES
+   Middle Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MiddleType (
+      Mapped => RootValue);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    bp = parser_core_parse_source_text(source)
+    analyzer = VariablesAnalyzer(bp, fail_loudly=False)
+    analyzer.run()
+
+    assert analyzer._get_usage(bp.localvariables[0]).read is True

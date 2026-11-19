@@ -10,6 +10,7 @@ from sattlint.parser_api import Variable, VarRef
 from ...core.call_signatures import CallParameter, resolve_call_signature
 from ...models.usage import VariableUsage
 from ...resolution.scope import ScopeContext
+from ._variables_mapping_refs import ordered_alias_links
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -124,7 +125,7 @@ def _record_ignorable_output_bindings(
 
 
 def _propagate_procedure_status_bindings(self: VariablesAnalyzer) -> None:
-    for source_var, target_var, mapping_name in self.alias_links:
+    for source_var, target_var, mapping_name in ordered_alias_links(self.alias_links):
         propagated: list[_ProcedureStatusBinding] = []
         for binding in self.procedure_status_bindings.get(id(target_var), []):
             field_path = binding.field_path

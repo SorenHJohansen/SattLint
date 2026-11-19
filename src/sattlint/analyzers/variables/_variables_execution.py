@@ -42,6 +42,7 @@ from ._variables_contracts import (
 from ._variables_contracts import (
     should_collect_issue_kind as _should_collect_issue_kind,
 )
+from ._variables_mapping_refs import ordered_alias_links
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
@@ -731,7 +732,7 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
 
 
 def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
-    for parent_var, child_var, field_prefix in self._alias_links:
+    for parent_var, child_var, field_prefix in ordered_alias_links(self._alias_links):
         parent_usage = self._get_usage(parent_var)
         child_usage = self._get_usage(child_var)
         ui_read_locations = {tuple(location) for location in child_usage.ui_usage_locations}
