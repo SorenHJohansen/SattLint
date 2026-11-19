@@ -18,6 +18,7 @@ from sattline_parser.models.ast_model import (
 from sattlint.analyzers.variables import _variables_effect_flow as effect_flow_module
 from sattlint.analyzers.variables import _variables_effect_sources as effect_sources_module
 from sattlint.analyzers.variables._variables_effect_flow import EffectFlowTracker
+from sattlint.core import call_signatures as call_signatures_module
 from sattlint.resolution import AccessKind
 from sattlint.resolution.scope import ScopeContext
 
@@ -164,7 +165,7 @@ def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -
             )
         return None
 
-    monkeypatch.setattr(effect_sources_module, "get_function_signature", _signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _signature)
 
     no_name_sources = effect_sources_module.collect_function_input_effect_keys(
         None,
@@ -201,7 +202,7 @@ def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkey
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     context = _context(env={"source": source})
 
-    monkeypatch.setattr(effect_sources_module, "get_function_signature", lambda _name: None)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", lambda _name: None)
 
     assert (
         effect_sources_module.collect_expression_effect_sources(
@@ -430,7 +431,7 @@ def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and
             )
         return None
 
-    monkeypatch.setattr(effect_flow_module, "get_function_signature", _signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _signature)
 
     tracker.record_function_call_effect_flow(None, [], context)
     tracker.record_function_call_effect_flow("CopyVariable", [_varref("Source")], context)
@@ -459,7 +460,7 @@ def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved
     context = _context(env={"source": source})
 
     monkeypatch.setattr(
-        effect_flow_module,
+        call_signatures_module,
         "get_function_signature",
         lambda name: (
             SimpleNamespace(

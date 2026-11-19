@@ -316,10 +316,12 @@ def test_cyclomatic_complexity_moduletype_findings_land_on_the_invocation() -> N
     assert issues[0].data is not None
     assert issues[0].data["site"] == "Program.TypeDef:Worker"
 
-    rewrite_typedef_paths(report.issues, bp)
+    rewritten = rewrite_typedef_paths(issues, bp)
 
-    assert issues[0].module_path == ["Program", "Worker1"]
-    assert issues[0].data["site"] == "Program.Worker1"
+    assert issues[0].module_path == ["Program", "TypeDef:Worker"]
+    assert rewritten[0].module_path == ["Program", "Worker1"]
+    assert rewritten[0].data is not None
+    assert rewritten[0].data["site"] == "Program.Worker1"
 
 
 def test_complexity_defaults_and_project_overrides_are_consistent() -> None:

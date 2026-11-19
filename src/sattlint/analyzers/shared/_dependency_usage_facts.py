@@ -18,10 +18,10 @@ from sattlint.parser_api import (
     SFCTransition,
     SFCTransitionSub,
     VarRef,
-    get_function_signature,
     walk,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...resolution.scope import ScopeContext
 from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
 
@@ -298,13 +298,13 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     ) -> None:
         call_name = call.name
         args = list(call.args) if call.args else []
-        signature = get_function_signature(call_name)
+        signature = resolve_call_signature(call_name)
         resolved_args: list[FactRef | None] = []
         for index, argument in enumerate(args):
-            direction = "in"
-            if signature is not None and index < len(signature.parameters):
-                direction = signature.parameters[index].direction
-            if direction in {"in", "in var", "inout"}:
+            parameter = (
+                signature.parameters[index] if signature is not None and index < len(signature.parameters) else None
+            )
+            if parameter is None or parameter.is_input:
                 self._collect_node_facts(
                     argument,
                     context,
@@ -316,7 +316,12 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                 )
             resolved = self._resolve_ref(argument, context)
             resolved_args.append(resolved)
-            if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
+            if (
+                parameter is not None
+                and parameter.is_output
+                and resolved is not None
+                and resolved.key not in seen_writes
+            ):
                 seen_writes.add(resolved.key)
                 writes.append(resolved)
         calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
