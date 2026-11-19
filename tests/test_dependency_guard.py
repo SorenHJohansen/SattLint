@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportAttributeAccessIssue=false
 """AST/import-graph dependency guard for the layered ownership rules.
 
 Forbids the cross-layer edges listed in the architecture-upgrade plan

@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportPrivateUsage=false
 """End-to-end crash-sweep tests for the full analysis pipeline.
 
 These tests load real SattLine fixtures through the project loader and run the
