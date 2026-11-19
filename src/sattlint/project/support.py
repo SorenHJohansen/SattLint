@@ -45,13 +45,6 @@ class TargetLoadError(RuntimeError):
         super().__init__(self._build_message())
 
     @staticmethod
-    def _extract_missing_name(item: str) -> str | None:
-        match = re.match(r"Missing code file for '([^']+)'", item)
-        if match:
-            return match.group(1)
-        return None
-
-    @staticmethod
     def _extract_warning_name(item: str) -> str | None:
         if ": " not in item:
             return None
@@ -79,7 +72,7 @@ class TargetLoadError(RuntimeError):
 
     def _missing_item_name(self, item: str) -> str | None:
         failure = self._failures_by_message.get(item)
-        return failure.name if failure is not None else self._extract_missing_name(item)
+        return None if failure is None else failure.name
 
     def _build_message(self) -> str:  # noqa: PLR0915
         direct_keys = {casefold_key(name) for name in self.direct_dependencies}

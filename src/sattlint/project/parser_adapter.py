@@ -49,7 +49,7 @@ from sattlint.parser_api import read_dependency_names as parser_read_dependency_
 
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
-from ..models.project_graph import ProjectGraph
+from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..validation.policy import error_for, notice_for
 from .loading_support import (
     record_project_failure as _record_project_failure,
@@ -136,6 +136,12 @@ def record_missing_library(
         raise FileNotFoundError(message)
     graph.missing.append(message)
     graph.unavailable_libraries.add(name.casefold())
+    # A missing library is a load failure like any other: keep the typed record
+    # beside the human message so consumers never have to parse the message.
+    graph.failures.setdefault(
+        name.casefold(),
+        ProjectFailure(name=name, message=message, detail=f"code file is missing ({mode})"),
+    )
 
 
 @dataclass(frozen=True)
