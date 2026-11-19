@@ -53,6 +53,12 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
     path.write_text("slproj_version = 2\n")
     with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
         load_project(path)
+    path.write_text("slproj_version = 0\n")
+    with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
+        load_project(path)
+    path.write_text("slproj_version = false\n")
+    with pytest.raises(ValueError, match=r"slproj_version"):
+        load_project(path)
 
 
 def test_load_project_rejects_directory(tmp_path: Path) -> None:

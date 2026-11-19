@@ -681,6 +681,26 @@ def test_run_cli_internal_error_is_masked(
     assert "boom" in payload["error"]["message"]
 
 
+def test_findings_differing_only_in_data_payload_stay_separate() -> None:
+    first = AnalysisFinding(
+        kind="read_before_write",
+        message="read before write",
+        module_path=("Demo", "A"),
+        data={"site": "IF Start THEN", "previous": "IF First THEN"},
+    )
+    second = AnalysisFinding(
+        kind="read_before_write",
+        message="read before write",
+        module_path=("Demo", "A"),
+        data={"site": "IF Start THEN", "previous": "IF Second THEN"},
+    )
+
+    findings = flat_findings(_run_record(first, second))
+
+    assert len(findings) == 2
+    assert {finding.finding.data["previous"] for finding in findings} == {"IF First THEN", "IF Second THEN"}
+
+
 def test_finding_filters_and_all_groupings() -> None:
     record = _run_record(
         _finding(module_path=("Demo", "A"), kind="unused"),
