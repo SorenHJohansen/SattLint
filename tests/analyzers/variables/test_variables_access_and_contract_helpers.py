@@ -1024,3 +1024,31 @@ def test_find_all_aliases_keeps_each_field_prefix_for_the_same_variable() -> Non
     aliases = find_all_aliases(target, [(target, child, "Left"), (target, child, "Right")])
 
     assert sorted(prefix for variable, prefix in aliases if variable is child) == ["Left", "Right"]
+
+
+def test_leaf_expansion_treats_nested_opaque_and_anytype_names_as_leaves() -> None:
+    graph = _type_graph(
+        ("Wrapper", (("Nested", "AnyType"),)),
+        ("OpaqueWrapper", (("Nested", "opaque"),)),
+    )
+    helper = make_strict_access_helper(
+        type_graph=graph,
+        fail_loudly=True,
+        unavailable_libraries=set(),
+        opaque_builtin_types={"opaque"},
+    )
+
+    assert variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "Wrapper",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    ) == [("Nested",)]
+    assert variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "OpaqueWrapper",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    ) == [("Nested",)]

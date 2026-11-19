@@ -160,12 +160,7 @@ class TypeGraph:
             yield ()
             return
 
-        root_name = str(root_type)
-        if policy.is_opaque(root_name):
-            yield ()
-            return
-
-        yield from self._expand_leaf_paths(_cf(root_name), policy)
+        yield from self._expand_leaf_paths(_cf(str(root_type)), policy)
 
     def _leaf_paths_for(self, type_key: str) -> tuple[tuple[str, ...], ...]:
         """Expand one datatype's leaf paths once and reuse them for later variables."""
@@ -186,6 +181,9 @@ class TypeGraph:
 
         while stack:
             tname, prefix, ancestors = stack.pop()
+            if policy.is_opaque(tname):
+                yield prefix
+                continue
             tkey = _cf(tname)
             rec = self._records_by_key.get(tkey)
             if rec is None:
