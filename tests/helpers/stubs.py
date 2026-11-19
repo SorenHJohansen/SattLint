@@ -1,4 +1,3 @@
-# pyright: reportAssignmentType=false
 """Typed test stubs for reusable dynamic helpers.
 
 Prefer these helpers over ad hoc ``SimpleNamespace`` or inline lambda doubles
@@ -64,10 +63,14 @@ class RootOriginStub:
         return None if self.source_path is None else self.source_path.name
 
 
+def _root_origin_dict() -> dict[str, RootOriginStub]:
+    return {}
+
+
 @dataclass(slots=True)
 class AnalysisGraphStub:
     ast_by_name: dict[str, object] = field(default_factory=_object_dict)
-    root_origins: dict[str, RootOriginStub] = field(default_factory=_object_dict)
+    root_origins: dict[str, RootOriginStub] = field(default_factory=_root_origin_dict)
     missing: list[str] = field(default_factory=_string_list)
     unavailable_libraries: set[str] = field(default_factory=_string_set)
     warnings: list[str] = field(default_factory=_string_list)

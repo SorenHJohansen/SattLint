@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -10,10 +10,12 @@ from sattlint.analyzers.variables import _variables_access as variables_access_m
 from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
 from sattlint.resolution.type_graph import TypeGraph
 
-variables_access_impl: Any = variables_access_module
-variables_contracts_impl: Any = variables_contracts_module
+variables_access_impl = variables_access_module
+variables_contracts_impl = variables_contracts_module
+# The mixin has no single owner type: its helpers take a state protocol that the
+# duck-typed access state below satisfies structurally, so keep this seam dynamic.
 dependency_scope_mixin_impl: Any = dependency_scope_module.DependencyUsageScopeSupportMixin
-DataflowAnalyzerType: Any = DataflowAnalyzer
+DataflowAnalyzerType = DataflowAnalyzer
 
 __all__ = [
     "DataflowAnalyzerType",
@@ -32,6 +34,7 @@ def make_strict_access_helper(
     type_graph: TypeGraph | None = None,
     warnings: list[str] | None = None,
 ) -> Any:
+    """Build the duck-typed access state the module-level helpers expect."""
     return SimpleNamespace(
         fail_loudly=fail_loudly,
         unavailable_libraries=set() if unavailable_libraries is None else unavailable_libraries,
