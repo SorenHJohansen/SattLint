@@ -15,11 +15,17 @@ from sattlint.parser_api import (
 )
 
 from ...reporting.icf_report import (
+    ICFDriftCountMismatch,
+    ICFDriftEntry,
+    ICFDriftEntryChange,
+    ICFDriftOrderingMismatch,
     ICFEntry,
     ICFResolvedEntry,
     ICFSkippedEntry,
+    ICFUnitDrift,
     ICFValidationIssue,
     ICFValidationReport,
+    summarize_icf_unit_drift,
 )
 from ...resolution.common import (
     ResolvedModulePath,
@@ -174,53 +180,79 @@ def _resolve_unit_type_label(
     return fallback
 
 
-def _summarize_signature_diff(
-    reference: tuple[tuple[str, str, str, str, str], ...], current: tuple[tuple[str, str, str, str, str], ...]
-) -> str:
-    def _format_signature_entry(entry: tuple[str, str, str, str, str]) -> str:
-        operation, journal, group, key, value = entry
-        label_parts: list[str] = []
-        if operation:
-            label_parts.append(f"Operation {operation}")
-        if journal:
-            label_parts.append(f"Journal {journal}")
-        if group:
-            label_parts.append(f"Group {group}")
-        scope = " | ".join(label_parts)
-        scoped_key = key if not scope else f"[{scope}] {key}"
-        return f"{scoped_key} => {value}"
+_DRIFT_PREVIEW_LIMIT = 3
+type _SignatureEntry = tuple[str, str, str, str, str]
+type _Signature = tuple[_SignatureEntry, ...]
 
-    def _format_entry_list(entries: set[tuple[str, str, str, str, str]], *, limit: int = 3) -> str:
-        sorted_entries = sorted(entries)
-        preview = ", ".join(_format_signature_entry(entry) for entry in sorted_entries[:limit])
-        if len(sorted_entries) > limit:
-            preview = f"{preview}, ..."
-        return preview
 
+def _drift_entry(entry: _SignatureEntry) -> ICFDriftEntry:
+    operation, journal, group, key, value = entry
+    return ICFDriftEntry(operation=operation, journal=journal, group=group, key=key, value=value)
+
+
+def _signature_drift_parts(
+    reference: _Signature,
+    current: _Signature,
+) -> tuple[tuple[ICFDriftEntryChange, ...], ICFDriftCountMismatch | None, ICFDriftOrderingMismatch | None]:
     reference_set = set(reference)
     current_set = set(current)
-    parts: list[str] = []
     missing = reference_set - current_set
     extra = current_set - reference_set
+
+    changes: list[ICFDriftEntryChange] = []
     if missing:
-        parts.append(f"missing {len(missing)} entries ({_format_entry_list(missing)})")
+        changes.append(
+            ICFDriftEntryChange(
+                kind="missing",
+                count=len(missing),
+                entries=tuple(_drift_entry(entry) for entry in sorted(missing)[:_DRIFT_PREVIEW_LIMIT]),
+            )
+        )
     if extra:
-        parts.append(f"extra {len(extra)} entries ({_format_entry_list(extra)})")
-    if not parts and len(reference) != len(current):
-        parts.append(f"entry count {len(current)} != {len(reference)}")
-    if parts:
-        return "; ".join(parts)
+        changes.append(
+            ICFDriftEntryChange(
+                kind="extra",
+                count=len(extra),
+                entries=tuple(_drift_entry(entry) for entry in sorted(extra)[:_DRIFT_PREVIEW_LIMIT]),
+            )
+        )
+    if changes:
+        return tuple(changes), None, None
+    if len(reference) != len(current):
+        return (), ICFDriftCountMismatch(current=len(current), reference=len(reference)), None
 
     for index, (expected_entry, current_entry) in enumerate(zip(reference, current, strict=False), start=1):
         if expected_entry == current_entry:
             continue
         return (
-            "entry ordering differs "
-            f"(first mismatch at position {index}: expected {_format_signature_entry(expected_entry)} "
-            f"but found {_format_signature_entry(current_entry)})"
+            (),
+            None,
+            ICFDriftOrderingMismatch(
+                position=index,
+                expected=_drift_entry(expected_entry),
+                found=_drift_entry(current_entry),
+            ),
         )
 
-    return "entry ordering differs"
+    return (), None, None
+
+
+def _build_unit_drift(
+    current_unit: str,
+    unit_type: str,
+    reference_unit: str,
+    reference: _Signature,
+    current: _Signature,
+) -> ICFUnitDrift:
+    entry_changes, count_mismatch, ordering = _signature_drift_parts(reference, current)
+    return ICFUnitDrift(
+        current_unit=current_unit,
+        unit_type=unit_type,
+        reference_unit=reference_unit,
+        entry_changes=entry_changes,
+        count_mismatch=count_mismatch,
+        ordering=ordering,
+    )
 
 
 def _find_variable_in_module_scope(
@@ -655,14 +687,19 @@ def _validate_unit_structure(
             current_signature = signatures[unit_name]
             if current_signature == reference_signature:
                 continue
+            drift = _build_unit_drift(
+                current_unit=unit_name,
+                unit_type=type_label,
+                reference_unit=reference_unit,
+                reference=reference_signature,
+                current=current_signature,
+            )
             issues.append(
                 ICFValidationIssue(
                     entry=unit_entries[unit_name][0],
                     reason="unit structure drift",
-                    detail=(
-                        f"current unit {unit_name} (unit type {type_label}) differs from reference unit {reference_unit}: "
-                        f"{_summarize_signature_diff(reference_signature, current_signature)}"
-                    ),
+                    detail=summarize_icf_unit_drift(drift),
+                    drift=drift,
                 )
             )
 

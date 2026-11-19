@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 import pytest
 from sattline_parser.ast import MappingSource, ParameterMapping, SourceSpan
@@ -14,6 +15,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import Assignment, VarRef
 
+from sattlint.analyzers._modules_fingerprints import normalize_ast_value
 from sattlint.analyzers.modules import (
     CodeDiff,
     ComparisonResult,
@@ -214,3 +216,24 @@ def test_find_modules_by_name_debug_logs_summary_without_per_node_chatter(caplog
     )
     assert not any("_walk_modules:" in message for message in caplog.messages)
     assert not any("Submodule[" in message for message in caplog.messages)
+
+
+def test_fingerprint_uses_one_casefold_policy_for_nodes_and_payloads() -> None:
+    dataclass_shape = cast(
+        tuple[str, tuple[tuple[str, object], ...]],
+        normalize_ast_value(Variable(name="Counter", datatype=ScalarDatatype.IDENTSTRING)),
+    )
+    mapping_shape = cast(
+        tuple[str, tuple[tuple[str, object], ...]],
+        normalize_ast_value({"name": "Counter"}),
+    )
+
+    assert dict(dataclass_shape[1])["name"] == "counter"
+    assert dict(mapping_shape[1])["name"] == "counter"
+
+
+def test_fingerprint_mapping_payload_ignores_key_order() -> None:
+    left = normalize_ast_value({"Time_Value": "10s"})
+    right = normalize_ast_value({"Time_Value": "10s"})
+
+    assert left == right

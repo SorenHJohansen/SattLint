@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import cast
 
 from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeInstance,
     SingleModule,
-    Variable,
 )
 
 from ..core._semantic_helpers import format_moduletype_label
-from ..models.usage import VariableUsage
 from ..resolution.common import (
     find_all_aliases,
     resolve_module_by_strict_path,
@@ -26,23 +22,6 @@ from .shared._walk_utils import iter_nested_modules
 from .variables import VariablesAnalyzer
 
 log = logging.getLogger("SattLint")
-
-_ANY_VAR_INDEX_ATTR = "_any_var_index"
-_ALIAS_LINKS_ATTR = "_alias_links"
-_GET_USAGE_ATTR = "_get_usage"
-
-
-def _analyzer_any_var_index(analyzer: VariablesAnalyzer) -> dict[str, list[Variable]]:
-    return cast(dict[str, list[Variable]], getattr(analyzer, _ANY_VAR_INDEX_ATTR))
-
-
-def _analyzer_alias_links(analyzer: VariablesAnalyzer) -> list[tuple[Variable, Variable, str]]:
-    return cast(list[tuple[Variable, Variable, str]], getattr(analyzer, _ALIAS_LINKS_ATTR))
-
-
-def _analyzer_usage(analyzer: VariablesAnalyzer, variable: Variable) -> VariableUsage:
-    usage_fn = cast(Callable[[Variable], VariableUsage], getattr(analyzer, _GET_USAGE_ATTR))
-    return usage_fn(variable)
 
 
 def _find_module_instances(
@@ -89,7 +68,7 @@ def debug_variable_usage(
     )
     _ = analyzer.run()
 
-    matches = _analyzer_any_var_index(analyzer).get(var_name.casefold(), [])
+    matches = analyzer.any_var_index.get(var_name.casefold(), [])
     if not matches:
         return f"No variables named {var_name!r} found."
 
@@ -97,7 +76,7 @@ def debug_variable_usage(
     lines.append(f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):")
 
     for idx, v in enumerate(matches, start=1):
-        usage = _analyzer_usage(analyzer, v)
+        usage = analyzer.get_usage(v)
         dt = v.datatype_text
         lines.append(f"[{idx}] {dt} | R:{bool(usage.read)} W:{bool(usage.written)}")
 
@@ -172,14 +151,14 @@ def report_datatype_usage(
     )
     _ = analyzer.run()
 
-    matches = _analyzer_any_var_index(analyzer).get(var_name.casefold(), [])
+    matches = analyzer.any_var_index.get(var_name.casefold(), [])
     if not matches:
         return f"Variable {var_name!r} not found."
 
     lines: list[str] = [f"Field usage analysis for variable {var_name!r}:"]
 
     for idx, var in enumerate(matches, 1):
-        usage = _analyzer_usage(analyzer, var)
+        usage = analyzer.get_usage(var)
         lines.append(f"\n[{idx}] Declaration: {var.datatype_text}")
         lines.append(
             f"    Location: {' -> '.join(usage.usage_locations[0][0]) if usage.usage_locations else 'Unknown'}"
@@ -243,7 +222,7 @@ def report_module_localvar_fields(  # noqa: PLR0915
     )
 
     if debug:
-        log.debug("Analysis complete. Alias links=%d", len(_analyzer_alias_links(analyzer)))
+        log.debug("Analysis complete. Alias links=%d", len(analyzer.alias_links))
 
     # Find the specific local variable instance:
     # - SingleModule: variable is declared on the module node.
@@ -281,7 +260,7 @@ def report_module_localvar_fields(  # noqa: PLR0915
         log.debug("Target variable id=%d", id(local_var))
 
     # Find only the Variable objects connected through alias links with field paths.
-    aliased_vars_with_paths = find_all_aliases(local_var, _analyzer_alias_links(analyzer), debug=debug)
+    aliased_vars_with_paths = find_all_aliases(local_var, analyzer.alias_links, debug=debug)
     # Include the local variable itself (direct field/whole-variable accesses).
     aliased_vars_with_paths.insert(0, (local_var, ""))
 
@@ -312,7 +291,7 @@ def report_module_localvar_fields(  # noqa: PLR0915
     if debug:
         log.debug("Aggregating usages from connected aliases")
     for var, field_prefix in aliased_vars_with_paths:
-        usage = _analyzer_usage(analyzer, var)
+        usage = analyzer.get_usage(var)
         # field_prefix may be empty for the root variable itself.
 
         # Merge field reads and reconstruct the full field path (case-insensitive).

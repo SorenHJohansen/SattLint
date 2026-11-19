@@ -20,6 +20,7 @@ from sattlint.analyzers.shared import _dedupe as dedupe_module
 from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.analyzers.variables import _variables_access as variables_access_module
 from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
+from sattlint.core import call_signatures as call_signatures_module
 from sattlint.parser_api import BasePicture
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
@@ -668,7 +669,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     def _resolve_no_signature(_name: object) -> None:
         return None
 
-    monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_no_signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _resolve_no_signature)
     assert delegate_probe._apply_call_side_effects("Fn", [], context, state) is state
 
     applied_writes: list[tuple[str | None, object, tuple[str, ...], bool]] = []
@@ -699,7 +700,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
     delegate_probe._resolve_ref = _resolve_ref
     delegate_probe._apply_write_target = _apply_write_target
-    monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _resolve_signature)
 
     next_state = delegate_probe._apply_call_side_effects("Fn", ["skip", "old", "new"], context, state)
 

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sattlint.parser_api import FuncCall, VarRef, get_function_signature, walk
+from sattlint.parser_api import FuncCall, VarRef, walk
 from sattlint.resolution.scope import ScopeContext
+
+from ...core.call_signatures import resolve_call_signature
 
 EffectKey = tuple[str, ...]
 ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
@@ -52,8 +54,8 @@ def collect_function_input_effect_keys(
             return {key} if key is not None else set()
         return set()
 
-    sig = get_function_signature(fn_name)
-    if sig is None:
+    signature = resolve_call_signature(fn_name)
+    if signature is None:
         fallback_sources: set[EffectKey] = set()
         for arg in args:
             fallback_sources.update(
@@ -67,10 +69,8 @@ def collect_function_input_effect_keys(
 
     signature_sources: set[EffectKey] = set()
     for idx, arg in enumerate(args):
-        direction = "in"
-        if idx < len(sig.parameters):
-            direction = sig.parameters[idx].direction
-        if direction not in {"in", "in var", "inout"}:
+        parameter = signature.parameters[idx] if idx < len(signature.parameters) else None
+        if parameter is not None and not parameter.is_input:
             continue
         signature_sources.update(
             collect_expression_effect_sources(

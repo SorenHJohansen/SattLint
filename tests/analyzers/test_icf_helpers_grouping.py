@@ -18,6 +18,7 @@ from tests.analyzers.test_icf_helpers import (
     _entry,
     _header,
     icf_module,
+    summarize_icf_unit_drift,
 )
 
 
@@ -111,7 +112,8 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
 
 def test_icf_helper_remaining_summary_branches(monkeypatch):
     identical = (("", "", "", "key", "value"),)
-    assert icf_module._summarize_signature_diff(identical, identical) == "entry ordering differs"
+    drift = icf_module._build_unit_drift("Current", "Type", "Reference", identical, identical)
+    assert summarize_icf_unit_drift(drift).endswith("entry ordering differs")
     assert icf_module._extract_icf_sattline_ref("Program:   ") == (None, None)
 
 

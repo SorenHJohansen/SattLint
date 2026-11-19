@@ -27,6 +27,16 @@ class CallParameter:
         return self.builtin.direction
 
     @property
+    def is_input(self) -> bool:
+        """Whether the caller's argument is read by the callee."""
+        return self.direction in {"in", "in var", "inout"}
+
+    @property
+    def is_output(self) -> bool:
+        """Whether the callee writes back into the caller's argument."""
+        return self.direction in {"out", "inout"}
+
+    @property
     def channel_kind(self) -> str | None:
         name_key = self.name.casefold()
         datatype_key = self.datatype.casefold()
@@ -38,7 +48,7 @@ class CallParameter:
 
     @property
     def is_status_channel(self) -> bool:
-        return self.channel_kind is not None and self.direction in {"out", "inout"}
+        return self.channel_kind is not None and self.is_output
 
 
 @dataclass(frozen=True, slots=True)

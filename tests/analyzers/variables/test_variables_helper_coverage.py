@@ -83,9 +83,9 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
 
     signature = _ns(
         parameters=[
-            _ns(is_status_channel=True, name="StatusOut", channel_kind="status", direction="out"),
-            _ns(is_status_channel=False, name="Ignored", channel_kind=None, direction="in"),
-            _ns(is_status_channel=False, name="FoundRec", channel_kind=None, direction="out"),
+            _ns(is_status_channel=True, is_output=True, name="StatusOut", channel_kind="status", direction="out"),
+            _ns(is_status_channel=False, is_output=False, name="Ignored", channel_kind=None, direction="in"),
+            _ns(is_status_channel=False, is_output=True, name="FoundRec", channel_kind=None, direction="out"),
         ]
     )
     status_calls: list[str] = []

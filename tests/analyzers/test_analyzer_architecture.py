@@ -480,15 +480,28 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
     assert spec.contributes is None
     assert spec.direct_context is True
 
-    # Keys are canonicalized case-insensitively, so a re-registration with a different case
-    # overwrites the prior entry rather than introducing a duplicate key.
-    @register_analyzer(key="my-upper")
-    def run2(context: AnalysisContext) -> SimpleReport:
-        return SimpleReport(name="y")
+    # Keys are canonicalized case-insensitively, so a second registration with
+    # a different case is a duplicate key, not a silent replacement.
+    with pytest.raises(ValueError, match="already registered"):
 
-    specs = get_registered_plugin_analyzers()
-    assert len(specs) == 1
-    assert specs[0].run is run2
+        @register_analyzer(key="my-upper")
+        def run2(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="y")
+
+    (spec,) = get_registered_plugin_analyzers()
+    assert spec.run is run
+
+
+def test_plugin_order_is_independent_of_registration_order() -> None:
+    @register_analyzer(key="zeta-plugin")
+    def zeta(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="zeta")
+
+    @register_analyzer(key="alpha-plugin")
+    def alpha(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="alpha")
+
+    assert [spec.key for spec in get_registered_plugin_analyzers()] == ["alpha-plugin", "zeta-plugin"]
 
 
 def test_register_analyzer_rejects_a_builtin_key() -> None:

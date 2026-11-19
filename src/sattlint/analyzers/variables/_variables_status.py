@@ -111,7 +111,7 @@ def _record_ignorable_output_bindings(
     for index, parameter in enumerate(signature.parameters):
         if index >= len(args):
             continue
-        if parameter.direction not in {"out", "inout"}:
+        if not parameter.is_output:
             continue
         if parameter.name.casefold() not in ignorable_parameters:
             continue

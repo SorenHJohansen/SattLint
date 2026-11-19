@@ -13,9 +13,9 @@ from sattlint.parser_api import (
     Variable,
     VarRef,
     format_expr,
-    get_function_signature,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport
@@ -154,7 +154,7 @@ class DataflowAnalyzer(
         if not function_name:
             return state
 
-        signature = get_function_signature(function_name)
+        signature = resolve_call_signature(function_name)
         if signature is None:
             return state
 
@@ -172,10 +172,7 @@ class DataflowAnalyzer(
                 )
 
         for index, argument in enumerate(args):
-            direction = "in"
-            if index < len(signature.parameters):
-                direction = signature.parameters[index].direction
-            if direction not in {"out", "inout"}:
+            if index >= len(signature.parameters) or not signature.parameters[index].is_output:
                 continue
             resolved = self._resolve_ref(argument, context)
             if resolved is None:

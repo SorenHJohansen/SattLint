@@ -21,9 +21,9 @@ from sattlint.parser_api import (
     Variable,
     VarRef,
     VarTail,
-    get_function_signature,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessKind
 from ...resolution.scope import ScopeContext
@@ -416,16 +416,15 @@ def _handle_function_call(  # noqa: PLR0915
         self._record_function_call_effect_flow(fn_name, args or [], context)
         return
 
-    sig = get_function_signature(fn_name)
-    if sig is None:
+    signature = resolve_call_signature(fn_name)
+    if signature is None:
         for argument in args or []:
             self._walk_stmt_or_expr(argument, context, path, is_ui_read=is_ui_read)
         return
 
     for idx, arg in enumerate(args or []):
-        direction = "in"
-        if idx < len(sig.parameters):
-            direction = sig.parameters[idx].direction
+        parameter = signature.parameters[idx] if idx < len(signature.parameters) else None
+        direction = parameter.direction if parameter is not None else "in"
 
         full_name = _var_name_of(arg)
         if full_name is not None:

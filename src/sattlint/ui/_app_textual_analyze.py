@@ -477,8 +477,13 @@ def _execute_analyzers(
         self._emit_output_from_thread("No configured analysis targets are available.")
         return
     handler_kwargs: dict[str, object] = {}
-    if "project_path" in inspect.signature(handler).parameters:
+    handler_parameters = inspect.signature(handler).parameters
+    if "project_path" in handler_parameters:
         handler_kwargs["project_path"] = project_path
+    if "emit_output" in handler_parameters:
+        # Stream each reported line as the runner produces it instead of
+        # replaying a buffered transcript after the run.
+        handler_kwargs["emit_output"] = self._emit_output_from_thread
     result = handler(cfg, list(selected_keys), **handler_kwargs)
     failures = tuple(getattr(result, "failures", ())) if result is not None else ()
     analyzer_failures = tuple(getattr(result, "analyzer_failures", ())) if result is not None else ()

@@ -19,7 +19,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
-from sattlint.reporting.icf_report import ICFEntry, ICFResolvedEntry
+from sattlint.reporting.icf_report import ICFEntry, ICFResolvedEntry, summarize_icf_unit_drift
 
 
 def _header(name: str) -> ModuleHeader:
@@ -111,12 +111,16 @@ def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
         "family Unit221",
     )
 
-    extra_only = icf_module._summarize_signature_diff((), (("", "", "", "key", "value"),))
-    count_only = icf_module._summarize_signature_diff(
+    def _summary(reference, current):
+        drift = icf_module._build_unit_drift("Current", "Type", "Reference", reference, current)
+        return summarize_icf_unit_drift(drift)
+
+    extra_only = _summary((), (("", "", "", "key", "value"),))
+    count_only = _summary(
         (("", "", "", "key", "value"), ("", "", "", "key", "value")),
         (("", "", "", "key", "value"),),
     )
-    ordering = icf_module._summarize_signature_diff(
+    ordering = _summary(
         (
             ("Op", "", "", "key-a", "value-a"),
             ("", "Journal", "", "key-b", "value-b"),
@@ -413,17 +417,25 @@ def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch)
 
     assert icf_module._path_endswith(["OnlyOne"], ("A", "B")) is False
 
-    overflow = icf_module._summarize_signature_diff(
-        (),
-        (
-            ("", "", "", "a", "1"),
-            ("", "", "", "b", "2"),
-            ("", "", "", "c", "3"),
-            ("", "", "", "d", "4"),
-        ),
+    overflow = summarize_icf_unit_drift(
+        icf_module._build_unit_drift(
+            "Current",
+            "Type",
+            "Reference",
+            (),
+            (
+                ("", "", "", "a", "1"),
+                ("", "", "", "b", "2"),
+                ("", "", "", "c", "3"),
+                ("", "", "", "d", "4"),
+            ),
+        )
     )
     assert "..." in overflow
-    assert icf_module._summarize_signature_diff((), ()) == "entry ordering differs"
+    assert (
+        summarize_icf_unit_drift(icf_module._build_unit_drift("Current", "Type", "Reference", (), ()))
+        == "current unit Current (unit type Type) differs from reference unit Reference: entry ordering differs"
+    )
 
     monkeypatch.setattr(
         icf_module,

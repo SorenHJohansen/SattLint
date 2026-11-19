@@ -18,8 +18,12 @@ from sattlint.analyzers.icf import (
     validate_icf_entries_against_program,
 )
 from sattlint.reporting.icf_report import (
+    ICFDriftEntry,
+    ICFDriftEntryChange,
+    ICFDriftOrderingMismatch,
     ICFEntry,
     ICFSkippedEntry,
+    ICFUnitDrift,
     ICFValidationIssue,
     ICFValidationReport,
     _format_drift_detail,
@@ -839,6 +843,10 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
     drift_issues = [issue for issue in report.issues if issue.reason == "unit structure drift"]
     assert len(drift_issues) == 1
     assert drift_issues[0].entry.unit == "Unit221B"
+    assert drift_issues[0].drift is not None
+    assert drift_issues[0].drift.current_unit == "Unit221B"
+    assert drift_issues[0].drift.reference_unit == "Unit221A"
+    assert drift_issues[0].drift.entry_changes[0].kind == "missing"
     assert drift_issues[0].detail is not None
     assert drift_issues[0].detail.startswith(
         "current unit Unit221B (unit type ApplTank) differs from reference unit Unit221A: missing 1 entries ("
@@ -1019,28 +1027,94 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
 
 
 def test_icf_report_formats_extra_entries_and_ordering_guidance():
-    lines = _format_drift_detail(
-        "current unit Unit221B (unit type ApplTank) differs from reference unit Unit221A: "
-        "extra 1 entries ([Group JournalData_DCStoMES] TagB => Program:StartMaster.<UNIT>.TagB); "
-        "entry ordering differs (first mismatch at position 2: expected TagA but found TagB)"
+    def _drift_entry(key: str, value: str) -> ICFDriftEntry:
+        return ICFDriftEntry(operation="", journal="", group="JournalData_DCStoMES", key=key, value=value)
+
+    drift = ICFUnitDrift(
+        current_unit="Unit221B",
+        unit_type="ApplTank",
+        reference_unit="Unit221A",
+        entry_changes=(
+            ICFDriftEntryChange(
+                kind="extra",
+                count=1,
+                entries=(_drift_entry("TagB", "Program:StartMaster.<UNIT>.TagB"),),
+            ),
+        ),
+        ordering=ICFDriftOrderingMismatch(
+            position=2,
+            expected=_drift_entry("TagA", "Program:StartMaster.<UNIT>.TagA"),
+            found=_drift_entry("TagB", "Program:StartMaster.<UNIT>.TagB"),
+        ),
     )
+
+    lines = _format_drift_detail(drift)
 
     assert "      compared units: Unit221B vs Unit221A (unit type ApplTank)" in lines
     assert "      - extra 1 entries" in lines
     assert "        action: remove these extra entries from current unit" in lines
     assert "      - entry ordering differs" in lines
     assert "        first mismatch position: 2" in lines
-    assert any(line.strip().startswith("expected: TagA") for line in lines)
-    assert any(line.strip().startswith("found: TagB") for line in lines)
+    assert any(line.strip().startswith("expected: [Group JournalData_DCStoMES] TagA =>") for line in lines)
+    assert any(line.strip().startswith("found: [Group JournalData_DCStoMES] TagB =>") for line in lines)
     assert "        action: reorder current unit entries to match reference unit order" in lines
 
 
-def test_icf_report_formats_unstructured_drift_parts_and_skips_empty_segments():
-    lines = _format_drift_detail("entry ordering differs (current order is unstable); ; trailing note for operators")
+def test_icf_report_renders_drift_from_structure_not_producer_wording():
+    entry = ICFEntry(file_path=Path("Program.icf"), line_no=4, section="Unit", key="TagA", value="1")
+    report = ICFValidationReport(
+        icf_file=Path("Program.icf"),
+        program_name="Program",
+        total_entries=1,
+        validated_entries=1,
+        valid_entries=0,
+        skipped_entries=0,
+        issues=[
+            ICFValidationIssue(
+                entry=entry,
+                reason="unit structure drift",
+                detail="producer wording that no longer matches the renderer's old patterns",
+                drift=ICFUnitDrift(
+                    current_unit="Unit221B",
+                    unit_type="ApplTank",
+                    reference_unit="Unit221A",
+                    entry_changes=(
+                        ICFDriftEntryChange(
+                            kind="missing",
+                            count=1,
+                            entries=(ICFDriftEntry(operation="", journal="", group="", key="TagA", value="1"),),
+                        ),
+                    ),
+                ),
+            )
+        ],
+    )
 
-    assert "        current order is unstable" in lines
-    assert "        action: reorder current unit entries to match reference unit order" in lines
-    assert "      - trailing note for operators" in lines
+    summary = report.summary()
+
+    assert "compared units: Unit221B vs Unit221A (unit type ApplTank)" in summary
+    assert "missing 1 entries" in summary
+    assert "producer wording" not in summary
+
+
+def test_icf_report_formats_a_structured_ordering_mismatch_only():
+    drift = ICFUnitDrift(
+        current_unit="Unit221B",
+        unit_type="family ApplTank",
+        reference_unit="Unit221A",
+        ordering=ICFDriftOrderingMismatch(
+            position=1,
+            expected=ICFDriftEntry(operation="", journal="", group="", key="TagA", value="1"),
+            found=ICFDriftEntry(operation="", journal="", group="", key="TagB", value="2"),
+        ),
+    )
+
+    lines = _format_drift_detail(drift)
+
+    assert "      - entry ordering differs" in lines
+    assert "        first mismatch position: 1" in lines
+    assert any(line.strip() == "expected: TagA => 1" for line in lines)
+    assert any(line.strip() == "found: TagB => 2" for line in lines)
 
 
 def test_icf_report_summary_uses_section_fallback_and_skipped_context_details():

@@ -64,7 +64,7 @@ def test_find_module_instances_walks_nested_singlemodule_branch() -> None:
 
 
 def test_debug_variable_usage_returns_not_found_when_name_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda: [], _any_var_index={}, _get_usage=lambda variable: None)
+    analyzer = SimpleNamespace(run=lambda: [], any_var_index={}, get_usage=lambda variable: None)
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
 
     result = reporting.debug_variable_usage(_base_picture(), "Missing")
@@ -84,8 +84,8 @@ def test_report_datatype_usage_reports_read_write_and_no_field_level_accesses(mo
 
     analyzer = SimpleNamespace(
         run=lambda: [],
-        _any_var_index={"dv": [used_var, idle_var]},
-        _get_usage=lambda variable: usage_by_id[id(variable)],
+        any_var_index={"dv": [used_var, idle_var]},
+        get_usage=lambda variable: usage_by_id[id(variable)],
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
 
@@ -108,8 +108,8 @@ def test_report_module_localvar_fields_handles_prefixed_empty_field_paths_and_de
 
     analyzer = SimpleNamespace(
         run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: usage_by_id[id(variable)],
+        alias_links=[],
+        get_usage=lambda variable: usage_by_id[id(variable)],
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
     monkeypatch.setattr(
@@ -144,7 +144,7 @@ def test_report_module_localvar_fields_handles_prefixed_empty_field_paths_and_de
 
 
 def test_report_module_localvar_fields_rejects_invalid_module_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda **kwargs: [], _alias_links=[], _get_usage=lambda variable: VariableUsage())
+    analyzer = SimpleNamespace(run=lambda **kwargs: [], alias_links=[], get_usage=lambda variable: VariableUsage())
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
     monkeypatch.setattr(
         reporting,
@@ -168,7 +168,7 @@ def test_report_module_localvar_fields_rejects_invalid_module_type(monkeypatch: 
 
 
 def test_report_module_localvar_fields_rejects_missing_local_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda **kwargs: [], _alias_links=[], _get_usage=lambda variable: VariableUsage())
+    analyzer = SimpleNamespace(run=lambda **kwargs: [], alias_links=[], get_usage=lambda variable: VariableUsage())
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
     monkeypatch.setattr(
         reporting,
@@ -196,8 +196,8 @@ def test_report_module_localvar_fields_reports_no_field_accesses(monkeypatch: py
     local_var = Variable(name="Dv", datatype="UsageRecord")
     analyzer = SimpleNamespace(
         run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: VariableUsage(),
+        alias_links=[],
+        get_usage=lambda variable: VariableUsage(),
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
     monkeypatch.setattr(
@@ -240,8 +240,8 @@ def test_debug_variable_usage_reports_field_and_whole_variable_details(monkeypat
 
     analyzer = SimpleNamespace(
         run=lambda: [],
-        _any_var_index={"dv": [variable]},
-        _get_usage=lambda _variable: usage,
+        any_var_index={"dv": [variable]},
+        get_usage=lambda _variable: usage,
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
 
@@ -259,7 +259,7 @@ def test_debug_variable_usage_reports_field_and_whole_variable_details(monkeypat
 def test_report_datatype_usage_reports_missing_and_single_direction_accesses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    missing_analyzer = SimpleNamespace(run=lambda: [], _any_var_index={}, _get_usage=lambda variable: VariableUsage())
+    missing_analyzer = SimpleNamespace(run=lambda: [], any_var_index={}, get_usage=lambda variable: VariableUsage())
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: missing_analyzer)
 
     assert reporting.report_datatype_usage(_base_picture(), "Missing") == "Variable 'Missing' not found."
@@ -274,8 +274,8 @@ def test_report_datatype_usage_reports_missing_and_single_direction_accesses(
 
     populated_analyzer = SimpleNamespace(
         run=lambda: [],
-        _any_var_index={"dv": [read_var, write_var]},
-        _get_usage=lambda variable: usage_by_id[id(variable)],
+        any_var_index={"dv": [read_var, write_var]},
+        get_usage=lambda variable: usage_by_id[id(variable)],
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: populated_analyzer)
 
@@ -298,8 +298,8 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
     )
     analyzer = SimpleNamespace(
         run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: usage,
+        alias_links=[],
+        get_usage=lambda variable: usage,
     )
     monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
     monkeypatch.setattr(
@@ -331,3 +331,11 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
     assert "Root -> Unit -> Child" in result
     assert "Whole variable reads: 2" in result
     assert "Whole variable writes: 1" in result
+
+
+def test_reporting_reads_analyzer_state_through_the_facade() -> None:
+    # The facade exposes ``any_var_index``, ``alias_links`` and ``get_usage``;
+    # a private-attribute probe would silently keep working after a rename, so
+    # the reflection helpers must not come back.
+    for helper_name in ("_analyzer_any_var_index", "_analyzer_alias_links", "_analyzer_usage"):
+        assert not hasattr(reporting, helper_name)

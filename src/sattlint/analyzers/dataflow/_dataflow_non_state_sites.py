@@ -32,10 +32,10 @@ from sattlint.parser_api import (
     SFCTransitionSub,
     SingleModule,
     VarRef,
-    get_function_signature,
     walk,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
 from ..shared.ast_node_helpers import sequence_as_list as _sequence_as_list
@@ -411,14 +411,12 @@ def _record_call_arguments(
     continuous_site: str | None,
     accesses: list[_SiteAccess],
 ) -> None:
-    signature = get_function_signature(function_name) if function_name else None
+    signature = resolve_call_signature(function_name)
     for index, argument in enumerate(args):
-        direction = "in"
-        if signature is not None and index < len(signature.parameters):
-            direction = signature.parameters[index].direction
-        if direction in {"in", "in var", "inout"}:
+        parameter = signature.parameters[index] if signature is not None and index < len(signature.parameters) else None
+        if parameter is None or parameter.is_input:
             _record_expression(self, argument, context, module_path, continuous_site, accesses)
-        if direction in {"out", "inout"}:
+        if parameter is not None and parameter.is_output:
             _record_ref(self, argument, _WRITE, context, module_path, continuous_site, accesses)
 
 

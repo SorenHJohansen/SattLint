@@ -7,11 +7,12 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Protocol, cast
 
-from sattlint.parser_api import BasePicture, ParameterMapping, Variable, get_function_signature
+from sattlint.parser_api import BasePicture, ParameterMapping, Variable
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
 from sattlint.resolution.scope import ScopeContext
 
+from ...core.call_signatures import resolve_call_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
 from ._variables_effect_sources import (
     collect_expression_effect_sources as _collect_expression_effect_sources,
@@ -309,21 +310,19 @@ class EffectFlowTracker:
             self.record_effect_flow(source_key, target_key)
             return
 
-        sig = get_function_signature(fn_name)
-        if sig is None:
+        signature = resolve_call_signature(fn_name)
+        if signature is None:
             return
 
         input_keys: set[tuple[str, ...]] = set()
         output_keys: set[tuple[str, ...]] = set()
         for idx, arg in enumerate(args):
-            direction = "in"
-            if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction
+            parameter = signature.parameters[idx] if idx < len(signature.parameters) else None
 
-            if direction in {"in", "in var", "inout"}:
+            if parameter is None or parameter.is_input:
                 input_keys.update(self.collect_expression_effect_sources(arg, context))
 
-            if direction in {"out", "inout"}:
+            if parameter is not None and parameter.is_output:
                 arg_ref = _var_ref_text(cast(object, arg))
                 key = self.resolve_effect_key(arg_ref, context) if arg_ref is not None else None
                 if key is not None:

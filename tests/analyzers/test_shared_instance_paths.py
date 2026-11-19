@@ -37,18 +37,20 @@ def test_rewrite_typedef_path_uses_first_invocation() -> None:
     )
     issue = Issue(kind="write_without_effect", message="m", module_path=["Root", "TypeDef:MyType", "Sub"])
 
-    rewrite_typedef_paths([issue], bp)
+    (rewritten,) = rewrite_typedef_paths([issue], bp)
 
-    assert issue.module_path == ["Root", "InstA", "Sub"]
+    assert rewritten is not issue
+    assert rewritten.module_path == ["Root", "InstA", "Sub"]
+    assert issue.module_path == ["Root", "TypeDef:MyType", "Sub"]
 
 
 def test_rewrite_keeps_typedef_path_when_no_invocation_exists() -> None:
     bp = BasePicture(header=_header("Root"), submodules=[])
     issue = Issue(kind="unused", message="m", module_path=["Root", "TypeDef:MyType"])
 
-    rewrite_typedef_paths([issue], bp)
+    (rewritten,) = rewrite_typedef_paths([issue], bp)
 
-    assert issue.module_path == ["Root", "TypeDef:MyType"]
+    assert rewritten.module_path == ["Root", "TypeDef:MyType"]
 
 
 def test_rewrite_typedef_path_also_rewrites_message_and_context() -> None:
@@ -63,11 +65,14 @@ def test_rewrite_typedef_path_also_rewrites_message_and_context() -> None:
         data={"conflicts": ["Root.TypeDef:MyType.Output"]},
     )
 
-    rewrite_typedef_paths([issue], bp)
+    (rewritten,) = rewrite_typedef_paths([issue], bp)
 
-    assert issue.module_path == ["Root", "InstA"]
-    assert issue.message == "race on Root.InstA.Output"
-    assert issue.data == {"conflicts": ["Root.InstA.Output"]}
+    assert rewritten.module_path == ["Root", "InstA"]
+    assert rewritten.message == "race on Root.InstA.Output"
+    assert rewritten.data == {"conflicts": ["Root.InstA.Output"]}
+    # The frozen source record keeps its original text and payload.
+    assert issue.message == "race on Root.TypeDef:MyType.Output"
+    assert issue.data == {"conflicts": ["Root.TypeDef:MyType.Output"]}
 
 
 def test_rewrite_resolves_nested_typedef_instance_chains() -> None:
@@ -90,10 +95,10 @@ def test_rewrite_resolves_nested_typedef_instance_chains() -> None:
         module_path=["Root", "TypeDef:InnerChild"],
     )
 
-    rewrite_typedef_paths([issue], bp)
+    (rewritten,) = rewrite_typedef_paths([issue], bp)
 
-    assert issue.module_path == ["Root", "VarInst", "Inner Invocation"]
-    assert issue.message == "[BasePicture.VarInst.Inner Invocation] localvariable 'Setting'"
+    assert rewritten.module_path == ["Root", "VarInst", "Inner Invocation"]
+    assert rewritten.message == "[BasePicture.VarInst.Inner Invocation] localvariable 'Setting'"
 
 
 def test_rewrite_handles_frozen_tuple_paths() -> None:
@@ -112,15 +117,16 @@ def test_rewrite_handles_frozen_tuple_paths() -> None:
         module_path=("Root", "TypeDef:MyType", "Sub"),
     )
 
-    rewrite_typedef_paths([hit], bp)
+    (rewritten,) = rewrite_typedef_paths([hit], bp)
 
-    assert hit.module_path == ("Root", "InstA", "Sub")
+    assert rewritten.module_path == ("Root", "InstA", "Sub")
+    assert hit.module_path == ("Root", "TypeDef:MyType", "Sub")
 
 
 def test_rewrite_leaves_non_typedef_paths_unchanged() -> None:
     bp = BasePicture(header=_header("Root"), submodules=[_instance("InstA", "MyType")])
     issue = Issue(kind="unused", message="m", module_path=["Root", "InstA"])
 
-    rewrite_typedef_paths([issue], bp)
+    (rewritten,) = rewrite_typedef_paths([issue], bp)
 
-    assert issue.module_path == ["Root", "InstA"]
+    assert rewritten is issue

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from sattlint.parser_api import Variable, VarRef, get_function_signature
+from sattlint.parser_api import Variable, VarRef
 
+from ...core.call_signatures import resolve_call_signature
 from ._reset_path_state import WriteKey, WriteMap
 
 
@@ -60,14 +61,13 @@ def _record_function_call_writes(
     env: dict[str, Variable],
     out: WriteMap,
 ) -> None:
-    sig = get_function_signature(fn_name)
-    if sig is None:
+    signature = resolve_call_signature(fn_name)
+    if signature is None:
         return
     for idx, arg in enumerate(args):
-        if idx >= len(sig.parameters):
+        if idx >= len(signature.parameters):
             break
-        direction = sig.parameters[idx].direction
-        if direction not in ("out", "inout"):
+        if not signature.parameters[idx].is_output:
             continue
         if isinstance(arg, VarRef):
             _record_write(arg, env, out)
