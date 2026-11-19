@@ -52,8 +52,6 @@ def test_startup_main_configures_logging_for_the_interactive_session(
         config_path=Path("config.toml"),
         apply_debug_fn=lambda _cfg: None,
         resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
-        set_interactive_ui_mode_fn=lambda _mode: None,
-        reset_interactive_ui_mode_fn=lambda: None,
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
         run_main_loop_fn=lambda *_args, **_kwargs: None,
@@ -77,8 +75,6 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
         config_path=Path("config.toml"),
         apply_debug_fn=lambda local_cfg: seen.update({"apply_debug_cfg": dict(local_cfg)}),
         resolve_interactive_ui_mode_fn=lambda _cfg, override: seen.update({"resolved_override": override}) or "textual",
-        set_interactive_ui_mode_fn=lambda mode: seen.update({"ui_mode": mode}),
-        reset_interactive_ui_mode_fn=lambda: seen.update({"reset_called": True}),
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
@@ -92,8 +88,6 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
     assert exit_code == 0
     assert seen["apply_debug_cfg"] == {"debug": False}
     assert seen["resolved_override"] is None
-    assert seen["ui_mode"] == "textual"
-    assert seen["reset_called"] is True
     assert seen["main_loop_cfg"] == {"debug": False}
     assert seen["main_loop_kwargs"]["config_path"] == Path("config.toml")
     assert seen["main_loop_kwargs"]["quit_app_error"] is RuntimeError
@@ -110,8 +104,6 @@ def test_startup_main_textual_launch_skips_terminal_preflight_for_targets() -> N
         config_path=Path("config.toml"),
         apply_debug_fn=lambda _cfg: None,
         resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
-        set_interactive_ui_mode_fn=lambda mode: seen.update({"ui_mode": mode}),
-        reset_interactive_ui_mode_fn=lambda: seen.update({"reset_called": True}),
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: pytest.fail("textual startup should not pause for AST cache preflight"),
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
@@ -123,8 +115,6 @@ def test_startup_main_textual_launch_skips_terminal_preflight_for_targets() -> N
     )
 
     assert exit_code == 0
-    assert seen["ui_mode"] == "textual"
-    assert seen["reset_called"] is True
     assert seen["main_loop_cfg"] == {"debug": False}
 
 

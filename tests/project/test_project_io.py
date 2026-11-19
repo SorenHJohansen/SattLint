@@ -18,7 +18,6 @@ from sattlint.project.io import (
     discover_project,
     init_project,
     load_project,
-    project_status,
     save_project,
 )
 from sattlint.project.loading import cache_manifest_files
@@ -186,22 +185,6 @@ def test_init_project_with_dirs(tmp_path: Path) -> None:
     assert project.data["ABB_lib_dir"] == "/opt/satt/lib"
     assert project.data["icf_dir"] == "/opt/satt/icf"
     assert project.data["other_lib_dirs"] == ["/opt/satt/extra"]
-
-
-def test_project_status_summary(tmp_path: Path) -> None:
-    path = tmp_path / "proj.slproj"
-    init_project(path)
-    project = load_project(path)
-    status = project_status(project)
-    assert "proj.slproj" in status or tmp_path.name in status
-    assert "mode=official" in status
-    assert "0 targets" in status
-    project.data["analyzed_programs_and_libraries"] = ["a", "b", "c", "d"]
-    status = project_status(project)
-    assert "4 targets" in status
-    assert "a, b, c ..." in status
-    project.data["analyzed_programs_and_libraries"] = ["solo"]
-    assert "1 target" in project_status(project)
 
 
 def test_normalize_converters() -> None:

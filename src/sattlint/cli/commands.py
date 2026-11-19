@@ -152,18 +152,42 @@ def command_project_show(args: argparse.Namespace) -> int:
 
 def _project_text(project: ProjectInfo) -> list[str]:
     paths = project["paths"]
-    return [
+    config_state = "" if project["config"]["exists"] else " (missing)"
+    lines = [
         f"Project: {project['path']}",
         f"Root:    {project['root']}",
+        f"Version: {project['slproj_version']}",
         f"Mode:    {project['mode']}",
         f"Targets: {', '.join(project['targets']) or '(none)'}",
-        f"program_dir: {paths['program_dir']}",
-        f"ABB_lib_dir: {paths['ABB_lib_dir']}",
-        f"icf_dir: {paths['icf_dir']}",
-        f"other_lib_dirs: {', '.join(paths['other_lib_dirs']) or '(none)'}",
-        f"Runs:    {project['runs_dir']}",
-        f"Review:  {project['review_output_dir']}",
     ]
+    lines.extend(_analysis_text(project["analysis"]))
+    lines.extend(
+        [
+            f"program_dir: {paths['program_dir']}",
+            f"ABB_lib_dir: {paths['ABB_lib_dir']}",
+            f"icf_dir: {paths['icf_dir']}",
+            f"other_lib_dirs: {', '.join(paths['other_lib_dirs']) or '(none)'}",
+            f"Runs:    {project['runs_dir']}",
+            f"Review:  {project['review_output_dir']}",
+            f"Config:  {project['config']['path']}{config_state}",
+        ]
+    )
+    return lines
+
+
+def _analysis_text(analysis: Mapping[str, object]) -> list[str]:
+    if not analysis:
+        return ["Analysis: (defaults)"]
+    return ["Analysis:", *(f"  {key}: {_display_value(value)}" for key, value in sorted(analysis.items()))]
+
+
+def _display_value(value: object) -> str:
+    if isinstance(value, Mapping):
+        nested = cast(Mapping[str, object], value)
+        return ", ".join(f"{key}={_display_value(nested[key])}" for key in sorted(nested))
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_display_value(item) for item in cast(list[object] | tuple[object, ...], value))
+    return str(value)
 
 
 def command_analyzers_list(args: argparse.Namespace) -> int:

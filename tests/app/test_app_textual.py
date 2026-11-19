@@ -136,14 +136,13 @@ def test_app_input_wrappers_use_textual_interaction_bridge() -> None:
         confirm=lambda message: calls.append(("confirm", message, None)) or True,
     )
 
-    app.set_interactive_ui_mode("textual")
     app.set_textual_menu_interaction(interaction)
     try:
         app.pause()
         assert app.prompt("Name", "default") == "value"
         assert app.confirm("Continue?") is True
     finally:
-        app.reset_interactive_ui_mode()
+        app.clear_textual_menu_interaction()
 
     assert calls == [
         ("pause", None, None),
@@ -157,19 +156,17 @@ def test_app_clear_screen_is_noop_with_textual_interaction(monkeypatch: pytest.M
 
     monkeypatch.setattr("sattlint.core.terminal.clear_screen", lambda **_kwargs: clear_calls.append("clear"))
 
-    app.set_interactive_ui_mode("textual")
     app.set_textual_menu_interaction(SimpleNamespace())
     try:
         app.clear_screen()
     finally:
-        app.reset_interactive_ui_mode()
+        app.clear_textual_menu_interaction()
 
     assert clear_calls == []
 
 
 def test_run_interactive_session_dispatches_to_textual_shell(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
-    app.set_interactive_ui_mode("textual")
 
     def _fake_run_textual_shell(cfg: dict[str, Any], **kwargs: Any) -> None:
         seen.update({"cfg": cfg, **kwargs})
@@ -186,7 +183,7 @@ def test_run_interactive_session_dispatches_to_textual_shell(monkeypatch: pytest
     try:
         app.run_interactive_session(_typed_cfg({"debug": False}), summarize_targets_fn=_summarize_targets)
     finally:
-        app.reset_interactive_ui_mode()
+        app.clear_textual_menu_interaction()
 
     assert seen["cfg"] == {"debug": False}
     assert "analysis_handler_fns" in seen

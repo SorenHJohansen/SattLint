@@ -387,7 +387,21 @@ def test_project_show_text_and_discovery(
     assert code == 0
     out = capsys.readouterr().out
     assert "Project:" in out
+    assert "Version: 1" in out
     assert "Targets: Demo" in out
+    assert "Analysis: (defaults)" in out
+    assert "Config:  " in out
+
+
+def test_project_show_text_marks_a_missing_user_config(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+
+    code = run_cli(["project", "show", "--project", str(project)])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert f"Config:  {tmp_path / 'config.toml'} (missing)" in out
 
 
 def test_project_show_accepts_directory_and_reports_ambiguous(
