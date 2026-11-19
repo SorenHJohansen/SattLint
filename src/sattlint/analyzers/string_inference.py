@@ -29,6 +29,11 @@ from sattlint.parser_api import (
     ParameterMapping,
     ScalarDatatype,
     Sequence,
+    SFCAlternative,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransitionSub,
     SingleModule,
     TernaryOp,
     UnaryOp,
@@ -230,11 +235,17 @@ class ExactStringInferenceEngine:
             return context
 
         if isinstance(child, FrameModule):
+            frame_env = {
+                variable.name.casefold(): variable
+                for variable in [*(child.moduleparameters or []), *(child.localvariables or [])]
+            }
+            frame_param_keys = {variable.name.casefold() for variable in child.moduleparameters or []}
             scope = ScopeContext(
-                env={},
+                env=frame_env,
                 param_mappings={},
                 module_path=list(child_path),
                 display_module_path=list(child_path),
+                moduleparameter_keys=frozenset(frame_param_keys),
                 current_library=parent.scope.current_library,
                 parent_context=parent.scope,
             )
@@ -728,8 +739,32 @@ def _module_code_blocks(
             blocks.append(list(equation.code or []))
     for sequence in module_code.sequences or []:
         if isinstance(sequence, Sequence):
-            blocks.append(list(sequence.code or []))
+            blocks.extend(_sequence_statement_blocks(sequence.code or []))
     return tuple(blocks)
+
+
+def _sequence_statement_blocks(nodes: list[object]) -> list[list[object]]:
+    """Flatten an SFC body into the statement lists its code can run.
+
+    A sequence element is not itself a statement, so a step's enter, active,
+    and exit code and the bodies of subsequences, alternatives, and parallel
+    branches are what carry assignments.
+    """
+    blocks: list[list[object]] = []
+    for node in nodes:
+        if isinstance(node, SFCStep):
+            for phase in (node.code.enter, node.code.active, node.code.exit):
+                blocks.append(list(phase or []))
+            continue
+        if isinstance(node, SFCAlternative | SFCParallel):
+            for branch in node.branches or []:
+                blocks.extend(_sequence_statement_blocks(list(branch or [])))
+            continue
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
+            blocks.extend(_sequence_statement_blocks(list(node.body or [])))
+            continue
+        blocks.append([node])
+    return blocks
 
 
 def _declared_variables(
