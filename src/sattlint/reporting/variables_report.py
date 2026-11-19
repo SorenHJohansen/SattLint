@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..analyzers.framework.issue import Findings
@@ -13,7 +14,6 @@ from ._variables_report_rendering import (
     append_record_component_order_dependence,
     append_string_mapping_mismatch,
     append_unused_datatype_fields,
-    append_unused_variable_issue_list,
     append_variable_issue_list,
     count_string_mapping_mismatch_rows,
 )
@@ -102,31 +102,35 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
 }
 
-_UNUSED_VARIABLE_SECTION_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.UNUSED,
-        IssueKind.FIELD_NEVER_READ,
-        IssueKind.NEVER_READ,
-    }
-)
+VariableSectionRenderer = Callable[[list[str], str, list[VariableIssue]], None]
 
-_VARIABLE_ISSUE_LIST_SECTION_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.FIELD_READ_ONLY,
-        IssueKind.READ_ONLY_NON_CONST,
-        IssueKind.PROCEDURE_STATUS,
-        IssueKind.WRITE_WITHOUT_EFFECT,
-        IssueKind.GLOBAL_SCOPE_MINIMIZATION,
-        IssueKind.HIDDEN_GLOBAL_COUPLING,
-        IssueKind.HIGH_FAN_IN_OUT,
-        IssueKind.UNKNOWN_PARAMETER_TARGET,
-        IssueKind.SHADOWING,
-        IssueKind.UNSAFE_BOOLEAN_DEFAULT,
-        IssueKind.READ_BEFORE_WRITE,
-        IssueKind.RESET_CONTAMINATION,
-        IssueKind.IMPLICIT_LATCH,
-    }
-)
+# Every issue kind has exactly one section renderer. A kind missing here is a
+# report defect, so ``_append_section`` indexes this table directly instead of
+# falling through to a silently empty section.
+_SECTION_RENDERERS: dict[IssueKind, VariableSectionRenderer] = {
+    IssueKind.UNUSED: append_variable_issue_list,
+    IssueKind.UNUSED_DATATYPE_FIELD: append_unused_datatype_fields,
+    IssueKind.FIELD_READ_ONLY: append_variable_issue_list,
+    IssueKind.READ_ONLY_NON_CONST: append_variable_issue_list,
+    IssueKind.PROCEDURE_STATUS: append_variable_issue_list,
+    IssueKind.FIELD_NEVER_READ: append_variable_issue_list,
+    IssueKind.NEVER_READ: append_variable_issue_list,
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: append_record_component_order_dependence,
+    IssueKind.WRITE_WITHOUT_EFFECT: append_variable_issue_list,
+    IssueKind.GLOBAL_SCOPE_MINIMIZATION: append_variable_issue_list,
+    IssueKind.HIDDEN_GLOBAL_COUPLING: append_variable_issue_list,
+    IssueKind.HIGH_FAN_IN_OUT: append_variable_issue_list,
+    IssueKind.UNKNOWN_PARAMETER_TARGET: append_variable_issue_list,
+    IssueKind.STRING_MAPPING_MISMATCH: append_string_mapping_mismatch,
+    IssueKind.DATATYPE_DUPLICATION: append_datatype_duplication,
+    IssueKind.MIN_MAX_MAPPING_MISMATCH: append_min_max_mapping_mismatch,
+    IssueKind.MAGIC_NUMBER: append_magic_numbers,
+    IssueKind.SHADOWING: append_variable_issue_list,
+    IssueKind.UNSAFE_BOOLEAN_DEFAULT: append_variable_issue_list,
+    IssueKind.READ_BEFORE_WRITE: append_variable_issue_list,
+    IssueKind.RESET_CONTAMINATION: append_variable_issue_list,
+    IssueKind.IMPLICIT_LATCH: append_variable_issue_list,
+}
 
 
 @dataclass
@@ -314,32 +318,10 @@ class VariablesReport:
         return []
 
     def _append_section(self, lines: list[str], kind: IssueKind) -> None:
-        title = SECTION_TITLES[kind]
-        issues = self._issues_for_kind(kind)
-        if kind in _UNUSED_VARIABLE_SECTION_KINDS:
-            append_unused_variable_issue_list(lines, title, issues)
-            return
-        if kind is IssueKind.UNUSED_DATATYPE_FIELD:
-            append_unused_datatype_fields(lines, title, issues)
-            return
-        if kind in _VARIABLE_ISSUE_LIST_SECTION_KINDS:
-            append_variable_issue_list(lines, title, issues)
-            return
-        if kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE:
-            append_record_component_order_dependence(lines, title, issues)
-            return
-        if kind is IssueKind.STRING_MAPPING_MISMATCH:
-            append_string_mapping_mismatch(lines, title, issues)
-            return
-        if kind is IssueKind.DATATYPE_DUPLICATION:
-            append_datatype_duplication(lines, title, issues)
-            return
-        if kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
-            append_min_max_mapping_mismatch(lines, title, issues)
-            return
-        if kind is IssueKind.MAGIC_NUMBER:
-            append_magic_numbers(lines, title, issues)
-            return
+        # Direct indexing is deliberate: a new issue kind without a renderer is
+        # a report defect, not a section that silently disappears.
+        renderer = _SECTION_RENDERERS[kind]
+        renderer(lines, SECTION_TITLES[kind], self._issues_for_kind(kind))
 
     def _display_issue_count(self, kind: IssueKind) -> int:
         issues = self._issues_for_kind(kind)
@@ -376,7 +358,7 @@ class VariablesReport:
             )
             return "\n".join(lines)
 
-        status = "issues" if self.issues else "ok"
+        status = "issues" if self._display_total_issue_count(summary_kinds) else "ok"
         lines = [
             "Report: Variable issues",
             f"Target: {self.basepicture_name}",

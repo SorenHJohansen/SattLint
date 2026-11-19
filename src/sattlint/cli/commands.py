@@ -7,6 +7,7 @@ import contextlib
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from itertools import chain
 from pathlib import Path
 from typing import cast
 
@@ -117,8 +118,8 @@ def _emit_findings(
     elif options.output_format == "ndjson":
         envelope = {"record_type": "envelope", **payload}
         envelope.pop("findings", None)
-        records = [envelope, *({"record_type": "finding", **finding_payload(finding)} for finding in findings)]
-        emit_ndjson(records, output=options.output)
+        finding_records = ({"record_type": "finding", **finding_payload(finding)} for finding in findings)
+        emit_ndjson(chain((envelope,), finding_records), output=options.output)
     else:
         emit_text(text_lines, output=options.output)
 
@@ -126,7 +127,7 @@ def _emit_findings(
 def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
     return _AnalyzeOptions(
         output=_output_options(args),
-        project=str(args.project) if args.project else None,
+        project=None if args.project is None else str(args.project),
         analyzers=tuple(str(value) for value in args.analyzer),
         targets=tuple(str(value) for value in args.target),
         modules=tuple(str(value) for value in args.module),
@@ -151,18 +152,42 @@ def command_project_show(args: argparse.Namespace) -> int:
 
 def _project_text(project: ProjectInfo) -> list[str]:
     paths = project["paths"]
-    return [
+    config_state = "" if project["config"]["exists"] else " (missing)"
+    lines = [
         f"Project: {project['path']}",
         f"Root:    {project['root']}",
+        f"Version: {project['slproj_version']}",
         f"Mode:    {project['mode']}",
         f"Targets: {', '.join(project['targets']) or '(none)'}",
-        f"program_dir: {paths['program_dir']}",
-        f"ABB_lib_dir: {paths['ABB_lib_dir']}",
-        f"icf_dir: {paths['icf_dir']}",
-        f"other_lib_dirs: {', '.join(paths['other_lib_dirs']) or '(none)'}",
-        f"Runs:    {project['runs_dir']}",
-        f"Review:  {project['review_output_dir']}",
     ]
+    lines.extend(_analysis_text(project["analysis"]))
+    lines.extend(
+        [
+            f"program_dir: {paths['program_dir']}",
+            f"ABB_lib_dir: {paths['ABB_lib_dir']}",
+            f"icf_dir: {paths['icf_dir']}",
+            f"other_lib_dirs: {', '.join(paths['other_lib_dirs']) or '(none)'}",
+            f"Runs:    {project['runs_dir']}",
+            f"Review:  {project['review_output_dir']}",
+            f"Config:  {project['config']['path']}{config_state}",
+        ]
+    )
+    return lines
+
+
+def _analysis_text(analysis: Mapping[str, object]) -> list[str]:
+    if not analysis:
+        return ["Analysis: (defaults)"]
+    return ["Analysis:", *(f"  {key}: {_display_value(value)}" for key, value in sorted(analysis.items()))]
+
+
+def _display_value(value: object) -> str:
+    if isinstance(value, Mapping):
+        nested = cast(Mapping[str, object], value)
+        return ", ".join(f"{key}={_display_value(nested[key])}" for key in sorted(nested))
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_display_value(item) for item in cast(list[object] | tuple[object, ...], value))
+    return str(value)
 
 
 def command_analyzers_list(args: argparse.Namespace) -> int:
@@ -186,7 +211,10 @@ def command_analyzers_list(args: argparse.Namespace) -> int:
 
 
 def _analyzers_text(analyzers: list[AnalyzerInfo]) -> list[str]:
-    lines: list[str] = []
+    lines = [
+        "Analyzers (* = enabled by default):",
+        f"  {'Key':<24} {'Category':<12} Name",
+    ]
     for entry in analyzers:
         marker = "*" if entry["default"] else " "
         lines.append(f"{marker} {entry['key']:<24} {entry['category']:<12} {entry['name']}")
@@ -408,7 +436,7 @@ def command_findings(args: argparse.Namespace) -> int:
     matched = len(findings)
     limit = args.limit
     if limit is not None:
-        findings = findings[: int(limit)]
+        findings = findings[:limit]
     group_by = cast(GroupBy, str(args.group_by))
     groups: list[FindingGroup] = group_findings(findings, group_by)
     summary: FindingsSummary = {**finding_summary(findings), "matched": matched}

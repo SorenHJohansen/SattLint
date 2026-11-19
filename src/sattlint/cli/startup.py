@@ -44,23 +44,8 @@ from . import menu as cli_menu
 from ._interaction import (
     clear_textual_menu_interaction as _ui_clear_textual_menu_interaction,
 )
-from ._interaction import get_interactive_ui_mode as _ui_get_interactive_ui_mode
-from ._interaction import reset_interactive_ui_mode as _ui_reset_interactive_ui_mode
-from ._interaction import set_interactive_ui_mode as _ui_set_interactive_ui_mode
 from ._interaction import set_textual_menu_interaction as _ui_set_textual_menu_interaction
 from ._interaction import textual_menu_interaction as _ui_textual_menu_interaction
-
-
-def get_interactive_ui_mode() -> str:
-    return _ui_get_interactive_ui_mode()
-
-
-def set_interactive_ui_mode(ui_mode: str | None) -> None:
-    _ui_set_interactive_ui_mode(ui_mode)
-
-
-def reset_interactive_ui_mode() -> None:
-    _ui_reset_interactive_ui_mode()
 
 
 def set_textual_menu_interaction(interaction: Any) -> None:
@@ -172,8 +157,6 @@ def main(
     config_path: Path | None = None,
     apply_debug_fn: Callable[[ConfigDict], None] = apply_debug,
     resolve_interactive_ui_mode_fn: Callable[[ConfigDict, str | None], str] | None = resolve_interactive_ui_mode,
-    set_interactive_ui_mode_fn: Callable[[str | None], None] | None = set_interactive_ui_mode,
-    reset_interactive_ui_mode_fn: Callable[[], None] | None = reset_interactive_ui_mode,
     emit_output_fn: Callable[..., None] = console_module.print_output,
     pause_fn: Callable[[], None] = pause,
     run_main_loop_fn: Callable[..., None] | None = None,
@@ -209,18 +192,15 @@ def main(
             return 1
 
         apply_debug_fn(cfg)
-        resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
             try:
-                resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+                resolve_interactive_ui_mode_fn(cfg, None)
             except (RuntimeError, ValueError) as exc:
                 emit_output_fn(f"Interactive startup failed: {exc}")
                 return 1
         if default_used:
-            emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
+            emit_output_fn("Warning: Default config created. Open Configuration Settings before running analysis.")
             pause_fn()
-        if set_interactive_ui_mode_fn is not None:
-            set_interactive_ui_mode_fn(resolved_ui_mode)
         try:
             run_main_loop_kwargs: dict[str, Any] = {
                 "summarize_targets_fn": summarize_targets_fn,
@@ -230,8 +210,7 @@ def main(
             }
             run_main_loop_fn(cfg, **run_main_loop_kwargs)
         finally:
-            if reset_interactive_ui_mode_fn is not None:
-                reset_interactive_ui_mode_fn()
+            clear_textual_menu_interaction()
         return 0
     except quit_app_error:
         return 0

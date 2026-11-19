@@ -391,7 +391,21 @@ def test_project_show_text_and_discovery(
     assert code == 0
     out = capsys.readouterr().out
     assert "Project:" in out
+    assert "Version: 1" in out
     assert "Targets: Demo" in out
+    assert "Analysis: (defaults)" in out
+    assert "Config:  " in out
+
+
+def test_project_show_text_marks_a_missing_user_config(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+
+    code = run_cli(["project", "show", "--project", str(project)])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert f"Config:  {tmp_path / 'config.toml'} (missing)" in out
 
 
 def test_project_show_accepts_directory_and_reports_ambiguous(
@@ -415,6 +429,19 @@ def test_project_show_accepts_directory_and_reports_ambiguous(
     assert payload["error"]["code"] == "project_ambiguous"
 
 
+def test_project_show_rejects_a_non_table_analysis(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    project.write_text(project.read_text(encoding="utf-8") + "analysis = 'nope'\n", encoding="utf-8")
+
+    code = run_cli(["project", "show", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "project_invalid"
+    assert "analysis" in payload["error"]["message"]
+
+
 def test_project_show_reports_missing_project(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     code = run_cli(
         ["project", "show", "--project", str(tmp_path / "absent.slproj"), "--format", "json"],
@@ -428,6 +455,8 @@ def test_analyzers_list_text(capsys: pytest.CaptureFixture[str], tmp_path: Path)
     code = run_cli(["analyzers", "list"])
     assert code == 0
     out = capsys.readouterr().out
+    assert out.startswith("Analyzers (* = enabled by default):\n")
+    assert "Key" in out and "Category" in out and "Name" in out
     assert "* variables" in out
     assert "correctness" in out
 
@@ -654,6 +683,26 @@ def test_run_cli_internal_error_is_masked(
     payload = json.loads(capsys.readouterr().err)
     assert payload["error"]["code"] == "internal_error"
     assert "boom" in payload["error"]["message"]
+
+
+def test_findings_differing_only_in_data_payload_stay_separate() -> None:
+    first = AnalysisFinding(
+        kind="read_before_write",
+        message="read before write",
+        module_path=("Demo", "A"),
+        data={"site": "IF Start THEN", "previous": "IF First THEN"},
+    )
+    second = AnalysisFinding(
+        kind="read_before_write",
+        message="read before write",
+        module_path=("Demo", "A"),
+        data={"site": "IF Start THEN", "previous": "IF Second THEN"},
+    )
+
+    findings = flat_findings(_run_record(first, second))
+
+    assert len(findings) == 2
+    assert {finding.finding.data["previous"] for finding in findings} == {"IF First THEN", "IF Second THEN"}
 
 
 def test_finding_filters_and_all_groupings() -> None:
@@ -923,6 +972,37 @@ def test_emit_text_survives_a_non_utf8_stdout(monkeypatch: pytest.MonkeyPatch) -
     assert stream.buffer.getvalue().decode("utf-8") == "café\n"
 
 
+def test_emit_ndjson_streams_each_record_before_the_next_is_produced(monkeypatch: pytest.MonkeyPatch) -> None:
+    writes: list[str] = []
+
+    class _Stream:
+        def write(self, text: str) -> int:
+            writes.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            return None
+
+    def records() -> Iterator[dict[str, object]]:
+        yield {"record": 1}
+        assert writes == ['{"record":1}\n']
+        yield {"record": 2}
+
+    monkeypatch.setattr(sys, "stdout", _Stream())
+
+    output_module.emit_ndjson(records())
+
+    assert writes == ['{"record":1}\n', '{"record":2}\n']
+
+
+def test_json_error_envelope_uses_the_document_formatting(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--format", "json", "--bogus"])
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert err == json.dumps(json.loads(err), indent=2, ensure_ascii=False) + "\n"
+
+
 def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     blocked_cache = tmp_path / "blocked-cache"
     blocked_cache.write_text("not a directory", encoding="utf-8")
@@ -1140,3 +1220,54 @@ def test_project_analyzer_findings_survive_without_a_phantom_target() -> None:
     assert [finding.target for finding in flat] == [""]
     assert record.targets == ()
     assert record.issue_count == 1
+
+
+def test_findings_rejects_a_blank_module_filter(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--module", ""])
+
+    assert code == 2
+    assert "--module must not be empty." in capsys.readouterr().err
+
+
+def test_analyze_rejects_a_blank_filter_value(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--target", "  "])
+
+    assert code == 2
+    assert "--target must not be empty." in capsys.readouterr().err
+
+
+def test_findings_rejects_a_negative_limit(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--limit", "-3"])
+
+    assert code == 2
+    assert "must be zero or greater" in capsys.readouterr().err
+
+
+def test_exact_module_requires_a_module_filter(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["findings", "--exact-module"])
+
+    assert code == 2
+    assert "--exact-module requires --module." in capsys.readouterr().err
+
+
+def test_blank_project_value_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["project", "show", "--project", ""])
+
+    assert code == 2
+    assert "--project must not be empty." in capsys.readouterr().err
+
+
+def test_repeated_format_flag_uses_the_last_value(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyzers", "list", "--format", "json", "--format", "text"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert not out.lstrip().startswith("{")
+    assert "Variable issues" in out
+
+
+def test_usage_error_fallback_uses_the_last_format_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    code = run_cli(["analyze", "--format", "json", "--format", "text", "--bogus"])
+
+    assert code == 2
+    assert capsys.readouterr().err.startswith("sattlint: ")

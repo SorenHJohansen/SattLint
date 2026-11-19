@@ -191,29 +191,11 @@ def init_project(
     return SattLintProjectFile(path=path, data=cast(ProjectDict, data))
 
 
-def project_status(project: SattLintProjectFile) -> str:
-    """Return a one-line summary of the project."""
-    d = project.data
-    targets = d.get("analyzed_programs_and_libraries", [])
-    mode = d.get("mode", "official")
-    target_count = len(targets)
-    target_preview = ", ".join(targets[:3])
-    if target_count > 3:
-        target_preview += " ..."
-    return (
-        f"{project.root.name}/  "
-        f"[mode={mode}, "
-        f"{target_count} target{'s' if target_count != 1 else ''}"
-        f"{': ' + target_preview if target_preview else ''}]"
-    )
-
-
 __all__ = [
     "SLPROJ_FILENAME",
     "SLPROJ_VERSION",
     "discover_project",
     "init_project",
     "load_project",
-    "project_status",
     "save_project",
 ]

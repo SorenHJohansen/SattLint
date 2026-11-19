@@ -18,7 +18,6 @@ from sattlint.project.io import (
     discover_project,
     init_project,
     load_project,
-    project_status,
     save_project,
 )
 from sattlint.project.loading import cache_manifest_files
@@ -53,6 +52,12 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
     path = tmp_path / SLPROJ_FILENAME
     path.write_text("slproj_version = 2\n")
     with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
+        load_project(path)
+    path.write_text("slproj_version = 0\n")
+    with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
+        load_project(path)
+    path.write_text("slproj_version = false\n")
+    with pytest.raises(ValueError, match=r"slproj_version"):
         load_project(path)
 
 
@@ -188,20 +193,14 @@ def test_init_project_with_dirs(tmp_path: Path) -> None:
     assert project.data["other_lib_dirs"] == ["/opt/satt/extra"]
 
 
-def test_project_status_summary(tmp_path: Path) -> None:
-    path = tmp_path / "proj.slproj"
-    init_project(path)
-    project = load_project(path)
-    status = project_status(project)
-    assert "proj.slproj" in status or tmp_path.name in status
-    assert "mode=official" in status
-    assert "0 targets" in status
-    project.data["analyzed_programs_and_libraries"] = ["a", "b", "c", "d"]
-    status = project_status(project)
-    assert "4 targets" in status
-    assert "a, b, c ..." in status
-    project.data["analyzed_programs_and_libraries"] = ["solo"]
-    assert "1 target" in project_status(project)
+def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> None:
+    project = init_project(tmp_path / "proj.slproj")
+
+    project.data["analyzed_programs_and_libraries"].append("Demo")
+    project.data["other_lib_dirs"].append("libs")
+
+    assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
+    assert DEFAULT_PROJECT_DICT["other_lib_dirs"] == []
 
 
 def test_normalize_converters() -> None:

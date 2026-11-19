@@ -18,6 +18,7 @@ from . import paths as _config_paths_module
 from .defaults import DEFAULT_CONFIG
 from .types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
 from .validation import (
+    ConfigValidationError,
     deep_merge_dict,
     load_time_config_warnings,
     strip_unknown_keys,
@@ -33,19 +34,25 @@ def _merged_effective_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigDict
     return cast(ConfigDict, merged)
 
 
-def _validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...]:
-    validation = validate_effective_config(_merged_effective_config(cfg))
-    return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
+def _validation_errors(cfg: ConfigDict | ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
+    return validate_effective_config(_merged_effective_config(cfg)).errors
 
 
-def _value_validation_messages(cfg: ConfigDict | ConfigOverrideDict) -> tuple[str, ...]:
+def _value_validation_errors(cfg: ConfigDict | ConfigOverrideDict) -> tuple[ConfigValidationError, ...]:
     """Validation that does not touch the filesystem.
 
     Saving settings must not fail because a configured directory is temporarily
     missing; the analysis preflight reports that at run time.
     """
-    validation = validate_config(cast(ConfigOverrideDict, _merged_effective_config(cfg)))
-    return tuple(f"[{error.key_path}] {error.message}" for error in validation.errors)
+    return validate_config(cast(ConfigOverrideDict, _merged_effective_config(cfg))).errors
+
+
+def _validation_failure_message(errors: tuple[ConfigValidationError, ...]) -> str:
+    return "Config validation failed: " + "; ".join(f"[{error.key_path}] {error.message}" for error in errors)
+
+
+def _config_warning(error: ConfigValidationError) -> str:
+    return f"⚠ Config warning [{error.key_path}]: {error.message}"
 
 
 def get_config_path() -> Path:
@@ -85,13 +92,12 @@ def load_config(path: Path, *, emit_fn: Callable[[str], None] | None = None) -> 
     # is a load error, not a warning: applying it produces a confusing failure
     # much later. Missing paths stay warnings; analysis reports those at run
     # time.
-    value_messages = _value_validation_messages(cfg)
-    if value_messages:
-        raise ValueError("Config validation failed: " + "; ".join(value_messages))
+    value_errors = _value_validation_errors(cfg)
+    if value_errors:
+        raise ValueError(_validation_failure_message(value_errors))
 
-    for message in _validation_messages(cfg):
-        key_path, error_message = message.split("] ", maxsplit=1)
-        emit(f"⚠ Config warning {key_path}]: {error_message}")
+    for error in _validation_errors(cfg):
+        emit(_config_warning(error))
 
     return _merged_effective_config(cfg), False
 
@@ -102,9 +108,9 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
         raise ValueError("Config serialization must produce a table/object.")
     sanitized_cfg: ConfigObjectMap = cast(ConfigObjectMap, sanitized_cfg_obj)
 
-    validation_messages = _value_validation_messages(cast(ConfigOverrideDict, sanitized_cfg))
+    validation_messages = _value_validation_errors(cast(ConfigOverrideDict, sanitized_cfg))
     if validation_messages:
-        raise ValueError("Config validation failed: " + "; ".join(validation_messages))
+        raise ValueError(_validation_failure_message(validation_messages))
 
     def normalize(value: object) -> object:
         if isinstance(value, Path):

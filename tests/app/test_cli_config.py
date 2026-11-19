@@ -33,3 +33,14 @@ def test_load_config_warns_on_unknown_section_key(tmp_path: Path, capsys: pytest
     assert created is False
     assert "Config warning [run_history.path]" in out
     assert loaded["run_history"] == {"enabled": True, "limit": 50}
+
+
+def test_config_warning_keeps_a_bracketed_message_intact(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    missing = tmp_path / "programs ] draft"
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'program_dir = "{missing}"\n', encoding="utf-8")
+
+    config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert f"Config warning [program_dir]: program_dir does not exist: {missing}" in out

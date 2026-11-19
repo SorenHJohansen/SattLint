@@ -8,7 +8,6 @@ from .io import (
     discover_project,
     init_project,
     load_project,
-    project_status,
     save_project,
 )
 from .models import SattLintProjectFile
@@ -23,6 +22,5 @@ __all__ = [
     "discover_project",
     "init_project",
     "load_project",
-    "project_status",
     "save_project",
 ]

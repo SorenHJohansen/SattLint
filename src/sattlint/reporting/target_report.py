@@ -10,9 +10,23 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from .variables_report import VariablesReport
+
+
+@runtime_checkable
+class _TargetNamedReport(Protocol):
+    """A report that carries the analyzed target name as its primary label."""
+
+    basepicture_name: str
+
+
+@runtime_checkable
+class _NameOnlyReport(Protocol):
+    """A report that exposes only a ``name`` label."""
+
+    name: str
 
 
 def _origin_file_name(value: object) -> str | None:
@@ -24,17 +38,19 @@ def _origin_file_name(value: object) -> str | None:
     return None
 
 
-def normalize_report_target_name(report: Any, target_name: str) -> Any:
+def normalize_report_target_name[ReportT](report: ReportT, target_name: str) -> ReportT:
+    """Label a report with the analyzed target name.
+
+    Reports expose the target name either as ``basepicture_name`` or as
+    ``name``. Only those labels are renamed; a report without a writable label
+    is returned unchanged.
+    """
     if not target_name:
         return report
-
-    for attr_name in ("basepicture_name", "name"):
-        if not hasattr(report, attr_name):
-            continue
-        try:
-            setattr(report, attr_name, target_name)
-        except AttributeError:
-            continue
+    if isinstance(report, _TargetNamedReport):
+        report.basepicture_name = target_name
+    elif isinstance(report, _NameOnlyReport):
+        report.name = target_name
     return report
 
 

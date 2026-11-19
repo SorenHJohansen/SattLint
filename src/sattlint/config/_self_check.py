@@ -39,6 +39,7 @@ def _self_check_directories(cfg: ConfigDict, *, errors_by_key: dict[str, tuple[s
         if messages:
             for message in messages:
                 emit_output(message)
+            ok = False
         else:
             emit_output(f"other_lib_dirs: {path}")
 
