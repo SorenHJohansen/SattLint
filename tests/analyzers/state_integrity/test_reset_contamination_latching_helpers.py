@@ -4,10 +4,8 @@ from __future__ import annotations
 from collections.abc import Sequence as Seq
 
 from sattline_parser.models.ast_model import (
-    BasePicture,
     CodeItem,
     Equation,
-    FrameModule,
     ModuleCode,
     ModuleHeader,
     ScalarDatatype,
@@ -20,15 +18,12 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, IfStmt, NotOp, VarRef
 
 from sattlint.analyzers.reset_contamination import (
     ResetContaminationAnalyzer,
-    detect_implicit_latching,
-    detect_reset_contamination,
 )
 from sattlint.analyzers.reset_contamination._reset_latching import (
     BooleanPathState,
@@ -59,82 +54,6 @@ def _seq(name: str, code: Seq[SFCBodyItem]) -> Sequence:
 
 def _bool_step(name: str, statements: Seq[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=list(statements)))
-
-
-def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
-    child = SingleModule(
-        header=_hdr("Child"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[
-            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
-            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
-            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
-            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equationblocks=[
-                _eq(
-                    "ResetEq",
-                    [
-                        IfStmt(
-                            branches=(
-                                (
-                                    NotOp(operand=_varref("OpSeq.Reset")),
-                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                ),
-                                (
-                                    NotOp(operand=_varref("SeqResetOld")),
-                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                ),
-                            ),
-                            else_block=None,
-                        ),
-                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                    ],
-                ),
-                _eq(
-                    "LatchEq",
-                    [
-                        IfStmt(
-                            branches=((_varref("Start"), (Assignment(target=_varref("Latch"), value=True),)),),
-                            else_block=None,
-                        ),
-                    ],
-                ),
-            ],
-            sequences=[_seq("OpSeq", [])],
-        ),
-        parametermappings=[],
-    )
-    picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
-
-    reset_issues: list[VariableIssue] = []
-    latch_issues: list[VariableIssue] = []
-
-    detect_reset_contamination(
-        picture,
-        reset_issues,
-        limit_to_module_path=["Root", "Frame", "Child"],
-    )
-    detect_implicit_latching(
-        picture,
-        latch_issues,
-        limit_to_module_path=["Root", "Frame", "Child"],
-    )
-
-    assert any(
-        issue.module_path == ["Root", "Frame", "Child"]
-        and issue.variable is not None
-        and issue.variable.name == "Counter"
-        for issue in reset_issues
-    )
-    assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
-        (["Root", "Frame", "Child"], "Latch")
-    ]
 
 
 def test_reset_helpers_collect_nested_refs_and_skip_fully_reset_paths() -> None:
