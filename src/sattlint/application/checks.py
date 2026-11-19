@@ -428,6 +428,7 @@ def collect_run_checks_result(  # noqa: PLR0915
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     self_check_fn: Callable[[ConfigDict], bool] | None = None,
+    emit_output: Callable[[str], None] | None = None,
 ) -> ChecksRunResult:
     if iter_loaded_projects_fn is None:
         iter_loaded_projects_fn = _iter_loaded_projects
@@ -442,7 +443,10 @@ def collect_run_checks_result(  # noqa: PLR0915
     load_failures: list[TargetLoadFailure] = []
 
     def emit_line(message: object) -> None:
-        output_lines.append(str(message))
+        text = str(message)
+        output_lines.append(text)
+        if emit_output is not None:
+            emit_output(text)
 
     def record_load_failure(target_name: str, message: str) -> None:
         load_failures.append(TargetLoadFailure(target_name=target_name, message=message))
@@ -480,13 +484,10 @@ def collect_run_checks_result(  # noqa: PLR0915
         self_check_fn = config_module.self_check
     self_check_ok, self_check_lines = _run_self_check_preflight(cfg, self_check_fn=self_check_fn)
     if not self_check_ok:
-        output_lines.extend(self_check_lines)
-        output_lines.extend(
-            [
-                "❌ Self-check failed. Analysis aborted before the checks pipeline started.",
-                "Fix the reported issues and rerun.",
-            ]
-        )
+        for self_check_line in self_check_lines:
+            emit_line(self_check_line)
+        emit_line("❌ Self-check failed. Analysis aborted before the checks pipeline started.")
+        emit_line("Fix the reported issues and rerun.")
         flush_stdout()
         return ChecksRunResult(
             output_lines=tuple(output_lines),
@@ -739,8 +740,10 @@ def run_checks_result(
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     self_check_fn: Callable[[ConfigDict], bool] | None = None,
+    emit_output: Callable[[str], None] | None = None,
 ) -> ChecksRunResult:
-    result = collect_run_checks_result(
+    emit = output_module.emit_output if emit_output is None else emit_output
+    return collect_run_checks_result(
         cfg,
         selected_keys,
         use_cache=use_cache,
@@ -750,10 +753,8 @@ def run_checks_result(
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
         self_check_fn=self_check_fn,
+        emit_output=emit,
     )
-    for line in result.output_lines:
-        output_module.emit_output(line)
-    return result
 
 
 def run_checks(
@@ -767,6 +768,7 @@ def run_checks(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     pause_fn: Callable[[], None] | None = None,
     self_check_fn: Callable[[ConfigDict], bool] | None = None,
+    emit_output: Callable[[str], None] | None = None,
 ) -> None:
     result = run_checks_result(
         cfg,
@@ -778,6 +780,7 @@ def run_checks(
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
         self_check_fn=self_check_fn,
+        emit_output=emit_output,
     )
     if result.cancelled:
         output_module.handle_analysis_cancellation(pause_fn=pause_fn)

@@ -191,6 +191,35 @@ def test_collect_run_checks_result_aborts_when_self_check_fails():
     assert not any("Running checks" in line for line in result.output_lines)
 
 
+def test_collect_run_checks_result_streams_each_line_while_the_run_is_in_progress():
+    streamed: list[str] = []
+    streamed_before_yield: list[str] = []
+
+    def _projects(*_args, emit_output_fn=None, **_kwargs):
+        emit_output_fn("Loading TargetA")
+        streamed_before_yield.extend(streamed)
+        yield ("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(Any, _projects),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+        emit_output=streamed.append,
+    )
+
+    assert any("--- Running checks ---" in line for line in streamed_before_yield)
+    assert streamed == list(result.output_lines)
+
+
 def test_collect_run_checks_result_runs_analyzers_when_self_check_passes():
     run_calls: list[str] = []
 

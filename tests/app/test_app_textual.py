@@ -2001,6 +2001,25 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_execute_analyzers_streams_runner_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    streamed: list[str] = []
+
+    def _handler(_cfg: object, _keys: object, *, emit_output: object = None) -> SimpleNamespace:
+        assert callable(emit_output)
+        emit_output("target header from the runner")
+        return SimpleNamespace(failures=(), analyzer_failures=(), cancelled=False, run_id=None)
+
+    app_instance = _make_textual_app(analysis_handlers={"run_checks_result": _handler})
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda text: streamed.append(text))
+    monkeypatch.setattr(app_instance, "_finish_analysis_run", lambda _result: None)
+    monkeypatch.setattr(app_instance, "call_from_thread", lambda fn, *args: fn(*args))
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert "target header from the runner" in streamed
+    assert streamed[-1] == "Selected analyzers completed."
+
+
 def test_textual_finish_analysis_run_reports_a_run_without_stored_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

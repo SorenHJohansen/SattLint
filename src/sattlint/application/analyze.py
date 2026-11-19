@@ -42,6 +42,7 @@ def run_checks(
     *,
     use_cache: bool = True,
     project_path: str = "",
+    emit_output: Callable[[str], None] | None = None,
 ) -> None:
     checks_module.run_checks(
         cfg,
@@ -51,6 +52,7 @@ def run_checks(
         target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
         project_path=project_path,
+        emit_output=emit_output,
     )
 
 
@@ -60,6 +62,7 @@ def run_checks_result(
     *,
     use_cache: bool = True,
     project_path: str = "",
+    emit_output: Callable[[str], None] | None = None,
 ) -> checks_module.ChecksRunResult:
     return checks_module.run_checks_result(
         cfg,
@@ -69,6 +72,7 @@ def run_checks_result(
         target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
         project_path=project_path,
+        emit_output=emit_output,
     )
 
 
@@ -79,6 +83,7 @@ def collect_checks_result(
     use_cache: bool = True,
     persist_run: bool = True,
     project_path: str = "",
+    emit_output: Callable[[str], None] | None = None,
 ) -> checks_module.ChecksRunResult:
     """Run checks without emitting the human-readable report to stdout."""
     return checks_module.collect_run_checks_result(
@@ -90,4 +95,5 @@ def collect_checks_result(
         use_cache=use_cache,
         persist_run=persist_run,
         project_path=project_path,
+        emit_output=emit_output,
     )
