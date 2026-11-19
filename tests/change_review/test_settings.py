@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from sattlint.change_review.settings import resolve_review_output_dir
+from sattlint.change_review.settings import resolve_review_output_dir, review_output_dir_location
 from sattlint.config import defaults as config_defaults_module
 from sattlint.config import io as config_io_module
 from sattlint.config import validation as config_validation_module
@@ -69,3 +69,21 @@ def test_resolve_review_output_dir_defaults_when_empty(tmp_path: Path, monkeypat
     monkeypatch.setattr("sattlint.change_review.settings.get_change_review_dir", lambda: default_dir)
     cfg = build_cfg(tmp_path, review_output_dir="")
     assert resolve_review_output_dir(cfg) == default_dir
+
+
+def test_relative_review_output_dir_resolves_against_the_config_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "config-home"
+    monkeypatch.setattr("sattlint.change_review.settings.config_dir_location", lambda: config_dir)
+    cfg = build_cfg(tmp_path, review_output_dir="reviews")
+
+    first = resolve_review_output_dir(cfg)
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert resolve_review_output_dir(cfg) == first == config_dir / "reviews"
+
+    monkeypatch.setattr("sattlint.change_review.settings.get_change_review_dir_location", lambda: config_dir)
+    assert review_output_dir_location(cfg) == config_dir / "reviews"
