@@ -1,5 +1,5 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-"""Semantic invariant tests (Phase 18).
+# pyright: reportPrivateUsage=false
+"""Semantic invariant tests.
 
 Independent of individual analyzers: every reference resolves to a definition
 (or an explicit unresolved state), canonical identities are unique, builds are

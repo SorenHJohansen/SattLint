@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 from sattline_parser.ast import MappingSource
@@ -14,6 +13,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
+from sattlint.models import VariableIssue
 from sattlint.resolution.context_builder import ContextBuilder
 from sattlint.resolution.scope import ScopeContext
 from sattlint.resolution.symbol_table import CanonicalSymbolTable
@@ -24,8 +24,8 @@ def _hdr(name: str) -> ModuleHeader:
     return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
 
 
-def _builder(base_picture: BasePicture):
-    issues = []
+def _builder(base_picture: BasePicture) -> tuple[ContextBuilder, list[VariableIssue]]:
+    issues: list[VariableIssue] = []
     return (
         ContextBuilder(
             base_picture=base_picture,
@@ -285,7 +285,7 @@ def test_build_for_typedef_reuses_cached_template_for_equivalent_mappings() -> N
     )
     calls = {"count": 0}
 
-    def _resolve_variable(_var_ref: str):
+    def _resolve_variable(_var_ref: str) -> tuple[Variable | None, str, list[str], list[str]]:
         calls["count"] += 1
         return outer, "", ["Root"], ["Root<BP>"]
 

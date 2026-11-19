@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Semantic diff and block-centric relevance tests for the Change Review."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Tests for the Change Review output-location setting."""
 
 from __future__ import annotations

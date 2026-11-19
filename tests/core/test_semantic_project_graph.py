@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false
 """Semantic project-graph invariants: indexes key on case-insensitive identity."""
 
 from __future__ import annotations
