@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
+from .. import parser_api
 from ..types import TargetName
 from .defaults import (
     VALID_TOP_LEVEL_CONFIG_KEYS,
@@ -470,6 +471,11 @@ def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidat
 
 
 def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
+    # A target is a bare unit name. Reject anything that would leave the
+    # directory being probed, since the lookup builds a path from the name.
+    if not target or Path(target).name != target:
+        return False
+
     other_lib_dirs = _object_list(cfg.get("other_lib_dirs", []))
     dirs = [
         Path(str(raw_path))
@@ -481,23 +487,18 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
         if str(raw_path).strip()
     ]
 
-    mode = str(cfg.get("mode", "official")).strip().lower()
-    # Canonical draft/official code-extension mapping lives in core/syntax.py
-    # (code_ext / code_ext_candidates); config validation cannot import it
-    # without creating an import cycle, so the candidates are kept in sync here.
-    extensions = [".s", ".x"] if mode == "draft" else [".x"]
+    # The parser owns code discovery: the mode, the candidate extensions, and the
+    # case-insensitive companion match all come from the same surface the loader
+    # uses, so validation cannot drift from what a load would find.
+    mode = str(cfg.get("mode", "official")).strip().casefold()
+    load_mode = parser_api.LoadMode.DRAFT if mode == "draft" else parser_api.LoadMode.OFFICIAL
+    extensions = parser_api.code_ext_candidates(load_mode)
 
-    wanted = {f"{target}{ext}".casefold() for ext in extensions}
     for directory in dirs:
         if not directory.is_dir():
             continue
-        try:
-            entries = directory.iterdir()
-        except OSError:
-            continue
-        for entry in entries:
-            if entry.name.casefold() in wanted:
-                return True
+        if parser_api.find_companion_beside(directory / f"{target}{extensions[0]}", extensions) is not None:
+            return True
 
     return False
 

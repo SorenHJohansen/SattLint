@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from sattline_parser.project import SourceIndex
 
 from sattlint import config as config_module
+from sattlint import parser_api
 from sattlint.cli import startup as startup_module
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.defaults import (
@@ -451,6 +453,42 @@ def test_target_exists_is_case_insensitive(tmp_path):
     cfg = {"program_dir": str(tmp_path), "mode": "official"}
 
     assert config_module.target_exists("Demo", cfg) is True
+
+
+@pytest.mark.parametrize(
+    ("mode", "file_name", "expected"),
+    [
+        ("official", "Demo.x", True),
+        ("official", "Demo.s", False),
+        ("draft", "Demo.s", True),
+        ("draft", "Demo.x", True),
+        ("draft", "demo.S", True),
+        ("official", "Demo.g", False),
+    ],
+)
+def test_target_exists_agrees_with_parser_code_discovery(
+    tmp_path: Path, mode: str, file_name: str, expected: bool
+) -> None:
+    (tmp_path / file_name).write_text("x", encoding="utf-8")
+    cfg = {"program_dir": str(tmp_path), "mode": mode}
+
+    assert config_module.target_exists("Demo", cfg) is expected
+
+    discovered = SourceIndex([tmp_path]).find_in_index(
+        base=tmp_path,
+        name="Demo",
+        extensions=parser_api.code_ext_candidates(parser_api.LoadMode(mode)),
+    )
+    assert (discovered is not None) is expected
+
+
+def test_target_exists_does_not_probe_outside_the_configured_directory(tmp_path: Path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "Demo.x").write_text("x", encoding="utf-8")
+    cfg = {"program_dir": str(tmp_path), "mode": "official"}
+
+    assert config_module.target_exists("nested/Demo", cfg) is False
 
 
 def test_load_config_rejects_wrong_value_types(tmp_path):
