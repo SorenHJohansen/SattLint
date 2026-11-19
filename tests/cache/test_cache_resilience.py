@@ -15,6 +15,7 @@ from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 from sattlint.project.cache import create_analysis_report_cache
 
+_REAL_CACHE_DIR_LOCATION = cache_module.cache_dir_location
 _REAL_GET_CACHE_DIR = cache_module.get_cache_dir
 _REAL_GET_CACHE_DIR_OR_NONE = cache_module.get_cache_dir_or_none
 
@@ -48,6 +49,7 @@ def test_build_ast_cache_returns_none_for_unusable_directory(tmp_path: Path) -> 
 
 def test_get_cache_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     blocked = _blocked_cache_dir(tmp_path)
+    monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
     monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
     monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
@@ -57,6 +59,7 @@ def test_get_cache_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, mon
 
 def test_get_runs_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     blocked = _blocked_cache_dir(tmp_path)
+    monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
     monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
     monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))

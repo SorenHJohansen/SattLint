@@ -154,11 +154,13 @@ def _atomic_write_json(path: Path, payload: object) -> None:
     """Write JSON through a unique temp file and an atomic replace.
 
     A crash mid-write then leaves the previous record (or no record) instead of
-    a truncated one that no pruner can recognise.
+    a truncated one that no pruner can recognise. Run history holds source
+    paths and finding text, so the record is owner-only.
     """
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
     try:
-        with temp_path.open("w", encoding="utf-8") as handle:
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
             handle.flush()
             os.fsync(handle.fileno())

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import pickle
 from collections.abc import Iterable
 from pathlib import Path
@@ -120,10 +119,11 @@ class ASTCache:
             "project": project,
         }
 
-        with self._manifest_path(key).open("w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
-
+        # The payload is the data; the manifest is what makes it trusted. Write
+        # the payload first, so a failed write leaves the previous manifest
+        # paired with the previous payload instead of blessing a stale one.
         cache_module._save_pickle_payload(self._path(key), payload)
+        cache_module._save_manifest_payload(self._manifest_path(key), manifest)
 
     def load_validated(self, key: str) -> object | None:
         manifest = self.load_manifest(key)

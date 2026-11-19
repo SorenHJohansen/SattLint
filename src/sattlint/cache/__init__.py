@@ -164,7 +164,9 @@ def _load_pickle_payload(path: Path) -> object | None:
     if signature is None:
         return None
 
-    key = _load_or_create_pickle_hmac_key(path.parent)
+    # Reading never creates the key: a payload whose key is absent cannot be
+    # verified, so the entry is a miss rather than a reason to write state.
+    key = _read_pickle_hmac_key(_pickle_hmac_key_path())
     if key is None:
         return None
 
@@ -178,19 +180,26 @@ def _load_pickle_payload(path: Path) -> object | None:
         return None
 
 
-def _pickle_hmac_key_path(directory: Path) -> Path:
-    return directory / _PICKLE_HMAC_KEY_NAME
+def _pickle_hmac_key_path() -> Path:
+    """The key file, kept outside the cache tree it signs.
+
+    A key stored beside the payloads it protects is readable and replaceable by
+    anything that can reach the payloads, so it protects nothing. The file sits
+    one level above the cache root: it survives a cache clear or a directory
+    copy, and neither operation carries it along with the data.
+    """
+    return cache_dir_location().parent / _PICKLE_HMAC_KEY_NAME
 
 
-def _load_or_create_pickle_hmac_key(directory: Path) -> bytes | None:
-    key_path = _pickle_hmac_key_path(directory)
+def _load_or_create_pickle_hmac_key() -> bytes | None:
+    key_path = _pickle_hmac_key_path()
     existing_key = _read_pickle_hmac_key(key_path)
     if existing_key is not None:
         return existing_key
     if key_path.exists() and not _remove_file(key_path):
         return None
 
-    directory.mkdir(parents=True, exist_ok=True)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
     key = secrets.token_bytes(_PICKLE_HMAC_SIZE)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
@@ -238,16 +247,17 @@ def _read_signed_pickle_envelope(payload_bytes: bytes) -> tuple[str | None, byte
 
 
 def _save_pickle_payload(path: Path, payload: object) -> None:
-    key = _load_or_create_pickle_hmac_key(path.parent)
+    key = _load_or_create_pickle_hmac_key()
     if key is None:
-        raise OSError(f"Could not create pickle HMAC key for {path.parent}")
+        raise OSError(f"Could not create the cache signing key for {path}")
 
     pickled_payload = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
     signature = hmac.new(key, pickled_payload, hashlib.sha256).hexdigest().encode("ascii")
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
 
     try:
-        with temp_path.open("wb") as handle:
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
             handle.write(_PICKLE_CACHE_MAGIC)
             handle.write(signature)
             handle.write(b"\n")
@@ -266,6 +276,21 @@ def _remove_file(path: Path) -> bool:
     except OSError:
         return False
     return True
+
+
+def _save_manifest_payload(path: Path, manifest: Mapping[str, tuple[int, int]]) -> None:
+    """Write a manifest atomically, owner-only, like the payload it describes."""
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except OSError:
+        _remove_file(temp_path)
+        raise
 
 
 def _legacy_cache_dir() -> Path:

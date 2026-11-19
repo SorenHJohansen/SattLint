@@ -25,6 +25,7 @@ def _isolate_analysis_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     profiling log, and the foundation cache in one place.
     """
     cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(cache_module, "cache_dir_location", lambda: cache_dir)
     monkeypatch.setattr(cache_module, "get_cache_dir", lambda: cache_dir)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", lambda: cache_dir)
     yield
