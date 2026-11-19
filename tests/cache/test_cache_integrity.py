@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from sattlint import cache as cache_module
-from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
+from sattlint.cache.classes import AnalysisReportCache, ASTCache
 from sattlint.cache.manager import _CACHE_MANAGER_LIMIT, _CACHE_MANAGERS, get_cache_manager
 from sattlint.runs import RunRecord, save_run
 
@@ -56,8 +56,6 @@ def test_cache_artifacts_are_owner_only(tmp_path: Path) -> None:
     ast_cache.save("key", project={"generation": 1}, files=[source])
     report_cache = AnalysisReportCache(tmp_path / "caches")
     assert report_cache.save("key", report={"report": True}, files=[source]) is True
-    foundation_cache = FoundationCache(tmp_path / "caches")
-    foundation_cache.save("key", {"foundation": True})
 
     artifacts = sorted(path for path in (tmp_path / "caches").rglob("*") if path.is_file())
     assert artifacts

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import cast
 
 from ..config.defaults import PROJECT_CACHE_CONFIG_KEYS
-from .classes import AnalysisReportCache, ASTCache, FoundationCache
+from .classes import AnalysisReportCache, ASTCache
 from .manager import (
     CacheManager,
     build_analysis_report_cache,
@@ -33,12 +33,10 @@ __all__ = [
     "AnalysisReportCache",
     "CacheManager",
     "CachePruneResult",
-    "FoundationCache",
     "build_analysis_report_cache",
     "build_ast_cache",
     "cache_dir_location",
     "compute_analysis_report_cache_key",
-    "compute_foundation_cache_key",
     "get_cache_dir",
     "get_cache_dir_or_none",
     "get_cache_manager",
@@ -58,23 +56,16 @@ class CachePruneResult:
     ast_payload_entries: int = 0
     ast_manifest_entries: int = 0
     analysis_report_entries: int = 0
-    foundation_entries: int = 0
 
     @property
     def removed_entries(self) -> int:
-        return (
-            self.ast_payload_entries
-            + self.ast_manifest_entries
-            + self.analysis_report_entries
-            + self.foundation_entries
-        )
+        return self.ast_payload_entries + self.ast_manifest_entries + self.analysis_report_entries
 
     def combine(self, other: CachePruneResult) -> CachePruneResult:
         return CachePruneResult(
             ast_payload_entries=self.ast_payload_entries + other.ast_payload_entries,
             ast_manifest_entries=self.ast_manifest_entries + other.ast_manifest_entries,
             analysis_report_entries=self.analysis_report_entries + other.analysis_report_entries,
-            foundation_entries=self.foundation_entries + other.foundation_entries,
         )
 
 
@@ -401,10 +392,10 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "moduletype-usage": "2026-11-18-private-visibility",
     "picture-display-paths": "2026-11-18-private-visibility",
 }
-# Phase E: the analysis foundation (type graph + typedef/moduletype/datatype indices + symbol
-# skeleton) is a pure function of the parsed ASTs, so it is content-addressable. This version
-# must be bumped whenever the serialized foundation shape or its derivation changes.
-FOUNDATION_CACHE_SCHEMA_VERSION = "2026-11-15-root-parameters"
+# The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
+# derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol
+# objects from a different parse than the one the analyzers hold, so identity-based lookups
+# silently miss. AST reuse is the supported cold-start saving.
 
 
 def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None = None) -> str:
@@ -453,21 +444,3 @@ def _analysis_settings_fingerprint(analysis_settings: object) -> str:
         return json.dumps(analysis_settings, sort_keys=True, default=repr, separators=(",", ":"))
     except (TypeError, ValueError):
         return repr(analysis_settings)
-
-
-def compute_foundation_cache_key(project_cache_key: str, source_manifest: Mapping[str, tuple[int, int]]) -> str:
-    """Content-derived key for the cached analysis foundation.
-
-    Distinct from the rule/config-derived report key (see keep_foundation_key_distinct in the
-    architecture doc): editing a source file changes this key, while changing a lint rule must not.
-    The manifest is the same source-content/mtime snapshot the AST cache keys on, so foundation
-    staleness risk matches the already-proven AST cache.
-    """
-    h = hashlib.sha256()
-    h.update(FOUNDATION_CACHE_SCHEMA_VERSION.encode())
-    h.update(project_cache_key.encode("utf-8", errors="ignore"))
-    for path in sorted(source_manifest):
-        h.update(path.encode("utf-8", errors="ignore"))
-        h.update(b"\x00")
-        h.update(repr(source_manifest[path]).encode())
-    return h.hexdigest()

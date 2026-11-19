@@ -74,14 +74,6 @@ class CacheManager:
         result = result.combine(cache_module.CachePruneResult(analysis_report_entries=analysis_report_entries))
         self._analysis_report_cache = self._analysis_report_cache_cls(self.cache_dir)
 
-        foundation_entries = 0
-        foundation_dir = self.cache_dir / "foundation"
-        if foundation_dir.is_dir():
-            for path in foundation_dir.glob("*.pickle"):
-                if cache_module._remove_file(path):
-                    foundation_entries += 1
-        result = result.combine(cache_module.CachePruneResult(foundation_entries=foundation_entries))
-
         return result
 
 

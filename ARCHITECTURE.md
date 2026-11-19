@@ -203,7 +203,7 @@ Two special cases worth knowing before changing anything:
   (`load_parser_project`/`convert_project_into_graph`), then translates diagnostics and indexes into `ProjectGraph`.
   Cache ownership is split: the parser owns its per-file lookup/AST caches
   (`FileLookupCache`/`FileASTCache`); SattLint owns the analysis caches
-  (`ASTCache`/`AnalysisReportCache`/foundation).
+  (`ASTCache`/`AnalysisReportCache`).
 - Graphics companions are scanned once by the parser into `GraphicsModel`. SattLint owns the
   workspace asset verification, the correlation against the code picture, and notice wording.
 - All retained analyzers use the same semantic engine and findings model.
