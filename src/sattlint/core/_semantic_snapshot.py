@@ -207,15 +207,30 @@ class SemanticSnapshot:
         source_file: Path | str,
         line: int,
         column: int,
+        *,
+        source_library: str | None = None,
     ) -> list[SymbolDefinition]:
         file_key = source_file_key(source_file)
         if file_key is None:
             return []
 
+        # The file index is keyed by name, so same-named files from different
+        # libraries share a bucket. Filter by the query's library to keep a
+        # definition from another library out of the answer.
+        library_key = (
+            source_library.casefold() if source_library is not None else self._library_key_for_source(source_file)
+        )
+
         matches: list[SymbolDefinition] = []
         seen: set[tuple[str, ...]] = set()
         for occurrence in self._references_by_file.get(file_key, ()):
             if not occurrence.matches(line, column):
+                continue
+            if (
+                library_key
+                and occurrence.source_library is not None
+                and occurrence.source_library.casefold() != library_key
+            ):
                 continue
             definition_key = occurrence.definition_key_for_column(column)
             definition = self._definitions_by_key.get(definition_key)
@@ -254,9 +269,10 @@ class SemanticSnapshot:
         line: int,
         column: int,
         *,
+        source_library: str | None = None,
         limit: int | None = None,
     ) -> list[SymbolReference]:
-        definitions = self.find_definitions_at(source_file, line, column)
+        definitions = self.find_definitions_at(source_file, line, column, source_library=source_library)
         if not definitions:
             return []
 

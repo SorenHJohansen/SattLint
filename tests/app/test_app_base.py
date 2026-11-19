@@ -144,42 +144,10 @@ def test_apply_debug_ignores_non_boolean_truthy_values(monkeypatch: pytest.Monke
         sattlint_logger.setLevel(original_log_level)
 
 
-def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(
-        terminal_module,
-        "_configure_windows_console_api",
-        lambda kernel32, coord_type, buffer_info_type: seen.update(
-            {
-                "kernel32": kernel32,
-                "coord_type": coord_type,
-                "buffer_info_type": buffer_info_type,
-            }
-        ),
-    )
-
-    terminal_module.configure_windows_console_api("kernel32", "coord", "buffer")
-
-    assert seen == {
-        "kernel32": "kernel32",
-        "coord_type": "coord",
-        "buffer_info_type": "buffer",
-    }
-
-
-def test_clear_windows_console_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[str] = []
-    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: calls.append("clear"))
-
-    terminal_module.clear_windows_console()
-
-    assert calls == ["clear"]
-
-
 def test_clear_windows_console_executes_success_path(monkeypatch: pytest.MonkeyPatch) -> None:
     kernel32 = _install_fake_kernel(monkeypatch)
 
-    terminal_module._clear_windows_console()
+    terminal_module.clear_windows_console()
 
     assert kernel32.GetStdHandle.calls
     assert kernel32.GetConsoleScreenBufferInfo.calls
@@ -206,7 +174,7 @@ def test_clear_windows_console_raises_for_each_windows_api_failure(
     _install_fake_kernel(monkeypatch, **kwargs)
 
     with pytest.raises(OSError, match=message):
-        terminal_module._clear_windows_console()
+        terminal_module.clear_windows_console()
 
 
 def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,7 +189,7 @@ def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: 
             "write": lambda self, text: writes.append(text),
         },
     )()
-    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: clears.append("clear"))
+    monkeypatch.setattr(terminal_module, "_default_clear_windows_console", lambda: clears.append("clear"))
 
     terminal_module.clear_screen(
         os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: 1})(),

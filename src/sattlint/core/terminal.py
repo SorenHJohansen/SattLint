@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 """Console and terminal primitives for SattLint.
 
 CLI-independent helpers for clearing and inspecting the terminal, elevated
@@ -16,7 +15,7 @@ from typing import Any, ClassVar, cast
 ClearScreenFn = Callable[[], None]
 
 
-def _configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_type: Any) -> None:
+def configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_type: Any) -> None:
     import ctypes  # noqa: PLC0415
     from ctypes import wintypes  # noqa: PLC0415
 
@@ -51,11 +50,7 @@ def _configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_t
     kernel32.SetConsoleCursorPosition.restype = wintypes.BOOL
 
 
-def configure_windows_console_api(kernel32: Any, coord_type: Any, buffer_info_type: Any) -> None:
-    return _configure_windows_console_api(kernel32, coord_type, buffer_info_type)
-
-
-def _clear_windows_console() -> None:
+def clear_windows_console() -> None:
     import ctypes  # noqa: PLC0415
     from ctypes import wintypes  # noqa: PLC0415
 
@@ -81,7 +76,7 @@ def _clear_windows_console() -> None:
 
     kernel32 = cast(object, ctypes.WinDLL("kernel32", use_last_error=True))  # type: ignore[reportAttributeAccessIssue]
     kernel32_api: Any = kernel32
-    _configure_windows_console_api(kernel32_api, _Coord, _ConsoleScreenBufferInfo)
+    configure_windows_console_api(kernel32_api, _Coord, _ConsoleScreenBufferInfo)
     get_std_handle = cast(Callable[[object], Any], kernel32_api.GetStdHandle)
     get_console_screen_buffer_info = cast(Callable[[object, object], bool], kernel32_api.GetConsoleScreenBufferInfo)
     fill_console_output_character = cast(
@@ -128,14 +123,14 @@ def _clear_windows_console() -> None:
         raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")  # type: ignore[reportAttributeAccessIssue]
 
 
-def clear_windows_console() -> None:
-    _clear_windows_console()
-
-
 def flush_stdout() -> None:
-    flush = getattr(sys.stdout, "flush", None)
-    if callable(flush):
-        flush()
+    flush = sys.stdout.flush
+    flush()
+
+
+def _default_clear_windows_console() -> None:
+    """Late-bound default, so a caller or test can replace the helper."""
+    clear_windows_console()
 
 
 def clear_screen(
@@ -145,7 +140,7 @@ def clear_screen(
     clear_windows_console: ClearScreenFn | None = None,
 ) -> None:
     if clear_windows_console is None:
-        clear_windows_console = _clear_windows_console
+        clear_windows_console = _default_clear_windows_console
 
     sys_module.stdout.flush()
     if os_module.name == "nt":
