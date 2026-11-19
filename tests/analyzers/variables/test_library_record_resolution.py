@@ -1,0 +1,118 @@
+# pyright: reportPrivateUsage=false
+"""Field and leaf resolution must follow the library that declares a record.
+
+Two libraries may each declare a record with the same name and a different
+field layout. Resolution keyed by name alone silently picks one layout, so a
+reference from the other library reads and writes fields that do not exist in
+its own record.
+"""
+
+from __future__ import annotations
+
+from sattline_parser.ast import FuncCall, FuncCallStmt
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleTypeDef,
+    ScalarDatatype,
+    Variable,
+)
+
+from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.analyzers.variables._variable_issue_collection import (
+    _DatatypeFieldVariable,
+)
+from tests.helpers.variable_test_support import hdr as _hdr
+from tests.helpers.variable_test_support import varref as _varref
+
+
+def _datatype(name: str, fields: tuple[tuple[str, ScalarDatatype | str], ...], library: str) -> DataType:
+    return DataType(
+        name=name,
+        description=None,
+        datecode=None,
+        var_list=[Variable(name=field_name, datatype=datatype) for field_name, datatype in fields],
+        origin_file=f"{library}.s",
+        origin_lib=library,
+    )
+
+
+def _copy_typedef(name: str, library: str) -> ModuleTypeDef:
+    return ModuleTypeDef(
+        name=name,
+        origin_file=f"{library}.s",
+        origin_lib=library,
+        localvariables=[
+            Variable(name="Rec", datatype="SharedRecord"),
+            Variable(name="Dst", datatype="SharedRecord"),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Copy",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Rec"), _varref("Dst"), _varref("Status")),
+                            )
+                        )
+                    ],
+                )
+            ]
+        ),
+    )
+
+
+def _analyzer() -> VariablesAnalyzer:
+    analyzer = VariablesAnalyzer(
+        BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[
+                _datatype(
+                    "SharedRecord",
+                    (("Alpha", ScalarDatatype.INTEGER), ("Nested", "NestedAlpha")),
+                    "LibA",
+                ),
+                _datatype(
+                    "SharedRecord",
+                    (("Beta", ScalarDatatype.BOOLEAN), ("Nested", "NestedBeta")),
+                    "LibB",
+                ),
+                _datatype("NestedAlpha", (("AlphaLeaf", ScalarDatatype.INTEGER),), "LibA"),
+                _datatype("NestedBeta", (("BetaLeaf", ScalarDatatype.BOOLEAN),), "LibB"),
+            ],
+            moduletype_defs=[_copy_typedef("TypeA", "LibA"), _copy_typedef("TypeB", "LibB")],
+        ),
+        fail_loudly=False,
+    )
+    type_a, type_b = analyzer.bp.moduletype_defs
+    analyzer._analyze_typedef(type_a, ["Root", "TypeDef:TypeA"])
+    analyzer._analyze_typedef(type_b, ["Root", "TypeDef:TypeB"])
+    return analyzer
+
+
+def test_record_wide_access_reads_the_fields_of_the_referencing_library() -> None:
+    analyzer = _analyzer()
+    type_a, type_b = analyzer.bp.moduletype_defs
+
+    rec_a = type_a.localvariables[0]
+    rec_b = type_b.localvariables[0]
+    assert set(analyzer.get_usage(rec_a).field_reads) == {"Alpha", "Nested.AlphaLeaf"}
+    assert set(analyzer.get_usage(rec_b).field_reads) == {"Beta", "Nested.BetaLeaf"}
+    assert analyzer.analysis_warnings == []
+
+
+def test_datatype_field_inventory_keeps_the_declaring_library() -> None:
+    analyzer = _analyzer()
+
+    entries = analyzer.iter_variables_for_datatype_field_analysis()
+    by_name = {(entry.variable.name, entry.library) for entry in entries if entry.variable.name == "Rec"}
+
+    assert by_name == {("Rec", "LibA"), ("Rec", "LibB")}
+    assert all(isinstance(entry, _DatatypeFieldVariable) for entry in entries)
