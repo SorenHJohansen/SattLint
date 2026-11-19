@@ -96,16 +96,12 @@ def test_analyzers_use_only_the_public_reporting_surface() -> None:
 
 
 def test_engine_is_not_imported_below_the_top_layers() -> None:
-    # engine is the top orchestration module. Only the root facade/app/cli and
-    # application are allowed to reference it; every subpackage below it must not.
-    allowed_dirs = {"application", "cli"}
-    allowed_files = {"app.py", "__init__.py", "engine.py", "engine_fuzzer.py", "syntax_fuzzer.py"}
+    # The project loader is the only path into the parser. A second top-level
+    # orchestration module must not reappear; every layer reaches the loader
+    # through ``project`` instead.
     violations: list[str] = []
     for path in sorted(SRC_DIR.rglob("*.py")):
-        if path.name in allowed_files:
-            continue
-        parts = path.relative_to(SRC_DIR).parts
-        if parts and parts[0] in allowed_dirs:
+        if path.name in {"__init__.py"}:
             continue
         base_dotted = _module_dotted_name(path)
         module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

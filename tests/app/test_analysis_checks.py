@@ -472,7 +472,7 @@ def test_run_checks_writes_target_profiling_summary(tmp_path, monkeypatch):
                     (
                         "TargetA",
                         SimpleNamespace(header=SimpleNamespace(name="TargetA")),
-                        SimpleNamespace(
+                        AnalysisGraphStub(
                             unavailable_libraries=set(),
                             load_stage_timings={"load_or_parse": 0.5},
                             graphics_load_timings={"correlate-picture-display": 0.125},
@@ -1065,7 +1065,7 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
-                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), SimpleNamespace())]
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
             ),
         ),
         get_enabled_analyzers_fn=lambda: [
@@ -1093,7 +1093,7 @@ def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
-                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), SimpleNamespace())]
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
             ),
         ),
         get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
@@ -1121,7 +1121,7 @@ def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
         ["state-inference"],
         use_cache=False,
         persist_run=True,
-        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", loaded, SimpleNamespace())])),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", loaded, AnalysisGraphStub())])),
         get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
         target_is_library_fn=lambda *_args, **_kwargs: False,
         self_check_fn=lambda _cfg: True,
@@ -1159,3 +1159,29 @@ def test_pseudo_target_is_not_persisted_in_the_run_record() -> None:
     record = checks_application.build_run_record(result, DEFAULT_CONFIG.copy())
 
     assert [(target.target_name, target.is_library) for target in record.targets] == []
+
+
+def test_analyzer_issue_count_matches_the_findings_it_stores():
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    analyzer = result.targets[0].analyzers[0]
+    assert analyzer.findings == ()
+    assert analyzer.issue_count == 0

@@ -36,23 +36,6 @@ def _selected_analyzers_fn(selected_keys: list[str] | None) -> Callable[[], list
     return _get_selectable_analyzers if selected_keys else _get_enabled_analyzers
 
 
-def _invoke_checks[ResultT](
-    checks_fn: Callable[..., ResultT],
-    cfg: ConfigDict,
-    selected_keys: list[str] | None,
-    **options: object,
-) -> ResultT:
-    """Call one ``checks`` entry point with the shared project-loading defaults."""
-    return checks_fn(
-        cfg,
-        selected_keys,
-        iter_loaded_projects_fn=project_application.iter_loaded_projects,
-        get_enabled_analyzers_fn=_selected_analyzers_fn(selected_keys),
-        target_is_library_fn=project_application.target_is_library,
-        **options,
-    )
-
-
 def run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
@@ -60,7 +43,15 @@ def run_checks(
     use_cache: bool = True,
     project_path: str = "",
 ) -> None:
-    _invoke_checks(checks_module.run_checks, cfg, selected_keys, use_cache=use_cache, project_path=project_path)
+    checks_module.run_checks(
+        cfg,
+        selected_keys,
+        iter_loaded_projects_fn=project_application.iter_loaded_projects,
+        get_enabled_analyzers_fn=_selected_analyzers_fn(selected_keys),
+        target_is_library_fn=project_application.target_is_library,
+        use_cache=use_cache,
+        project_path=project_path,
+    )
 
 
 def run_checks_result(
@@ -70,8 +61,14 @@ def run_checks_result(
     use_cache: bool = True,
     project_path: str = "",
 ) -> checks_module.ChecksRunResult:
-    return _invoke_checks(
-        checks_module.run_checks_result, cfg, selected_keys, use_cache=use_cache, project_path=project_path
+    return checks_module.run_checks_result(
+        cfg,
+        selected_keys,
+        iter_loaded_projects_fn=project_application.iter_loaded_projects,
+        get_enabled_analyzers_fn=_selected_analyzers_fn(selected_keys),
+        target_is_library_fn=project_application.target_is_library,
+        use_cache=use_cache,
+        project_path=project_path,
     )
 
 
@@ -84,10 +81,12 @@ def collect_checks_result(
     project_path: str = "",
 ) -> checks_module.ChecksRunResult:
     """Run checks without emitting the human-readable report to stdout."""
-    return _invoke_checks(
-        checks_module.collect_run_checks_result,
+    return checks_module.collect_run_checks_result(
         cfg,
         selected_keys,
+        iter_loaded_projects_fn=project_application.iter_loaded_projects,
+        get_enabled_analyzers_fn=_selected_analyzers_fn(selected_keys),
+        target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
         persist_run=persist_run,
         project_path=project_path,

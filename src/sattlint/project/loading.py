@@ -6,7 +6,6 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
-from time import perf_counter
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -19,7 +18,6 @@ from sattlint.parser_api import (
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
-from ..core import profiling as profiling_module
 from ..core.debug import log_debug_exception
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
@@ -27,10 +25,8 @@ from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
-    _call_load_project_compat,
     _collect_analysis_timings,
     _emit_debug_load_summary,
-    _format_refresh_stage_timings,
     _include_reverse_library_consumers,
     _with_status_line,
     log,
@@ -60,8 +56,7 @@ def iter_loaded_projects(
 ) -> Iterator[LoadedProject]:
     for target_name in require_analyzed_targets_fn(cfg):
         try:
-            project_bp, graph = _call_load_project_compat(
-                load_project_fn,
+            project_bp, graph = load_project_fn(
                 cfg,
                 target_name=target_name,
                 use_cache=use_cache,
@@ -94,7 +89,9 @@ def source_paths_for_current_target(
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
         matches = {path for path in source_files if casefold_equal_fn(path.name, origin_file)}
-        if matches:
+        # Several libraries can hold a file with that name; a single match
+        # identifies the target, a crowd does not, so fall through instead.
+        if len(matches) == 1:
             return matches
 
     target_name = casefold_key_fn(
@@ -132,10 +129,13 @@ def cache_manifest_files(
     resolve_distribution_companion_path_fn: Callable[..., Path | None] = resolve_distribution_companion_path,
 ) -> set[Path]:
     manifest_files: set[Path] = set(graph.source_files)
-    parser_mode = LoadMode((normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL).value)
+    # One resolved mode for both companion families: an absent mode takes the
+    # configured default instead of a different default per resolver.
+    mode = normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL
+    parser_mode = LoadMode(mode.value)
 
     for source_path in tuple(manifest_files):
-        companion_path = resolve_graphics_companion_path_fn(source_path, mode=cfg.get("mode"))
+        companion_path = resolve_graphics_companion_path_fn(source_path, mode=mode)
         if companion_path is not None and companion_path != source_path:
             manifest_files.add(companion_path)
 
@@ -282,6 +282,12 @@ def load_project(  # noqa: PLR0915
             with contextlib.suppress(AttributeError):
                 # Test doubles may use slotted graph stubs without this field; it's diagnostic-only.
                 graph.loaded_from_cache = True
+            # The cached entry carries the timings of the load that produced it;
+            # reporting them as this run's stages would be a fabricated number.
+            graph.load_stage_timings = {}
+            graph.load_stage_timings_by_program = {}
+            graph.graphics_load_timings = {}
+            graph.graphics_load_timings_by_program = {}
             _attach_analysis_cache_metadata(
                 graph,
                 cache_key=key,
@@ -382,12 +388,14 @@ def load_project(  # noqa: PLR0915
         manifest_files=manifest_files,
     )
     if cache is not None:
-        with contextlib.suppress(OSError):
+        try:
             cache.save(
                 key,
                 project=(root_bp, graph),
                 files=manifest_files,
             )
+        except OSError as exc:
+            log.debug("AST cache write failed for %s: %s", selected_target, exc)
     return project_bp, graph
 
 
@@ -462,114 +470,6 @@ def load_program_ast_with_live_status(
     )
 
 
-def force_refresh_ast(
-    cfg: ConfigDict,
-    *,
-    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    cache_key_for_target_fn: Callable[[ConfigDict, str], str],
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path | None],
-    emit_output_fn: Callable[..., None],
-) -> tuple[BasePicture, ProjectGraph] | None:
-    targets = get_analyzed_targets_fn(cfg)
-    if not targets:
-        return None
-
-    cache_dir = get_cache_dir_fn()
-    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
-    profiler = profiling_module.create_profiler()
-    result = None
-    total_targets = len(targets)
-    collect_stage_timings = bool(cfg.get("debug", False)) or profiler.enabled
-    emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
-    for index, target_name in enumerate(targets, start=1):
-        emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
-        if cache is not None:
-            cache.clear(cache_key_for_target_fn(cfg, target_name))
-        started_at = perf_counter()
-        try:
-            result = _call_load_project_compat(
-                load_project_fn,
-                cfg,
-                target_name=target_name,
-                use_cache=False,
-                refresh_mode="ast-only",
-                collect_stage_timings=collect_stage_timings,
-            )
-        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(cfg, f"Failed to refresh AST cache for {target_name!r}", logger=log)
-            emit_output_fn(f"❌ Failed to refresh AST cache for {target_name}: {exc}")
-            continue
-        duration_ms = (perf_counter() - started_at) * 1000
-        if collect_stage_timings:
-            _bp, graph = result
-            stage_timings_s = dict(graph.load_stage_timings)
-            if stage_timings_s:
-                stage_timings_ms = profiling_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
-                stage_bottleneck = profiling_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
-                graphics_timings_ms = profiling_module.normalize_named_timings_ms(
-                    graph.graphics_load_timings,
-                    scale=1000.0,
-                )
-                graphics_bottleneck = profiling_module.bottleneck_from_named_timings(
-                    graphics_timings_ms,
-                    kind="graphics-phase",
-                )
-                emit_output_fn(
-                    _format_refresh_stage_timings(
-                        stage_timings_s,
-                        refresh_mode="ast-only",
-                    )
-                )
-                payload: dict[str, object] = {
-                    "refresh_mode": "ast-only",
-                    "stage_timings_s": stage_timings_s,
-                }
-                if stage_timings_ms:
-                    payload["stage_timings_ms"] = stage_timings_ms
-                if stage_bottleneck is not None:
-                    payload["stage_bottleneck"] = stage_bottleneck
-                    payload["bottleneck_kind"] = "stage"
-                    payload["bottleneck"] = stage_bottleneck
-                if graphics_timings_ms:
-                    payload["graphics_timings_ms"] = graphics_timings_ms
-                if graphics_bottleneck is not None:
-                    payload["graphics_bottleneck"] = graphics_bottleneck
-                    current_bottleneck = cast(dict[str, object] | None, payload.get("bottleneck"))
-                    if current_bottleneck is None or cast(float, graphics_bottleneck["duration_ms"]) > cast(
-                        float,
-                        current_bottleneck["duration_ms"],
-                    ):
-                        payload["bottleneck_kind"] = "graphics-phase"
-                        payload["bottleneck"] = graphics_bottleneck
-                profiler.emit(
-                    operation="ast-refresh",
-                    target_name=target_name,
-                    duration_ms=duration_ms,
-                    success=True,
-                    payload=payload,
-                )
-            else:
-                profiler.emit(
-                    operation="ast-refresh",
-                    target_name=target_name,
-                    duration_ms=duration_ms,
-                    success=True,
-                    payload={"refresh_mode": "ast-only"},
-                )
-        else:
-            profiler.emit(
-                operation="ast-refresh",
-                target_name=target_name,
-                duration_ms=duration_ms,
-                success=True,
-                payload={"refresh_mode": "ast-only"},
-            )
-        emit_output_fn("OK AST cache refreshed")
-    return result
-
-
 def ensure_ast_cache(
     cfg: ConfigDict,
     *,
@@ -595,10 +495,10 @@ def ensure_ast_cache(
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nChecking AST cache for {target_name}... ({index}/{total_targets})")
         key = cache_key_for_target_fn(cfg, target_name)
-        has_payload = cast(bool, cache.has_payload(key))
-        has_manifest = cast(bool, cache.has_manifest(key))
+        has_payload = cache.has_payload(key)
+        has_manifest = cache.has_manifest(key)
         if has_payload:
-            is_valid = has_manifest and cast(bool, cache.has_cache_artifact(key))
+            is_valid = has_manifest and cache.has_cache_artifact(key)
             if is_valid:
                 emit_output_fn("✔ AST cache OK")
                 continue
@@ -611,8 +511,7 @@ def ensure_ast_cache(
             emit_output_fn("⚠ AST cache missing; building (this may take a while)...")
 
         try:
-            _call_load_project_compat(
-                load_project_fn,
+            load_project_fn(
                 cfg,
                 target_name=target_name,
                 use_cache=False,

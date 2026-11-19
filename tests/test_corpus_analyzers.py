@@ -30,12 +30,8 @@ from sattlint.analyzers.framework import (
     AnalysisSharedArtifacts,
     build_analysis_context,
 )
-from sattlint.engine import (
-    CodeMode,
-    load_project_graph,
-    merge_project_basepicture,
-)
 from sattlint.models._variable_issues import VariableIssue
+from tests.helpers.project_loading import load_target_project
 
 MANIFESTS_DIR = Path(__file__).resolve().parent / "fixtures" / "corpus" / "manifests"
 
@@ -82,18 +78,10 @@ def _load_target(manifest: dict[str, Any]) -> tuple[Any, Any]:
     assert target_path.is_file(), f"{manifest['case_id']}: target fixture missing: {target_path}"
 
     shared_dir = target_path.parent.parent / "shared"
-    cfg: dict[str, Any] = {
-        "program_dir": target_path.parent,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": shared_dir if shared_dir.is_dir() else target_path.parent,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-    stem = target_path.stem
-    _, root_bp, graph = load_project_graph(cfg, stem, strict=False)
-    assert root_bp is not None
-    base_picture = merge_project_basepicture(graph.ast_by_name[stem], graph)
-    return base_picture, graph
+    return load_target_project(
+        target_path,
+        abb_lib_dir=shared_dir if shared_dir.is_dir() else target_path.parent,
+    )
 
 
 def _build_context(

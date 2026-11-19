@@ -2,7 +2,7 @@
 
 Builds the ``ParserProjectBinding`` the project-loading application seams feed
 into :mod:`sattlint.project.parser_adapter`, plus the timing-helper aliases and
-cfg validation shared by the loader facade (``sattlint.engine``).
+the cfg validation the project loader runs before parsing.
 """
 
 from __future__ import annotations

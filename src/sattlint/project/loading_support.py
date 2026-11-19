@@ -1,7 +1,6 @@
 # pyright: reportUnusedFunction=false
 from __future__ import annotations
 
-import inspect
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
@@ -75,7 +74,7 @@ def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, mani
     graph.analysis_manifest_files = frozenset(manifest_files)
 
 
-def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
+def _workspace_dependency_suffixes(mode: CodeMode | str | None) -> tuple[str, ...]:
     """Dependency-sidecar extensions in preference order.
 
     Draft prefers ``.l`` and falls back to ``.z``; official uses ``.z``. The
@@ -100,31 +99,16 @@ def _with_status_line(
         return run_fn(cast(Callable[[str], None], status_update_fn))
 
 
-def _call_load_project_compat(
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    cfg: ConfigDict,
-    *,
-    target_name: str,
-    **kwargs: object,
-) -> tuple[BasePicture, ProjectGraph]:
-    try:
-        signature = inspect.signature(load_project_fn)
-    except (TypeError, ValueError):
-        return load_project_fn(cfg, target_name=target_name, **kwargs)
-
-    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
-    if accepts_kwargs:
-        return load_project_fn(cfg, target_name=target_name, **kwargs)
-
-    supported_kwargs = {name: value for name, value in kwargs.items() if name in signature.parameters}
-    return load_project_fn(cfg, target_name=target_name, **supported_kwargs)
-
-
 def _iter_workspace_reverse_library_consumer_dependency_files(
     cfg: ConfigDict,
 ) -> Iterator[tuple[str, Path]]:
-    base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
-    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "official")))
+    raw_program_dir = cfg.get("program_dir")
+    raw_other_lib_dirs = cfg.get("other_lib_dirs")
+    if not raw_program_dir:
+        return
+    other_lib_dirs = raw_other_lib_dirs or []
+    base_dirs = [Path(str(raw_program_dir)), *(Path(str(path)) for path in other_lib_dirs)]
+    suffixes = _workspace_dependency_suffixes(cfg.get("mode", "official"))
 
     # One sidecar per program: the most preferred suffix wins, and a program
     # whose preferred sidecar is absent still contributes through the fallback.

@@ -25,6 +25,7 @@ from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import dispatch as analysis_dispatch_module
 from ..analyzers.framework import (
     AnalysisSharedArtifacts,
+    AnalyzerSpec,
     SimpleReport,
     build_analysis_context,
 )
@@ -37,7 +38,6 @@ from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
 from ..reporting.target_report import normalize_report_target_name
-from ..reporting.variables_report import VariablesReport
 from ..resolution.common import resolve_moduletype_def_strict
 from ..runs import (
     DEFAULT_RUN_HISTORY_LIMIT,
@@ -119,15 +119,6 @@ class ChecksRunResult:
             for analyzer in target.analyzers
             if analyzer.status == "failed"
         )
-
-
-def _issue_count_for_report(report: object) -> int | None:
-    if isinstance(report, VariablesReport) and report.visible_kinds is not None:
-        return sum(issue.kind in report.visible_kinds for issue in report.issues)
-    issues = getattr(report, "issues", None)
-    if not isinstance(issues, list):
-        return None
-    return len(cast(list[object], issues))
 
 
 def _utc_now_iso() -> str:
@@ -290,10 +281,15 @@ def _persist_run_result(
     # A failing analyzer leaves the other analyzers' results intact, and the
     # record carries its failed status, so the run is still worth keeping.
     # Cancelled runs and runs with unloaded targets have no complete result set.
-    if result.cancelled or result.failures or not _run_history_enabled(cfg):
+    if result.cancelled or result.failures:
         return None
     runs_dir = get_runs_dir_or_none()
     if runs_dir is None:
+        return None
+    if not _run_history_enabled(cfg):
+        # Recording is off, but retention still applies: otherwise turning the
+        # history off silently stops pruning the records already on disk.
+        prune_runs(runs_dir, limit=_run_history_limit(cfg))
         return None
     record = build_run_record(result, cfg, started_at=started_at, project_path=project_path)
     try:
@@ -343,9 +339,9 @@ def _iter_loaded_projects(
 
 
 def _run_per_run_analyzer(
-    spec: Any,
+    spec: AnalyzerSpec,
     cfg: ConfigDict,
-) -> ChecksAnalyzerResult | None:
+) -> ChecksAnalyzerResult:
     started_at = perf_counter()
     try:
         context = build_analysis_context(
@@ -358,25 +354,42 @@ def _run_per_run_analyzer(
     except Exception as exc:  # noqa: BLE001 - a per-run failure should not abort the run
         return ChecksAnalyzerResult(
             key=spec.key,
-            name=str(getattr(spec, "name", spec.key)),
+            name=spec.name,
             status="failed",
-            summary=f"{getattr(spec, 'name', spec.key)} failed: {exc}",
+            summary=f"{spec.name} failed: {exc}",
             issue_count=0,
             duration_ms=round((perf_counter() - started_at) * 1000, 3),
         )
     typed_report = cast(SimpleReport, report)
     summary_text = typed_report.summary()
-    findings = extract_report_findings(typed_report, default_name=str(getattr(spec, "name", spec.key)))
+    findings = extract_report_findings(typed_report, default_name=spec.name)
     return ChecksAnalyzerResult(
         key=spec.key,
-        name=str(getattr(spec, "name", spec.key)),
+        name=spec.name,
         status="completed",
         summary=summary_text,
         report_kind=type(report).__name__,
-        issue_count=_issue_count_for_report(report),
+        issue_count=len(findings),
         findings=findings,
         duration_ms=round((perf_counter() - started_at) * 1000, 3),
     )
+
+
+def _partition_analyzers(analyzers: list[AnalyzerSpec]) -> tuple[list[AnalyzerSpec], list[AnalyzerSpec]]:
+    per_target: list[AnalyzerSpec] = []
+    per_run: list[AnalyzerSpec] = []
+    for spec in analyzers:
+        # ``AnalyzerSpec.scope`` defaults to per-target; a dispatch double may
+        # omit it. Any other value is a wiring error, not a reason to drop the
+        # analyzer from both passes without a word.
+        scope = getattr(spec, "scope", "per-target")
+        if scope == "per-target":
+            per_target.append(spec)
+        elif scope == "per-run":
+            per_run.append(spec)
+        else:
+            raise ValueError(f"Analyzer {spec.key!r} declares an unsupported scope {scope!r}")
+    return per_target, per_run
 
 
 def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
@@ -447,9 +460,12 @@ def collect_run_checks_result(  # noqa: PLR0915
         )
 
     analyzers = list(
-        analysis_dispatch_module.get_cli_dispatch_analyzers(
-            selected_keys=selected_keys,
-            get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+        cast(
+            list[AnalyzerSpec],
+            analysis_dispatch_module.get_cli_dispatch_analyzers(
+                selected_keys=selected_keys,
+                get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+            ),
         )
     )
     selected_analyzer_keys = tuple(spec.key for spec in analyzers)
@@ -461,8 +477,7 @@ def collect_run_checks_result(  # noqa: PLR0915
             selected_analyzers=selected_analyzer_keys,
         )
 
-    per_target_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-target"]
-    per_run_analyzers = [spec for spec in analyzers if getattr(spec, "scope", "per-target") == "per-run"]
+    per_target_analyzers, per_run_analyzers = _partition_analyzers(analyzers)
 
     if self_check_fn is None:
         self_check_fn = config_module.self_check
@@ -619,7 +634,7 @@ def collect_run_checks_result(  # noqa: PLR0915
                         status="completed",
                         summary=summary_text,
                         report_kind=type(report).__name__,
-                        issue_count=_issue_count_for_report(report),
+                        issue_count=len(findings),
                         findings=findings,
                         duration_ms=analyzer_timings_ms[spec.key],
                         phase_timings_ms=tuple(analyzer_phase_timings_ms.get(spec.key, [])),
@@ -683,8 +698,6 @@ def collect_run_checks_result(  # noqa: PLR0915
             )
         for per_run_spec in per_run_analyzers:
             per_run_result = _run_per_run_analyzer(per_run_spec, cfg)
-            if per_run_result is None:
-                continue
             emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
             if per_run_result.summary:
                 emit_line(per_run_result.summary)

@@ -2,7 +2,6 @@
 
 """Tests for app analysis project loading and AST cache behavior."""
 
-import json
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,7 +24,6 @@ from sattlint.analyzers.datatype_fields import analyze_datatype_fields
 from sattlint.analyzers.variables import IssueKind, analyze_variables
 from sattlint.application import project as project_application
 from sattlint.cache import ANALYSIS_REPORT_CACHE_VERSION, AnalysisReportCache, compute_analysis_report_cache_key
-from sattlint.core import profiling as profiling_module
 from sattlint.models.project_graph import ProjectFailure
 from sattlint.project import loading as analysis_loading_module
 from tests.helpers import AnalysisGraphStub, named_object
@@ -870,193 +868,6 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     }
 
     assert unused_fields == {"DrainPipe"}
-
-
-def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
-    cache_clears: list[str] = []
-    load_calls: list[tuple[str, bool, bool, str, bool]] = []
-    lines: list[str] = []
-
-    class FakeCache:
-        def __init__(self, cache_dir):
-            self.cache_dir = cache_dir
-
-        def clear(self, key):
-            cache_clears.append(key)
-
-    original_emit_output = project_application.emit_output
-    project_application.emit_output = lambda message: lines.append(message)
-
-    try:
-        result = project_application.force_refresh_ast(
-            {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
-            cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
-            load_project_fn=cast(
-                Any,
-                lambda _cfg, target_name=None, use_cache=True, refresh_mode="full", collect_stage_timings=False: (
-                    load_calls.append(((target_name or ""), use_cache, refresh_mode, collect_stage_timings))
-                    or (f"bp-{target_name or ''}", SimpleNamespace())
-                ),
-            ),
-            ast_cache_cls=cast(Any, FakeCache),
-            get_cache_dir_fn=lambda: Path("cache-dir"),
-        )
-    finally:
-        project_application.emit_output = original_emit_output
-
-    assert cache_clears == ["key:TargetA", "key:TargetB"]
-    assert load_calls == [
-        ("TargetA", False, "ast-only", False),
-        ("TargetB", False, "ast-only", False),
-    ]
-    assert any("Refreshing AST caches for 2 target(s)..." in line for line in lines)
-    assert any("Refreshing AST cache for TargetA... (1/2)" in line for line in lines)
-    assert any("Refreshing AST cache for TargetB... (2/2)" in line for line in lines)
-    assert sum(1 for line in lines if line == "OK AST cache refreshed") == 2
-    assert result == ("bp-TargetB", SimpleNamespace())
-
-
-def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch):
-    lines: list[str] = []
-    load_calls: list[tuple[str, str, bool]] = []
-
-    class FakeCache:
-        def __init__(self, cache_dir):
-            self.cache_dir = cache_dir
-
-        def clear(self, _key):
-            return None
-
-    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
-
-    graph = SimpleNamespace(
-        load_stage_timings={"load_or_parse": 1.25, "validate": 0.75},
-        graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
-    )
-
-    result = project_application.force_refresh_ast(
-        {
-            "analyzed_programs_and_libraries": ["TargetA"],
-            "debug": True,
-        },
-        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
-        load_project_fn=cast(
-            Any,
-            lambda _cfg, target_name=None, use_cache=True, refresh_mode="full", collect_stage_timings=False: (
-                load_calls.append((target_name or "", refresh_mode, collect_stage_timings)) or ("bp", graph)
-            ),
-        ),
-        ast_cache_cls=cast(Any, FakeCache),
-        get_cache_dir_fn=lambda: Path("cache-dir"),
-    )
-
-    assert load_calls == [("TargetA", "ast-only", True)]
-    assert any("AST refresh stage totals:" in line for line in lines)
-    assert any("graphics=skipped" in line for line in lines)
-    assert any("index=skipped" in line for line in lines)
-    assert result == ("bp", graph)
-
-
-def test_refresh_analysis_caches_clears_all_caches_before_ast_refresh():
-    lines: list[str] = []
-    refresh_calls: list[dict[str, object]] = []
-    seen_cache_dirs: list[Path] = []
-
-    class FakeCacheManager:
-        def __init__(self, cache_dir: Path):
-            seen_cache_dirs.append(cache_dir)
-
-        def clear_all(self):
-            return SimpleNamespace(removed_entries=6)
-
-    def fake_force_refresh_ast(cfg: Any) -> Any:
-        refresh_calls.append(dict(cfg))
-        return ("bp", "graph")
-
-    result = project_application.refresh_analysis_caches(
-        {"analyzed_programs_and_libraries": ["TargetA"]},
-        force_refresh_ast_fn=fake_force_refresh_ast,
-        get_cache_dir_fn=lambda: Path("cache-dir"),
-        get_cache_manager_fn=cast(Any, FakeCacheManager),
-        emit_output_fn=lambda message: lines.append(str(message)),
-    )
-
-    assert seen_cache_dirs == [Path("cache-dir")]
-    assert lines == ["Cleared all caches (6 entries)."]
-    assert refresh_calls == [{"analyzed_programs_and_libraries": ["TargetA"]}]
-    assert result == ("bp", "graph")
-
-
-def test_force_refresh_ast_collects_stage_timings_and_writes_profiling_when_enabled(tmp_path, monkeypatch):
-    lines: list[str] = []
-    load_calls: list[tuple[str, str, bool]] = []
-
-    class FakeCache:
-        def __init__(self, cache_dir):
-            self.cache_dir = cache_dir
-
-        def clear(self, _key):
-            return None
-
-    profile_path = tmp_path / "profile.jsonl"
-    monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
-    monkeypatch.setenv("SATTLINT_PROFILE", "1")
-    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
-
-    graph = SimpleNamespace(
-        load_stage_timings={"load_or_parse": 1.25, "validate": 0.75},
-        graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
-    )
-
-    result = project_application.force_refresh_ast(
-        {
-            "analyzed_programs_and_libraries": ["TargetA"],
-            "debug": False,
-        },
-        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
-        load_project_fn=cast(
-            Any,
-            lambda _cfg, target_name=None, use_cache=True, refresh_mode="full", collect_stage_timings=False: (
-                load_calls.append((target_name or "", refresh_mode, collect_stage_timings)) or ("bp", graph)
-            ),
-        ),
-        ast_cache_cls=cast(Any, FakeCache),
-        get_cache_dir_fn=lambda: Path("cache-dir"),
-    )
-
-    events = [json.loads(line) for line in profile_path.read_text(encoding="utf-8").splitlines()]
-
-    assert load_calls == [("TargetA", "ast-only", True)]
-    assert any("AST refresh stage totals:" in line for line in lines)
-    assert len(events) == 1
-    assert events[0]["kind"] == "sattlint.app.profile"
-    assert events[0]["operation"] == "ast-refresh"
-    assert events[0]["target_name"] == "TargetA"
-    assert events[0]["success"] is True
-    assert events[0]["payload"]["stage_timings_s"] == {
-        "load_or_parse": 1.25,
-        "validate": 0.75,
-    }
-    assert events[0]["payload"]["stage_timings_ms"] == {
-        "load_or_parse": 1250.0,
-        "validate": 750.0,
-    }
-    assert events[0]["payload"]["stage_bottleneck"] == {
-        "kind": "stage",
-        "name": "load_or_parse",
-        "duration_ms": 1250.0,
-    }
-    assert events[0]["payload"]["graphics_timings_ms"] == {
-        "picture-display-warnings": 100.0,
-        "validate-graphics-file": 400.0,
-    }
-    assert events[0]["payload"]["graphics_bottleneck"] == {
-        "kind": "graphics-phase",
-        "name": "validate-graphics-file",
-        "duration_ms": 400.0,
-    }
-    assert events[0]["payload"]["bottleneck_kind"] == "stage"
-    assert result == ("bp", graph)
 
 
 def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypatch):

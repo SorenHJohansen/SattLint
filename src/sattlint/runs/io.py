@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,9 @@ DEFAULT_RUN_HISTORY_LIMIT = 50
 
 _RUN_JSON_SUFFIX = ".json"
 _SUMMARY_SUFFIX = ".summary"
+# A run id names a file inside the runs directory, so it is a single path
+# segment: no separators, no leading dot, no traversal.
+_RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def get_runs_dir() -> Path:
@@ -33,6 +37,10 @@ def get_runs_dir_or_none() -> Path | None:
     """The run-history directory, or ``None`` when the cache is unusable."""
     cache_dir = cache_module.get_cache_dir_or_none()
     return None if cache_dir is None else cache_dir / "runs"
+
+
+def _is_valid_run_id(run_id: str) -> bool:
+    return _RUN_ID_PATTERN.fullmatch(run_id) is not None
 
 
 def _run_path(runs_dir: Path, run_id: str) -> Path:
@@ -58,9 +66,10 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
     resolved_runs_dir.mkdir(parents=True, exist_ok=True)
 
     stored_record = record
-    if not stored_record.run_id or _run_path(resolved_runs_dir, stored_record.run_id).exists():
-        # A frozen or stepped clock can repeat an id, and a caller may pass an
-        # id that is already stored. Never overwrite an existing run.
+    if not _is_valid_run_id(stored_record.run_id) or _run_path(resolved_runs_dir, stored_record.run_id).exists():
+        # A frozen or stepped clock can repeat an id, a caller may pass an id
+        # that is already stored, and an id is a single path segment. Never
+        # overwrite an existing run and never leave the runs directory.
         run_id = _generate_run_id()
         while _run_path(resolved_runs_dir, run_id).exists():
             run_id = _generate_run_id()
@@ -74,30 +83,60 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
 
 
 def prune_runs(runs_dir: Path | None, *, limit: int) -> int:
-    """Delete the oldest run files beyond *limit*, returning the count removed."""
+    """Delete the oldest run files beyond *limit*, returning the count removed.
+
+    A negative limit disables pruning; zero keeps no runs. Summary sidecars
+    whose run record is gone are collected too, so an interrupted save or a
+    manual delete cannot leave an orphan behind.
+    """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
-    summaries = list_runs(runs_dir=resolved_runs_dir)
+    removed = _prune_runs_beyond_limit(resolved_runs_dir, limit=limit)
+    _remove_orphan_summaries(resolved_runs_dir)
+    return removed
+
+
+def _prune_runs_beyond_limit(runs_dir: Path, *, limit: int) -> int:
+    summaries = list_runs(runs_dir=runs_dir)
     if limit < 0 or len(summaries) <= limit:
         return 0
 
     removed = 0
     for summary in reversed(summaries[limit:]):
-        path = _run_path(resolved_runs_dir, summary.run_id)
+        path = _run_path(runs_dir, summary.run_id)
         try:
             path.unlink()
         except OSError:
             continue
-        _remove_summary(resolved_runs_dir, summary.run_id)
+        _remove_summary(runs_dir, summary.run_id)
         removed += 1
     return removed
+
+
+def _remove_orphan_summaries(runs_dir: Path) -> None:
+    if not runs_dir.exists():
+        return
+    for summary_path in runs_dir.glob(f"*{_SUMMARY_SUFFIX}"):
+        run_id = summary_path.name[: -len(_SUMMARY_SUFFIX)]
+        if _run_path(runs_dir, run_id).exists():
+            continue
+        _remove_file(summary_path)
+
+
+def _remove_file(path: Path) -> bool:
+    try:
+        path.unlink()
+    except OSError:
+        return False
+    return True
 
 
 def list_runs(*, runs_dir: Path | None = None) -> tuple[RunSummary, ...]:
     """List persisted runs newest-first.
 
     Summaries are read from small per-run sidecar files so a run with a large
-    finding set is not fully parsed just to populate the run list. Runs written
-    before the sidecar existed are parsed once and backfilled.
+    finding set is not fully parsed just to populate the run list. A run
+    written before the sidecar existed is summarized in memory; listing never
+    writes to the run store.
     """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     if not resolved_runs_dir.exists():
@@ -112,18 +151,21 @@ def list_runs(*, runs_dir: Path | None = None) -> tuple[RunSummary, ...]:
             if record is None:
                 continue
             summary = RunSummary.from_record(record)
-            _write_summary(resolved_runs_dir, summary)
         summaries.append(summary)
     return tuple(summaries)
 
 
 def load_run(run_id: str, *, runs_dir: Path | None = None) -> RunRecord | None:
+    if not _is_valid_run_id(run_id):
+        return None
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     return _load_run_file(_run_path(resolved_runs_dir, run_id))
 
 
 def delete_run(run_id: str, *, runs_dir: Path | None = None) -> bool:
     """Delete a persisted run by id, returning True when a file was removed."""
+    if not _is_valid_run_id(run_id):
+        return False
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     path = _run_path(resolved_runs_dir, run_id)
     if not path.exists():
@@ -147,18 +189,23 @@ def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
         return None
     if not isinstance(payload, dict):
         return None
-    return RunSummary.from_dict(cast(dict[str, object], payload))
+    try:
+        return RunSummary.from_dict(cast(dict[str, object], payload))
+    except ValueError:
+        return None
 
 
 def _atomic_write_json(path: Path, payload: object) -> None:
     """Write JSON through a unique temp file and an atomic replace.
 
     A crash mid-write then leaves the previous record (or no record) instead of
-    a truncated one that no pruner can recognise.
+    a truncated one that no pruner can recognise. Run history holds source
+    paths and finding text, so the record is owner-only.
     """
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
     try:
-        with temp_path.open("w", encoding="utf-8") as handle:
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=True, indent=2, sort_keys=True)
             handle.flush()
             os.fsync(handle.fileno())
@@ -196,7 +243,10 @@ def _load_run_file(path: Path) -> RunRecord | None:
     payload_map = cast(dict[str, object], payload)
     if payload_map.get("schema_version") != RUN_RECORD_SCHEMA_VERSION:
         return None
-    return RunRecord.from_dict(payload_map)
+    try:
+        return RunRecord.from_dict(payload_map)
+    except ValueError:
+        return None
 
 
 __all__ = [

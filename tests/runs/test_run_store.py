@@ -134,7 +134,7 @@ def test_list_runs_reads_summary_without_parsing_run_json(tmp_path: Path) -> Non
     assert summaries[0].project_tag == "RootProgram"
 
 
-def test_list_runs_backfills_summary_for_legacy_run(tmp_path: Path) -> None:
+def test_list_runs_summarizes_legacy_run_without_writing(tmp_path: Path) -> None:
     run_id = "20260906T100000000000Z"
     payload = _sample_record().to_dict()
     payload["run_id"] = run_id
@@ -144,7 +144,8 @@ def test_list_runs_backfills_summary_for_legacy_run(tmp_path: Path) -> None:
     summaries = list_runs(runs_dir=tmp_path)
 
     assert [summary.run_id for summary in summaries] == [run_id]
-    assert (tmp_path / f"{run_id}.summary").exists()
+    # Listing is a read; the missing sidecar is summarized in memory.
+    assert not (tmp_path / f"{run_id}.summary").exists()
 
 
 def test_delete_run_removes_summary_sidecar(tmp_path: Path) -> None:
@@ -300,3 +301,69 @@ def test_save_run_never_overwrites_a_supplied_existing_id(tmp_path: Path) -> Non
     assert second.run_id != first.run_id
     assert load_run(first.run_id, runs_dir=tmp_path) is not None
     assert load_run(second.run_id, runs_dir=tmp_path) is not None
+
+
+def test_load_and_delete_reject_ids_that_escape_the_runs_directory(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    outside = tmp_path / "secret.json"
+    outside.write_text("{}", encoding="utf-8")
+
+    assert load_run("../secret", runs_dir=runs_dir) is None
+    assert delete_run("../secret", runs_dir=runs_dir) is False
+    assert outside.exists()
+
+
+def test_save_run_replaces_an_id_that_escapes_the_runs_directory(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    stored = save_run(
+        RunRecord(
+            run_id="../escaped",
+            started_at="2026-09-06T10:00:00Z",
+            finished_at="2026-09-06T10:05:00Z",
+            project_tag="RootProgram",
+        ),
+        runs_dir=runs_dir,
+    )
+
+    assert stored.run_id != "../escaped"
+    assert not (tmp_path / "escaped.json").exists()
+    assert (runs_dir / f"{stored.run_id}.json").exists()
+
+
+def test_corrupt_record_fields_reject_the_whole_record(tmp_path: Path) -> None:
+    run_id = "20260906T100000000000Z"
+    payload = _sample_record().to_dict()
+    payload["run_id"] = run_id
+    payload["started_at"] = 5
+    (tmp_path / f"{run_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    assert load_run(run_id, runs_dir=tmp_path) is None
+    assert list_runs(runs_dir=tmp_path) == ()
+
+
+def test_corrupt_summary_sidecar_falls_back_to_the_run_record(tmp_path: Path) -> None:
+    record = save_run(_sample_record(), runs_dir=tmp_path)
+    (tmp_path / f"{record.run_id}.summary").write_text(json.dumps({"issue_count": "many"}), encoding="utf-8")
+
+    summaries = list_runs(runs_dir=tmp_path)
+
+    assert [summary.issue_count for summary in summaries] == [1]
+
+
+def test_prune_runs_collects_orphan_summary_sidecars(tmp_path: Path) -> None:
+    orphan = RunSummary(
+        run_id="20260101T000000000000Z",
+        started_at="2026-01-01T00:00:00Z",
+        finished_at="2026-01-01T00:00:01Z",
+        project_tag="RootProgram",
+        target_count=1,
+        analyzer_count=1,
+        issue_count=0,
+        cancelled=False,
+    )
+    (tmp_path / f"{orphan.run_id}.summary").write_text(json.dumps(orphan.to_dict()), encoding="utf-8")
+
+    prune_runs(tmp_path, limit=5)
+
+    assert not (tmp_path / f"{orphan.run_id}.summary").exists()

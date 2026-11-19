@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import pickle
 from collections.abc import Iterable
 from pathlib import Path
@@ -120,24 +119,23 @@ class ASTCache:
             "project": project,
         }
 
-        with self._manifest_path(key).open("w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
-
+        # The payload is the data; the manifest is what makes it trusted. Write
+        # the payload first, so a failed write leaves the previous manifest
+        # paired with the previous payload instead of blessing a stale one.
         cache_module._save_pickle_payload(self._path(key), payload)
+        cache_module._save_manifest_payload(self._manifest_path(key), manifest)
 
     def load_validated(self, key: str) -> object | None:
         manifest = self.load_manifest(key)
         if manifest is None:
             return None
 
-        payload = self.load(key)
-        if payload is None:
-            return None
-
+        # Validate the file snapshot before unpickling: a stale entry must not
+        # pay the deserialization cost only to be thrown away.
         if not cache_module._validate_manifest(manifest):
             return None
 
-        return payload
+        return self.load(key)
 
     def prune_startup_entries(self) -> cache_module.CachePruneResult:
         removed_payloads = 0
@@ -207,19 +205,20 @@ class ASTCache:
         return result
 
     def clear(self, key: str) -> None:
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
-        manifest_path = self._manifest_path(key)
-        if manifest_path.exists():
-            manifest_path.unlink()
+        # A concurrent pruner may remove either file first; clearing is
+        # best-effort and must not raise into the caller's action.
+        cache_module._remove_file(self._path(key))
+        cache_module._remove_file(self._manifest_path(key))
 
 
 class AnalysisReportCache:
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir / "analysis_reports"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_pruned_entries = self.prune_stale_entries()
+        # Pruning verifies every entry, so it belongs to the explicit cache
+        # maintenance pass, not to every construction of the store. A stale
+        # version is rejected by ``validate`` on use and overwritten on save.
+        self._startup_pruned_entries = 0
 
     def _path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.pickle"
@@ -268,9 +267,7 @@ class AnalysisReportCache:
         return cache_module._validate_manifest(payload_map.get("files"))
 
     def clear(self, key: str) -> None:
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
+        cache_module._remove_file(self._path(key))
 
     def clear_all(self) -> int:
         removed = 0

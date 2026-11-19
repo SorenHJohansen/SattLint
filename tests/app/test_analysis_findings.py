@@ -5,7 +5,6 @@ from sattline_parser.models.ast_model import ScalarDatatype, Variable
 
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared._validators import StringMappingValidator
-from sattlint.application.checks import _issue_count_for_report
 from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
 from sattlint.models._variable_issues import IssueKind, VariableIssue
 from sattlint.reporting.variables_report import VariablesReport
@@ -119,7 +118,6 @@ def test_datatype_report_excludes_supporting_variable_findings() -> None:
     findings = extract_report_findings(report, default_name="Root")
 
     assert [finding.kind for finding in findings] == ["unused_datatype_field"]
-    assert _issue_count_for_report(report) == len(findings)
 
 
 def test_string_mapping_finding_shows_both_capacities() -> None:
@@ -130,6 +128,7 @@ def test_string_mapping_finding_shows_both_capacities() -> None:
     )
     findings = extract_report_findings(SimpleNamespace(issues=issues), default_name="Root")
     context = findings[0].data["context"]
+    assert isinstance(context, str)
     assert "Name (identstring, 15 characters)" in context
     assert "SourceName (string, 40 characters)" in context
 
