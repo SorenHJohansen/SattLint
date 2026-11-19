@@ -17,12 +17,9 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    ScalarDatatype,
     SingleModule,
     Variable,
 )
-
-from .shared._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
 
 if TYPE_CHECKING:
     from ..resolution.scope import ScopeContext
@@ -37,13 +34,6 @@ _MAX_CONTEXT_BUILD_DEPTH = 64
 
 def _noop_progress(_msg: str) -> None:
     pass
-
-
-_STRING_LIMITS = STRING_CAPACITIES
-
-
-def _string_capacity_for_datatype(datatype: ScalarDatatype | str | None) -> int | None:
-    return string_capacity_for_datatype(datatype)
 
 
 @dataclass(frozen=True, slots=True)
