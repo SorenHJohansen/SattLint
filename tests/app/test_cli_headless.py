@@ -15,6 +15,7 @@ from typing import cast
 import pytest
 from sattline_parser.models.ast_model import BasePicture
 
+from sattlint import cache as cache_module
 from sattlint.analyzers.catalog import get_default_cli_analyzers
 from sattlint.application import checks as checks_module
 from sattlint.application.checks import (
@@ -41,6 +42,9 @@ from sattlint.config.types import ConfigDict
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.io import load_project
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+
+# Captured before the shared fixture isolates the cache location per test.
+_REAL_CACHE_DIR_LOCATION = cache_module.cache_dir_location
 
 pytestmark = pytest.mark.unit
 
@@ -926,6 +930,7 @@ def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, mon
     blocked_config.write_text("not a directory", encoding="utf-8")
     monkeypatch.setenv("XDG_CACHE_HOME", str(blocked_cache))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked_config))
+    monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
 
     project = load_project(_write_project(tmp_path))
     payload = project_payload(project)

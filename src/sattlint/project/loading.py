@@ -6,7 +6,6 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
-from time import perf_counter
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -19,7 +18,6 @@ from sattlint.parser_api import (
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
-from ..core import profiling as profiling_module
 from ..core.debug import log_debug_exception
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
@@ -30,7 +28,6 @@ from .loading_support import (
     _call_load_project_compat,
     _collect_analysis_timings,
     _emit_debug_load_summary,
-    _format_refresh_stage_timings,
     _include_reverse_library_consumers,
     _with_status_line,
     log,
@@ -460,114 +457,6 @@ def load_program_ast_with_live_status(
             status_update_fn=status_update_fn,
         ),
     )
-
-
-def force_refresh_ast(
-    cfg: ConfigDict,
-    *,
-    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    cache_key_for_target_fn: Callable[[ConfigDict, str], str],
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path | None],
-    emit_output_fn: Callable[..., None],
-) -> tuple[BasePicture, ProjectGraph] | None:
-    targets = get_analyzed_targets_fn(cfg)
-    if not targets:
-        return None
-
-    cache_dir = get_cache_dir_fn()
-    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
-    profiler = profiling_module.create_profiler()
-    result = None
-    total_targets = len(targets)
-    collect_stage_timings = bool(cfg.get("debug", False)) or profiler.enabled
-    emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
-    for index, target_name in enumerate(targets, start=1):
-        emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
-        if cache is not None:
-            cache.clear(cache_key_for_target_fn(cfg, target_name))
-        started_at = perf_counter()
-        try:
-            result = _call_load_project_compat(
-                load_project_fn,
-                cfg,
-                target_name=target_name,
-                use_cache=False,
-                refresh_mode="ast-only",
-                collect_stage_timings=collect_stage_timings,
-            )
-        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(cfg, f"Failed to refresh AST cache for {target_name!r}", logger=log)
-            emit_output_fn(f"❌ Failed to refresh AST cache for {target_name}: {exc}")
-            continue
-        duration_ms = (perf_counter() - started_at) * 1000
-        if collect_stage_timings:
-            _bp, graph = result
-            stage_timings_s = dict(graph.load_stage_timings)
-            if stage_timings_s:
-                stage_timings_ms = profiling_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
-                stage_bottleneck = profiling_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
-                graphics_timings_ms = profiling_module.normalize_named_timings_ms(
-                    graph.graphics_load_timings,
-                    scale=1000.0,
-                )
-                graphics_bottleneck = profiling_module.bottleneck_from_named_timings(
-                    graphics_timings_ms,
-                    kind="graphics-phase",
-                )
-                emit_output_fn(
-                    _format_refresh_stage_timings(
-                        stage_timings_s,
-                        refresh_mode="ast-only",
-                    )
-                )
-                payload: dict[str, object] = {
-                    "refresh_mode": "ast-only",
-                    "stage_timings_s": stage_timings_s,
-                }
-                if stage_timings_ms:
-                    payload["stage_timings_ms"] = stage_timings_ms
-                if stage_bottleneck is not None:
-                    payload["stage_bottleneck"] = stage_bottleneck
-                    payload["bottleneck_kind"] = "stage"
-                    payload["bottleneck"] = stage_bottleneck
-                if graphics_timings_ms:
-                    payload["graphics_timings_ms"] = graphics_timings_ms
-                if graphics_bottleneck is not None:
-                    payload["graphics_bottleneck"] = graphics_bottleneck
-                    current_bottleneck = cast(dict[str, object] | None, payload.get("bottleneck"))
-                    if current_bottleneck is None or cast(float, graphics_bottleneck["duration_ms"]) > cast(
-                        float,
-                        current_bottleneck["duration_ms"],
-                    ):
-                        payload["bottleneck_kind"] = "graphics-phase"
-                        payload["bottleneck"] = graphics_bottleneck
-                profiler.emit(
-                    operation="ast-refresh",
-                    target_name=target_name,
-                    duration_ms=duration_ms,
-                    success=True,
-                    payload=payload,
-                )
-            else:
-                profiler.emit(
-                    operation="ast-refresh",
-                    target_name=target_name,
-                    duration_ms=duration_ms,
-                    success=True,
-                    payload={"refresh_mode": "ast-only"},
-                )
-        else:
-            profiler.emit(
-                operation="ast-refresh",
-                target_name=target_name,
-                duration_ms=duration_ms,
-                success=True,
-                payload={"refresh_mode": "ast-only"},
-            )
-        emit_output_fn("OK AST cache refreshed")
-    return result
 
 
 def ensure_ast_cache(

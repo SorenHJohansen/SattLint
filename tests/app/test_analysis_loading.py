@@ -55,7 +55,7 @@ def test_analysis_loading_helpers_cover_target_accessors_and_refresh_formatting(
     assert loading_support_module._workspace_dependency_suffixes("official") == (".z",)
     assert loading_support_module._workspace_dependency_suffixes(CodeMode.DRAFT) == (".l", ".z")
     assert loading_support_module._workspace_dependency_suffixes(CodeMode.OFFICIAL) == (".z",)
-    assert analysis_loading_module._format_refresh_stage_timings(
+    assert loading_support_module._format_refresh_stage_timings(
         {"load_or_parse": 0.1, "validate": 0.2},
         refresh_mode="ast-only",
     ) == ("AST refresh stage totals: load_or_parse=0.1000s, validate=0.2000s, graphics=skipped, index=skipped")

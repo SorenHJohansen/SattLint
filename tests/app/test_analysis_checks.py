@@ -1159,3 +1159,29 @@ def test_pseudo_target_is_not_persisted_in_the_run_record() -> None:
     record = checks_application.build_run_record(result, DEFAULT_CONFIG.copy())
 
     assert [(target.target_name, target.is_library) for target in record.targets] == []
+
+
+def test_analyzer_issue_count_matches_the_findings_it_stores():
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    analyzer = result.targets[0].analyzers[0]
+    assert analyzer.findings == ()
+    assert analyzer.issue_count == 0

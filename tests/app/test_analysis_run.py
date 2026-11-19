@@ -1,6 +1,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from typing import Any, cast
 
+from sattlint import runs as runs_module
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.models.project_graph import ProjectFailure
 from sattlint.project.support import TargetLoadError
@@ -149,3 +150,25 @@ def test_target_is_library_returns_false_without_matching_source_paths():
     graph = AnalysisGraphStub()
 
     assert project_application._target_is_library(cfg, cast(Any, project_bp), cast(Any, graph)) is False
+
+
+def test_disabled_run_history_still_prunes_stored_runs():
+    cfg = deepcopy(DEFAULT_CONFIG)
+    cfg["run_history"] = {"enabled": False, "limit": 1}
+    runs_dir = cache_module.get_cache_dir() / "runs"
+    for index in range(3):
+        runs_module.save_run(
+            runs_module.RunRecord(
+                run_id="",
+                started_at=f"2026-09-0{index}T10:00:00Z",
+                finished_at=f"2026-09-0{index}T10:05:00Z",
+                project_tag="TargetA",
+            ),
+            runs_dir=runs_dir,
+        )
+
+    result = checks_application.ChecksRunResult(output_lines=(), selected_analyzers=("variables",))
+    stored = checks_application._persist_run_result(result, cfg, started_at="2026-09-09T10:00:00Z")
+
+    assert stored is None
+    assert len(runs_module.list_runs(runs_dir=runs_dir)) == 1

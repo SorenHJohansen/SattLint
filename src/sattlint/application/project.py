@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
 
 from sattlint.parser_api import BasePicture
 
@@ -184,26 +183,6 @@ def load_program_ast(
     )
 
 
-def force_refresh_ast(
-    cfg: ConfigDict,
-    *,
-    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _get_analyzed_targets,
-    cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
-    ast_cache_cls: type[ASTCache] = ASTCache,
-    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
-) -> tuple[BasePicture, ProjectGraph] | None:
-    return analysis_loading_module.force_refresh_ast(
-        cfg,
-        get_analyzed_targets_fn=get_analyzed_targets_fn,
-        cache_key_for_target_fn=cache_key_for_target_fn,
-        load_project_fn=load_project_fn,
-        ast_cache_cls=ast_cache_cls,
-        get_cache_dir_fn=get_cache_dir_fn,
-        emit_output_fn=emit_output,
-    )
-
-
 def ensure_ast_cache(
     cfg: ConfigDict,
     *,
@@ -224,30 +203,6 @@ def ensure_ast_cache(
         get_cache_dir_fn=get_cache_dir_fn,
         emit_output_fn=resolved_emit_output_fn,
     )
-
-
-def refresh_analysis_caches(
-    cfg: ConfigDict,
-    *,
-    force_refresh_ast_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph] | None] = force_refresh_ast,
-    get_cache_dir_fn: Callable[[], Path | None] = get_cache_dir,
-    get_cache_manager_fn: Callable[..., Any] = cache_module.get_cache_manager,
-    emit_output_fn: Callable[..., None] | None = None,
-) -> tuple[BasePicture, ProjectGraph] | None:
-    resolved_emit_output_fn = emit_output if emit_output_fn is None else emit_output_fn
-    cache_dir = get_cache_dir_fn()
-    if cache_dir is None:
-        resolved_emit_output_fn("The cache directory is unavailable; nothing to clear.")
-        return None
-    cache_manager = get_cache_manager_fn(cache_dir)
-    cleared = cache_manager.clear_all()
-    removed_entries = cleared.removed_entries
-    if removed_entries == 0:
-        resolved_emit_output_fn("All caches already empty.")
-    else:
-        entry_label = "entry" if removed_entries == 1 else "entries"
-        resolved_emit_output_fn(f"Cleared all caches ({removed_entries} {entry_label}).")
-    return force_refresh_ast_fn(cfg)
 
 
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]

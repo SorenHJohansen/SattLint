@@ -8,30 +8,50 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
-from ..application.findings import AnalysisFinding
+from ..application.findings import AnalysisFinding, optional_text
 
 RUN_RECORD_SCHEMA_VERSION = 2
 
 
-def _optional_str(value: object) -> str | None:
+def _text_field(payload: Mapping[str, object], key: str, *, default: str = "") -> str:
+    """A required text field; a corrupt value rejects the record."""
+    value = payload.get(key)
     if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+        return default
+    if not isinstance(value, str):
+        raise ValueError(f"run field {key!r} must be a string")
+    return value
+
+
+def _bool_field(payload: Mapping[str, object], key: str, *, default: bool = False) -> bool:
+    value = payload.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"run field {key!r} must be a boolean")
+    return value
+
+
+def _int_field(payload: Mapping[str, object], key: str, *, default: int = 0) -> int:
+    value = payload.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"run field {key!r} must be an integer")
+    return value
 
 
 def _tuple_str(values: object) -> tuple[str, ...]:
-    if not isinstance(values, (list, tuple)):
+    if values is None:
         return ()
-    return tuple(str(item) for item in cast(Sequence[object], values) if item)
-
-
-def _int_value(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return 0
-    return value
+    if not isinstance(values, (list, tuple)):
+        raise ValueError("run field must be a list of strings")
+    sequence = cast(Sequence[object], values)
+    if not all(isinstance(item, str) for item in sequence):
+        raise ValueError("run field must be a list of strings")
+    return tuple(cast(Sequence[str], sequence))
 
 
 def _phase_timings_value(values: object) -> tuple[dict[str, object], ...]:
@@ -70,7 +90,7 @@ class RunAnalyzerRecord:
     phase_timings_ms: tuple[dict[str, object], ...] = ()
     skip_reason: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "key": self.key,
             "name": self.name,
@@ -97,33 +117,35 @@ class RunAnalyzerRecord:
             else ()
         )
         return cls(
-            key=str(payload.get("key") or ""),
-            name=str(payload.get("name") or ""),
-            status=str(payload.get("status") or ""),
-            summary=_optional_str(payload.get("summary")),
-            report_kind=_optional_str(payload.get("report_kind")),
-            issue_count=_optional_int(payload.get("issue_count")),
+            key=_text_field(payload, "key"),
+            name=_text_field(payload, "name"),
+            status=_text_field(payload, "status"),
+            summary=optional_text(payload.get("summary")),
+            report_kind=optional_text(payload.get("report_kind")),
+            issue_count=_optional_int_field(payload, "issue_count"),
             findings=findings,
-            duration_ms=_optional_float(payload.get("duration_ms")),
+            duration_ms=_optional_float_field(payload, "duration_ms"),
             phase_timings_ms=_phase_timings_value(payload.get("phase_timings_ms")),
-            skip_reason=_optional_str(payload.get("skip_reason")),
+            skip_reason=optional_text(payload.get("skip_reason")),
         )
 
 
-def _optional_int(value: object) -> int | None:
-    if value is None or isinstance(value, bool):
+def _optional_int_field(payload: Mapping[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
         return None
-    if isinstance(value, int):
-        return value
-    return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"run field {key!r} must be an integer or null")
+    return value
 
 
-def _optional_float(value: object) -> float | None:
-    if value is None or isinstance(value, bool):
+def _optional_float_field(payload: Mapping[str, object], key: str) -> float | None:
+    value = payload.get(key)
+    if value is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"run field {key!r} must be a number or null")
+    return float(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +155,7 @@ class RunModuleRecord:
     moduletype_name: str | None = None
     children: tuple[RunModuleRecord, ...] = ()
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "kind": self.kind,
@@ -154,9 +176,9 @@ class RunModuleRecord:
             else ()
         )
         return cls(
-            name=str(payload.get("name") or ""),
-            kind=str(payload.get("kind") or ""),
-            moduletype_name=_optional_str(payload.get("moduletype_name")),
+            name=_text_field(payload, "name"),
+            kind=_text_field(payload, "kind"),
+            moduletype_name=optional_text(payload.get("moduletype_name")),
             children=children,
         )
 
@@ -170,7 +192,7 @@ class RunTargetRecord:
     graphics_timings_ms: dict[str, float] | None = None
     module: RunModuleRecord | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "target_name": self.target_name,
             "is_library": self.is_library,
@@ -193,8 +215,8 @@ class RunTargetRecord:
             else ()
         )
         return cls(
-            target_name=str(payload.get("target_name") or ""),
-            is_library=bool(payload.get("is_library", False)),
+            target_name=_text_field(payload, "target_name"),
+            is_library=_bool_field(payload, "is_library"),
             analyzers=analyzers,
             stage_timings_ms=_timings_dict_value(payload.get("stage_timings_ms")),
             graphics_timings_ms=_timings_dict_value(payload.get("graphics_timings_ms")),
@@ -231,7 +253,7 @@ class RunRecord:
             len(analyzer.findings) for analyzer in self.project_analyzers
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": RUN_RECORD_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -269,13 +291,13 @@ class RunRecord:
             else ()
         )
         return cls(
-            run_id=str(payload.get("run_id") or ""),
-            started_at=str(payload.get("started_at") or ""),
-            finished_at=str(payload.get("finished_at") or ""),
-            project_tag=str(payload.get("project_tag") or ""),
-            project_path=str(payload.get("project_path") or ""),
+            run_id=_text_field(payload, "run_id"),
+            started_at=_text_field(payload, "started_at"),
+            finished_at=_text_field(payload, "finished_at"),
+            project_tag=_text_field(payload, "project_tag"),
+            project_path=_text_field(payload, "project_path"),
             selected_analyzers=_tuple_str(payload.get("selected_analyzers")),
-            cancelled=bool(payload.get("cancelled", False)),
+            cancelled=_bool_field(payload, "cancelled"),
             targets=targets,
             project_analyzers=project_analyzers,
             output_lines=_tuple_str(payload.get("output_lines")),
@@ -324,16 +346,16 @@ class RunSummary:
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunSummary:
         return cls(
-            run_id=str(payload.get("run_id") or ""),
-            started_at=str(payload.get("started_at") or ""),
-            finished_at=str(payload.get("finished_at") or ""),
-            project_tag=str(payload.get("project_tag") or ""),
-            target_count=_int_value(payload.get("target_count")),
-            analyzer_count=_int_value(payload.get("analyzer_count")),
-            issue_count=_int_value(payload.get("issue_count")),
-            cancelled=bool(payload.get("cancelled", False)),
+            run_id=_text_field(payload, "run_id"),
+            started_at=_text_field(payload, "started_at"),
+            finished_at=_text_field(payload, "finished_at"),
+            project_tag=_text_field(payload, "project_tag"),
+            target_count=_int_field(payload, "target_count"),
+            analyzer_count=_int_field(payload, "analyzer_count"),
+            issue_count=_int_field(payload, "issue_count"),
+            cancelled=_bool_field(payload, "cancelled"),
             # Older records and sidecars predate the field; an empty path means unknown.
-            project_path=str(payload.get("project_path") or ""),
+            project_path=_text_field(payload, "project_path"),
         )
 
 

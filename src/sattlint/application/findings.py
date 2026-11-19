@@ -11,13 +11,15 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import cast
 
 from ..models._variable_issues import VariableIssue, materialize_variable_issue_metadata
 from ..reporting.variables_report import VariablesReport
 
+type FindingDataValue = str | int | float | bool | list[FindingDataValue] | dict[str, FindingDataValue] | None
 
-def _empty_data() -> dict[str, Any]:
+
+def _empty_data() -> dict[str, FindingDataValue]:
     return {}
 
 
@@ -29,9 +31,9 @@ class AnalysisFinding:
     rule_id: str | None = None
     explanation: str | None = None
     suggestion: str | None = None
-    data: dict[str, Any] = field(default_factory=_empty_data)
+    data: Mapping[str, FindingDataValue] = field(default_factory=_empty_data)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "kind": self.kind,
             "message": self.message,
@@ -47,22 +49,23 @@ class AnalysisFinding:
         raw_module_path = cast(list[object] | tuple[object, ...] | None, payload.get("module_path"))
         module_path = tuple(str(segment) for segment in (raw_module_path or ()))
         raw_data = payload.get("data")
-        data: dict[str, Any] = {}
+        data: dict[str, FindingDataValue] = {}
         if isinstance(raw_data, Mapping):
             mapping = cast(Mapping[str, object], raw_data)
-            data = {str(key): cast(Any, value) for key, value in mapping.items()}
+            data = {str(key): cast(FindingDataValue, value) for key, value in mapping.items()}
         return cls(
             kind=str(payload.get("kind") or ""),
             message=str(payload.get("message") or ""),
             module_path=module_path,
-            rule_id=_optional_str(payload.get("rule_id")),
-            explanation=_optional_str(payload.get("explanation")),
-            suggestion=_optional_str(payload.get("suggestion")),
+            rule_id=optional_text(payload.get("rule_id")),
+            explanation=optional_text(payload.get("explanation")),
+            suggestion=optional_text(payload.get("suggestion")),
             data=data,
         )
 
 
-def _optional_str(value: object) -> str | None:
+def optional_text(value: object) -> str | None:
+    """A stripped string, or ``None`` when the value carries no text."""
     if value is None:
         return None
     text = str(value).strip()
@@ -107,7 +110,7 @@ def _issue_metadata_value(item: object, attr_name: str) -> str | None:
     return text or None
 
 
-def _sanitize_data_value(value: object) -> object:
+def _sanitize_data_value(value: object) -> FindingDataValue:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, Mapping):
@@ -119,9 +122,9 @@ def _sanitize_data_value(value: object) -> object:
     return str(value)
 
 
-def _issue_data_value(item: object) -> dict[str, Any]:
+def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
     raw_data = getattr(item, "data", None)
-    data: dict[str, Any] = {}
+    data: dict[str, FindingDataValue] = {}
     if isinstance(raw_data, Mapping):
         mapping = cast(Mapping[str, object], raw_data)
         for key, value in mapping.items():
@@ -134,7 +137,7 @@ def _issue_data_value(item: object) -> dict[str, Any]:
     return data
 
 
-def _merge_synthesized_context(item: object, data: dict[str, Any]) -> None:
+def _merge_synthesized_context(item: object, data: dict[str, FindingDataValue]) -> None:
     """Fill ``site``/``context`` for issue models that have no ``data`` dict.
 
     ``VariableIssue`` and friends carry ``site`` / ``sequence_name`` /
