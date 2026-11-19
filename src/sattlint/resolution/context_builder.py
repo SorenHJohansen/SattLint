@@ -224,13 +224,19 @@ class ContextBuilder:
         except ValueError:
             return None
 
-    def _register_typedef_variables(self, moduletype: ModuleTypeDef, module_path: list[str]) -> None:
+    def _register_typedef_variables(
+        self,
+        moduletype: ModuleTypeDef,
+        module_path: list[str],
+        library: str | None,
+    ) -> None:
         for variable in moduletype.moduleparameters or []:
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=library,
             )
         for variable in moduletype.localvariables or []:
             self.symbol_table.add_variable_root(
@@ -238,6 +244,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=library,
             )
 
     def _build_typedef_context_template(
@@ -318,6 +325,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=self.root_library,
             )
         for variable in locals_:
             self.symbol_table.add_variable_root(
@@ -325,6 +333,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=self.root_library,
             )
 
         return ScopeContext(
@@ -359,6 +368,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
         for variable in locals_:
             env[variable.name.casefold()] = variable
@@ -367,6 +377,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
 
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
@@ -423,6 +434,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
         for variable in frame.localvariables or []:
             self.symbol_table.add_variable_root(
@@ -430,6 +442,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
         return build_frame_scope(frame, parent_context, module_path, display_module_path)
 
@@ -451,7 +464,8 @@ class ContextBuilder:
             template = self._build_typedef_context_template(moduletype, instance, parent_context)
             self._typedef_context_cache[cache_key] = template
 
-        self._register_typedef_variables(moduletype, module_path)
+        current_library = moduletype.origin_lib or (parent_context.current_library if parent_context else None)
+        self._register_typedef_variables(moduletype, module_path, current_library)
 
         return ScopeContext(
             env=template.env,
@@ -459,6 +473,6 @@ class ContextBuilder:
             module_path=module_path,
             display_module_path=display_module_path,
             moduleparameter_keys=template.moduleparameter_keys,
-            current_library=moduletype.origin_lib or (parent_context.current_library if parent_context else None),
+            current_library=current_library,
             parent_context=parent_context,
         )
