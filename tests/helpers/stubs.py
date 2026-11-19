@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypedDict
 
 
 def _string_list() -> list[str]:
@@ -41,14 +40,6 @@ def _object_dict() -> dict[str, object]:
 
 def _nested_float_dict() -> dict[str, dict[str, float]]:
     return {}
-
-
-class RealContext(TypedDict):
-    cfg: dict[str, Any]
-    var_name: str
-    module_path: str
-    module_var: str
-    module_name: str
 
 
 @dataclass(slots=True)
@@ -178,7 +169,6 @@ __all__ = [
     "NamedObject",
     "NoOpWriter",
     "NullWriter",
-    "RealContext",
     "RecordingWriter",
     "make_input",
     "named_object",

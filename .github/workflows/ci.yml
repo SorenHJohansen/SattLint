@@ -132,6 +132,16 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      # atheris publishes manylinux x86_64 wheels only. Fail with a clear
+      # message if the job ever moves to another architecture or OS rather than
+      # letting dependency resolution fail with an unrelated error.
+      - name: Require a Linux x86_64 runner
+        run: |
+          if [ "$(uname -s)/$(uname -m)" != "Linux/x86_64" ]; then
+            echo "::error::the fuzz extra requires a Linux x86_64 runner (atheris wheels)"
+            exit 1
+          fi
+
       - name: Install the locked fuzz environment
         run: uv sync --locked --extra fuzz
 
