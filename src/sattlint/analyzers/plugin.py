@@ -63,6 +63,9 @@ def register_analyzer(
         raise ValueError(f"Analyzer key {key!r} is reserved by a built-in analyzer.")
 
     def decorator(run: Analyzer) -> Analyzer:
+        existing = _plugin_analyzers.get(canonical_key)
+        if existing is not None:
+            raise ValueError(f"Analyzer key {key!r} is already registered by {existing.name!r}.")
         spec = AnalyzerSpec(
             key=key,
             name=name or key,
@@ -83,9 +86,10 @@ def get_registered_plugin_analyzers() -> tuple[AnalyzerSpec, ...]:
     """Return the plugin analyzers registered via :func:`register_analyzer`.
 
     Registration is expected at import/startup time, before the analyzer catalog is first
-    built; the registry merges these into the default analyzer set.
+    built; the registry merges these into the default analyzer set. Entries are
+    sorted by canonical key so the analyzer order never depends on import order.
     """
-    return tuple(_plugin_analyzers.values())
+    return tuple(_plugin_analyzers[key] for key in sorted(_plugin_analyzers))
 
 
 def clear_registered_plugin_analyzers() -> None:
