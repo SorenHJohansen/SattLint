@@ -63,7 +63,7 @@ def iter_loaded_projects(
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
+            log_debug_exception(f"Failed to load analysis target {target_name!r}", logger=log)
             if failure_sink is not None:
                 failure_sink(target_name, str(exc))
             emit_output_fn(f"\n=== Target: {target_name} ===")
@@ -519,7 +519,7 @@ def ensure_ast_cache(
             )
             emit_output_fn("✔ AST cache updated")
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)
+            log_debug_exception(f"Failed to rebuild AST cache for {target_name!r}", logger=log)
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False
 
