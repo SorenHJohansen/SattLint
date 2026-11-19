@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportAttributeAccessIssue=false
 """Focused tests for run-history persistence."""
 
 import json

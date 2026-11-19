@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# pyright: reportPrivateUsage=false
 """Focused tests for .slproj project file I/O."""
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
 
 def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
-    data = {
+    data: dict[str, object] = {
         "slproj_version": 1,
         "analyzed_programs_and_libraries": [],
         "mode": "official",

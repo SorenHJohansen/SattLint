@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """The project cache key is one schema with a version and a stable encoding."""
 
 from __future__ import annotations

@@ -1,14 +1,18 @@
 # pyright: reportPrivateUsage=false
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportMissingParameterType=false, reportAttributeAccessIssue=false
 """Focused tests for the cache class implementations."""
 
 from __future__ import annotations
+
+from pathlib import Path
+from typing import cast
+
+import pytest
 
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache
 
 
-def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch) -> None:
+def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = cache_module.compute_analysis_report_cache_key("project", "variables")
     unrelated = cache_module.compute_analysis_report_cache_key("project", "same-cycle")
 
@@ -18,7 +22,7 @@ def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch) -> No
     assert cache_module.compute_analysis_report_cache_key("project", "same-cycle") == unrelated
 
 
-def test_ast_cache_save_load_and_validate(tmp_path) -> None:
+def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = ASTCache(tmp_path / "caches")
@@ -29,9 +33,9 @@ def test_ast_cache_save_load_and_validate(tmp_path) -> None:
     assert cache.has_manifest("key") is True
     assert cache.has_cache_artifact("key") is True
     assert cache.manifest_paths("key") == {source}
-    payload = cache.load("key")
+    payload = cast("dict[str, object] | None", cache.load("key"))
     assert payload is not None and payload.get("project") == {"proj": True}
-    validated = cache.load_validated("key")
+    validated = cast("dict[str, object] | None", cache.load_validated("key"))
     assert validated is not None and validated.get("version") == cache_module.CACHE_VERSION
     assert cache.load_manifest("nope") is None
     assert cache.has_manifest("nope") is False
@@ -41,13 +45,13 @@ def test_ast_cache_save_load_and_validate(tmp_path) -> None:
     assert cache.has_cache_artifact("key") is False
 
 
-def test_ast_cache_save_with_missing_file_writes_nothing(tmp_path) -> None:
+def test_ast_cache_save_with_missing_file_writes_nothing(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     cache.save("key", project={"proj": True}, files=[tmp_path / "missing.sl"])
     assert cache.has_cache_artifact("key") is False
 
 
-def test_ast_cache_prune_orphan_artifacts(tmp_path) -> None:
+def test_ast_cache_prune_orphan_artifacts(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     (cache.cache_dir / "orphan.pickle").write_text("junk")
     (cache.cache_dir / "stray.manifest.json").write_text("{}")
@@ -60,7 +64,7 @@ def test_ast_cache_prune_orphan_artifacts(tmp_path) -> None:
     assert empty.ast_manifest_entries == 0
 
 
-def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path) -> None:
+def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = ASTCache(tmp_path / "caches")
@@ -72,19 +76,19 @@ def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path) -> None:
     assert cache.has_cache_artifact("key") is True
 
 
-def test_ast_cache_drain_startup_prune_result(tmp_path) -> None:
+def test_ast_cache_drain_startup_prune_result(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     result = cache.drain_startup_prune_result()
     assert result.ast_payload_entries == 0
     assert result.ast_manifest_entries == 0
 
 
-def test_analysis_report_cache_roundtrip(tmp_path) -> None:
+def test_analysis_report_cache_roundtrip(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = AnalysisReportCache(tmp_path / "caches")
     assert cache.save("key", report={"report": True}, files=[source]) is True
-    payload = cache.load("key")
+    payload = cast("dict[str, object] | None", cache.load("key"))
     assert payload is not None and payload.get("report") == {"report": True}
     assert cache.validate(payload) is True
     assert cache.validate(payload, fast=True) is True
@@ -93,7 +97,7 @@ def test_analysis_report_cache_roundtrip(tmp_path) -> None:
     assert cache.load("missing") is None
 
 
-def test_analysis_report_cache_save_failure_and_clear(tmp_path) -> None:
+def test_analysis_report_cache_save_failure_and_clear(tmp_path: Path) -> None:
     cache = AnalysisReportCache(tmp_path / "caches")
     assert cache.save("key", report={"report": True}, files=[tmp_path / "missing.sl"]) is False
     source = tmp_path / "mod.sl"
@@ -106,7 +110,7 @@ def test_analysis_report_cache_save_failure_and_clear(tmp_path) -> None:
     assert cache.load("key3") is None
 
 
-def test_analysis_report_cache_prune_and_drain(tmp_path) -> None:
+def test_analysis_report_cache_prune_and_drain(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = AnalysisReportCache(tmp_path / "caches")
@@ -137,7 +141,7 @@ def test_analysis_report_cache_key_tracks_analyzer_settings() -> None:
     )
 
 
-def test_report_cache_removes_entries_from_another_generation(tmp_path) -> None:
+def test_report_cache_removes_entries_from_another_generation(tmp_path: Path) -> None:
     root = tmp_path / "caches" / "analysis_reports"
     stale = root / "v0-p0.0.1"
     stale.mkdir(parents=True)

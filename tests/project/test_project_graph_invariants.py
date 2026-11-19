@@ -1,5 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
-"""Project graph invariant tests (Phase 19).
+"""Project graph invariant tests.
 
 Unique nodes, deterministic dependency edges, missing-dependency tracking,
 unavailable-vs-missing distinction, strict/non-strict behavior, and repeated
@@ -15,11 +14,12 @@ import pytest
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 from sattlint.models.project_graph import ProjectGraph, merge_project_basepicture
+from sattlint.parser_api import BasePicture
 from sattlint.project.parser_adapter import record_missing_library
 from tests.helpers.app_menus_support import VALID_SINGLE_FILE
 
 
-def _picture_named(name: str):
+def _picture_named(name: str) -> BasePicture:
     return replace(parser_core_parse_source_text(VALID_SINGLE_FILE), name=name)
 
 
@@ -29,11 +29,11 @@ def graph() -> ProjectGraph:
 
 
 @pytest.fixture()
-def base_picture():
+def base_picture() -> BasePicture:
     return parser_core_parse_source_text(VALID_SINGLE_FILE)
 
 
-def test_index_from_basepic_records_unique_nodes_and_origins(graph: ProjectGraph, base_picture) -> None:
+def test_index_from_basepic_records_unique_nodes_and_origins(graph: ProjectGraph, base_picture: BasePicture) -> None:
     source_path = Path("/tmp/programs/Invocation.s")
     graph.index_from_basepic(base_picture, source_path=source_path, library_name="programs")
 
@@ -44,7 +44,7 @@ def test_index_from_basepic_records_unique_nodes_and_origins(graph: ProjectGraph
     assert root_origin.library_name == "programs"
 
 
-def test_root_origin_resolves_each_program_by_identity(graph: ProjectGraph, base_picture) -> None:
+def test_root_origin_resolves_each_program_by_identity(graph: ProjectGraph, base_picture: BasePicture) -> None:
     other = _picture_named("Other")
     first_path = Path("/tmp/lib-a/Invocation.s")
     second_path = Path("/tmp/lib-b/Other.s")
@@ -69,7 +69,7 @@ def test_root_origin_resolves_each_program_by_identity(graph: ProjectGraph, base
     assert merged_origin.source_path == first_path
 
 
-def test_repeated_indexing_produces_deterministic_keys(graph: ProjectGraph, base_picture) -> None:
+def test_repeated_indexing_produces_deterministic_keys(graph: ProjectGraph, base_picture: BasePicture) -> None:
     source_path = Path("/tmp/programs/Invocation.s")
     graph.index_from_basepic(base_picture, source_path=source_path, library_name="programs")
     first_keys = tuple(sorted(graph.moduletype_defs.keys()))
@@ -80,7 +80,7 @@ def test_repeated_indexing_produces_deterministic_keys(graph: ProjectGraph, base
     assert set(graph.source_files) == first_sources
 
 
-def test_merge_project_basepicture_is_deterministic(graph: ProjectGraph, base_picture) -> None:
+def test_merge_project_basepicture_is_deterministic(graph: ProjectGraph, base_picture: BasePicture) -> None:
     graph.index_from_basepic(base_picture, source_path=Path("/tmp/programs/Invocation.s"), library_name="programs")
     first = merge_project_basepicture(base_picture, graph)
     second = merge_project_basepicture(base_picture, graph)
