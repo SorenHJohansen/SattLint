@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,7 +70,7 @@ def narrow_matches_by_source_preference(
     return matches
 
 
-def select_moduletype_def_strict(
+def select_moduletype_def_strict(  # noqa: PLR0915
     bp: BasePicture,
     moduletype_name: str,
     matches: list[ModuleTypeDef],
@@ -80,9 +80,11 @@ def select_moduletype_def_strict(
     unavailable_libraries: set[str] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
     source_dependencies: Mapping[str, Iterable[str]] | None = None,
+    available_names: Sequence[str] | None = None,
 ) -> ModuleTypeDef:
     if not matches:
-        available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
+        candidates = available_names if available_names is not None else [mt.name for mt in (bp.moduletype_defs or [])]
+        available = sorted(set(candidates))
         note = ""
         if unavailable_libraries:
             note = f" Note: Some libraries are unavailable (e.g., proprietary): {sorted(unavailable_libraries)[:10]}"
@@ -170,8 +172,10 @@ def resolve_moduletype_def_strict(
     key = moduletype_name.casefold()
     if moduletype_index is not None:
         matches = moduletype_index.get(key, [])
+        available_names = [mt.name for defs in moduletype_index.values() for mt in defs]
     else:
         matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
+        available_names = None
     return select_moduletype_def_strict(
         bp,
         moduletype_name,
@@ -181,6 +185,7 @@ def resolve_moduletype_def_strict(
         unavailable_libraries=unavailable_libraries,
         library_dependencies=library_dependencies,
         source_dependencies=source_dependencies,
+        available_names=available_names,
     )
 
 
@@ -232,6 +237,7 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
                     matches,
                     current_library=current_library,
                     current_file=current_file,
+                    available_names=[mt.name for defs in moduletype_index.values() for mt in defs],
                 )
         return resolve_moduletype_def_strict(
             bp,

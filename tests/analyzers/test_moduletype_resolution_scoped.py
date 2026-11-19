@@ -480,3 +480,24 @@ def test_analyze_variables_derives_library_dependencies_from_graph(monkeypatch: 
     analyze_variables(bp, analysis_context=context)
 
     assert captured["library_dependencies"] == {"applib": {"lib2"}}
+
+
+def test_missing_moduletype_lists_only_the_candidates_the_lookup_considered():
+    hidden = ModuleTypeDef(name="Hidden", origin_lib="Lib1")
+    indexed = ModuleTypeDef(name="Indexed", origin_lib="Lib2")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="Lib1",
+        moduletype_defs=[hidden],
+    )
+
+    with pytest.raises(ValueError, match="Unknown moduletype 'Missing'") as exc_info:
+        _resolve_moduletype_def_strict(
+            bp,
+            "Missing",
+            moduletype_index={"indexed": [indexed]},
+        )
+
+    message = str(exc_info.value)
+    assert "Indexed" in message
+    assert "Hidden" not in message
