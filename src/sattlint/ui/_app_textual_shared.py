@@ -163,7 +163,7 @@ MENU_DEFINITIONS: list[tuple[str, str]] = [
 NO_PROJECT_NOTICE = (
     "No configuration is open.\n\n"
     "Use Open Configuration or New Configuration from the File menu to load or create a "
-    "configuration before analyzing, viewing results, or changing the setup."
+    "configuration before analyzing, viewing results, or changing the configuration settings."
 )
 TEXTUAL_SHELL_CSS = Path(__file__).with_name("app_textual.tcss").read_text(encoding="utf-8")
 

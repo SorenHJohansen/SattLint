@@ -74,7 +74,7 @@ def _refresh_settings_labels(self: Any) -> None:
 def _settings_note_text(self: Any) -> str:
     return (
         "App-level settings are saved automatically to your user config (config.toml) and apply to every "
-        "configuration. Configuration settings stay in the Setup view and are saved automatically."
+        "configuration. Configuration settings stay in the Configuration Settings view and are saved automatically."
     )
 
 

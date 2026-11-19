@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import threading
 import time
 from collections import deque
 from contextlib import redirect_stderr, redirect_stdout, suppress
@@ -461,6 +460,7 @@ def _clear_session_output(self: Any) -> None:
     self._pending_error_target_name = None
     self._last_output_target_name = None
     self._analyze_help_entry_id = None
+    self._results_empty_state_written = False
     _query_required(self, "#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
 
 
@@ -477,8 +477,6 @@ def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bo
     self._busy = False
     self._active_job_label = None
     self._active_job_started_at = None
-    self._active_job_worker = None
-    self._active_job_thread = None
     if clear_dirty_on_success:
         self._dirty = False
     else:
@@ -666,14 +664,9 @@ def _start_action(
         self._write_output("Another action is still running. Wait for it to finish first.")
         return
 
-    def _register_action_thread(worker_thread: threading.Thread) -> None:
-        self._active_job_thread = worker_thread
-
     self._busy = True
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
-    self._active_job_worker = None
-    self._active_job_thread = None
     self._set_active_action(action_id)
     self._refresh_summary()
     self._refresh_shell_state()
@@ -683,7 +676,6 @@ def _start_action(
     self._write_output(f"Starting {label}... Live output is shown in this panel.")
 
     def _run() -> None:
-        self.call_from_thread(_register_action_thread, threading.current_thread())
         output_stream = _TextualOutput(emit_text_fn=self._emit_output_from_thread)
         dirty = False
         clear_dirty = False
@@ -702,7 +694,7 @@ def _start_action(
         finally:
             self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
 
-    self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
+    self._start_managed_action_worker(_run, label=label, action_id=action_id)
 
 
 def _show_setup_no_project(self: Any) -> None:

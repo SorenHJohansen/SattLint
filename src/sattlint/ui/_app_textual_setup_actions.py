@@ -1,36 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 from ._app_textual_shared import InteractionRequest, _MenuOption, _stringify_list_values, _stringify_value
-
-
-def _run_app_module_cfg_action(
-    self: Any,
-    attr_name: str,
-    label: str,
-    *,
-    action_id: str,
-    require_targets: bool = False,
-    action_text: str | None = None,
-    marks_dirty: bool = False,
-) -> None:
-    if require_targets and not self._targets_action_allowed(action_text or label.casefold()):
-        return
-    handlers = getattr(self, "_analysis_handlers", None)
-    action_fn = cast(dict[str, Callable[..., Any]], handlers).get(attr_name) if isinstance(handlers, dict) else None
-    if not callable(action_fn):
-        self._write_output(f"{label} is unavailable in the current Textual session.")
-        return
-    self._start_action(
-        label,
-        partial(cast(Callable[[Any], Any], action_fn), self._cfg),
-        action_id=action_id,
-        marks_dirty=marks_dirty,
-    )
 
 
 def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:

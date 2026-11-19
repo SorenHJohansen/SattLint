@@ -56,12 +56,6 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         description="Click targets to add or remove them, then adjust directories and runtime settings inline.",
         note="Changes are saved automatically to the configuration file.",
     ),
-    "help": _ShellViewState(
-        action_id="action-help",
-        title="Help",
-        description="See first-run guidance and the recommended workflow for setup and analysis.",
-        note="Open the guide to review the recommended setup and analysis workflow.",
-    ),
     "output": _ShellViewState(
         action_id="action-output",
         title="Output",
@@ -90,7 +84,7 @@ if _TEXTUAL_APP is not None:
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
-            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items() if view_name != "help"
+            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items()
         }
 
         CSS = TEXTUAL_SHELL_CSS
@@ -129,7 +123,6 @@ if _TEXTUAL_APP is not None:
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
             self._active_job_started_at: float | None = None
-            self._active_job_worker: Any | None = None
             self._project: Any | None = None
             self._ast_refresh_pending = False
             self._analyze_focused_entry_id: str | None = None
@@ -139,6 +132,7 @@ if _TEXTUAL_APP is not None:
             self._suppress_analyze_events = False
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
+            self._results_empty_state_written = False
             self._results_tree_widget = None
             self._results_pending_run_id: str | None = None
             self._results_findings_widget = None
@@ -293,7 +287,7 @@ if _TEXTUAL_APP is not None:
                                             yield _TEXTUAL_STATIC("Run History", classes="settings-card-title")
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Save run history",
+                                                    "Run history",
                                                     id="settings-toggle-run-history",
                                                     classes="raised-button settings-row-button",
                                                 )
@@ -302,7 +296,7 @@ if _TEXTUAL_APP is not None:
                                                 )
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Keep last N runs",
+                                                    "Run history limit",
                                                     id="settings-edit-run-history-limit",
                                                     classes="raised-button settings-row-button",
                                                 )

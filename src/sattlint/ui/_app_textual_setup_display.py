@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import time
-from pathlib import Path
 from typing import Any, cast
 
 try:
@@ -79,28 +78,6 @@ def _selected_setup_candidate(self: Any) -> _SetupTargetCandidate | None:
         return None
     self._setup_candidate_index %= len(candidates)
     return candidates[self._setup_candidate_index]
-
-
-def _setup_candidate_status(self: Any, candidate: _SetupTargetCandidate) -> str:
-    if not candidate.available:
-        return "not valid for current mode"
-    if self._is_target_configured(candidate.name):
-        return "already configured"
-    return "available"
-
-
-def _setup_candidate_display_paths(candidate: _SetupTargetCandidate) -> tuple[Path, ...]:
-    display_paths: list[Path] = []
-    seen: set[tuple[str, str]] = set()
-    for path in candidate.files:
-        resolved = path.resolve()
-        display_path = resolved.parent / candidate.name
-        key = (resolved.parent.as_posix().casefold(), candidate.name.casefold())
-        if key in seen:
-            continue
-        seen.add(key)
-        display_paths.append(display_path)
-    return tuple(sorted(display_paths, key=lambda path: path.as_posix().casefold()))
 
 
 def _configured_target_names(self: Any) -> tuple[str, ...]:

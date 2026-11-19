@@ -9,7 +9,6 @@ from ..__version__ import __version__ as _sattlint_version
 from ..core.syntax import CodeMode, code_ext_candidates, deps_ext_candidates, normalize_code_mode
 from ._app_textual_setup_display import (
     _configured_target_names,
-    _setup_candidate_display_paths,
     _setup_filter_value,
     _setup_mode_text,
     _setup_other_dirs_text,
@@ -204,30 +203,6 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     if summary.run_id == getattr(self, "_results_tree_run_id", None):
         return
     self._request_results_run_selection(summary.run_id)
-
-
-def _setup_browser_detail_text(self: Any) -> str:
-    candidate = self._selected_setup_candidate()
-    directories = _config_directory_paths(self._cfg)
-    lines = [
-        "Selected Target Detail",
-        f"Mode: {self._cfg.get('mode', 'official')}",
-    ]
-    if candidate is None:
-        lines.append("Target: none")
-    else:
-        lines.append(f"Target: {candidate.name}")
-        lines.append(f"Status: {self._setup_candidate_status(candidate)}")
-        lines.append("Locations:")
-        lines.extend(f"- {path}" for path in _setup_candidate_display_paths(candidate))
-
-    lines.append("")
-    lines.append("Directories")
-    if directories:
-        lines.extend(f"- {path}" for path in directories)
-    else:
-        lines.append("(none configured)")
-    return "\n".join(lines)
 
 
 def _add_selected_setup_target(self: Any, target_name: str | None = None) -> None:

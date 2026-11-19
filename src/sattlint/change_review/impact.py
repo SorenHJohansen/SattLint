@@ -146,7 +146,6 @@ class _RelevanceBuilder:
             declared_by=fact.declared_by or existing.declared_by,
             written_by=tuple(dict.fromkeys((*existing.written_by, *fact.written_by))),
             read_by=tuple(dict.fromkeys((*existing.read_by, *fact.read_by))),
-            containing_object=fact.containing_object or existing.containing_object,
             declaration_source=fact.declaration_source or existing.declaration_source,
             official_definition_source=(fact.official_definition_source or existing.official_definition_source),
             draft_definition_source=fact.draft_definition_source or existing.draft_definition_source,

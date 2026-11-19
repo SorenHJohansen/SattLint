@@ -2037,7 +2037,7 @@ def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pyt
     ]
 
 
-def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_start_action_starts_a_managed_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     created_workers: list[object] = []
 
     class FakeWorker:
@@ -2074,8 +2074,7 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     app_instance._start_action("Run selected analyses", lambda: None, action_id="action-analyze")
 
     assert len(created_workers) == 1
-    assert app_instance._active_job_worker is created_workers[0]
-    assert app_instance._active_job_thread is None
+    assert app_instance._busy is True
 
 
 def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3436,10 +3435,10 @@ def test_textual_activate_view_leaves_dirty_setup_changes_unsaved(monkeypatch: p
     monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
     monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
 
-    app_instance._activate_view("help")
+    app_instance._activate_view("settings")
 
     assert started == []
-    assert app_instance._active_view == "help"
+    assert app_instance._active_view == "settings"
     assert app_instance._dirty is True
 
 
@@ -4894,3 +4893,22 @@ def test_textual_unchanged_analyzer_options_keep_the_list_scroll() -> None:
     app_instance._update_analyze_selection_list(stub, items)
 
     assert stub.clear_count == 1
+
+
+def test_textual_shell_uses_the_documented_view_and_setting_labels() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            nav_labels = {str(tab.id): str(getattr(tab, "renderable", "")) for tab in app_instance.query(".nav-tab")}
+            assert nav_labels["nav-tab-setup"] == "Configuration Settings"
+            assert nav_labels["nav-tab-settings"] == "App Settings"
+            assert str(app_instance.query_one("#settings-toggle-run-history").label) == "Run history"
+            assert str(app_instance.query_one("#settings-edit-run-history-limit").label) == "Run history limit"
+
+    asyncio.run(_run())

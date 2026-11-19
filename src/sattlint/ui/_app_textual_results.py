@@ -46,14 +46,17 @@ if _TEXTUAL_TREE is not None:
         """
 
         def get_label_width(self, node: Any) -> int:
+            label = node.label
+            text = label.plain if isinstance(label, Text) else str(label)
+            allow_expand = bool(node.allow_expand)
+            cache_key = (text, allow_expand)
             cached = getattr(node, "_sattlint_label_width", None)
-            updates = getattr(node, "_updates", 0)
-            if cached is not None and cached[0] == updates:
+            if cached is not None and cached[0] == cache_key:
                 return int(cached[1])
-            width = _cell_len(str(node._label.plain))
-            if getattr(node, "_allow_expand", False):
+            width = _cell_len(text)
+            if allow_expand:
                 width += _TREE_TOGGLE_WIDTH
-            node._sattlint_label_width = (updates, width)
+            node._sattlint_label_width = (cache_key, width)
             return width
 
 else:  # pragma: no cover - optional dependency path
@@ -211,12 +214,12 @@ def _auto_expand_single_child_chains(root: Any) -> None:
     from clicking through each level. The root is left untouched so the hidden
     top level is not implicitly expanded.
     """
-    stack = list(root._children)
+    stack = list(root.children)
     while stack:
         node = stack.pop()
-        if len(node._children) == 1:
-            node._expanded = True
-        stack.extend(node._children)
+        if len(node.children) == 1:
+            node.expand()
+        stack.extend(node.children)
 
 
 def _module_label(module: RunModuleRecord) -> str:
@@ -682,8 +685,7 @@ def _expand_all_results(self: Any) -> None:
         self._write_output("No analysis results are available yet.")
         return
     for node in _walk_tree_nodes(tree.root, include_root=True):
-        node._expanded = True
-    tree._invalidate()
+        node.expand()
     self._write_output("Expanded all results.")
 
 
@@ -693,9 +695,8 @@ def _collapse_all_results(self: Any) -> None:
         self._write_output("No analysis results are available yet.")
         return
     for node in _walk_tree_nodes(tree.root, include_root=True):
-        node._expanded = False
+        node.collapse()
     tree.root.expand()
-    tree._invalidate()
     self._write_output("Collapsed all results.")
 
 
@@ -721,8 +722,11 @@ def _refresh_results_view(self: Any) -> None:
         findings_report = getattr(self, "_results_findings_widget", None)
         if findings_report is not None:
             findings_report.update("No findings")
-        self._write_output("No previous analysis runs are available yet. Run analyses from the Analyze view.")
+        if not bool(getattr(self, "_results_empty_state_written", False)):
+            self._results_empty_state_written = True
+            self._write_output("No saved runs for this configuration. Run analyses from the Analyze view.")
         return
+    self._results_empty_state_written = False
     current_id = getattr(self._selected_run_record, "run_id", None)
     if current_id is None or not any(summary.run_id == current_id for summary in summaries):
         summary = summaries[0]

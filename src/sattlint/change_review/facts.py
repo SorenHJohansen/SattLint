@@ -39,7 +39,6 @@ class SymbolFact:
     declared_by: str | None = None
     written_by: tuple[str, ...] = ()
     read_by: tuple[str, ...] = ()
-    containing_object: str | None = None
     declaration_source: str | None = None
     official_definition_source: str | None = None
     draft_definition_source: str | None = None
