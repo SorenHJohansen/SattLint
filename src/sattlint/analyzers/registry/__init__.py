@@ -86,7 +86,7 @@ class AnalyzerMetadata:
     spec: AnalyzerSpec
     delivery: AnalyzerDeliveryMetadata = field(
         default_factory=lambda: AnalyzerDeliveryMetadata(
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="analyzers",
         )
     )
@@ -104,7 +104,7 @@ class AnalyzerMetadata:
             category=self.spec.category,
             enabled=self.spec.enabled,
             summary_output=self.summary_output,
-            scope=delivery.scope,
+            scope=delivery.delivery_scope,
             implementation_bucket=delivery.implementation_bucket,
             output_artifacts=list(delivery.output_artifacts),
             cli_exposed=delivery.cli_exposed,

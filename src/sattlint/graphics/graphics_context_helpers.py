@@ -94,13 +94,22 @@ def picture_display_path_warnings(
     )
 
 
+_SOURCE_SUFFIX_BY_GRAPHICS_SUFFIX = {".g": ".s", ".y": ".x"}
+
+
 def graphics_source_context_path(graphics_path: Path) -> Path | None:
-    suffix = graphics_path.suffix.lower()
-    candidates = (".s", ".x") if suffix == ".g" else (".x", ".s")
-    for candidate_suffix in candidates:
-        candidate = graphics_path.with_suffix(candidate_suffix)
-        if candidate.exists():
-            return candidate
+    """The code body that pairs with a graphics artifact.
+
+    A ``.g`` picture pairs only with a draft ``.s`` body and a ``.y`` picture
+    only with an official ``.x`` body; a body from the other family describes a
+    different artifact and must not be read in its place.
+    """
+    source_suffix = _SOURCE_SUFFIX_BY_GRAPHICS_SUFFIX.get(graphics_path.suffix.lower())
+    if source_suffix is None:
+        return None
+    candidate = graphics_path.with_suffix(source_suffix)
+    if candidate.is_file():
+        return candidate
     return None
 
 

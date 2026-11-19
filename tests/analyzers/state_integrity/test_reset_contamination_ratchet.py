@@ -495,6 +495,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
             "opseq.reset",
             {"opseqresetold"},
             [reset_contamination_module._PathState(reset_state="run")],
+            collect_stmt_block_paths=reset_contamination_module._collect_stmt_block_paths,
             path_debug=path_debug,
         )
 

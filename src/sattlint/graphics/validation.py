@@ -95,7 +95,8 @@ def picture_display_asset_candidate_paths(file_path: Path, asset_name: str) -> t
     An asset belongs to the program that references it, so the search covers
     the program directory (the folder holding ``file_path``) and that folder's
     ``scr`` subfolder only. A path that would leave those folders, meaning an
-    absolute path or one containing a ``..`` segment, has no candidate at all.
+    absolute path, one containing a ``..`` segment, or one whose real location
+    is outside after following links, has no candidate at all.
     """
     normalized_name = asset_name.strip().replace("\\", "/")
     if not normalized_name:
@@ -105,6 +106,7 @@ def picture_display_asset_candidate_paths(file_path: Path, asset_name: str) -> t
     if not basename or asset_path.is_absolute() or ".." in asset_path.parts:
         return ()
     program_dir = file_path.parent
+    program_root = _real_path(program_dir)
     candidates = (
         program_dir / normalized_name,
         program_dir / basename,
@@ -117,9 +119,18 @@ def picture_display_asset_candidate_paths(file_path: Path, asset_name: str) -> t
         key = candidate.as_posix().casefold()
         if key in seen:
             continue
+        if not _real_path(candidate).is_relative_to(program_root):
+            continue
         seen.add(key)
         unique.append(candidate)
     return tuple(unique)
+
+
+def _real_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path.absolute()
 
 
 def is_unimplemented_picture_display_asset_path(path_text: str) -> bool:

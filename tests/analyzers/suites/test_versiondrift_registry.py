@@ -92,7 +92,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
 
     delivery = registry_module.build_delivery_metadata(spec)
 
-    assert delivery.scope == "workspace"
+    assert delivery.delivery_scope == "workspace"
     assert delivery.implementation_bucket == "analyzers"
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
 

@@ -171,7 +171,7 @@ def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing type")),
     )
     assert icf_module._find_variable_in_module_scope(instance, base_picture, "missing") is None
-    assert icf_module._find_variable_in_module_scope(object(), base_picture, "missing") is None
+    assert icf_module._find_variable_in_module_scope(base_picture, base_picture, "missing") is None
 
     resolved = SimpleNamespace(
         node=single,

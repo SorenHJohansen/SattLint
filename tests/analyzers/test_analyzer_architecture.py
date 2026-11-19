@@ -561,3 +561,17 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
 
     assert isinstance(report, SimpleReport)
     assert context_sa == [shared]
+
+
+def test_delivery_metadata_acceptance_tests_exist() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+
+    deliveries = default_delivery_templates(shared_fixtures=())
+    missing = [
+        test_path
+        for delivery in deliveries
+        for test_path in delivery.acceptance_tests
+        if not (repo_root / test_path).is_file()
+    ]
+
+    assert missing == []

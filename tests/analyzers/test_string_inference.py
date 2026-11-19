@@ -1,3 +1,4 @@
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
@@ -264,3 +265,70 @@ def test_exact_string_inference_invalid_setstringpos_leaves_state_unchanged() ->
 
     assert result.texts == ("",)
     assert result.cursor_positions == (1,)
+
+
+SFC_STEP_STRING_SOURCE = """"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: StepStr"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+LOCALVARIABLES
+   PictureName: string  := "";
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   SEQUENCE OpSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
+      SEQINITSTEP Init
+         ENTERCODE
+            PictureName = "InitView";
+      SEQTRANSITION TrDone WAIT_FOR False
+   ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+FRAME_MODULE_STRING_SOURCE = """"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: FrameStr"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+SUBMODULES
+   FrameRoot Invocation
+      ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+       ) : MODULEDEFINITION DateCode_ 1 (Frame_Module)
+      LOCALVARIABLES
+         FrameText: string  := "";
+      ModuleDef
+      ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+      ModuleCode
+         EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            FrameText = "FrameView";
+      ENDDEF (*FrameRoot*);
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_inference_reads_string_assignments_inside_sequence_steps() -> None:
+    base_picture = parser_core_parse_source_text(SFC_STEP_STRING_SOURCE)
+
+    result = ExactStringInferenceEngine(base_picture).infer("PictureName", module_path=("BasePicture",))
+
+    assert result.texts == ("InitView",)
+
+
+def test_inference_resolves_frame_module_locals() -> None:
+    base_picture = parser_core_parse_source_text(FRAME_MODULE_STRING_SOURCE)
+
+    result = ExactStringInferenceEngine(base_picture).infer("FrameText", module_path=("BasePicture", "FrameRoot"))
+
+    assert result.texts == ("FrameView",)

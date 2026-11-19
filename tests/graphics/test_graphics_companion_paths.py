@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 
 from sattlint.core.syntax import CodeMode
-from sattlint.graphics.graphics_context_helpers import resolve_graphics_companion_path
+from sattlint.graphics.graphics_context_helpers import (
+    graphics_source_context_path,
+    resolve_graphics_companion_path,
+)
 
 
 def _write(path: Path) -> Path:
@@ -78,3 +81,25 @@ def test_missing_mode_keeps_the_draft_family(tmp_path: Path) -> None:
     resolved = resolve_graphics_companion_path(tmp_path / "Pump.s")
 
     assert resolved == graphics
+
+
+@pytest.mark.parametrize(
+    ("graphics_name", "body_name", "expected_body"),
+    [
+        ("Pump.g", "Pump.s", "Pump.s"),
+        ("Pump.y", "Pump.x", "Pump.x"),
+        ("Pump.g", "Pump.x", None),
+        ("Pump.y", "Pump.s", None),
+    ],
+)
+def test_source_context_stays_in_the_graphics_family(
+    tmp_path: Path,
+    graphics_name: str,
+    body_name: str,
+    expected_body: str | None,
+) -> None:
+    body = _write(tmp_path / body_name)
+
+    resolved = graphics_source_context_path(tmp_path / graphics_name)
+
+    assert resolved == (body if expected_body is not None else None)

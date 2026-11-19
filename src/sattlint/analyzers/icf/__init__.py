@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sattlint.parser_api import (
     BasePicture,
@@ -88,6 +88,14 @@ _GROUP_SUFFIX_RULES: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {
 _OPTIONAL_PARAMETER_RECORD_FIELDS: dict[str, set[str]] = {
     "acssignofftype": {"meaning"},
 }
+
+
+@dataclass
+class _UnitTypeBucket:
+    """The units that share one resolved unit type."""
+
+    label: str
+    units: list[str]
 
 
 _decode_icf_text = _decode_icf_text_impl
@@ -216,7 +224,7 @@ def _summarize_signature_diff(
 
 
 def _find_variable_in_module_scope(
-    module_def: Any,
+    module_def: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance,
     base_picture: BasePicture,
     var_name: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
@@ -606,7 +614,7 @@ def _validate_unit_structure(
         if entry.unit:
             unit_entries.setdefault(entry.unit, []).append(entry)
 
-    typed_units: dict[str, dict[str, Any]] = {}
+    typed_units: dict[str, _UnitTypeBucket] = {}
     for unit_name, unit_specific_entries in unit_entries.items():
         type_key, type_label = _resolve_unit_type_label(
             base_picture,
@@ -614,12 +622,11 @@ def _validate_unit_structure(
             unit_specific_entries,
             moduletype_index=moduletype_index,
         )
-        bucket = typed_units.setdefault(type_key, {"label": type_label, "units": []})
-        bucket["units"].append(unit_name)
+        typed_units.setdefault(type_key, _UnitTypeBucket(label=type_label, units=[])).units.append(unit_name)
 
     for bucket in typed_units.values():
-        type_label = str(bucket["label"])
-        units = sorted(bucket["units"])
+        type_label = bucket.label
+        units = sorted(bucket.units)
         if len(units) < 2:
             continue
         reference_unit = units[0]

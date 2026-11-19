@@ -1,5 +1,6 @@
-from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
+from sattline_parser.models.expressions import Assignment, BoolOp, IfStmt, NotOp
 
+from sattlint.analyzers.reset_contamination._reset_path_condition import ResetConditionFlags
 from tests.helpers.analyzers_state_support import *
 
 reset_contamination_helpers = cast(Any, reset_contamination_module)
@@ -216,18 +217,18 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         reset_old_vars_cf,
     )
 
-    assert run_flags == {
-        "run": True,
-        "reset": False,
-        "exact_run": True,
-        "exact_reset": False,
-    }
-    assert reset_flags == {
-        "run": False,
-        "reset": True,
-        "exact_run": False,
-        "exact_reset": True,
-    }
+    assert run_flags == ResetConditionFlags(
+        run=True,
+        reset=False,
+        exact_run=True,
+        exact_reset=False,
+    )
+    assert reset_flags == ResetConditionFlags(
+        run=False,
+        reset=True,
+        exact_run=False,
+        exact_reset=True,
+    )
 
     assert [
         state.reset_state
@@ -283,6 +284,33 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         )
         == []
     )
+
+
+def test_reset_contamination_helpers_classify_compound_guards_conservatively():
+    reset_ref_cf = "opseq.reset"
+    reset_old_vars_cf: set[str] = set()
+
+    and_flags = reset_contamination_helpers._classify_reset_condition(
+        BoolOp(op="AND", operands=(_varref("OpSeq.Reset"), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+    or_flags = reset_contamination_helpers._classify_reset_condition(
+        BoolOp(op="OR", operands=(_varref("OpSeq.Reset"), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+    run_and_flags = reset_contamination_helpers._classify_reset_condition(
+        BoolOp(op="AND", operands=(NotOp(operand=_varref("OpSeq.Reset")), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+
+    # Every operand of an AND holds, so a reset operand guarantees the reset
+    # state. An OR branch may be taken in either state.
+    assert and_flags == ResetConditionFlags(run=False, reset=True, exact_run=False, exact_reset=False)
+    assert or_flags == ResetConditionFlags(run=False, reset=False, exact_run=False, exact_reset=False)
+    assert run_and_flags == ResetConditionFlags(run=True, reset=False, exact_run=False, exact_reset=False)
 
 
 def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():

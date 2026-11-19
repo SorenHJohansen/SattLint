@@ -4,7 +4,7 @@ from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTy
 
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared.instance_paths import (
-    first_instance_path_for_moduletype,
+    collect_instance_paths,
     rewrite_typedef_paths,
 )
 from sattlint.reporting.comment_code_report import CommentCodeHit
@@ -18,16 +18,16 @@ def _instance(name: str, moduletype_name: str) -> ModuleTypeInstance:
     return ModuleTypeInstance(header=_header(name), moduletype_name=moduletype_name, parametermappings=[])
 
 
-def test_first_instance_path_finds_root_origin_invocation() -> None:
+def test_instance_paths_find_root_origin_invocation() -> None:
     bp = BasePicture(header=_header("Root"), submodules=[_instance("InstA", "MyType")])
 
-    assert first_instance_path_for_moduletype(bp, "MyType") == ["Root", "InstA"]
+    assert collect_instance_paths(bp) == {"mytype": [["Root", "InstA"]]}
 
 
-def test_first_instance_path_is_case_insensitive() -> None:
+def test_instance_paths_are_case_insensitive() -> None:
     bp = BasePicture(header=_header("Root"), submodules=[_instance("InstA", "mYtYpE")])
 
-    assert first_instance_path_for_moduletype(bp, "MyType") == ["Root", "InstA"]
+    assert collect_instance_paths(bp) == {"mytype": [["Root", "InstA"]]}
 
 
 def test_rewrite_typedef_path_uses_first_invocation() -> None:
