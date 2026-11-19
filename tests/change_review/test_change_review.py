@@ -32,7 +32,6 @@ from sattlint.change_review import (
     compute_relevance,
     compute_semantic_diff,
     generate_change_review,
-    load_version_snapshot,
 )
 from sattlint.change_review._code_model import _iter_code_statements
 from sattlint.change_review.serialization.json_serializer import review_to_json
@@ -143,12 +142,6 @@ def test_no_static_analyzer_is_invoked(tmp_path: Path, monkeypatch: pytest.Monke
     cfg = build_cfg(tmp_path)
     result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
     assert result.json_path.exists()
-
-
-def test_review_snapshot_collects_no_diagnostics(tmp_path: Path):
-    cfg = build_cfg(tmp_path)
-    official = load_version_snapshot(cfg, "Demo", mode="official")
-    assert official.snapshot.diagnostics == ()
 
 
 def test_function_block_change_produces_compact_review(tmp_path: Path):

@@ -14,7 +14,6 @@ from typing import Any
 
 from sattlint.parser_api import BasePicture, ModuleTypeDef, SourceSpan
 
-from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
 from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
 from ._semantic_helpers import (
@@ -136,7 +135,6 @@ class SemanticSnapshot:
     symbol_table: CanonicalSymbolTable
     type_graph: TypeGraph
     definitions: tuple[SymbolDefinition, ...]
-    diagnostics: tuple[VariableIssue, ...] = ()
     call_signatures: tuple[CallSignatureOccurrence, ...] = ()
     _definitions_by_key: dict[DefinitionKey, SymbolDefinition] = field(
         default_factory=_symbol_definition_map_factory,

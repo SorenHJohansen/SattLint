@@ -53,7 +53,6 @@ class SemanticIndex:
     references_by_file: dict[str, tuple[ReferenceOccurrence, ...]]
     references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]]
     call_signatures: tuple[CallSignatureOccurrence, ...]
-    diagnostics: tuple[VariableIssue, ...]
 
 
 class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
@@ -192,7 +191,6 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 key: tuple(value) for key, value in self._references_by_definition_key.items()
             },
             call_signatures=tuple(self._call_signatures),
-            diagnostics=tuple(self._issues),
         )
 
     def _build_datatype_field_definitions(
