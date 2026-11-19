@@ -1,3 +1,4 @@
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -407,3 +408,57 @@ def test_recursive_module_type_is_analyzed_once_without_overflow() -> None:
     # The instance path is analyzed once; the recursive inner instance and the
     # root typedef list do not duplicate the finding.
     assert reported == [(["Root", "Outer"], "Counter")]
+
+
+COMPOUND_RESET_GUARD_SOURCE = """"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Guard"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   GuardType = MODULEDEFINITION DateCode_ 1
+   LOCALVARIABLES
+      Counter: integer  := 0;
+      Guard: boolean  := False;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+      EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+         IF OpSeq.Reset AND Guard THEN
+            Counter = 0;
+         ELSE
+            Counter = Counter + 1;
+         ENDIF;
+
+      SEQUENCE OpSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
+         SEQINITSTEP Init
+         SEQTRANSITION TrDone WAIT_FOR False
+      ENDSEQUENCE
+   ENDDEF (*GuardType*);
+
+SUBMODULES
+   GuardUnit Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : GuardType;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_compound_reset_guard_classifies_the_branch_as_a_reset_path() -> None:
+    bp = parser_core_parse_source_text(COMPOUND_RESET_GUARD_SOURCE)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    # ``OpSeq.Reset AND Guard`` only runs while the sequence is resetting, so the
+    # write inside that branch is a reset write and covers the run write in the
+    # alternative branch.
+    reported = [(issue.module_path, issue.variable.name) for issue in issues if issue.variable is not None]
+    assert reported == []

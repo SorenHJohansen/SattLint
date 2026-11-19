@@ -52,6 +52,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         "opseq.reset",
         {"opseqresetold"},
         [reset_contamination_helpers._PathState(reset_state="run")],
+        collect_stmt_block_paths=reset_contamination_helpers._collect_stmt_block_paths,
     )
     transition_sub_states = reset_contamination_helpers._collect_seq_node_paths(
         SFCTransitionSub(
@@ -68,6 +69,7 @@ def test_reset_contamination_helpers_collect_if_and_nested_sequence_paths():
         "opseq.reset",
         {"opseqresetold"},
         [reset_contamination_helpers._PathState(reset_state="run")],
+        collect_stmt_block_paths=reset_contamination_helpers._collect_stmt_block_paths,
     )
 
     assert ("counter", "nested") in subsequence_states[0].run_writes

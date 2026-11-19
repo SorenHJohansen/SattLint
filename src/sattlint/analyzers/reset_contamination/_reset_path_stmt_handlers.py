@@ -95,10 +95,10 @@ def _collect_if_stmt_paths(
 
         for cond, stmts in branches:
             cond_flags = _classify_reset_condition(cond, reset_ref_cf, reset_old_vars_cf)
-            saw_run = saw_run or cond_flags["run"]
-            saw_reset = saw_reset or cond_flags["reset"]
-            saw_exact_run = saw_exact_run or cond_flags["exact_run"]
-            saw_exact_reset = saw_exact_reset or cond_flags["exact_reset"]
+            saw_run = saw_run or cond_flags.run
+            saw_reset = saw_reset or cond_flags.reset
+            saw_exact_run = saw_exact_run or cond_flags.exact_run
+            saw_exact_reset = saw_exact_reset or cond_flags.exact_reset
 
             branch_states = _take_condition_branch(state, cond_flags)
             if not branch_states:

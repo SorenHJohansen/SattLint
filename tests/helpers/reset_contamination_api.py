@@ -24,27 +24,17 @@ from sattlint.analyzers.reset_contamination._reset_latching import (
     scan_stmt_block_for_latching,
     scan_stmt_for_latching,
 )
-from sattlint.analyzers.reset_contamination._reset_path_collection import (
-    classify_reset_condition,
-    clone_with_reset_state,
-    collect_assignment_paths,
-    collect_function_call_paths,
-    collect_if_stmt_paths,
-    collect_paths_from_items,
-    collect_paths_in_modulecode,
+from sattlint.analyzers.reset_contamination._reset_path_collection import collect_paths_in_modulecode
+from sattlint.analyzers.reset_contamination._reset_path_collection_sequence import (
     collect_seq_block_paths,
     collect_seq_node_paths,
-    collect_stmt_block_paths,
-    collect_stmt_paths,
+)
+from sattlint.analyzers.reset_contamination._reset_path_condition import (
+    classify_reset_condition,
+    clone_with_reset_state,
     infer_alternative_states,
     is_exact_reset_condition,
     is_exact_run_condition,
-    path_covers_write,
-    record_function_call_writes,
-    record_mode_function_call_writes,
-    record_mode_write,
-    record_write,
-    split_var_ref,
     take_condition_branch,
     varref_casefold,
 )
@@ -53,6 +43,22 @@ from sattlint.analyzers.reset_contamination._reset_path_state import (
     PathState,
     compact_path_states,
     merge_parallel_branch_results,
+)
+from sattlint.analyzers.reset_contamination._reset_path_stmt_handlers import (
+    collect_assignment_paths,
+    collect_function_call_paths,
+    collect_if_stmt_paths,
+    collect_paths_from_items,
+    collect_stmt_block_paths,
+    collect_stmt_paths,
+)
+from sattlint.analyzers.reset_contamination._reset_path_writes import (
+    path_covers_write,
+    record_function_call_writes,
+    record_mode_function_call_writes,
+    record_mode_write,
+    record_write,
+    split_var_ref,
 )
 
 reset_analyzer = public_reset_contamination.ResetContaminationAnalyzer
