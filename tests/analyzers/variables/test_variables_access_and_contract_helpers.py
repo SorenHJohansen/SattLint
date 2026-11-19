@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
+    DataType,
     FloatLiteral,
     ScalarDatatype,
     SFCFork,
@@ -22,6 +23,7 @@ from sattlint.analyzers.variables import _variables_contracts as variables_contr
 from sattlint.parser_api import BasePicture
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
+from sattlint.resolution.type_graph import TypeGraph
 from tests.helpers.variable_access_contract_support import (
     DataflowAnalyzerType,
     dependency_scope_mixin_impl,
@@ -31,6 +33,20 @@ from tests.helpers.variable_access_contract_support import (
 )
 from tests.helpers.variable_test_support import hdr
 from tests.helpers.variable_test_support import ns as _ns
+
+
+def _type_graph(*records: tuple[str, tuple[tuple[str, ScalarDatatype | str], ...]]) -> TypeGraph:
+    return TypeGraph.from_datatypes(
+        [
+            DataType(
+                name=name,
+                description=None,
+                datecode=None,
+                var_list=[Variable(name=field_name, datatype=datatype) for field_name, datatype in fields],
+            )
+            for name, fields in records
+        ]
+    )
 
 
 def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
@@ -210,18 +226,10 @@ def test_shared_dedupe_helpers_cover_seen_and_index_paths() -> None:
 
 def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths() -> None:
     warnings: list[str] = []
-    record_with_known_field = _ns(
-        name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=ScalarDatatype.INTEGER)},
-    )
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "Unknown":
-            return None
-        return record_with_known_field
-
     helper = make_strict_access_helper(
-        record_resolver=_resolve_record,
+        type_graph=_type_graph(
+            ("RecordType", (("Known", ScalarDatatype.INTEGER),)),
+        ),
         warnings=warnings,
     )
 
@@ -311,18 +319,10 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
 
 def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None:
     warnings: list[str] = []
-    record_with_known_field = _ns(
-        name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=ScalarDatatype.INTEGER)},
-    )
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "Unknown":
-            return None
-        return record_with_known_field
-
     helper = make_strict_access_helper(
-        record_resolver=_resolve_record,
+        type_graph=_type_graph(
+            ("RecordType", (("Known", ScalarDatatype.INTEGER),)),
+        ),
         warnings=warnings,
     )
 
@@ -360,12 +360,6 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
     ) == [()]
     assert warnings
 
-    def _resolve_builtin_or_record(name: str) -> object | None:
-        if name in {"Unknown", "opaque"}:
-            return None
-        return record_with_known_field
-
-    helper.type_graph = _ns(record=_resolve_builtin_or_record)
     helper.opaque_builtin_types = {"opaque"}
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
@@ -385,14 +379,10 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
 
 def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
     warnings: list[str] = []
-    helper = make_strict_access_helper(warnings=warnings)
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "RecordType":
-            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype="AnyType")})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_record)
+    helper = make_strict_access_helper(
+        type_graph=_type_graph(("RecordType", (("Leaf", "AnyType"),))),
+        warnings=warnings,
+    )
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
         "RecordType",
@@ -401,14 +391,7 @@ def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
         resolved_var_name="Demo",
     ) == [("Leaf",)]
 
-    cyclic_record = _ns(fields_by_key={"self": _ns(name="Self", datatype="Loop")})
-
-    def _resolve_loop(name: str) -> object | None:
-        if name == "Loop":
-            return cyclic_record
-        return None
-
-    helper.type_graph = _ns(record=_resolve_loop)
+    helper.type_graph = _type_graph(("Loop", (("Self", "Loop"),)))
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
     with pytest.raises(ValueError):
@@ -427,10 +410,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
 
-    def _resolve_nested_record(name: str) -> object | None:
-        return _ns(name="RecordType", fields_by_key={"known": _ns(name="Known", datatype="Nested")})
-
-    helper.type_graph = _ns(record=_resolve_nested_record)
+    helper.type_graph = _type_graph(("RecordType", (("Known", "Nested"),)))
     with pytest.raises(ValueError):
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
@@ -464,12 +444,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
 
     helper.fail_loudly = False
 
-    def _resolve_wrapper(name: str) -> object | None:
-        if name == "Wrapper":
-            return _ns(fields_by_key={"nested": _ns(name="Nested", datatype="AnyType")})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_wrapper)
+    helper.type_graph = _type_graph(("Wrapper", (("Nested", "AnyType"),)))
     helper.unavailable_libraries = set()
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
@@ -479,12 +454,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
         resolved_var_name="Demo",
     ) == [("Nested",)]
 
-    def _resolve_scalar_wrapper(name: str) -> object | None:
-        if name == "ScalarWrapper":
-            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype=ScalarDatatype.INTEGER)})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_scalar_wrapper)
+    helper.type_graph = _type_graph(("ScalarWrapper", (("Leaf", ScalarDatatype.INTEGER),)))
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
         "ScalarWrapper",
@@ -995,3 +965,41 @@ def test_issue_kind_gates_read_the_analyzer_selection() -> None:
     assert variables_contracts_impl.should_collect_issue_kind(unrestricted, IssueKind.UNUSED)
     assert variables_contracts_impl.should_collect_any_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
     assert not variables_contracts_impl.explicitly_selected_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
+
+
+def test_leaf_path_expansion_is_shared_between_graph_and_strict_helper() -> None:
+    graph = _type_graph(
+        ("Outer", (("Nested", "Mid"), ("Direct", ScalarDatatype.INTEGER))),
+        ("Mid", (("Inner", ScalarDatatype.INTEGER),)),
+        ("Loop", (("Self", "Loop"),)),
+    )
+    helper = make_strict_access_helper(type_graph=graph, fail_loudly=False, unavailable_libraries=set())
+
+    strict_paths = variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "Outer",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    )
+    assert tuple(strict_paths) == tuple(graph.iter_leaf_field_paths("Outer"))
+
+    assert tuple(graph.iter_leaf_field_paths("Loop")) == (("Self",),)
+    with pytest.raises(ValueError, match="datatype cycle"):
+        variables_access_impl._iter_leaf_field_paths_strict(
+            helper,
+            "Loop",
+            fn_name="Fn",
+            syntactic_ref="Ref",
+            resolved_var_name="Demo",
+        )
+
+    assert tuple(graph.iter_leaf_field_paths("MissingRecord")) == ((),)
+    with pytest.raises(ValueError, match="unknown record datatype"):
+        variables_access_impl._iter_leaf_field_paths_strict(
+            make_strict_access_helper(type_graph=graph, fail_loudly=True, unavailable_libraries=set()),
+            "MissingRecord",
+            fn_name="Fn",
+            syntactic_ref="Ref",
+            resolved_var_name="Demo",
+        )

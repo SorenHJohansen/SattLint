@@ -10,6 +10,7 @@ from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 from ...resolution import AccessKind, CanonicalPath
 from ...resolution.common import varname_full
 from ...resolution.scope import ScopeContext
+from ...resolution.type_graph import LeafExpansionIssue, LeafExpansionPolicy
 from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import matches_root_origin
 
@@ -297,65 +298,37 @@ def _iter_leaf_field_paths_strict(
     syntactic_ref: str,
     resolved_var_name: str,
 ) -> list[tuple[str, ...]]:
-    if isinstance(root_type, ScalarDatatype):
-        return [()]
-    if is_anytype_name(root_type):
-        return [()]
-
-    start = str(root_type)
-    results: list[tuple[str, ...]] = []
-    stack: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [(start, (), ())]
-
-    while stack:
-        type_name, prefix, chain = stack.pop()
-        key = type_name.casefold()
-
-        if key in {entry.casefold() for entry in chain}:
+    def _on_issue(issue: LeafExpansionIssue) -> None:
+        if issue.kind == "cycle":
             raise ValueError(
                 f"{fn_name}: datatype cycle detected while expanding {resolved_var_name!r} "
-                f"(ref {syntactic_ref!r}) at record datatype {type_name!r}."
+                f"(ref {syntactic_ref!r}) at record datatype {issue.type_name!r}."
             )
-
-        record_type = self.type_graph.record(type_name)
-        if record_type is None:
-            if key in self.opaque_builtin_types:
-                results.append(prefix)
-                continue
-            if self.unavailable_libraries:
-                self.warn(
-                    f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                    f"uses unknown record datatype {type_name!r}. Treating as leaf due to unavailable libraries."
-                )
-                results.append(prefix)
-                continue
-            if is_anytype_name(type_name):
-                results.append(prefix)
-                continue
-            if self.fail_loudly:
-                raise ValueError(
-                    f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                    f"uses unknown record datatype {type_name!r}."
-                )
+        if self.unavailable_libraries:
             self.warn(
                 f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                f"uses unknown record datatype {type_name!r}. Treating as leaf."
+                f"uses unknown record datatype {issue.type_name!r}. Treating as leaf due to unavailable libraries."
             )
-            results.append(prefix)
-            continue
+            return
+        if self.fail_loudly:
+            raise ValueError(
+                f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                f"uses unknown record datatype {issue.type_name!r}."
+            )
+        self.warn(
+            f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+            f"uses unknown record datatype {issue.type_name!r}. Treating as leaf."
+        )
 
-        if not record_type.fields_by_key:
-            results.append(prefix)
-            continue
+    def _is_opaque(type_name: str) -> bool:
+        return type_name.casefold() in self.opaque_builtin_types or is_anytype_name(type_name)
 
-        next_chain = (*chain, type_name)
-        for field in record_type.fields_by_key.values():
-            new_prefix = (*prefix, field.name)
-            if isinstance(field.datatype, ScalarDatatype):
-                results.append(new_prefix)
-            else:
-                stack.append((str(field.datatype), new_prefix, next_chain))
-
-    return results
+    return list(
+        self.type_graph.expand_leaf_paths(
+            root_type,
+            policy=LeafExpansionPolicy(is_opaque=_is_opaque, on_issue=_on_issue),
+        )
+    )
 
 
 def _mark_record_wide_builtin_access(

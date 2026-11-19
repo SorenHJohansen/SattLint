@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import cache
+from typing import Literal
 
 from sattlint.parser_api import BUILTIN_RECORD_SPECS, BasePicture, DataType, ScalarDatatype, Variable
 
@@ -39,6 +40,42 @@ class FieldDef:
 class RecordDef:
     name: str
     fields_by_key: dict[str, FieldDef]
+
+
+LeafExpansionIssueKind = Literal["cycle", "unknown_record"]
+
+
+@dataclass(frozen=True, slots=True)
+class LeafExpansionIssue:
+    """A structural problem found while expanding a datatype's leaf paths."""
+
+    kind: LeafExpansionIssueKind
+    type_name: str
+
+
+def _never_opaque(_type_name: str) -> bool:
+    return False
+
+
+def _ignore_leaf_issue(_issue: LeafExpansionIssue) -> None:
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class LeafExpansionPolicy:
+    """Caller policy for datatypes that cannot be expanded further.
+
+    ``is_opaque`` names types that are intentionally treated as leaves without
+    reporting, and ``on_issue`` receives cycles and unknown records. Both kinds
+    still terminate at the current prefix, so the result stays a set of leaf
+    paths regardless of the caller's reaction.
+    """
+
+    is_opaque: Callable[[str], bool] = _never_opaque
+    on_issue: Callable[[LeafExpansionIssue], None] = _ignore_leaf_issue
+
+
+_DEFAULT_LEAF_POLICY = LeafExpansionPolicy()
 
 
 class TypeGraph:
@@ -107,17 +144,44 @@ class TypeGraph:
 
         yield from self._leaf_paths_for(_cf(root_type))
 
+    def expand_leaf_paths(
+        self,
+        root_type: ScalarDatatype | str,
+        *,
+        policy: LeafExpansionPolicy = _DEFAULT_LEAF_POLICY,
+    ) -> Iterable[tuple[str, ...]]:
+        """Yield leaf paths using one traversal shared by every caller.
+
+        The default policy silently treats cycles and unknown records as
+        leaves; callers that need diagnostics or strictness pass their own
+        policy. Ordering is identical for every policy.
+        """
+        if isinstance(root_type, ScalarDatatype):
+            yield ()
+            return
+
+        root_name = str(root_type)
+        if policy.is_opaque(root_name):
+            yield ()
+            return
+
+        yield from self._expand_leaf_paths(_cf(root_name), policy)
+
     def _leaf_paths_for(self, type_key: str) -> tuple[tuple[str, ...], ...]:
         """Expand one datatype's leaf paths once and reuse them for later variables."""
         cached = self._leaf_paths_by_key.get(type_key)
         if cached is not None:
             return cached
 
-        paths = tuple(self._expand_leaf_paths(type_key))
+        paths = tuple(self._expand_leaf_paths(type_key, _DEFAULT_LEAF_POLICY))
         self._leaf_paths_by_key[type_key] = paths
         return paths
 
-    def _expand_leaf_paths(self, root_key: str) -> Iterable[tuple[str, ...]]:
+    def _expand_leaf_paths(
+        self,
+        root_key: str,
+        policy: LeafExpansionPolicy,
+    ) -> Iterable[tuple[str, ...]]:
         stack: list[tuple[str, tuple[str, ...], frozenset[str]]] = [(root_key, (), frozenset())]
 
         while stack:
@@ -125,7 +189,8 @@ class TypeGraph:
             tkey = _cf(tname)
             rec = self._records_by_key.get(tkey)
             if rec is None:
-                # Unknown external type; treat as leaf.
+                # Unknown external type; treat as leaf after the caller reacts.
+                policy.on_issue(LeafExpansionIssue(kind="unknown_record", type_name=tname))
                 yield prefix
                 continue
 
@@ -135,6 +200,7 @@ class TypeGraph:
 
             if tkey in ancestors:
                 # Cycle; stop expanding.
+                policy.on_issue(LeafExpansionIssue(kind="cycle", type_name=tname))
                 yield prefix
                 continue
 
