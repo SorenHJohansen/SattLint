@@ -33,6 +33,9 @@ from sattline_parser import (
     preprocess_sl_text,
     validate_basepicture,
 )
+from sattline_parser import (
+    __version__ as _parser_version,
+)
 from sattline_parser.api import (
     build_lark_parser,
     load_source_text,
@@ -173,8 +176,13 @@ from sattline_parser.types import (
     suggest_datatype_name,
 )
 
+#: The installed parser release. Cache keys include it so a parser upgrade
+#: cannot reuse trees parsed by different grammar semantics.
+PARSER_VERSION = _parser_version
+
 __all__ = [
     "BUILTIN_RECORD_SPECS",
+    "PARSER_VERSION",
     "Alignment",
     "AssignClause",
     "Assignment",
