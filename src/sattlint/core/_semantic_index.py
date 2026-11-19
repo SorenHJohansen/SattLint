@@ -27,6 +27,7 @@ from ..resolution import (
 )
 from ..resolution.scope import ScopeContext
 from ._semantic_helpers import (
+    SourceFileKey,
     cf,
     format_datatype,
     resolve_field_datatype,
@@ -50,7 +51,7 @@ class SemanticIndex:
     definitions: tuple[SymbolDefinition, ...]
     definitions_by_key: dict[tuple[str, ...], SymbolDefinition]
     moduletype_index: dict[str, list[ModuleTypeDef]]
-    references_by_file: dict[str, tuple[ReferenceOccurrence, ...]]
+    references_by_source: dict[SourceFileKey, tuple[ReferenceOccurrence, ...]]
     references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]]
     call_signatures: tuple[CallSignatureOccurrence, ...]
 
@@ -80,7 +81,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             v.name.casefold(): v for v in (*(base_picture.moduleparameters or []), *(base_picture.localvariables or []))
         }
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
-        self._references_by_file: dict[str, list[ReferenceOccurrence]] = {}
+        self._references_by_source: dict[SourceFileKey, list[ReferenceOccurrence]] = {}
         self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
         self._call_signatures: list[CallSignatureOccurrence] = []
         self._moduletype_index: dict[str, list[ModuleTypeDef]] = {}
@@ -186,7 +187,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             definitions=tuple(self._definitions_by_key.values()),
             definitions_by_key=self._definitions_by_key,
             moduletype_index=self._moduletype_index,
-            references_by_file={key: tuple(value) for key, value in self._references_by_file.items()},
+            references_by_source={key: tuple(value) for key, value in self._references_by_source.items()},
             references_by_definition_key={
                 key: tuple(value) for key, value in self._references_by_definition_key.items()
             },

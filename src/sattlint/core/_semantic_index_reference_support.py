@@ -9,7 +9,7 @@ from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, 
 
 from ..resolution import CanonicalPath, decorate_segment
 from ..resolution.scope import ScopeContext
-from ._semantic_helpers import source_file_key, try_resolve_instance_typedef
+from ._semantic_helpers import reference_file_key, try_resolve_instance_typedef
 from ._semantic_snapshot import ReferenceOccurrence
 from .ast_tools import iter_call_sites, iter_variable_refs
 from .call_signatures import CallSignatureOccurrence, resolve_call_signature
@@ -29,7 +29,7 @@ class SemanticIndexReferenceSupportMixin:
         source_library: str | None,
         variable_filter: Callable[[Variable], bool] | None = None,
     ) -> None:
-        file_key = source_file_key(source_file)
+        file_key = reference_file_key(source_file, source_library)
         if file_key is None or node is None:
             return
 
@@ -71,7 +71,7 @@ class SemanticIndexReferenceSupportMixin:
                 segment_texts=reference_segments,
                 definition_keys=tuple(definition_keys),
             )
-            self._references_by_file.setdefault(file_key, []).append(occurrence)
+            self._references_by_source.setdefault(file_key, []).append(occurrence)
 
             if not self.build_reference_index:
                 continue
