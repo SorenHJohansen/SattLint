@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownVariableType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Setup view, target selection, and project opening."""
 
 from __future__ import annotations
@@ -15,13 +15,19 @@ from sattlint.project.io import init_project, load_project
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
 from sattlint.ui import _app_textual_widgets as app_textual_widgets_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     attach_test_project,
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
     query_any_screen,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_setup_browser_gains_config_mode_class_when_dirty() -> None:
@@ -60,7 +66,7 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
         (program_dir / "TargetA.l").write_text("deps")
         (abb_dir / "TargetA.x").write_text("official")
 
-        cfg = {
+        cfg: dict[str, object] = {
             "analyzed_programs_and_libraries": [],
             "program_dir": str(program_dir),
             "ABB_lib_dir": str(abb_dir),
@@ -270,7 +276,7 @@ def test_textual_setup_target_button_click_adds_and_removes_target(tmp_path: Pat
         program_dir.mkdir()
         (program_dir / "TargetA.s").write_text("draft")
 
-        cfg = {
+        cfg: dict[str, object] = {
             "analyzed_programs_and_libraries": [],
             "program_dir": str(program_dir),
             "ABB_lib_dir": "",

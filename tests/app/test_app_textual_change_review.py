@@ -1,4 +1,4 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Wiring tests: TUI action, handler registration, and no CLI command."""
 
 from __future__ import annotations
@@ -17,11 +17,17 @@ from sattlint.cli import startup as app_module
 from sattlint.cli._output import CliError
 from sattlint.cli.startup import analysis_handler_fns
 from sattlint.config.types import ConfigDict
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 pytestmark = pytest.mark.unit
 
