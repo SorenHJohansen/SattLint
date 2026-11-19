@@ -11,7 +11,7 @@ from ._registry_delivery_data import default_delivery_templates
 
 @dataclass(frozen=True)
 class AnalyzerDeliveryMetadata:
-    scope: str
+    delivery_scope: str
     implementation_bucket: str
     output_artifacts: tuple[str, ...] = ()
     cli_exposed: bool = False
@@ -31,7 +31,7 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
     shared_fixtures = ("tests/fixtures/sample_sattline_files",)
     return {
         template.key: AnalyzerDeliveryMetadata(
-            scope=template.scope,
+            delivery_scope=template.delivery_scope,
             implementation_bucket=template.implementation_bucket,
             cli_exposed=template.cli_exposed,
             acceptance_tests=template.acceptance_tests,
@@ -48,13 +48,13 @@ def build_delivery_metadata(spec: AnalyzerSpec) -> AnalyzerDeliveryMetadata:
     base = _base_delivery_metadata_by_analyzer().get(spec.key)
     if base is None:
         return AnalyzerDeliveryMetadata(
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="analyzers",
             output_artifacts=(summary_output_for_analyzer(spec.key),),
         )
 
     return AnalyzerDeliveryMetadata(
-        scope=base.scope,
+        delivery_scope=base.delivery_scope,
         implementation_bucket=base.implementation_bucket,
         output_artifacts=(summary_output_for_analyzer(spec.key),),
         cli_exposed=base.cli_exposed,
