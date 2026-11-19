@@ -85,7 +85,11 @@ def load_source_snapshot(
     workspace_root: Path | None = None,
     debug: bool = False,
 ) -> SemanticSnapshot:
-    base_picture = parser_core_parse_source_text(source_text, debug=(_emit_parser_debug if debug else None))
+    base_picture = parser_core_parse_source_text(
+        source_text,
+        debug=(_emit_parser_debug if debug else None),
+        source_path=Path(source_file),
+    )
     return build_source_snapshot_from_basepicture(
         base_picture,
         source_file,
