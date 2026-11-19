@@ -187,6 +187,16 @@ def test_init_project_with_dirs(tmp_path: Path) -> None:
     assert project.data["other_lib_dirs"] == ["/opt/satt/extra"]
 
 
+def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> None:
+    project = init_project(tmp_path / "proj.slproj")
+
+    project.data["analyzed_programs_and_libraries"].append("Demo")
+    project.data["analysis"]["validate"] = True
+
+    assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
+    assert "validate" not in DEFAULT_PROJECT_DICT["analysis"]
+
+
 def test_normalize_converters() -> None:
     assert _normalize(Path("/x/y")) == str(Path("/x/y"))
     assert _normalize([Path("a"), "b"]) == ["a", "b"]

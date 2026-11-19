@@ -425,6 +425,19 @@ def test_project_show_accepts_directory_and_reports_ambiguous(
     assert payload["error"]["code"] == "project_ambiguous"
 
 
+def test_project_show_rejects_a_non_table_analysis(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    project.write_text(project.read_text(encoding="utf-8") + "analysis = 'nope'\n", encoding="utf-8")
+
+    code = run_cli(["project", "show", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "project_invalid"
+    assert "analysis" in payload["error"]["message"]
+
+
 def test_project_show_reports_missing_project(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     code = run_cli(
         ["project", "show", "--project", str(tmp_path / "absent.slproj"), "--format", "json"],
