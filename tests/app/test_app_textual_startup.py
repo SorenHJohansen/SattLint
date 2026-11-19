@@ -1,12 +1,13 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownVariableType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Startup wiring, interaction bridge, and shell title behavior."""
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -14,11 +15,17 @@ from sattlint import ui as app_textual
 from sattlint.cli import startup as app
 from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     typed_cfg,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_interaction_bridge_returns_responses() -> None:
@@ -132,8 +139,9 @@ def test_run_interactive_session_dispatches_to_textual_shell(monkeypatch: pytest
     assert seen["cfg"] == {"debug": False}
     assert "analysis_handler_fns" in seen
     assert isinstance(seen["analysis_handler_fns"], dict)
-    assert seen["analysis_handler_fns"]
-    assert all(callable(fn) for fn in seen["analysis_handler_fns"].values())
+    analysis_handler_fns = cast(dict[str, Callable[..., object]], seen["analysis_handler_fns"])
+    assert analysis_handler_fns
+    assert all(callable(fn) for fn in analysis_handler_fns.values())
 
 
 def test_run_textual_shell_passes_ensure_ast_cache_fn_to_app(monkeypatch: pytest.MonkeyPatch) -> None:

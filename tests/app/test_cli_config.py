@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false
 """Config-loading warnings for keys that would otherwise be silently stripped."""
 
 from __future__ import annotations

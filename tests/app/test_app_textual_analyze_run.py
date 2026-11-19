@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Running analyzers and streaming their output into the shell."""
 
 from __future__ import annotations
@@ -14,11 +14,17 @@ from sattlint import ui as app_textual
 from sattlint.project.io import init_project
 from sattlint.ui import _app_textual_setup as app_textual_setup_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
@@ -383,7 +389,10 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
     )
     app_instance._analyze_selected_entry_ids = {"state-inference"}
 
-    monkeypatch.setattr(app_instance, "_write_output", lambda text: lines.extend(text.splitlines()))
+    def record_output(text: str) -> None:
+        lines.extend(text.splitlines())
+
+    monkeypatch.setattr(app_instance, "_write_output", record_output)
     monkeypatch.setattr(
         app_instance,
         "_start_action",
@@ -392,11 +401,7 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
             action_fn(),
         ),
     )
-    monkeypatch.setattr(
-        app_instance,
-        "_emit_output_from_thread",
-        lambda text: lines.extend(text.splitlines()),
-    )
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", record_output)
 
     app_instance._run_selected_analyzers()
 

@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Dialogs, error modals, and the AST refresh modal."""
 
 from __future__ import annotations
@@ -16,12 +16,18 @@ from sattlint import ui as app_textual
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
 from sattlint.ui import _app_textual_widgets as app_textual_widgets_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
     query_any_screen,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_ast_refresh_modal_renders_only_the_status_tail() -> None:

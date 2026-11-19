@@ -1,11 +1,12 @@
-# pyright: reportArgumentType=false
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from sattlint.cli import menu as menu_module
+from sattlint.config.types import ConfigDict
 from sattlint.project import support as support_module
 
 
@@ -84,19 +85,19 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     assert printed[15] == "  - [Root.L1] '+MissingPanel'"
     assert printed[16] == "    module 'MissingPanel' was not found under 'Root.L1'"
     assert support_module.extract_warning_name("plain warning") is None
-    assert support_module.get_analyzed_targets({"analyzed_programs_and_libraries": "bad"}) == []
+    assert support_module.get_analyzed_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": "bad"})) == []
     assert (
-        menu_module.summarize_targets({"analyzed_programs_and_libraries": ["A", "B", "C", "D"]})
+        menu_module.summarize_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": ["A", "B", "C", "D"]}))
         == "4 targets configured: A, B, C, ..."
     )
     with pytest.raises(RuntimeError):
-        support_module.require_analyzed_targets({"analyzed_programs_and_libraries": []})
+        support_module.require_analyzed_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": []}))
 
 
 def test_configured_icf_files_cover_error_paths(tmp_path: Path) -> None:
-    assert support_module.configured_icf_files({"icf_dir": ""}) == (None, [])
+    assert support_module.configured_icf_files(cast(ConfigDict, {"icf_dir": ""})) == (None, [])
 
     missing_dir = tmp_path / "missing"
-    icf_dir, icf_files = support_module.configured_icf_files({"icf_dir": str(missing_dir)})
+    icf_dir, icf_files = support_module.configured_icf_files(cast(ConfigDict, {"icf_dir": str(missing_dir)}))
     assert icf_dir == missing_dir
     assert icf_files == []

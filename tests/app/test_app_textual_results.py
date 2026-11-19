@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -447,11 +447,11 @@ def test_results_tree_announces_shown_results_only_when_the_run_changes(
     messages: list[str] = []
     populated: list[str] = []
     app_instance = _tree_render_app(messages)
-    monkeypatch.setattr(
-        results_module,
-        "_populate_module_navigation",
-        lambda _tree, record, **_kwargs: populated.append(record.run_id),
-    )
+
+    def record_populated(_tree: object, record: RunRecord, **_kwargs: object) -> None:
+        populated.append(record.run_id)
+
+    monkeypatch.setattr(results_module, "_populate_module_navigation", record_populated)
     announcement = "Select a module to inspect its findings."
 
     results_module._render_results_tree(app_instance, _run_record("r1"))

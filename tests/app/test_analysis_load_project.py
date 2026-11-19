@@ -1,12 +1,12 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import (
-    Any,
-    cast,
-)
+from typing import Any, cast
 
 import pytest
+from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.project import LoadValidation
 
 from sattlint.application import (
     checks as checks_application,
@@ -17,12 +17,17 @@ from sattlint.application import (
 from sattlint.application import (
     project as project_application,
 )
+from sattlint.cache import ASTCache
 from sattlint.config import DEFAULT_CONFIG
+from sattlint.config.types import ConfigDict
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading as analysis_loading_module
+from sattlint.project.loader_config import LoadStageTimingSink
+from sattlint.project.parser_adapter import ParserProjectBinding
 from tests.helpers import AnalysisGraphStub, named_object
 
 
-def test_load_project_saves_cache_after_successful_merge(monkeypatch):
+def test_load_project_saves_cache_after_successful_merge(monkeypatch: pytest.MonkeyPatch):
     saved: dict[str, object] = {}
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
@@ -33,23 +38,28 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     )
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             assert key == "cache-key"
             return frozenset()
 
-        def save(self, key, **kwargs):
+        def save(self, key: str, **kwargs: object) -> None:
             saved.update({"key": key, **kwargs})
 
     def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
+        cfg: Mapping[str, object],
+        *,
+        status_update_fn: Callable[[str], None] | None = None,
+        refresh_mode: str = "full",
+        stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: LoadStageTimingSink | None = None,
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             status_update_fn=status_update_fn,
             refresh_mode=refresh_mode,
@@ -66,14 +76,17 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
     )
 
@@ -86,7 +99,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     assert saved["files"] == {Path("programs/TargetA.s")}
 
 
-def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch):
+def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -96,8 +109,13 @@ def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch):
     )
 
     def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
+        cfg: Mapping[str, object],
+        *,
+        status_update_fn: Callable[[str], None] | None = None,
+        refresh_mode: str = "full",
+        stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: LoadStageTimingSink | None = None,
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             status_update_fn=status_update_fn,
             refresh_mode=refresh_mode,
@@ -112,14 +130,17 @@ def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         get_cache_dir_fn=lambda: None,
     )
@@ -127,7 +148,7 @@ def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch):
     assert result == ("merged", graph)
 
 
-def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
+def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -137,17 +158,17 @@ def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
     )
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             return frozenset()
 
-        def save(self, *args, **kwargs):
+        def save(self, *args: object, **kwargs: object) -> None:
             pytest.fail("an unresolved graph must not be persisted")
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
@@ -159,14 +180,17 @@ def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
     )
 
@@ -174,16 +198,16 @@ def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch):
     assert graph.analysis_cache_key is None
 
 
-def test_load_project_raises_default_error_when_target_missing(monkeypatch):
+def test_load_project_raises_default_error_when_target_missing(monkeypatch: pytest.MonkeyPatch):
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             assert key == "cache-key"
             return frozenset()
 
@@ -204,19 +228,22 @@ def test_load_project_raises_default_error_when_target_missing(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Target 'TargetA' was not parsed"):
         project_application.load_project(
-            {
-                "program_dir": "programs",
-                "other_lib_dirs": [],
-                "ABB_lib_dir": "abb",
-                "mode": "draft",
-                "debug": False,
-                "analyzed_programs_and_libraries": ["TargetA"],
-            },
+            cast(
+                ConfigDict,
+                {
+                    "program_dir": "programs",
+                    "other_lib_dirs": [],
+                    "ABB_lib_dir": "abb",
+                    "mode": "draft",
+                    "debug": False,
+                    "analyzed_programs_and_libraries": ["TargetA"],
+                },
+            ),
             cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         )
 
 
-def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch):
+def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         project_application, "ASTCache", lambda cache_dir: pytest.fail(f"unexpected cache init: {cache_dir}")
     )
@@ -224,18 +251,21 @@ def test_load_project_raises_value_error_when_loader_config_missing(monkeypatch)
 
     with pytest.raises(ValueError, match="Missing loader config keys: debug"):
         project_application.load_project(
-            {
-                "program_dir": "programs",
-                "other_lib_dirs": [],
-                "ABB_lib_dir": "abb",
-                "mode": "draft",
-                "analyzed_programs_and_libraries": ["TargetA"],
-            },
+            cast(
+                ConfigDict,
+                {
+                    "program_dir": "programs",
+                    "other_lib_dirs": [],
+                    "ABB_lib_dir": "abb",
+                    "mode": "draft",
+                    "analyzed_programs_and_libraries": ["TargetA"],
+                },
+            ),
             cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         )
 
 
-def test_load_program_ast_returns_loaded_program(monkeypatch):
+def test_load_program_ast_returns_loaded_program(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
@@ -243,13 +273,16 @@ def test_load_program_ast_returns_loaded_program(monkeypatch):
     )
 
     result = project_application.load_program_ast(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+            },
+        ),
         "TargetA",
     )
 
@@ -257,22 +290,22 @@ def test_load_program_ast_returns_loaded_program(monkeypatch):
 
 
 def test_ensure_ast_cache_returns_true_without_targets():
-    assert project_application.ensure_ast_cache({}, get_analyzed_targets_fn=lambda _cfg: []) is True
+    assert project_application.ensure_ast_cache(cast(ConfigDict, {}), get_analyzed_targets_fn=lambda _cfg: []) is True
 
 
-def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeypatch):
+def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub()
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return {"project": (root_bp, graph)}
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             assert key == "cache-key"
             return frozenset({Path("programs/TargetA.z")})
 
@@ -285,14 +318,17 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
     )
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         refresh_mode="ast-only",
     )
@@ -302,36 +338,51 @@ def test_load_project_uses_cached_ast_only_project_and_manifest_metadata(monkeyp
     assert graph.analysis_manifest_files == frozenset({Path("programs/TargetA.z")})
 
 
-def test_load_project_ast_only_collects_stage_timings(monkeypatch):
+def test_load_project_ast_only_collects_stage_timings(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(ast_by_name={"TargetA": root_bp})
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             assert key == "cache-key"
             return frozenset()
 
-        def save(self, *args, **kwargs):
+        def save(self, *args: object, **kwargs: object) -> None:
             pytest.fail("ast-only refresh should return before saving cache")
 
-    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
+    def fake_build_parser_binding(
+        cfg: Mapping[str, object],
+        *,
+        status_update_fn: Callable[[str], None] | None = None,
+        stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: LoadStageTimingSink | None = None,
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             stage_timing_sink=stage_timing_sink,
             graphics_timing_sink=graphics_timing_sink,
         )
 
-    def fake_load_parser_graph(binding, target_name, *, strict, lib_names, validate, index_program_view):
+    def fake_load_parser_graph(
+        binding: ParserProjectBinding,
+        target_name: str,
+        *,
+        strict: bool,
+        lib_names: dict[str, str],
+        validate: LoadValidation,
+        index_program_view: bool,
+    ) -> AnalysisGraphStub:
         assert strict is False
         assert validate.value == "none"
         assert index_program_view is False
         assert binding.stage_timing_sink is not None
+        assert binding.graphics_timing_sink is not None
         binding.stage_timing_sink("TargetA", "load_or_parse", 0.1)
         binding.stage_timing_sink("TargetA", "validate", 0.2)
         binding.graphics_timing_sink("TargetA", "attach-graphics", 0.3)
@@ -345,14 +396,17 @@ def test_load_project_ast_only_collects_stage_timings(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         refresh_mode="ast-only",
         collect_stage_timings=True,
@@ -365,27 +419,32 @@ def test_load_project_ast_only_collects_stage_timings(monkeypatch):
     assert graph.graphics_load_timings_by_program == {"TargetA": {"attach-graphics": 0.3}}
 
 
-def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
+def test_load_project_uses_custom_target_load_error_factory(monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] = {}
 
     class CustomLoadError(RuntimeError):
         pass
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             assert key == "cache-key"
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             assert key == "cache-key"
             return frozenset()
 
     def fake_build_parser_binding(
-        cfg, *, status_update_fn=None, refresh_mode="full", stage_timing_sink=None, graphics_timing_sink=None
-    ):
+        cfg: Mapping[str, object],
+        *,
+        status_update_fn: Callable[[str], None] | None = None,
+        refresh_mode: str = "full",
+        stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: LoadStageTimingSink | None = None,
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             status_update_fn=status_update_fn,
             refresh_mode=refresh_mode,
@@ -408,20 +467,23 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
     )
     monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: ["DepA"])
 
-    def make_error(target_name, **kwargs):
+    def make_error(target_name: str, **kwargs: object) -> Exception:
         captured.update({"target_name": target_name, **kwargs})
         return CustomLoadError(f"custom:{target_name}")
 
     with pytest.raises(CustomLoadError, match="custom:TargetA"):
         project_application.load_project(
-            {
-                "program_dir": "programs",
-                "other_lib_dirs": [],
-                "ABB_lib_dir": "abb",
-                "mode": "draft",
-                "debug": False,
-                "analyzed_programs_and_libraries": ["TargetA"],
-            },
+            cast(
+                ConfigDict,
+                {
+                    "program_dir": "programs",
+                    "other_lib_dirs": [],
+                    "ABB_lib_dir": "abb",
+                    "mode": "draft",
+                    "debug": False,
+                    "analyzed_programs_and_libraries": ["TargetA"],
+                },
+            ),
             cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
             target_load_error_factory=make_error,
         )
@@ -436,7 +498,7 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch):
     }
 
 
-def test_load_program_ast_raises_when_program_missing(monkeypatch):
+def test_load_program_ast_raises_when_program_missing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         analysis_loading_module,
         "_load_parser_graph",
@@ -445,29 +507,39 @@ def test_load_program_ast_raises_when_program_missing(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
         project_application.load_program_ast(
-            {
-                "program_dir": "programs",
-                "other_lib_dirs": [],
-                "ABB_lib_dir": "abb",
-                "mode": "draft",
-                "debug": False,
-            },
+            cast(
+                ConfigDict,
+                {
+                    "program_dir": "programs",
+                    "other_lib_dirs": [],
+                    "ABB_lib_dir": "abb",
+                    "mode": "draft",
+                    "debug": False,
+                },
+            ),
             "TargetA",
         )
 
 
-def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monkeypatch):
+def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monkeypatch: pytest.MonkeyPatch):
     seen: list[tuple[str | None, bool, bool]] = []
 
-    def fake_load_project(_cfg, target_name=None, *, use_cache=True, collect_stage_timings=False, **_kwargs):
+    def fake_load_project(
+        _cfg: ConfigDict,
+        target_name: str | None = None,
+        *,
+        use_cache: bool = True,
+        collect_stage_timings: bool = False,
+        **_kwargs: object,
+    ) -> tuple[BasePicture, ProjectGraph]:
         seen.append((target_name, use_cache, collect_stage_timings))
-        return named_object(target_name or "Unknown"), AnalysisGraphStub()
+        return cast(tuple[BasePicture, ProjectGraph], (named_object(target_name or "Unknown"), AnalysisGraphStub()))
 
     monkeypatch.setattr(project_application, "emit_output", lambda *_args, **_kwargs: None)
 
     results = list(
         project_application.iter_loaded_projects(
-            {"analyzed_programs_and_libraries": ["TargetA"], "debug": True},
+            cast(ConfigDict, {"analyzed_programs_and_libraries": ["TargetA"], "debug": True}),
             use_cache=False,
             require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
             load_project_fn=fake_load_project,
@@ -478,7 +550,7 @@ def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monke
     assert seen == [("TargetA", False, True)]
 
 
-def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch):
+def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     load_calls: list[tuple[str, bool]] = []
 
@@ -491,32 +563,34 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
     }
 
     class FakeCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def has_payload(self, key):
+        def has_payload(self, key: str) -> bool:
             return cache_state[key][0]
 
-        def has_manifest(self, key):
+        def has_manifest(self, key: str) -> bool:
             return cache_state[key][1]
 
-        def has_cache_artifact(self, key):
+        def has_cache_artifact(self, key: str) -> bool:
             return cache_state[key][2]
 
-    def fake_load_project(_cfg, *, target_name, use_cache, **kwargs):
+    def fake_load_project(
+        _cfg: ConfigDict, *, target_name: str, use_cache: bool, **_kwargs: object
+    ) -> tuple[BasePicture, ProjectGraph]:
         load_calls.append((target_name, use_cache))
         if target_name == "TargetE":
             raise RuntimeError("boom")
-        return SimpleNamespace(), SimpleNamespace()
+        return cast(tuple[BasePicture, ProjectGraph], (SimpleNamespace(), SimpleNamespace()))
 
     monkeypatch.setattr(project_application, "emit_output", lambda message: lines.append(str(message)))
 
     ok = project_application.ensure_ast_cache(
-        {},
+        cast(ConfigDict, {}),
         get_analyzed_targets_fn=lambda _cfg: ["TargetA", "TargetB", "TargetC", "TargetD", "TargetE"],
         cache_key_for_target_fn=lambda _cfg, target_name: target_name,
         load_project_fn=fake_load_project,
-        ast_cache_cls=FakeCache,
+        ast_cache_cls=cast(type[ASTCache], FakeCache),
         get_cache_dir_fn=lambda: Path("cache-dir"),
     )
 
@@ -535,14 +609,14 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
     assert any("Failed to build AST cache for TargetE: boom" in line for line in lines)
 
 
-def test_run_checks_success_path_pauses(monkeypatch):
+def test_run_checks_success_path_pauses(monkeypatch: pytest.MonkeyPatch):
     lines: list[str] = []
     pauses: list[str] = []
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
 
     checks_application.run_checks(
-        DEFAULT_CONFIG.copy(),
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["state-inference"],
         iter_loaded_projects_fn=cast(
             Any,
@@ -571,7 +645,7 @@ def test_run_checks_success_path_pauses(monkeypatch):
     assert pauses == ["pause"]
 
 
-def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavailable(monkeypatch):
+def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavailable(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -580,7 +654,7 @@ def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavai
         source_files={Path("programs/TargetA.s")},
     )
 
-    def _unexpected(*_args, **_kwargs):
+    def _unexpected(*_args: object, **_kwargs: object):
         raise AssertionError("the AST cache must not be built without a cache directory")
 
     monkeypatch.setattr(analysis_loading_module, "build_parser_binding", lambda *_args, **_kwargs: SimpleNamespace())
@@ -591,14 +665,17 @@ def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavai
     monkeypatch.setattr(analysis_loading_module.cache_module, "build_ast_cache", _unexpected)
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         get_cache_dir_fn=lambda: None,
     )
@@ -606,7 +683,7 @@ def test_load_project_does_not_build_a_parser_cache_when_the_directory_is_unavai
     assert result == (root_bp, graph)
 
 
-def test_load_project_ignores_a_cache_write_failure(monkeypatch):
+def test_load_project_ignores_a_cache_write_failure(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -616,19 +693,25 @@ def test_load_project_ignores_a_cache_write_failure(monkeypatch):
     )
 
     class FailingCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             return None
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             return frozenset()
 
-        def save(self, key, **kwargs):
+        def save(self, key: str, **kwargs: object) -> None:
             raise OSError("disk full")
 
-    def fake_build_parser_binding(cfg, *, status_update_fn=None, stage_timing_sink=None, graphics_timing_sink=None):
+    def fake_build_parser_binding(
+        cfg: Mapping[str, object],
+        *,
+        status_update_fn: Callable[[str], None] | None = None,
+        stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: LoadStageTimingSink | None = None,
+    ) -> SimpleNamespace:
         return SimpleNamespace()
 
     monkeypatch.setattr(project_application, "ASTCache", FailingCache)
@@ -640,21 +723,24 @@ def test_load_project_ignores_a_cache_write_failure(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
 
     result = project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
     )
 
     assert result == (root_bp, graph)
 
 
-def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch):
+def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch: pytest.MonkeyPatch):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -664,13 +750,13 @@ def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch):
     )
 
     class CachedCache:
-        def __init__(self, cache_dir):
+        def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, key):
+        def load_validated(self, key: str) -> object | None:
             return {"project": (root_bp, graph)}
 
-        def manifest_paths(self, key):
+        def manifest_paths(self, key: str) -> frozenset[Path]:
             return frozenset()
 
     monkeypatch.setattr(project_application, "ASTCache", CachedCache)
@@ -678,14 +764,17 @@ def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch):
     monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, _graph: bp)
 
     project_application.load_project(
-        {
-            "program_dir": "programs",
-            "other_lib_dirs": [],
-            "ABB_lib_dir": "abb",
-            "mode": "draft",
-            "debug": False,
-            "analyzed_programs_and_libraries": ["TargetA"],
-        },
+        cast(
+            ConfigDict,
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "debug": False,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+        ),
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
     )
 

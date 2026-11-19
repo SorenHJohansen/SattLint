@@ -1,4 +1,4 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Results view and stored run history."""
 
 from __future__ import annotations
@@ -13,11 +13,17 @@ from sattlint import ui as app_textual
 from sattlint.application.findings import AnalysisFinding
 from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 from sattlint.ui import _app_textual_results as app_textual_results_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
 """Analyzer selection and the Analyze view."""
 
 from __future__ import annotations
@@ -10,11 +10,17 @@ import pytest
 
 from sattlint import ui as app_textual
 from sattlint.ui import _app_textual_analyze as app_textual_analyze_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_select_all_analyzers_selects_all_visible() -> None:

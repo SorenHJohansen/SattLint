@@ -1,4 +1,4 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Managed actions, view activation, and session output retention."""
 
 from __future__ import annotations
@@ -12,11 +12,17 @@ from rich.rule import Rule
 from rich.text import Text
 
 from sattlint import ui as app_textual
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
     make_textual_app,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_start_action_starts_a_managed_worker(monkeypatch: pytest.MonkeyPatch) -> None:

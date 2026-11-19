@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Shell chrome, keybindings, session output, and navigation."""
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_settings as app_textual_settings_module
 from sattlint.ui import _app_textual_setup as app_textual_setup_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
-from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures)
+from tests.helpers.app_textual_support import (
     assert_no_content_clipped_outside_visible_area,
     isolate_app_config_path,
     isolate_textual_projects,
@@ -30,6 +30,12 @@ from tests.helpers.app_textual_support import (  # noqa: F401  (autouse fixtures
     query_any_screen,
     screen_row_bgcolors,
 )
+
+# Re-export the autouse fixtures so pytest registers them for this module.
+__all__ = [
+    "isolate_app_config_path",
+    "isolate_textual_projects",
+]
 
 
 def test_textual_top_chrome_removes_banner_and_mounts_summary_strip() -> None:
