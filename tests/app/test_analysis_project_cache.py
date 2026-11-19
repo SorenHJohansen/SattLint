@@ -33,6 +33,7 @@ from sattlint.cache import (
 )
 from sattlint.config.types import ConfigDict
 from sattlint.core.syntax import CodeMode
+from sattlint.models._variable_issues import VariableTargetIssue
 from sattlint.models.project_graph import ProjectFailure, ProjectGraph
 from sattlint.project import loading as analysis_loading_module
 from sattlint.project.loader_config import LoadStageTimingSink
@@ -1308,7 +1309,7 @@ def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path: 
         selected_issue_kinds={IssueKind.UNUSED},
     )
 
-    unused_names = {v.name for issue in report.unused for v in [issue.variable] if v is not None}
+    unused_names = {issue.variable.name for issue in report.unused if isinstance(issue, VariableTargetIssue)}
     assert "UnusedLocal" in unused_names, f"Expected UnusedLocal in unused variables, got: {unused_names}"
     assert "UsedLocal" not in unused_names
     assert "DepLocal" not in unused_names
