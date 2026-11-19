@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import re
 import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from ..analyzers.framework import format_report_header
 
@@ -36,67 +36,132 @@ def _wrap_text(prefix: str, text: str, subsequent_prefix: str) -> list[str]:
     return wrapped or [prefix.rstrip()]
 
 
-def _format_drift_detail(detail: str) -> list[str]:
-    lines: list[str] = []
-    compared_text = detail
-    diff_text = ""
-    if ": " in detail:
-        compared_text, diff_text = detail.split(": ", 1)
-        normalized_compared = compared_text
-        detailed_compared = re.match(
-            r"^current unit (.+?) \(unit type (.+?)\) differs from reference unit (.+)$",
-            compared_text,
+@dataclass(frozen=True)
+class ICFDriftEntry:
+    """One unit-signature entry in a structured drift payload."""
+
+    operation: str
+    journal: str
+    group: str
+    key: str
+    value: str
+
+
+@dataclass(frozen=True)
+class ICFDriftEntryChange:
+    """A missing or extra group of entries, with a bounded preview."""
+
+    kind: Literal["missing", "extra"]
+    count: int
+    entries: tuple[ICFDriftEntry, ...]
+
+
+@dataclass(frozen=True)
+class ICFDriftCountMismatch:
+    current: int
+    reference: int
+
+
+@dataclass(frozen=True)
+class ICFDriftOrderingMismatch:
+    position: int
+    expected: ICFDriftEntry
+    found: ICFDriftEntry
+
+
+@dataclass(frozen=True)
+class ICFUnitDrift:
+    """The structured comparison behind one "unit structure drift" finding."""
+
+    current_unit: str
+    unit_type: str
+    reference_unit: str
+    entry_changes: tuple[ICFDriftEntryChange, ...] = ()
+    count_mismatch: ICFDriftCountMismatch | None = None
+    ordering: ICFDriftOrderingMismatch | None = None
+
+
+def format_icf_drift_entry(entry: ICFDriftEntry) -> str:
+    label_parts: list[str] = []
+    if entry.operation:
+        label_parts.append(f"Operation {entry.operation}")
+    if entry.journal:
+        label_parts.append(f"Journal {entry.journal}")
+    if entry.group:
+        label_parts.append(f"Group {entry.group}")
+    scope = " | ".join(label_parts)
+    scoped_key = entry.key if not scope else f"[{scope}] {entry.key}"
+    return f"{scoped_key} => {entry.value}"
+
+
+def format_icf_drift_entry_list(change: ICFDriftEntryChange) -> str:
+    preview = ", ".join(format_icf_drift_entry(entry) for entry in change.entries)
+    if change.count > len(change.entries):
+        return f"{preview}, ..."
+    return preview
+
+
+def summarize_icf_unit_drift(drift: ICFUnitDrift) -> str:
+    """One-line prose summary for messages and run records."""
+    parts: list[str] = []
+    for change in drift.entry_changes:
+        parts.append(f"{change.kind} {change.count} entries ({format_icf_drift_entry_list(change)})")
+    if drift.count_mismatch is not None:
+        parts.append(f"entry count {drift.count_mismatch.current} != {drift.count_mismatch.reference}")
+    if drift.ordering is not None:
+        parts.append(
+            "entry ordering differs "
+            f"(first mismatch at position {drift.ordering.position}: "
+            f"expected {format_icf_drift_entry(drift.ordering.expected)} "
+            f"but found {format_icf_drift_entry(drift.ordering.found)})"
         )
-        if detailed_compared:
-            current_unit, unit_type, reference_unit = detailed_compared.groups()
-            normalized_compared = f"{current_unit} vs {reference_unit} (unit type {unit_type})"
-        lines.extend(_wrap_text("      compared units: ", normalized_compared, "                      "))
-    else:
-        diff_text = detail
+    if not parts:
+        parts.append("entry ordering differs")
+    return (
+        f"current unit {drift.current_unit} (unit type {drift.unit_type}) "
+        f"differs from reference unit {drift.reference_unit}: {'; '.join(parts)}"
+    )
 
-    for part in (segment.strip() for segment in diff_text.split("; ")):
-        if not part:
-            continue
 
-        missing_or_extra = re.match(r"^(missing \d+ entries|extra \d+ entries) \((.*)\)$", part)
-        if missing_or_extra:
-            label, payload = missing_or_extra.groups()
-            lines.append(f"      - {label}")
-            lines.extend(_wrap_text("        ", payload, "        "))
-            if label.startswith("missing"):
-                lines.append("        action: add these missing entries to current unit")
-            else:
-                lines.append("        action: remove these extra entries from current unit")
-            continue
+def _format_drift_detail(drift: ICFUnitDrift) -> list[str]:
+    lines: list[str] = []
+    lines.extend(
+        _wrap_text(
+            "      compared units: ",
+            f"{drift.current_unit} vs {drift.reference_unit} (unit type {drift.unit_type})",
+            "                      ",
+        )
+    )
 
-        ordering = re.match(r"^entry ordering differs \((.*)\)$", part)
-        if ordering:
-            lines.append("      - entry ordering differs")
-            mismatch = ordering.group(1)
-            parsed_mismatch = re.match(
-                r"^first mismatch at position (\d+): expected (.*) but found (.*)$",
-                mismatch,
-            )
-            if parsed_mismatch:
-                position, expected, found = parsed_mismatch.groups()
-                lines.append(f"        first mismatch position: {position}")
-                lines.extend(_wrap_text("        expected: ", expected, "                  "))
-                lines.extend(_wrap_text("        found: ", found, "               "))
-                lines.append("        action: reorder current unit entries to match reference unit order")
-            else:
-                lines.extend(_wrap_text("        ", mismatch, "        "))
-                lines.append("        action: reorder current unit entries to match reference unit order")
-            continue
+    for change in drift.entry_changes:
+        lines.append(f"      - {change.kind} {change.count} entries")
+        lines.extend(_wrap_text("        ", format_icf_drift_entry_list(change), "        "))
+        if change.kind == "missing":
+            lines.append("        action: add these missing entries to current unit")
+        else:
+            lines.append("        action: remove these extra entries from current unit")
 
-        lines.extend(_wrap_text("      - ", part, "        "))
+    mismatch = drift.count_mismatch
+    if mismatch is not None:
+        lines.extend(_wrap_text("      - ", f"entry count {mismatch.current} != {mismatch.reference}", "        "))
+
+    ordering = drift.ordering
+    if ordering is not None:
+        lines.append("      - entry ordering differs")
+        lines.append(f"        first mismatch position: {ordering.position}")
+        lines.extend(_wrap_text("        expected: ", format_icf_drift_entry(ordering.expected), "                  "))
+        lines.extend(_wrap_text("        found: ", format_icf_drift_entry(ordering.found), "               "))
+        lines.append("        action: reorder current unit entries to match reference unit order")
 
     return lines
 
 
-def _format_issue_detail(reason: str, detail: str) -> list[str]:
-    if reason == "unit structure drift":
-        return _format_drift_detail(detail)
-    return _wrap_text("      detail: ", detail, "              ")
+def _format_issue_detail(issue: ICFValidationIssue) -> list[str]:
+    if issue.reason == "unit structure drift" and issue.drift is not None:
+        return _format_drift_detail(issue.drift)
+    if not issue.detail:
+        return []
+    return _wrap_text("      detail: ", issue.detail, "              ")
 
 
 @dataclass(frozen=True)
@@ -117,6 +182,7 @@ class ICFValidationIssue:
     entry: ICFEntry
     reason: str
     detail: str | None = None
+    drift: ICFUnitDrift | None = None
 
 
 @dataclass(frozen=True)
@@ -194,8 +260,8 @@ class ICFValidationReport:
                 detail = f" ({issue.detail})" if issue.detail else ""
                 if issue.reason in _AGGREGATED_REASONS:
                     lines.append(f"  - {location}{section}: {issue.reason}")
-                    if issue.detail:
-                        lines.extend(_format_issue_detail(issue.reason, issue.detail))
+                    if issue.detail or issue.drift is not None:
+                        lines.extend(_format_issue_detail(issue))
                 else:
                     lines.extend(
                         _wrap_text(
