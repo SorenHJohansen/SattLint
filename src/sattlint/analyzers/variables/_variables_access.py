@@ -395,8 +395,12 @@ def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> V
     variable = self.root_env.get(normalized)
     if variable:
         return variable
-    variables = self.any_var_index.get(normalized)
-    return variables[0] if variables else None
+    candidates = {id(candidate): candidate for candidate in self.any_var_index.get(normalized, ())}
+    if len(candidates) == 1:
+        return next(iter(candidates.values()))
+    # Several declarations share the name and none of them is the root
+    # variable, so any pick would attribute usage to the wrong declaration.
+    return None
 
 
 def is_from_root_origin(

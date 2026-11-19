@@ -23,6 +23,7 @@ from sattlint.analyzers.variables import _variables_contracts as variables_contr
 from sattlint.parser_api import BasePicture
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
+from sattlint.resolution._alias_utils import find_all_aliases
 from sattlint.resolution.type_graph import TypeGraph
 from tests.helpers.variable_access_contract_support import (
     DataflowAnalyzerType,
@@ -1003,3 +1004,23 @@ def test_leaf_path_expansion_is_shared_between_graph_and_strict_helper() -> None
             syntactic_ref="Ref",
             resolved_var_name="Demo",
         )
+
+
+def test_ambiguous_global_name_is_not_resolved_to_an_arbitrary_declaration() -> None:
+    first = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
+    second = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
+    helper = _ns(root_env={}, any_var_index={"shared": [first, second]})
+
+    assert variables_access_impl._lookup_global_variable(helper, "shared") is None
+
+    helper.any_var_index["shared"] = [first, first]
+    assert variables_access_impl._lookup_global_variable(helper, "shared") is first
+
+
+def test_find_all_aliases_keeps_each_field_prefix_for_the_same_variable() -> None:
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    child = Variable(name="Child", datatype=ScalarDatatype.INTEGER)
+
+    aliases = find_all_aliases(target, [(target, child, "Left"), (target, child, "Right")])
+
+    assert sorted(prefix for variable, prefix in aliases if variable is child) == ["Left", "Right"]

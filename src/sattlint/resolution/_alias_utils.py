@@ -38,21 +38,24 @@ def find_all_aliases(
     while to_visit:
         current, current_prefix = to_visit.pop()
 
-        if any(current is variable for variable, _ in visited):
+        if any(current is variable and current_prefix == prefix for variable, prefix in visited):
             continue
 
         visited.append((current, current_prefix))
         aliases.append((current, current_prefix))
 
         for parent, child, mapping_name in alias_links:
-            if parent is current and not any(child is variable for variable, _ in visited):
-                if current_prefix and mapping_name:
-                    new_prefix = f"{current_prefix}.{mapping_name}"
-                elif current_prefix:
-                    new_prefix = current_prefix
-                else:
-                    new_prefix = mapping_name
-                to_visit.append((child, new_prefix))
+            if parent is not current:
+                continue
+            if current_prefix and mapping_name:
+                new_prefix = f"{current_prefix}.{mapping_name}"
+            elif current_prefix:
+                new_prefix = current_prefix
+            else:
+                new_prefix = mapping_name
+            if any(child is variable and new_prefix == prefix for variable, prefix in visited):
+                continue
+            to_visit.append((child, new_prefix))
 
     return [(variable, prefix) for variable, prefix in aliases if variable is not target_var]
 

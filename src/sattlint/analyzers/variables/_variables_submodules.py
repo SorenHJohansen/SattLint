@@ -13,7 +13,6 @@ from sattlint.parser_api import (
     ScalarDatatype,
     SingleModule,
     Variable,
-    VarRef,
 )
 
 from ...reporting.variables_report import IssueKind, VariableIssue
@@ -409,15 +408,10 @@ def _lookup_env_var_from_varname_dict(
     var_dict_or_other: Any,
     env: dict[str, Variable],
 ) -> Variable | None:
-    if isinstance(var_dict_or_other, VarRef):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    if isinstance(var_dict_or_other, str):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    return None
+    base = varname_base(var_dict_or_other)
+    if base is None:
+        return None
+    return env.get(base)
 
 
 def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
