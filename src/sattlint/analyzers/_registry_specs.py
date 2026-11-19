@@ -18,6 +18,7 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "config": lambda _registry_module, context: context.config,
     "debug": lambda _registry_module, context: context.debug,
     "graph": lambda _registry_module, context: context.graph,
+    "program_ast_loader": lambda _registry_module, context: context.program_ast_loader,
     "include_dependency_moduletype_usage": lambda _registry_module, context: (
         context.include_dependency_moduletype_usage
     ),

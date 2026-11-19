@@ -9,6 +9,8 @@ from typing import Any, Literal, Protocol
 
 from sattlint.parser_api import BasePicture
 
+from ...config.types import ConfigDict
+from ...models.project_graph import ProjectGraph
 from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header
 
@@ -26,6 +28,7 @@ __all__ = [
     "CollectedViews",
     "Findings",
     "Issue",
+    "ProgramAstLoader",
     "Report",
     "SimpleReport",
     "VariableAnalysisArtifacts",
@@ -118,6 +121,16 @@ class Analyzer(Protocol):
     def __call__(self, context: AnalysisContext) -> Report: ...
 
 
+class ProgramAstLoader(Protocol):
+    """Contract for loading one program AST outside the caller's own layer.
+
+    A caller that owns the project loader passes the loader in; the analyzer
+    layer never imports the project package directly.
+    """
+
+    def __call__(self, cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]: ...
+
+
 @dataclass
 class SimpleReport:
     name: str
@@ -164,6 +177,7 @@ class AnalysisContext:
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
     include_dependency_moduletype_usage: bool | None = None
+    program_ast_loader: ProgramAstLoader | None = None
 
     @property
     def unavailable_libraries(self) -> set[str]:
@@ -180,6 +194,7 @@ def build_analysis_context(
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
     include_dependency_moduletype_usage: bool | None = None,
+    program_ast_loader: ProgramAstLoader | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
     if resolved_shared_artifacts is None and create_shared_artifacts:
@@ -206,6 +221,7 @@ def build_analysis_context(
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
+        program_ast_loader=program_ast_loader,
     )
 
 

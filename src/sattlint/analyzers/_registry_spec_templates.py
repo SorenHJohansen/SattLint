@@ -244,7 +244,7 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             analyzer_attr="analyze_icf_configuration",
             category="correctness",
             scope="per-run",
-            context_kwargs=("config", "debug"),
+            context_kwargs=("config", "debug", "program_ast_loader"),
         ),
         AnalyzerSpecTemplate(
             key="sfc",

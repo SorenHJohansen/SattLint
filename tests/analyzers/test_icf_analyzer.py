@@ -8,12 +8,14 @@ from sattline_parser.models.ast_model import BasePicture
 from sattline_parser.project import ProjectLoadError
 
 import sattlint.analyzers.icf.analyzer as analyzer_module
+from sattlint.analyzers.framework import build_analysis_context
 from sattlint.analyzers.registry import (
     DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
     get_selectable_analyzers,
 )
 from sattlint.config.types import ConfigDict
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.icf_report import ICFEntry, ICFValidationIssue, ICFValidationReport
 
 
@@ -47,8 +49,23 @@ def _report(*issues: ICFValidationIssue) -> ICFValidationReport:
     )
 
 
-def _graph() -> SimpleNamespace:
-    return SimpleNamespace(ast_by_name={})
+def _graph() -> ProjectGraph:
+    return ProjectGraph()
+
+
+def _loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg
+    return _base_picture(program_name), _graph()
+
+
+def _failing_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg, program_name
+    raise RuntimeError("boom")
+
+
+def _parser_rejecting_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg
+    raise ProjectLoadError(program_name, "missing code file")
 
 
 def _base_picture(name: str = "Program") -> BasePicture:
@@ -86,11 +103,6 @@ def test_analyzes_all_configured_icf_files(monkeypatch) -> None:
     f2 = icf_dir / "ProgramB.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1, f2]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(
-        analyzer_module,
-        "load_program_ast",
-        lambda cfg, name: (_base_picture(name), _graph()),
-    )
     monkeypatch.setattr(analyzer_module, "merge_project_basepicture", lambda bp, graph: bp)
 
     seen_programs: list[str] = []
@@ -101,7 +113,11 @@ def test_analyzes_all_configured_icf_files(monkeypatch) -> None:
 
     monkeypatch.setattr(analyzer_module, "validate_icf_entries_against_program", fake_validate)
 
-    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_loader,
+    )
 
     assert sorted(seen_programs) == ["ProgramA", "ProgramB"]
     assert len(report.issues) == 2
@@ -117,10 +133,10 @@ def test_reuses_in_memory_program_when_matching(monkeypatch) -> None:
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
     monkeypatch.setattr(analyzer_module, "merge_project_basepicture", lambda bp, graph: bp)
 
-    def _should_not_load(cfg, name):
-        raise AssertionError("load_program_ast should not be called when the program is already in memory")
+    def _should_not_load(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg, program_name
+        raise AssertionError("the loader must not run when the program is already in memory")
 
-    monkeypatch.setattr(analyzer_module, "load_program_ast", _should_not_load)
     monkeypatch.setattr(
         analyzer_module,
         "validate_icf_entries_against_program",
@@ -129,7 +145,11 @@ def test_reuses_in_memory_program_when_matching(monkeypatch) -> None:
         ),
     )
 
-    report = analyzer_module.analyze_icf_configuration(_base_picture("ProgramA"), config=_config(icf_dir=str(icf_dir)))
+    report = analyzer_module.analyze_icf_configuration(
+        _base_picture("ProgramA"),
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_should_not_load,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_mismatch"
@@ -140,11 +160,12 @@ def test_load_failure_emits_program_load_failed(monkeypatch) -> None:
     f1 = icf_dir / "ProgramA.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(
-        analyzer_module, "load_program_ast", lambda cfg, name: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
 
-    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_failing_loader,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_load_failed"
@@ -156,17 +177,58 @@ def test_parser_load_error_emits_program_load_failed(monkeypatch) -> None:
     f1 = icf_dir / "ProgramA.icf"
     monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
     monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(
-        analyzer_module,
-        "load_program_ast",
-        lambda cfg, name: (_ for _ in ()).throw(ProjectLoadError(name, "missing code file")),
-    )
 
-    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_parser_rejecting_loader,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_load_failed"
     assert report.issues[0].module_path == ["ProgramA"]
+
+
+def test_requires_a_program_loader_for_referenced_programs(monkeypatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
+    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
+
+    with pytest.raises(RuntimeError, match="program loader"):
+        analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+
+
+def test_registry_passes_the_context_program_loader(monkeypatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
+    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
+    monkeypatch.setattr(analyzer_module, "merge_project_basepicture", lambda bp, graph: bp)
+    monkeypatch.setattr(
+        analyzer_module,
+        "validate_icf_entries_against_program",
+        lambda bp, entries, *, expected_program, debug=False, moduletype_index=None: _report(),
+    )
+
+    loaded: list[str] = []
+
+    def fake_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    spec = next(analyzer.spec for analyzer in get_default_analyzer_catalog().analyzers if analyzer.spec.key == "icf")
+    context = build_analysis_context(
+        cast(BasePicture, None),
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=fake_loader,
+    )
+
+    report = spec.run(context)
+
+    assert loaded == ["ProgramA"]
+    assert report.issues == []
 
 
 def test_no_config_returns_empty_report() -> None:
