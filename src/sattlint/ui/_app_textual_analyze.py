@@ -437,7 +437,7 @@ def _run_selected_analyzers(self: Any) -> None:
     # Snapshot the inputs so a project swap during the run cannot attribute
     # the result to a different project than the one that was analyzed.
     cfg = deepcopy(self._cfg)
-    project_path = str(getattr(self, "_config_path", "") or "")
+    project_path = "" if self._project_path is None else str(self._project_path)
     self._start_action(
         "Run selected analyzers",
         lambda keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
@@ -457,7 +457,7 @@ def _execute_analyzers(
     if cfg is None:
         cfg = self._cfg
     if project_path is None:
-        project_path = str(getattr(self, "_config_path", "") or "")
+        project_path = "" if self._project_path is None else str(self._project_path)
     self._emit_output_from_thread(f"Running {len(selected_keys)} selected analyzer(s).")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):

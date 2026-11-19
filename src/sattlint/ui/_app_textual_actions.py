@@ -559,33 +559,15 @@ def action_save_config(self: Any) -> None:
         self._dirty = False
         self._write_output("App settings saved to your user config.")
         return
+    if getattr(self, "_project_path", None) is not None:
+        if self._persist_project():
+            self._write_output("Configuration saved.")
+        return
     raw_path = self._config_path
     if raw_path is None:
         return
-    config_path = Path(raw_path)
-    if config_path.suffix == ".slproj":
-        root = config_path.parent.resolve()
-        cfg_raw: dict[str, object] = self._cfg
-        project_data: dict[str, object] = {
-            "slproj_version": 1,
-            "analyzed_programs_and_libraries": list(
-                cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
-            ),
-            "mode": str(cfg_raw.get("mode", "official")),
-            "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
-            "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
-            "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
-            "other_lib_dirs": [
-                _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
-            ],
-            "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
-        }
-        _save_slproj(config_path, cast(ProjectDict, project_data))
-        self._dirty = False
-        self._write_output("Configuration saved.")
-        return
     try:
-        self._save_config_fn(self._config_path, self._cfg)
+        self._save_config_fn(raw_path, self._cfg)
     except ValueError as exc:
         self._report_error("Save failed", f"Save failed: {exc}")
         return
@@ -790,7 +772,7 @@ def _interaction_locked(self: Any) -> bool:
 def _load_project_object(self: Any, project: Any) -> None:
     self._project = project
     self._cfg = project.to_default_merged_config_dict(cast(dict[str, object], self._app_only_cfg))
-    self._config_path = project.path
+    self._project_path = project.path
     self._dirty = False
     self._startup_output = ""
     self._analyze_selected_entry_ids.clear()
@@ -867,8 +849,8 @@ def _confirm_delete_configuration(self: Any, path: Path) -> None:
         project = getattr(self, "_project", None)
         if project is not None and getattr(project, "path", None) == path:
             self._project = None
+            self._project_path = None
             self._cfg = dict(cast(dict[str, object], getattr(self, "_app_only_cfg", {})))
-            self._config_path = None
             self._dirty = False
             self._analyze_selected_entry_ids.clear()
             self._clear_session_output()

@@ -1,5 +1,6 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -562,7 +563,7 @@ def test_results_run_summaries_match_the_project_path_and_drop_legacy_runs(
     monkeypatch.setattr(results_module, "list_runs", lambda: list(summaries))
     app_instance = SimpleNamespace(
         _cfg={"analyzed_programs_and_libraries": ["RootProgram"]},
-        _config_path="/p/a.slproj",
+        _project_path=Path("/p/a.slproj"),
     )
     app_instance._current_project_path = lambda: results_module._current_project_path(app_instance)
 
@@ -570,5 +571,24 @@ def test_results_run_summaries_match_the_project_path_and_drop_legacy_runs(
         "same-path",
     ]
 
-    app_instance._config_path = None
+    app_instance._project_path = None
     assert results_module._results_run_summaries(app_instance) == ()
+
+
+def test_results_run_summaries_match_the_project_path_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summaries = [
+        SimpleNamespace(run_id="different-case", project_path="/P/A.SLPROJ", project_tag="RootProgram"),
+        SimpleNamespace(run_id="other-path", project_path="/p/b.slproj", project_tag="RootProgram"),
+    ]
+    monkeypatch.setattr(results_module, "list_runs", lambda: list(summaries))
+    app_instance = SimpleNamespace(
+        _cfg={"analyzed_programs_and_libraries": ["RootProgram"]},
+        _project_path=Path("/p/a.slproj"),
+    )
+    app_instance._current_project_path = lambda: results_module._current_project_path(app_instance)
+
+    assert [summary.run_id for summary in results_module._results_run_summaries(app_instance)] == [
+        "different-case",
+    ]

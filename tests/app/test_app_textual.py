@@ -1218,6 +1218,7 @@ def _attach_test_project(app_instance: Any) -> None:
     project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
     _TEMP_TEST_DIRS.append(str(project_dir))
     app_instance._project = init_project(project_dir / ".slproj")
+    app_instance._project_path = app_instance._project.path
 
 
 _TEMP_TEST_DIRS: list[str] = []
@@ -1591,6 +1592,32 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     assert launched == [("Run selected analyzers", "action-analyze")]
     assert calls == [("checks", ("alpha-analyzer", "beta-analyzer"))]
     assert app_instance._analyze_selected_entry_ids == {"alpha-analyzer", "beta-analyzer"}
+
+
+def test_textual_analyze_run_uses_the_open_project_path_not_the_user_config(tmp_path: Path) -> None:
+    recorded: list[str] = []
+
+    def _handler(_cfg: object, _keys: object, *, project_path: str = "") -> object:
+        recorded.append(project_path)
+        return None
+
+    app_instance = _make_textual_app(project=False, analysis_handlers={"run_checks_result": _handler})
+    app_instance._config_path = Path("/home/user/.config/sattlint/config.toml")
+    app_instance._configured_target_names = lambda: ("TargetA",)
+    app_instance._emit_output_from_thread = lambda _text: None
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert recorded == [""]
+
+    project = init_project(tmp_path / "project" / ".slproj")
+    app_instance._project = project
+    app_instance._project_path = project.path
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert recorded[-1] == str(project.path)
+    assert recorded[-1] != str(app_instance._config_path)
 
 
 def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_app(
@@ -2644,7 +2671,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._config_path = "/tmp/sattlint-test.slproj"
+        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2743,7 +2770,7 @@ def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pyt
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._config_path = "/tmp/sattlint-test.slproj"
+        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2797,7 +2824,7 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
-        app_instance._config_path = "/tmp/sattlint-test.slproj"
+        app_instance._project_path = Path("/tmp/sattlint-test.slproj")
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda _run_id: record)
 
@@ -4178,7 +4205,7 @@ def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest
     assert not (projects_dir / "My-Demo-Project").exists()
     assert app_instance._project is not None
     assert app_instance._project_loaded() is True
-    assert app_instance._config_path == project_file
+    assert app_instance._project_path == project_file
     assert "Created configuration" in messages[0]
 
     # Reject duplicate project names.
@@ -4307,7 +4334,7 @@ def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.Monkey
     app_instance._load_project_object(project)
 
     assert app_instance._project_loaded() is True
-    assert app_instance._config_path == project.path
+    assert app_instance._project_path == project.path
     assert app_instance._cfg["analyzed_programs_and_libraries"] == ["TargetA"]
 
 

@@ -509,7 +509,13 @@ def _select_results_module(self: Any, selection: _ModuleSelection) -> None:
 
 
 def _current_project_path(self: Any) -> str:
-    raw_path = getattr(self, "_config_path", None)
+    """The open project file, or an empty string when no project is open.
+
+    Only the project path can identify a stored run. The user config file is
+    never a run's project, so runs started before a project is opened are not
+    attributed to it.
+    """
+    raw_path = getattr(self, "_project_path", None)
     return "" if raw_path is None else str(raw_path)
 
 
@@ -518,11 +524,14 @@ def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
 
     A run stored before the project path was recorded cannot be attributed to a
     project, so it is not listed. Its record stays on disk until it ages out.
+    Paths are compared case-insensitively because a stored run may come from a
+    case-insensitive filesystem that reported a different spelling.
     """
     project_path = self._current_project_path()
     if not project_path:
         return ()
-    return tuple(summary for summary in list_runs() if summary.project_path == project_path)
+    project_key = project_path.casefold()
+    return tuple(summary for summary in list_runs() if summary.project_path.casefold() == project_key)
 
 
 def _apply_results_list_index(list_view: Any, index: int) -> None:

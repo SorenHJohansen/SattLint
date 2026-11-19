@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, ClassVar
 
 from ..config.types import ConfigDict
@@ -116,7 +117,11 @@ if _TEXTUAL_APP is not None:
             self._summarize_targets_fn = summarize_targets_fn
             self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
+            # ``_config_path`` always names the user config file. The open
+            # project file lives in ``_project_path`` so a run started before
+            # any project is opened is not attributed to the user config.
             self._config_path = config_path
+            self._project_path: Path | None = None
             self._quit_app_error = quit_app_error
             self._busy = False
             self._dirty = False
