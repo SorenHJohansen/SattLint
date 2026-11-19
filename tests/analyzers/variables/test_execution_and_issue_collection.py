@@ -707,7 +707,7 @@ def test_variables_analyzer_records_root_variable_access_summary_phase_timing():
     )
     analyzer.run()
 
-    phases = [entry["phase"] for entry in analyzer.phase_timings]
+    phases = [entry.phase for entry in analyzer.phase_timings]
     assert "root-variable-access-summary-build" in phases
     assert "final-issue-synthesis" in phases
 

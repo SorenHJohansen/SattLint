@@ -14,6 +14,7 @@ from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ScalarD
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.core.timings import PhaseTiming
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import hdr as _hdr
 from tests.helpers.variable_test_support import ns as _ns
@@ -59,7 +60,7 @@ def _append_issue(
 
 
 def _append_phase_timing(
-    phase_timings: list[dict[str, str | float]],
+    phase_timings: list[PhaseTiming],
     phase: str,
     _started_at: float,
     ended_at: float | None = None,
@@ -67,7 +68,7 @@ def _append_phase_timing(
     duration_ms: float,
 ) -> None:
     del ended_at
-    phase_timings.append({"phase": phase, "duration_ms": duration_ms})
+    phase_timings.append(PhaseTiming(phase=phase, duration_ms=duration_ms))
 
 
 def _run_phase(helper: Any, phase: str, callback: Callable[[], object]) -> None:
@@ -309,7 +310,7 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
 
 
 def test_variables_execution_run_records_phase_timings() -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],
@@ -354,7 +355,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
 
     variables_execution_module.run(helper)
 
-    assert [phase["phase"] for phase in helper._phase_timings] == [
+    assert [phase.phase for phase in helper._phase_timings] == [
         "root-traversal",
         "display-binding-scan",
         "dependency-typedef-usage",
@@ -367,7 +368,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
 
 
 def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],
@@ -414,7 +415,7 @@ def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> No
 
     variables_execution_module.run(helper)
 
-    assert [phase["phase"] for phase in helper._phase_timings] == [
+    assert [phase.phase for phase in helper._phase_timings] == [
         "root-traversal",
         "display-binding-scan",
         "alias-propagation",
@@ -427,7 +428,7 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
     class _FakeAnalyzer:
         def __init__(self, *args: object, **kwargs: object) -> None:
             self.selected_issue_kinds = kwargs.get("selected_issue_kinds")
-            self.phase_timings = [{"phase": "root-traversal", "duration_ms": 12.5}]
+            self.phase_timings = [PhaseTiming(phase="root-traversal", duration_ms=12.5)]
             self.access_graph = SimpleNamespace(by_path_key={})
             self.effect_flow_edges = {}
             self.effect_flow_display_names = {}
@@ -446,8 +447,8 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
     )
 
     assert report.phase_timings == [
-        {"phase": "analyzer-init", "duration_ms": 25.0},
-        {"phase": "root-traversal", "duration_ms": 12.5},
+        PhaseTiming(phase="analyzer-init", duration_ms=25.0),
+        PhaseTiming(phase="root-traversal", duration_ms=12.5),
     ]
     assert report.selected_issue_kinds == frozenset({IssueKind.UNUSED})
     assert report.visible_kinds == frozenset({IssueKind.UNUSED})
@@ -483,7 +484,7 @@ def test_analyze_variables_includes_access_and_effect_artifacts_from_analyzer(
 def test_variables_execution_run_debug_logs_phase_counts_and_aggregated_unresolved_lookups(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],

@@ -10,6 +10,7 @@ import pytest
 
 from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.core.timings import PhaseTiming
 
 
 def _noop(*_args: object, **_kwargs: object) -> None:
@@ -28,7 +29,7 @@ def test_variables_execution_filters_noisy_unresolved_debug_names(
         return None
 
     def _record_phase_timing(phase: str, _started_at: object, _ended_at: object | None = None) -> None:
-        helper._phase_timings.append({"phase": phase, "duration_ms": 1.0})
+        helper._phase_timings.append(PhaseTiming(phase=phase, duration_ms=1.0))
 
     def _run_timed_phase(_phase: str, callback: Callable[[], object]) -> object:
         return callback()

@@ -20,6 +20,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...core.timings import PhaseTiming
 from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
     DATATYPE_FIELD_ANALYSIS_KINDS,
@@ -227,7 +228,7 @@ def analyze_variables(
         ),
         include_empty_sections=True,
         phase_timings=[
-            {"phase": "analyzer-init", "duration_ms": init_duration_ms},
+            PhaseTiming(phase="analyzer-init", duration_ms=init_duration_ms),
             *analyzer.phase_timings,
         ],
     )
