@@ -301,7 +301,14 @@ def _check_param_mapping(
         return
 
     source_ref = _mapping_source_ref(pm)
+    # Keep the immediate scope's declaration when there is one: it is the actual at
+    # this seam. A frame's environment holds only its own declarations, so an actual
+    # declared in an ancestor is resolved through the scope chain; the root index is
+    # the last resort.
     src_var = self.lookup_env_var_from_varname_dict(source_ref, parent_env)
+    full_source = varname_full(source_ref)
+    if src_var is None and source_context is not None and full_source:
+        src_var, _field_path, _decl_path, _decl_display_path = source_context.resolve_variable(full_source)
     if src_var is None:
         source_base = varname_base(source_ref)
         src_var = self.root_env.get(source_base) if source_base is not None else None
