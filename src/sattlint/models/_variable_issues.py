@@ -88,12 +88,24 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         suggestion="Delete the declaration, or add the missing read/write path if it is still part of the design.",
     ),
     IssueKind.UNUSED_DATATYPE: VariableIssueMetadata(
-        explanation="A datatype that nothing declares or uses adds surface area without serving the interface.",
-        suggestion="Remove the datatype definition, or declare the variable that should use it.",
+        explanation=(
+            "No loaded unit declares or uses this datatype, so it is either dead "
+            "or part of an interface consumed outside the scanned workspace."
+        ),
+        suggestion=(
+            "Add the missing declaration that should use it, or remove the definition "
+            "once no consumer in the scanned workspace needs it."
+        ),
     ),
     IssueKind.UNUSED_DATATYPE_FIELD: VariableIssueMetadata(
-        explanation="Unused fields make shared datatypes drift away from the actual interface the code relies on.",
-        suggestion="Remove the field from the datatype, or add the missing read/write path that should use it.",
+        explanation=(
+            "No loaded unit reads or writes this field, so it is either dead or part "
+            "of an interface consumed outside the scanned workspace."
+        ),
+        suggestion=(
+            "Add the missing read/write path that should use it, or remove the field "
+            "once no consumer in the scanned workspace needs it."
+        ),
     ),
     IssueKind.FIELD_READ_ONLY: VariableIssueMetadata(
         explanation="A record field that is only read often points at a sibling-mapping mistake or a missing write path.",
