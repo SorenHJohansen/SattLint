@@ -116,7 +116,7 @@ def test_procedure_expression_argument_is_read(analyzed: tuple[BasePicture, Vari
     assert _usage(analyzer, "ProcArg").ui_read is True
 
 
-def test_interactor_body_marks_enable_read_outvar_write_and_pick_read(
+def test_interactor_body_marks_enable_read_state_binding_read_write_and_pick_read(
     analyzed: tuple[BasePicture, VariablesAnalyzer],
 ) -> None:
     base_picture, analyzer = analyzed
@@ -131,8 +131,11 @@ def test_interactor_body_marks_enable_read_outvar_write_and_pick_read(
     assert any(isinstance(entry, PickButton) for entry in body)
 
     assert _usage(analyzer, "BodyFlag").ui_read is True
+    # The text box displays the value it writes, so its state binding is a
+    # read as well as a write.
     assert _usage(analyzer, "BodyOut").written is True
-    assert _usage(analyzer, "BodyOut").read is False
+    assert _usage(analyzer, "BodyOut").read is True
+    assert _usage(analyzer, "BodyOut").ui_read is True
     assert _usage(analyzer, "PickVar").ui_read is True
     assert _usage(analyzer, "ColourVar").ui_read is True
 
