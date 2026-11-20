@@ -23,7 +23,6 @@ VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
 VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
     {
-        "spec_compliance",
         "unsafe_default_tokens",
         "cyclomatic_module_threshold",
         "cyclomatic_step_threshold",
@@ -31,7 +30,6 @@ VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
         "fan_in_out_threshold",
     }
 )
-VALID_SPEC_COMPLIANCE_KEYS = frozenset({"step_prefix", "transition_prefix", "sequence_prefix", "equation_prefix"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
@@ -94,9 +92,6 @@ def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> Non
 
 def _strip_analysis_keys(analysis: ConfigObjectMap) -> None:
     _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
-    spec_compliance = _config_dict(analysis.get("spec_compliance"))
-    if spec_compliance is not None:
-        _strip_section_keys(spec_compliance, VALID_SPEC_COMPLIANCE_KEYS)
 
 
 def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
@@ -148,11 +143,6 @@ def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidatio
         section = _config_dict(cfg_map.get(section_name))
         if section is not None:
             report_unknown(section, valid_keys=valid_keys, prefix=section_name)
-
-    analysis = _config_dict(cfg_map.get("analysis"))
-    spec_compliance = _config_dict(analysis.get("spec_compliance")) if analysis is not None else None
-    if spec_compliance is not None:
-        report_unknown(spec_compliance, valid_keys=VALID_SPEC_COMPLIANCE_KEYS, prefix="analysis.spec_compliance")
 
     return tuple(warnings)
 
@@ -400,36 +390,6 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
 
 def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidationError]:
     errors: list[ConfigValidationError] = []
-
-    spec_compliance_value = analysis.get("spec_compliance")
-    spec_compliance = _config_dict(spec_compliance_value)
-    if spec_compliance_value is not None and spec_compliance is None:
-        errors.append(
-            ConfigValidationError(
-                key_path="analysis.spec_compliance",
-                message="analysis.spec_compliance must be a table/object.",
-            )
-        )
-    elif spec_compliance is not None:
-        for key in spec_compliance:
-            if key not in VALID_SPEC_COMPLIANCE_KEYS:
-                errors.append(
-                    ConfigValidationError(
-                        key_path=f"analysis.spec_compliance.{key}",
-                        message=(
-                            f"Unknown analysis.spec_compliance key '{key}'. "
-                            f"Expected one of: {', '.join(sorted(VALID_SPEC_COMPLIANCE_KEYS))}"
-                        ),
-                    )
-                )
-        for key, value in spec_compliance.items():
-            if not isinstance(value, str):
-                errors.append(
-                    ConfigValidationError(
-                        key_path=f"analysis.spec_compliance.{key}",
-                        message=f"analysis.spec_compliance.{key} must be a string prefix",
-                    )
-                )
 
     unsafe_default_tokens = analysis.get("unsafe_default_tokens")
     if unsafe_default_tokens is not None:

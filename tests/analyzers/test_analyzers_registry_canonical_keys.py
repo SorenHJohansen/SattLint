@@ -39,8 +39,8 @@ def test_importing_the_registry_does_not_import_analyzers_or_the_loader() -> Non
     assert result.stdout.strip() == ""
 
 
-def test_default_cli_analyzers_are_keyed_by_canonical_keys() -> None:
-    analyzers = registry_module.get_default_cli_analyzers()
+def test_selectable_analyzers_are_keyed_by_canonical_keys() -> None:
+    analyzers = registry_module.get_selectable_analyzers()
     canonical_keys = {registry_module.canonicalize_analyzer_key(spec.key) for spec in analyzers}
 
     assert {spec.key for spec in analyzers} == canonical_keys
@@ -97,11 +97,11 @@ def test_resolve_selected_analyzers_is_exact_and_preserves_order() -> None:
     )
     assert unselected == ()
 
-    default = dispatch_module.resolve_selected_analyzers(
-        selected_keys=None,
-        get_enabled_analyzers_fn=lambda: enabled,
-    )
-    assert [spec.key for spec in default] == ["dataflow", "variables"]
+    with pytest.raises(ValueError, match="No analyzers selected"):
+        dispatch_module.resolve_selected_analyzers(
+            selected_keys=None,
+            get_enabled_analyzers_fn=lambda: enabled,
+        )
 
 
 def test_icf_analyzer_is_declared_per_run_scope() -> None:
@@ -110,8 +110,8 @@ def test_icf_analyzer_is_declared_per_run_scope() -> None:
     assert icf_spec.scope == "per-run"
 
 
-def test_all_other_default_analyzers_are_per_target_scope() -> None:
-    for spec in registry_module.get_default_cli_analyzers():
+def test_all_other_selectable_analyzers_are_per_target_scope() -> None:
+    for spec in registry_module.get_selectable_analyzers():
         if spec.key == "icf":
             assert spec.scope == "per-run"
         else:

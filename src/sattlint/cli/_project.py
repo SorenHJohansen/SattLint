@@ -116,6 +116,7 @@ def project_payload(project: SattLintProjectFile, *, quiet: bool = False) -> Pro
         "slproj_version": int(raw.get("slproj_version", 1)),
         "mode": str(raw.get("mode", "official")),
         "targets": list(raw.get("analyzed_programs_and_libraries", [])),
+        "analyzers": list(raw.get("analyzers", [])),
         "analysis": dict(cfg.get("analysis") or {}),
         "paths": project_paths(cfg),
         "config": config,

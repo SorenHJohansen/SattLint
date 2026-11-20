@@ -50,7 +50,6 @@ LEGACY_UNDERSCORE_ANALYZER_KEYS: frozenset[str] = frozenset()
 EXPLICIT_NON_REGISTRY_ANALYZE_FUNCTIONS = frozenset(
     {
         ("comment_code.py", "analyze_comment_code_files"),
-        ("modules.py", "analyze_module_duplicates"),
     }
 )
 

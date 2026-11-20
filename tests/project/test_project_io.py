@@ -73,6 +73,8 @@ def test_load_project_fills_defaults_for_missing_keys(tmp_path: Path) -> None:
     project = load_project(path)
 
     assert project.data["analyzed_programs_and_libraries"] == []
+    assert project.data["analyzers"] == []
+    assert project.analyzers == ()
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
 
@@ -86,6 +88,14 @@ def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
 
     path.write_text("slproj_version = 1\nanalyzed_programs_and_libraries = 'Demo'\n")
     with pytest.raises(ValueError, match=r"analyzed_programs_and_libraries"):
+        load_project(path)
+
+    path.write_text("slproj_version = 1\nanalyzers = 'variables'\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
+        load_project(path)
+
+    path.write_text("slproj_version = 1\nanalyzers = [1]\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
         load_project(path)
 
     path.write_text("slproj_version = 1\nmode = 3\n")
@@ -138,15 +148,34 @@ def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> Non
         "program_dir": tmp_path / "src",
         "ABB_lib_dir": "",
         "icf_dir": "",
+        "analyzers": ["variables", "sfc"],
         "other_lib_dirs": [],
-        "analysis": {"spec_compliance": {"step_prefix": "ST_"}},
+        "analysis": {"cyclomatic_module_threshold": 30},
     }
     save_project(path, cast(ProjectDict, data))
     project = load_project(path)
 
     cfg = project.to_default_merged_config_dict()
 
-    assert cfg["analysis"]["spec_compliance"]["step_prefix"] == "ST_"
+    assert cfg["analysis"]["cyclomatic_module_threshold"] == 30
+    assert project.analyzers == ("variables", "sfc")
+    # Analyzer selection belongs to the project file, not the merged runtime
+    # config that every command and the UI work from.
+    assert "analyzers" not in cfg
+
+
+def test_project_analyzers_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "proj.slproj"
+    init_project(path)
+
+    data = load_project(path).data
+    data["analyzers"] = ["dataflow", "sfc"]
+    save_project(path, data)
+
+    project = load_project(path)
+
+    assert project.data["analyzers"] == ["dataflow", "sfc"]
+    assert project.analyzers == ("dataflow", "sfc")
 
 
 def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:

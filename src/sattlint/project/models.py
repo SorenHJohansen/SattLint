@@ -24,6 +24,11 @@ class SattLintProjectFile:
     def root(self) -> Path:
         return self.path.parent.resolve()
 
+    @property
+    def analyzers(self) -> tuple[str, ...]:
+        """The analyzer keys this project selects, in declaration order."""
+        return tuple(self.data.get("analyzers", ()))
+
     def _resolve(self, raw: str) -> Path:
         if not raw:
             return Path()

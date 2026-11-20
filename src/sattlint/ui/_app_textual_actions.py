@@ -822,7 +822,7 @@ def _load_project_object(self: Any, project: Any) -> None:
     self._project_path = project.path
     self._dirty = False
     self._startup_output = ""
-    self._analyze_selected_entry_ids.clear()
+    self._seed_analyze_selection(project.analyzers)
     self._analyze_filter_text = ""
     self._setup_filter_text = ""
     self._ast_refresh_pending = True

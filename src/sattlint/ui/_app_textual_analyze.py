@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from ..application.analyze import no_analyzer_selection_message
 from ._app_textual_actions import _label_value_renderable
 from ._app_textual_shared import (
     _ANALYZER_LIST_ID_PREFIX,
@@ -136,7 +137,14 @@ def _analyzers_section_spec() -> Any:
     return type(
         "SectionSpec",
         (),
-        {"section_id": "analyzers", "label": "Analyzers", "description": "Select one or more analyzers to run."},
+        {
+            "section_id": "analyzers",
+            "label": "Analyzers",
+            "description": (
+                "Select one or more analyzers to run. Opening a configuration preselects the "
+                "analyzers from its project file, and a run needs at least one selection."
+            ),
+        },
     )()
 
 
@@ -169,6 +177,13 @@ def _normalize_analyze_state(self: Any) -> None:
     visible_entry_ids = self._analyzer_entry_ids()
     if self._analyze_focused_entry_id not in visible_entry_ids:
         self._analyze_focused_entry_id = visible_entry_ids[0] if visible_entry_ids else None
+
+
+def _seed_analyze_selection(self: Any, keys: tuple[str, ...]) -> None:
+    """Preselect the analyzers a configuration names, dropping unknown keys."""
+    available = set(self._ordered_analyzer_entry_ids())
+    self._analyze_selected_entry_ids.clear()
+    self._analyze_selected_entry_ids.update(key for key in keys if key in available)
 
 
 def _ordered_selected_analyze_entry_ids(self: Any) -> tuple[str, ...]:
@@ -438,7 +453,8 @@ def _run_selected_analyzers(self: Any) -> None:
         return
     selected_keys = self._selected_analyzer_keys()
     if not selected_keys:
-        self._write_output("Select one or more analyzers in the list first.")
+        available = tuple(item.entry_id for item in self._available_analyzer_items())
+        self._write_output(no_analyzer_selection_message(available))
         return
     # Snapshot the inputs so a project swap during the run cannot attribute
     # the result to a different project than the one that was analyzed.
@@ -588,6 +604,7 @@ if TYPE_CHECKING:
         def _ordered_analyzer_entry_ids(self) -> tuple[str, ...]: ...
         def _analyzer_entry(self, entry_id: str | None) -> _AnalyzerItem | None: ...
         def _normalize_analyze_state(self) -> None: ...
+        def _seed_analyze_selection(self, keys: tuple[str, ...]) -> None: ...
         def _ordered_selected_analyze_entry_ids(self) -> tuple[str, ...]: ...
         def _selected_analyzer_keys(self) -> tuple[str, ...]: ...
         def _analyze_section_list_id(self, section_id: str) -> str: ...
@@ -630,6 +647,7 @@ else:
         _ordered_analyzer_entry_ids = _ordered_analyzer_entry_ids
         _analyzer_entry = _analyzer_entry
         _normalize_analyze_state = _normalize_analyze_state
+        _seed_analyze_selection = _seed_analyze_selection
         _ordered_selected_analyze_entry_ids = _ordered_selected_analyze_entry_ids
         _selected_analyzer_keys = _selected_analyzer_keys
         _analyze_section_list_id = _analyze_section_list_id

@@ -31,7 +31,7 @@ from sattlint.analyzers.dataflow._dataflow_non_state_sites import (
     _group_site_accesses,
     _SiteAccess,
 )
-from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
+from sattlint.analyzers.registry import get_default_analyzers, get_selectable_analyzer_keys
 from sattlint.analyzers.same_cycle import analyze_same_cycle
 
 
@@ -65,12 +65,12 @@ def _sequence(nodes: list[SFCBodyItem]) -> Sequence:
     )
 
 
-def test_same_cycle_analyzer_is_registered_and_in_default_cli() -> None:
+def test_same_cycle_analyzer_is_registered_and_selectable() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
     assert "same-cycle" in specs
     assert specs["same-cycle"].enabled is True
-    assert "same-cycle" in get_actual_cli_analyzer_keys()
+    assert "same-cycle" in get_selectable_analyzer_keys()
     assert "explicit parallel sequence branches" in specs["same-cycle"].description
 
 

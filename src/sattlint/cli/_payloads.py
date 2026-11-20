@@ -43,6 +43,7 @@ class ProjectInfo(TypedDict):
     slproj_version: int
     mode: str
     targets: list[str]
+    analyzers: list[str]
     analysis: dict[str, object]
     paths: ProjectPaths
     config: ConfigInfo
@@ -58,7 +59,7 @@ class ProjectShowPayload(TypedDict):
 
 
 class AnalyzerInfo(AnalyzerMetadataDict):
-    default: bool
+    """One selectable analyzer. Selection is per run, so there is no default."""
 
 
 class AnalyzersListPayload(TypedDict):

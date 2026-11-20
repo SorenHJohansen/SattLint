@@ -42,7 +42,7 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch: pytes
     )
     monkeypatch.setattr(project_application, "_source_paths_for_current_target", lambda *_args: {Path("TargetA.s")})
     monkeypatch.setattr(project_application, "_target_is_library", lambda *_args: True)
-    monkeypatch.setattr(analysis_catalog_module, "get_default_cli_analyzers", lambda: ["variables"])
+    monkeypatch.setattr(analysis_catalog_module, "get_selectable_analyzers", lambda: ["variables"])
 
     assert project_application._target_validation_warnings("TargetA", ["a", "b"]) == ["TargetA:2"]
     assert list(project_application.iter_loaded_projects(cast(ConfigDict, {}))) == [("TargetA", "bp", "g")]

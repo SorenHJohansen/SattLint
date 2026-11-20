@@ -37,22 +37,7 @@ class ReviewConfigOverride(TypedDict, total=False):
     output_dir: ConfigPathValue
 
 
-class SpecComplianceConfig(TypedDict):
-    step_prefix: str
-    transition_prefix: str
-    sequence_prefix: str
-    equation_prefix: str
-
-
-class SpecComplianceConfigOverride(TypedDict, total=False):
-    step_prefix: str
-    transition_prefix: str
-    sequence_prefix: str
-    equation_prefix: str
-
-
 class AnalysisConfig(TypedDict):
-    spec_compliance: SpecComplianceConfig
     unsafe_default_tokens: list[str]
     cyclomatic_module_threshold: int
     cyclomatic_step_threshold: int
@@ -61,7 +46,6 @@ class AnalysisConfig(TypedDict):
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
-    spec_compliance: SpecComplianceConfigOverride
     unsafe_default_tokens: list[str]
     cyclomatic_module_threshold: int
     cyclomatic_step_threshold: int
@@ -111,6 +95,4 @@ __all__ = [
     "ReviewConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
-    "SpecComplianceConfig",
-    "SpecComplianceConfigOverride",
 ]

@@ -10,6 +10,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- A project file can select its analyzers with a top-level `analyzers = [...]`
+  list, so a checked-in project reproduces a run. `--analyzer` still wins over
+  the project list, and `sattlint project show` reports the selection.
 - `findings` text grouping prints analyzer and finding labels instead of
   machine identifiers, and NDJSON output starts with an envelope record that
   carries the run, filters, summary, and groups.
@@ -19,6 +22,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Analyzer selection is always explicit. A run names its analyzers with
+  `--analyzer` or the project's `analyzers` list; a run that names none fails
+  with an error that lists every selectable analyzer, in both the CLI and the
+  Textual Analyze view. The Analyze view preselects the project's list when a
+  configuration is opened.
 - Record layouts resolve per library, so two libraries that define the same
   record name keep their own fields and leaf paths. When a name is declared
   by more than one library and the caller cannot decide, the analyzer warns
@@ -140,6 +148,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Removed
 
+- The engineering-spec compliance analyzer and its `analysis.spec_compliance`
+  prefix settings, and the module version-drift analyzer with its comparison
+  helpers. Stored runs still render their findings. Analyzer report caches are
+  invalidated for the remaining analyzers.
+- The default analyzer set (`--analyzer` is now always required or comes from
+  the project file).
 - The unused tracing module, the unreachable foundation-cache store, the unused
   workspace-discovery subsystem, the duplicate comment-hit model, and the
   test-only second loader. Corpus and crash-sweep tests now exercise the

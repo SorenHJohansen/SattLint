@@ -13,8 +13,8 @@ from sattline_parser.project import ProjectLoadError
 import sattlint.analyzers.icf.analyzer as analyzer_module
 from sattlint.analyzers.framework import build_analysis_context
 from sattlint.analyzers.registry import (
-    DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
+    get_selectable_analyzer_keys,
     get_selectable_analyzers,
 )
 from sattlint.config.types import ConfigDict
@@ -259,7 +259,7 @@ def test_no_config_returns_empty_report() -> None:
 
 
 def test_icf_is_registered_and_selectable() -> None:
-    assert "icf" in DEFAULT_CLI_ANALYZER_KEYS
+    assert "icf" in get_selectable_analyzer_keys()
     assert any(spec.key == "icf" for spec in get_selectable_analyzers())
 
     catalog = get_default_analyzer_catalog()
