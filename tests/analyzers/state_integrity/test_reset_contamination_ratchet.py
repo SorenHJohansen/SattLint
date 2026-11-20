@@ -1,4 +1,6 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 """Focused coverage tests for reset contamination ratchet repayment."""
 
 from __future__ import annotations
@@ -6,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -203,11 +206,15 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
 
     reset_issues: list[VariableIssue] = []
     trace_events: list[tuple[str, dict[str, Any]]] = []
+
+    def _record_trace(action: str, **data: Any) -> None:
+        trace_events.append((action, data))
+
     detect_reset_contamination(
         bp,
         reset_issues,
         debug=True,
-        trace_fn=lambda action, **data: trace_events.append((action, data)),
+        trace_fn=_record_trace,
     )
 
     assert [
@@ -268,7 +275,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         def rsplit(self, sep: str, maxsplit: int) -> list[str]:
             return self.value.rsplit(sep, maxsplit)
 
-    assert is_from_root_origin(cast(Any, BrokenPath("root.s")), "root.s") is True
+    assert is_from_root_origin(cast(str, BrokenPath("root.s")), "root.s") is True
 
     calls: list[str] = []
     ResetContaminationAnalyzer._check_for_single(
@@ -285,7 +292,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         [],
         check_fn=lambda *_args: calls.append("single"),
     )
-    ResetContaminationAnalyzer(cast(Any, None))._check_for_typedef(
+    ResetContaminationAnalyzer(cast(BasePicture, None))._check_for_typedef(
         ModuleTypeDef(
             name="NoCodeType",
             moduleparameters=[],
@@ -319,12 +326,21 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         parametermappings=[],
     )
     traversed_paths: list[list[str]] = []
-    ResetContaminationAnalyzer(cast(Any, None))._collect_from_module(
+
+    def _record_module_path(
+        _modulecode: ModuleCode,
+        _env: dict[str, Variable],
+        path: list[str],
+        _issues: list[VariableIssue],
+    ) -> None:
+        traversed_paths.append(path.copy())
+
+    ResetContaminationAnalyzer(cast(BasePicture, None))._collect_from_module(
         parent_module,
         ["Root"],
         [],
         None,
-        check_fn=lambda _modulecode, _env, path, _issues: traversed_paths.append(path.copy()),
+        check_fn=_record_module_path,
     )
     assert traversed_paths == [["Root", "Parent", "Child"]]
 
@@ -424,7 +440,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     assert split_var_ref("") == ("", "")
 
 
-def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog) -> None:
+def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog: pytest.LogCaptureFixture) -> None:
     counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     destination = Variable(name="Destination", datatype=ScalarDatatype.INTEGER)
@@ -547,7 +563,9 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
     assert "parallel-merge-step" in debug_output
 
 
-def test_reset_contamination_helpers_conservatively_merge_overflowed_path_frontiers(caplog) -> None:
+def test_reset_contamination_helpers_conservatively_merge_overflowed_path_frontiers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
     overflow_states: list[PathState] = []
     for index in range(70):

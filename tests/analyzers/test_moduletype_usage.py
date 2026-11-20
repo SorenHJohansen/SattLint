@@ -1,4 +1,6 @@
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import replace

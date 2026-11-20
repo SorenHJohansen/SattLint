@@ -1,4 +1,6 @@
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
 """Tests for builtin record read/write semantics."""
 
 import pytest

@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 """Focused tests for shared dependency-usage fact collection."""
 
 from __future__ import annotations

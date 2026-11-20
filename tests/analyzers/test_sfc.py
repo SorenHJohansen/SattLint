@@ -1,11 +1,16 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportAttributeAccessIssue=false, reportMissingTypeArgument=false, reportOptionalSubscript=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 """Tests for SFC analyzer checks."""
+
+from collections.abc import Sequence as SequenceABC
 
 import pytest
 from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeComment,
+    CodeItem,
     FrameModule,
     ModuleCode,
     ModuleHeader,
@@ -13,6 +18,7 @@ from sattline_parser.models.ast_model import (
     ScalarDatatype,
     Sequence,
     SFCAlternative,
+    SFCBodyItem,
     SFCCodeBlocks,
     SFCFork,
     SFCParallel,
@@ -21,6 +27,7 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
+    SLExpression,
     Variable,
 )
 
@@ -41,11 +48,11 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> Assignment:
+def _assign(name: str, value: SLExpression) -> Assignment:
     return Assignment(target=_varref(name), value=value)
 
 
-def _step(name: str, active_stmts: list[object]) -> SFCStep:
+def _step(name: str, active_stmts: list[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
 
 
@@ -58,13 +65,13 @@ def _fork_step(name: str, targets: tuple[str, ...], *, has_break: bool = False) 
     )
 
 
-def _sequence(nodes: list[object]) -> Sequence:
+def _sequence(nodes: SequenceABC[SFCBodyItem]) -> Sequence:
     return Sequence(
         name="SeqMain",
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=nodes,
+        code=list(nodes),
     )
 
 
@@ -172,7 +179,7 @@ def test_parallel_branch_distinct_writes_not_reported():
     assert not report.issues
 
 
-def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
+def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch: pytest.MonkeyPatch):
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
@@ -236,7 +243,9 @@ def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     ]
 
 
-def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_previews(monkeypatch) -> None:
+def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_previews(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     findings: list[sfc_module.SfcReachabilityFinding] = []
     sfc_module._inspect_sfc_linear_nodes(
         findings,
@@ -299,11 +308,12 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
     assert sfc_module._format_terminator(sfc_module.SfcTerminator(kind="SFCBreak")) == "SFCBreak"
 
 
-def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch) -> None:
-    monkeypatch.setattr(
-        sfc_module,
-        "collect_sfc_reachability_findings",
-        lambda _bp, **kwargs: [
+def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _reachability_findings(
+        _bp: BasePicture,
+        **_kwargs: object,
+    ) -> list[sfc_module.SfcReachabilityFinding]:
+        return [
             sfc_module.SfcReachabilityFinding(
                 module_path=("Root",),
                 sequence_name="SeqMain",
@@ -322,13 +332,13 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
                 node_type="SFCStep",
                 terminated_by=sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",)),
             ),
-        ],
-    )
-    monkeypatch.setattr(
-        sfc_module,
-        "_collect_transition_logic_issues",
-        lambda _bp, **kwargs: [Issue(kind="sfc_duplicate_transition_guard", message="logic")],
-    )
+        ]
+
+    def _transition_logic_issues(_bp: BasePicture, **_kwargs: object) -> list[Issue]:
+        return [Issue(kind="sfc_duplicate_transition_guard", message="logic")]
+
+    monkeypatch.setattr(sfc_module, "collect_sfc_reachability_findings", _reachability_findings)
+    monkeypatch.setattr(sfc_module, "_collect_transition_logic_issues", _transition_logic_issues)
 
     report = analyze_sfc(BasePicture(header=_hdr("Root")))
 
@@ -338,15 +348,16 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
         "sfc_unreachable_sequence_node",
         "sfc_duplicate_transition_guard",
     ]
+    assert report.issues[0].data is not None
     assert report.issues[0].data["branch_path"] == [1]
     assert "targeting 'Done'" in report.issues[1].message
 
 
-def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
+def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
     build_calls: list[str] = []
     original_builder = variables_module._build_variable_analysis_artifacts
 
-    def _recording_builder(base_picture):
+    def _recording_builder(base_picture: BasePicture) -> variables_module.VariableAnalysisArtifacts:
         build_calls.append(base_picture.header.name)
         return original_builder(base_picture)
 

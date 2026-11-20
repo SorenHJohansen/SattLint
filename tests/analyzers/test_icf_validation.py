@@ -1,4 +1,6 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from pathlib import Path
 
 from sattline_parser.models.ast_model import (
@@ -56,7 +58,7 @@ def _entry(
     )
 
 
-def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path):
+def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path: Path):
     icf_file = tmp_path / "Program.icf"
     icf_file.write_text(
         "[Unit Unit221A]\n"

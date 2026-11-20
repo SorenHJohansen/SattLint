@@ -1,11 +1,9 @@
-from typing import (
-    Any,
-    cast,
-)
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
+from typing import cast
 
 from sattline_parser.ast import MappingSource
-
-# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 from sattline_parser.models.ast_model import (
     ParameterMapping,
     ScalarDatatype,
@@ -53,7 +51,7 @@ def test_variables_report_coerces_visible_kinds_and_handles_unknown_selector_kin
     )
 
     assert isinstance(report.visible_kinds, frozenset)
-    assert report._issues_for_kind(cast(Any, object())) == []
+    assert report._issues_for_kind(cast(IssueKind, object())) == []
 
 
 def test_variables_report_coerces_mutable_visible_kinds_to_frozenset():
@@ -598,7 +596,7 @@ def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():
 def test_effect_flow_tracker_records_copyvariable_output_edge():
     from collections import defaultdict  # noqa: PLC0415
 
-    edges = defaultdict(set)
+    edges: defaultdict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     context = ScopeContext(

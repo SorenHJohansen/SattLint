@@ -1,10 +1,13 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnusedFunction=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import ast
 import re
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
@@ -43,7 +46,7 @@ from sattlint.analyzers.variables._variables_submodules import VariablesSubmodul
 
 ANALYZER_DIR = Path(__file__).resolve().parents[2] / "src" / "sattlint" / "analyzers"
 KEBAB_CASE_KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LEGACY_UNDERSCORE_ANALYZER_KEYS = frozenset()
+LEGACY_UNDERSCORE_ANALYZER_KEYS: frozenset[str] = frozenset()
 EXPLICIT_NON_REGISTRY_ANALYZE_FUNCTIONS = frozenset(
     {
         ("comment_code.py", "analyze_comment_code_files"),
@@ -252,7 +255,7 @@ def test_reset_contamination_module_uses_single_class_backed_owner() -> None:
     assert not (ANALYZER_DIR / "_reset_contamination.py").exists()
 
 
-def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch) -> None:
+def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         datatype_defs=[],
@@ -269,10 +272,14 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         target_is_library=True,
         config={"mode": "test"},
     )
-    registry_stub = SimpleNamespace(
-        analyze_direct=lambda analysis_context: SimpleReport(name=analysis_context.base_picture.header.name),
-        analyze_picture=lambda base_picture, **kwargs: SimpleReport(name=base_picture.header.name, note=str(kwargs)),
-    )
+
+    def _analyze_direct(analysis_context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name=analysis_context.base_picture.header.name)
+
+    def _analyze_picture(base_picture: BasePicture, **kwargs: object) -> SimpleReport:
+        return SimpleReport(name=base_picture.header.name, note=str(kwargs))
+
+    registry_stub = SimpleNamespace(analyze_direct=_analyze_direct, analyze_picture=_analyze_picture)
 
     spec = AnalyzerSpecTemplate(
         key="demo",
@@ -308,10 +315,10 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
 
     from sattlint.analyzers import _registry_specs as registry_specs_module  # noqa: PLC0415
 
-    direct_report = registry_specs_module._build_runner(direct_template, registry_stub)(context)
+    direct_report = cast(SimpleReport, registry_specs_module._build_runner(direct_template, registry_stub)(context))
     assert direct_report.name == "Root"
 
-    standard_report = registry_specs_module._build_runner(spec, registry_stub)(context)
+    standard_report = cast(SimpleReport, registry_specs_module._build_runner(spec, registry_stub)(context))
     assert "ControlLib" in (standard_report.note or "")
 
     deliveries = default_delivery_templates(shared_fixtures=("fixture-a", "fixture-b"))
