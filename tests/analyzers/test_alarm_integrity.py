@@ -1,4 +1,6 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
+from collections.abc import Callable
+
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -17,6 +19,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
+# pyright: reportPrivateUsage=false
 from sattlint.analyzers import alarm_integrity as alarm_integrity_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.framework import Issue
@@ -224,7 +227,9 @@ def test_alarm_integrity_report_summary_covers_empty_and_populated_reports() -> 
     assert "[Root] later" in summary
 
 
-def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(monkeypatch) -> None:  # noqa: PLR0915
+def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(  # noqa: PLR0915
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         origin_file="Root.s",
@@ -412,15 +417,16 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
     assert analyzer._literal_signature("  Alarm.Tag  ") == "literal:alarm.tag"
     assert analyzer._literal_signature(None) == "literal:None"
 
-    monkeypatch.setattr(
-        alarm_integrity_module,
-        "resolve_moduletype_def_strict",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")),
-    )
+    def _missing_moduletype(*_args: object, **_kwargs: object) -> ModuleTypeDef:
+        raise ValueError("missing")
+
+    monkeypatch.setattr(alarm_integrity_module, "resolve_moduletype_def_strict", _missing_moduletype)
     assert analyzer._resolve_moduletype(instance, None) is None
 
 
-def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_deduping(monkeypatch) -> None:
+def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_deduping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bp = BasePicture(header=_hdr("Root"), origin_file="Root.s")
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
     env = {"conda": Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN, init_value=True)}
@@ -478,7 +484,11 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
             ),
         ],
     )
-    monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_args, **_kwargs: typedef)
+
+    def _resolve_to_typedef(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+        return typedef
+
+    monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolve_to_typedef)
     candidate = analyzer._collect_alarm_candidate(instance, ["Root", "AlarmA"], env, None)
     assert candidate is not None
     assert candidate.moduletype_label == "EventDetector1"
@@ -506,7 +516,11 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
             ),
         ],
     )
-    monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_args, **_kwargs: None)
+
+    def _resolve_to_none(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+        return None
+
+    monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolve_to_none)
     unknown_candidate = analyzer._collect_alarm_candidate(unknown_type_instance, ["Root", "AlarmUnknown"], env, None)
     assert unknown_candidate is None
     suppressed_candidate = analyzer._collect_alarm_candidate(
@@ -634,7 +648,7 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
     ]
 
 
-def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkeypatch) -> None:
+def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkeypatch: pytest.MonkeyPatch) -> None:
     bp = BasePicture(header=_hdr("Root"), origin_file="Root.s")
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
     env = {"conda": Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN, init_value=True)}
@@ -683,8 +697,15 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         "EventDetector1",
         "EventDetector2",
     }
+
+    def _resolver_for(candidate_name: str) -> Callable[[ModuleTypeInstance, str | None], ModuleTypeDef | None]:
+        def _resolve(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+            return _typedef_for(candidate_name)
+
+        return _resolve
+
     for name in known_detectors:
-        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolver_for(name))
         candidate = analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None)
         assert candidate is not None
         assert candidate.moduletype_label == name
@@ -700,11 +721,13 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         "EventAnnunciator",
     }
     for name in non_detectors:
-        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolver_for(name))
         assert analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None) is None
 
 
-def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear_writes(monkeypatch) -> None:
+def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     typedef = ModuleTypeDef(
         name="EventDetector1",
         moduleparameters=[
@@ -770,14 +793,18 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
     visited_paths: list[tuple[str, ...]] = []
 
-    def _record_module_code(_modulecode, module_path, _env):
+    def _record_module_code(_modulecode: ModuleCode, module_path: list[str], _env: dict[str, Variable]) -> None:
         visited_paths.append(tuple(module_path))
 
     monkeypatch.setattr(analyzer, "_check_module_code", _record_module_code)
-    monkeypatch.setattr(
-        analyzer,
-        "_collect_alarm_candidate",
-        lambda inst, module_path, *_args, **_kwargs: alarm_integrity_module._AlarmCandidate(
+
+    def _stub_candidate(
+        inst: ModuleTypeInstance,
+        module_path: list[str],
+        *_args: object,
+        **_kwargs: object,
+    ) -> alarm_integrity_module._AlarmCandidate:
+        return alarm_integrity_module._AlarmCandidate(
             module_path=module_path.copy(),
             instance_name=inst.header.name,
             moduletype_label=inst.moduletype_name,
@@ -787,8 +814,9 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
             priority_display="1",
             condition_key="ref:rootflag",
             condition_display="RootFlag",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(analyzer, "_collect_alarm_candidate", _stub_candidate)
     monkeypatch.setattr(
         analyzer,
         "_emit_duplicate_tag_issues",
@@ -815,15 +843,15 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
     assert len(analyzer._candidates) == 1
 
     real_analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
-    monkeypatch.setattr(
-        alarm_integrity_module,
-        "_collect_alarm_boolean_writes",
-        lambda *_args, **_kwargs: {
+
+    def _boolean_write_entries(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
             "trip": type("Entry", (), {"values": {True}, "display": "AlarmTrip"})(),
             "cleared": type("Entry", (), {"values": {True, False}, "display": "AlarmCleared"})(),
             "false_only": type("Entry", (), {"values": {False}, "display": "AlarmFalse"})(),
-        },
-    )
+        }
+
+    monkeypatch.setattr(alarm_integrity_module, "_collect_alarm_boolean_writes", _boolean_write_entries)
     real_analyzer._check_module_code(None, ["Root"], {})
     real_analyzer._check_module_code(ModuleCode(equationblocks=[]), ["Root"], {})
     assert [issue.kind for issue in real_analyzer.issues] == ["alarm.never_cleared"]
