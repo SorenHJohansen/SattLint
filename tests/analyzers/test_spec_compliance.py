@@ -1,4 +1,5 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
+# pyright: reportPrivateUsage=false
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,

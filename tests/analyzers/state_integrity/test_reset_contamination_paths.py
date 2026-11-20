@@ -1,4 +1,5 @@
 # pyright: reportPrivateUsage=false
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,

@@ -1,4 +1,4 @@
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# pyright: reportPrivateUsage=false
 
 import pytest
 from sattline_parser.ast import MappingSource

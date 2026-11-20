@@ -1,6 +1,6 @@
-# pyright: reportPrivateUsage=false
 """Tests for builtin record read/write semantics."""
 
+# pyright: reportPrivateUsage=false
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,

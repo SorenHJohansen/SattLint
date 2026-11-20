@@ -1,4 +1,5 @@
-# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 from collections.abc import Sequence as Seq
