@@ -34,6 +34,7 @@ from sattlint.config.types import ConfigDict
 from sattlint.core import profiling as profiling_module
 from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
+from sattlint.project import loading as project_loading_module
 from sattlint.reporting import target_report as analysis_reporting_module
 from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
@@ -462,6 +463,34 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
     assert analyzer.status == "completed"
     assert analyzer.issue_count == 1
     assert analyzer.report_kind == "SimpleReport"
+
+
+def test_collect_run_checks_result_binds_the_program_loader_for_per_run_analyzers() -> None:
+    captured: list[AnalysisContext] = []
+
+    def _capture(context: AnalysisContext) -> SimpleReport:
+        captured.append(context)
+        return SimpleReport(name="Program loader probe")
+
+    result = checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["program-loader-probe"],
+        use_cache=False,
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="program-loader-probe",
+                name="Program loader probe",
+                scope="per-run",
+                run=_capture,
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.cancelled is False
+    assert len(captured) == 1
+    assert captured[0].program_ast_loader is project_loading_module.load_program_ast
 
 
 def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch: pytest.MonkeyPatch):
@@ -1182,6 +1211,35 @@ def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_i
     ]
     assert result.targets[0].analyzers[1].duration_ms is not None
     assert any("first summary" in line for line in result.output_lines)
+
+
+def test_collect_run_checks_result_keeps_completed_per_run_results_when_cancelled() -> None:
+    result = checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["first-run", "second-run"],
+        use_cache=False,
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="first-run",
+                name="First run",
+                scope="per-run",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "first run summary"),
+            ),
+            SimpleNamespace(
+                key="second-run",
+                name="Second run",
+                scope="per-run",
+                run=lambda _context: (_ for _ in ()).throw(KeyboardInterrupt()),
+            ),
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.cancelled is True
+    assert [target.target_name for target in result.targets] == ["First run"]
+    assert [(analyzer.key, analyzer.status) for analyzer in result.targets[0].analyzers] == [("first-run", "completed")]
+    assert any("first run summary" in line for line in result.output_lines)
 
 
 def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:

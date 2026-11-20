@@ -428,11 +428,13 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-18-file-scoped-ast-paths",
     "cyclomatic-complexity": "2026-11-18-typedef-paths",
     "sfc": "2026-11-06-sequence-start",
-    "variables": "2026-11-16-moduletype-traversal",
+    "variables": "2026-11-20-library-record-layouts",
     "spec-compliance": "2026-11-16-typedef-path",
-    "datatype-fields": "2026-11-18-root-scope",
+    "datatype-fields": "2026-11-20-library-record-layouts",
     "moduletype-usage": "2026-11-18-private-visibility",
     "picture-display-paths": "2026-11-18-private-visibility",
+    "icf": "2026-11-20-library-record-layouts",
+    "dataflow": "2026-11-20-library-record-layouts",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol

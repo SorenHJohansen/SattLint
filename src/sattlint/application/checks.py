@@ -101,26 +101,27 @@ def _emit_self_check_failure(
     flush_stdout()
 
 
-def _run_per_run_analyzers(
+def _iter_per_run_analyzer_results(
     analyzers: list[AnalyzerSpec],
     cfg: ConfigDict,
     emit_line: Callable[[str], None],
-) -> tuple[ChecksTargetResult, ...]:
-    targets: list[ChecksTargetResult] = []
+) -> Iterator[ChecksTargetResult]:
+    """Yield each per-run result as soon as it finishes.
+
+    A cancellation in a later analyzer must keep the results already produced,
+    so the caller appends as it iterates instead of receiving one final tuple.
+    """
     for per_run_spec in analyzers:
         per_run_result = run_per_run_analyzer(per_run_spec, cfg)
         emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
         if per_run_result.summary:
             emit_line(per_run_result.summary)
-        targets.append(
-            ChecksTargetResult(
-                target_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
-                is_library=False,
-                analyzers=(per_run_result,),
-                is_pseudo=True,
-            )
+        yield ChecksTargetResult(
+            target_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
+            is_library=False,
+            analyzers=(per_run_result,),
+            is_pseudo=True,
         )
-    return tuple(targets)
 
 
 def collect_run_checks_result(
@@ -239,7 +240,8 @@ def collect_run_checks_result(
                     cancelled=True,
                     failures=load_failures.snapshot(),
                 )
-        target_results.extend(_run_per_run_analyzers(per_run_analyzers, cfg, emit_line))
+        for per_run_result in _iter_per_run_analyzer_results(per_run_analyzers, cfg, emit_line):
+            target_results.append(per_run_result)
     except KeyboardInterrupt:
         return build_run_result(
             output_lines=output_lines,

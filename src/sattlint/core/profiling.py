@@ -103,6 +103,12 @@ def bottleneck_from_phase_timings(
     kind: str,
     analyzer_key: str | None = None,
 ) -> TimingBottleneck | None:
+    """Return the slowest phase with its recorded duration.
+
+    The comparison and the reported value use the recorded milliseconds as-is:
+    rounding first would make a near tie fall back to the name ordering and
+    would report a duration the phase did not record.
+    """
     if not phase_timings_ms:
         return None
 
@@ -110,7 +116,7 @@ def bottleneck_from_phase_timings(
     return TimingBottleneck(
         kind=kind,
         name=best_phase.phase,
-        duration_ms=round(max(float(best_phase.duration_ms), 0.0), 3),
+        duration_ms=best_phase.duration_ms,
         analyzer_key=analyzer_key,
     )
 

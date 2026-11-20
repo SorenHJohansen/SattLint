@@ -22,6 +22,16 @@ def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch: pytes
     assert cache_module.compute_analysis_report_cache_key("project", "same-cycle") == unrelated
 
 
+@pytest.mark.parametrize("analyzer_key", ["variables", "datatype-fields", "dataflow", "icf"])
+def test_record_layout_analyzers_carry_a_report_cache_version(analyzer_key: str) -> None:
+    """A report whose findings follow record layout resolution must be versioned.
+
+    Without a tag the key is unchanged by the resolution change, so an entry
+    computed with the old name-only layouts would be reused.
+    """
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
+
+
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
