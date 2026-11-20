@@ -1,4 +1,4 @@
-"""Find module types with no consumer invocation in the loaded workspace."""
+"""Find module types that no consumer of their declaring unit can reach."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def analyze_moduletype_usage(
     analysis_context: AnalysisContext | None = None,
     analyzed_target_is_library: bool = False,
 ) -> ModuleTypeUsageReport:
-    """Count source invocations across the target and its loaded reverse consumers."""
+    """Report target module types that no consumer can reach."""
     graph = None if analysis_context is None else analysis_context.graph
     if graph is not None and not isinstance(graph, ProjectGraph):
         raise TypeError("Module-type usage requires a loaded project graph.")
@@ -148,24 +148,66 @@ def analyze_moduletype_usage(
         index=index,
         target_type_names=target_type_names,
     )
+    consumer_units = _consumer_units(graph)
 
     issues: list[Issue] = []
     for definition in definitions:
         if not is_target_definition(definition):
             continue
-        uses = invocations.get(id(definition), [])
-        origin_file = (definition.origin_file or "").casefold()
-        # Unused means: no invocation at all, or exactly one invocation and that
-        # invocation is the declaring file instantiating its own type. Two or
-        # more invocations mean the type is used, wherever they live, and a
-        # single invocation from another file means an external consumer uses
-        # it. The analyzed target's program/library label plays no part.
-        if len(uses) > 1:
+        # A private definition states its own contract: file scope only. A
+        # consumer outside the file can never legally invoke it, so the lack of
+        # one proves nothing.
+        if definition.is_private:
             continue
-        if uses and (uses[0].source_file or "").casefold() != origin_file:
+        uses = invocations.get(id(definition), [])
+        declaring_file = definition.origin_file or ""
+        # Any invocation outside the declaring unit is a real use, wherever it
+        # lives. A single such use is enough; the consumer set is not guaranteed
+        # to be complete, so absence of more proof is not evidence.
+        if any((use.source_file or "").casefold() != declaring_file.casefold() for use in uses):
+            continue
+        # In-file use says nothing about whether the declaring unit publishes
+        # the type. A library instantiating its own type proves only that the
+        # library is self-consistent; its consumers decide whether the type has
+        # an audience.
+        if consumer_units.get(_declaring_unit_key(definition), set()):
             continue
         issues.append(_unused_type_issue(definition, uses, base_picture.header.name))
     return ModuleTypeUsageReport(base_picture.header.name, issues)
+
+
+def _consumer_units(graph: ProjectGraph | None) -> dict[str, set[str]]:
+    """Reverse the unit-level dependency edges into ``unit -> its consumers``."""
+    consumers: dict[str, set[str]] = defaultdict(set)
+    if graph is None:
+        return consumers
+    for unit, dependencies in graph.source_dependencies.items():
+        unit_key = unit.casefold()
+        for dependency in dependencies:
+            dependency_key = dependency.casefold()
+            if dependency_key != unit_key:
+                consumers[dependency_key].add(unit_key)
+    return consumers
+
+
+def _declaring_unit_key(definition: ModuleTypeDef) -> str:
+    """The dependency-edge key of the unit that declares ``definition``.
+
+    Dependency sidecars name programs, while a definition records the source
+    file it came from, so the file stem is the shared identity. A definition
+    without a source file has no unit identity the edges can match.
+    """
+    if definition.origin_file:
+        return Path(definition.origin_file).stem.casefold()
+    return ""
+
+
+def _declaring_unit_label(definition: ModuleTypeDef) -> str:
+    if definition.origin_file:
+        return definition.origin_file
+    if definition.origin_lib:
+        return f"library {definition.origin_lib}"
+    return "an unknown declaring unit"
 
 
 def _unused_type_issue(
@@ -173,10 +215,13 @@ def _unused_type_issue(
     uses: list[_Invocation],
     root_name: str,
 ) -> Issue:
+    declaring_unit = _declaring_unit_label(definition)
     message = (
-        f"Module type '{definition.name}' is invoked only in its declaring file and is unused elsewhere."
+        f"Module type '{definition.name}' is invoked only in its declaring unit "
+        f"'{declaring_unit}', which has no consumer in the scanned workspace."
         if uses
-        else f"Module type '{definition.name}' has no invocations in the scanned programs or libraries."
+        else f"Module type '{definition.name}' has no invocations and its declaring unit "
+        f"'{declaring_unit}' has no consumer in the scanned workspace."
     )
     return Issue(
         kind="module.unused_type",
