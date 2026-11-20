@@ -48,8 +48,6 @@ def test_field_resolution_follows_the_requesting_library() -> None:
     assert graph.field("SharedRecord", "Beta", library="LibA") is None
     assert graph.field("SharedRecord", "Beta", library="LibB") is not None
     assert graph.field("SharedRecord", "Alpha", library="LibB") is None
-    assert graph.field_type("SharedRecord", "Alpha", library="LibA") is ScalarDatatype.INTEGER
-    assert graph.field_type("SharedRecord", "Beta", library="LibB") is ScalarDatatype.BOOLEAN
 
     record_a = graph.record("SharedRecord", library="LibA")
     record_b = graph.record("SharedRecord", library="LibB")
@@ -103,8 +101,23 @@ def test_name_only_lookup_with_several_candidates_raises() -> None:
 
     with pytest.raises(AmbiguousRecordError):
         graph.field("SharedRecord", "Alpha")
-    with pytest.raises(AmbiguousRecordError):
-        list(graph.iter_leaf_field_paths("SharedRecord"))
+
+
+def test_leaf_expansion_treats_an_ambiguous_name_as_a_leaf_by_default() -> None:
+    graph = _two_library_graph()
+
+    assert list(graph.iter_leaf_field_paths("SharedRecord")) == [()]
+    assert list(graph.expand_leaf_paths("SharedRecord")) == [()]
+
+    issues: list[LeafExpansionIssue] = []
+    reported = list(
+        graph.iter_leaf_field_paths(
+            "SharedRecord",
+            policy=LeafExpansionPolicy(on_issue=issues.append),
+        )
+    )
+    assert reported == [()]
+    assert [(issue.kind, issue.type_name) for issue in issues] == [("ambiguous_record", "SharedRecord")]
 
 
 def test_ambiguous_name_is_reported_through_the_leaf_policy() -> None:
@@ -129,7 +142,7 @@ def test_builtin_records_stay_library_agnostic() -> None:
     builtin = graph.record(builtin_name)
     assert builtin is not None
     assert builtin.library is None
-    assert graph.has_record(builtin_name, library="LibA")
+    assert graph.record(builtin_name, library="LibA") is not None
 
 
 def test_a_library_record_shadows_the_builtin_of_the_same_name() -> None:

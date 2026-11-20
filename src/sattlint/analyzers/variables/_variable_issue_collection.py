@@ -1,7 +1,10 @@
 """Issue collection helpers for the variable usage analyzer."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -28,8 +31,9 @@ from ...reporting.variables_report import (
     UnusedDatatypeFieldIssue,
     UnusedDatatypeIssue,
 )
-from ...resolution import AccessEvent, AccessKind, AmbiguousRecordError
+from ...resolution import AccessEvent, AccessKind, AmbiguousRecordError, resolve_record
 from ...resolution.common import resolve_moduletype_def_strict
+from ...resolution.type_graph import LeafExpansionIssue, LeafExpansionPolicy
 from ._datatype_leaf_index import LeafPathIndex
 from ._variable_module_issue_scan import collect_issues_from_module
 from ._variables_contracts import should_collect_issue_kind as _should_collect_issue_kind
@@ -171,18 +175,25 @@ def _find_datatype_state(
     states: dict[_DatatypeStateKey, _DatatypeDefinitionState],
     name: str,
     library: str | None,
+    *,
+    on_ambiguity: Callable[[AmbiguousRecordError], None] | None = None,
 ) -> _DatatypeDefinitionState | None:
     """Find a datatype definition's state, preferring the caller's library.
 
-    With no decisive library a name declared more than once is left unresolved
-    instead of attributing usage to a same-named record from another library.
+    When the caller's library does not decide and several definitions share the
+    name, there is no state to attribute usage to. ``on_ambiguity`` reports
+    that once per type instead of letting the usage disappear silently.
     """
     exact = states.get(_datatype_state_key(name, library))
     if exact is not None:
         return exact
     name_key = name.casefold()
     candidates = [state for (_library, key), state in states.items() if key == name_key]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1 and on_ambiguity is not None:
+        on_ambiguity(AmbiguousRecordError(name, tuple(state.library for state in candidates)))
+    return None
 
 
 def _record_nested_datatype_access(
@@ -192,21 +203,26 @@ def _record_nested_datatype_access(
     field_path: str,
     library: str | None = None,
 ) -> None:
+    """Attribute a nested record access to the datatype that owns the field.
+
+    ``library`` is the referencing scope's library. The parser ``Variable``
+    carries no declaration library, so it cannot override it.
+    """
     segments = [segment for segment in field_path.split(".") if segment]
     if not segments:
         return
 
     current_type: ScalarDatatype | str = variable.datatype
-    if library is None:
-        library = getattr(variable, "origin_lib", None)
     for index, segment in enumerate(segments):
         if isinstance(current_type, ScalarDatatype):
             return
 
-        try:
-            record_type = self.type_graph.record(str(current_type), library=library)
-        except AmbiguousRecordError:
-            return
+        record_type = resolve_record(
+            self.type_graph,
+            str(current_type),
+            library=library,
+            on_ambiguity=self._warn_ambiguous_record,
+        )
         if record_type is None:
             return
 
@@ -219,7 +235,12 @@ def _record_nested_datatype_access(
         if isinstance(current_type, ScalarDatatype):
             return
 
-        state = _find_datatype_state(datatype_state, str(current_type), record_type.library)
+        state = _find_datatype_state(
+            datatype_state,
+            str(current_type),
+            record_type.library,
+            on_ambiguity=self._warn_ambiguous_record,
+        )
         if state is None:
             continue
 
@@ -261,7 +282,8 @@ def _leaf_index(
     """Return the shared leaf index for one datatype definition.
 
     ``library`` selects the layout when two libraries declare the same record
-    name; without it an ambiguous name yields an empty index.
+    name. An undecidable name has no known layout, so the index stays empty
+    and the ambiguity is reported once per type.
     """
     cache: dict[tuple[str, str], tuple[object, LeafPathIndex]] | None = getattr(self, "datatype_leaf_index_cache", None)
     if cache is None:
@@ -274,11 +296,16 @@ def _leaf_index(
     if cached is not None and cached[0] is type_graph:
         return cached[1]
 
-    try:
-        leaf_paths = type_graph.iter_leaf_field_paths(datatype_text, library=library)
-        index = LeafPathIndex.from_paths(".".join(field_path) for field_path in leaf_paths if field_path)
-    except AmbiguousRecordError:
-        index = LeafPathIndex.from_paths(())
+    def _on_issue(issue: LeafExpansionIssue) -> None:
+        if issue.kind == "ambiguous_record":
+            self._warn_ambiguous_record(AmbiguousRecordError(issue.type_name, issue.libraries))
+
+    leaf_paths = type_graph.expand_leaf_paths(
+        datatype_text,
+        library=library,
+        policy=LeafExpansionPolicy(on_issue=_on_issue),
+    )
+    index = LeafPathIndex.from_paths(".".join(field_path) for field_path in leaf_paths if field_path)
     cache[key] = (type_graph, index)
     return index
 
@@ -405,10 +432,12 @@ def _is_const_field(
     for segment in field_path.split("."):
         if isinstance(datatype, ScalarDatatype):
             return False
-        try:
-            record = self.type_graph.record(str(datatype), library=library)
-        except AmbiguousRecordError:
-            return False
+        record = resolve_record(
+            self.type_graph,
+            str(datatype),
+            library=library,
+            on_ambiguity=self._warn_ambiguous_record,
+        )
         definition = record.fields_by_key.get(segment.casefold()) if record is not None else None
         if record is None or definition is None:
             return False
@@ -534,10 +563,9 @@ def iter_variables_for_datatype_field_analysis(
                 if variable_name in moduleparameter_keys or variable_name in param_mapping_keys
                 else "localvariable"
             )
-            root_owned = path_is_root_owned and self.is_from_root_origin(
-                getattr(variable, "origin_file", None),
-                getattr(variable, "origin_lib", None),
-            )
+            # A parser Variable carries no origin of its own; the scope path is
+            # the only evidence of which target declares it.
+            root_owned = path_is_root_owned
             _append_variable(path, variable, role, root_owned, context_library)
 
     return variables
@@ -578,7 +606,12 @@ def _add_unused_datatype_field_issues(
         if isinstance(variable.datatype, ScalarDatatype):
             continue
 
-        state = _find_datatype_state(datatype_state, variable.datatype_text, entry.library)
+        state = _find_datatype_state(
+            datatype_state,
+            variable.datatype_text,
+            entry.library,
+            on_ambiguity=self._warn_ambiguous_record,
+        )
         if state is None:
             continue
 

@@ -225,11 +225,12 @@ class ContractMappingValidator:
         variable: Variable,
         field_path: tuple[str, ...],
     ) -> ScalarDatatype | str | None:
-        """Walk a field path without a library, so the record name must be unique.
+        """Walk a field path without a library.
 
-        A name several libraries declare is left unresolved rather than guessing
-        a layout: contract checking then has nothing to compare, which is the
-        same outcome as an unknown record.
+        The parser helper has no library and no warning channel, so an
+        undecidable record name returns ``None``. Contract checking then has
+        nothing to compare, the same outcome as an unknown record, instead of
+        guessing a layout.
         """
         try:
             return _resolve_variable_field_datatype(variable, field_path, self._type_graph)

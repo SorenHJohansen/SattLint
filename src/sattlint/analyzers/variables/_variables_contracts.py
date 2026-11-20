@@ -19,6 +19,7 @@ from sattlint.parser_api import (
 from sattlint.parser_api import resolve_variable_field_datatype as _resolve_variable_field_datatype
 
 from ...reporting.variables_report import IssueKind
+from ...resolution import AmbiguousRecordError
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
@@ -197,7 +198,14 @@ def _source_issue_metadata(
             return variable
 
         field_segments = tuple(segment for segment in field_path.split(".") if segment)
-        datatype = _resolve_variable_field_datatype(variable, field_segments, self.type_graph)
+        try:
+            datatype = _resolve_variable_field_datatype(variable, field_segments, self.type_graph)
+        except AmbiguousRecordError as exc:
+            # The parser helper walks without a library, so an undecidable
+            # record name leaves the field datatype unresolved. Report it once
+            # per type and keep the declaration's own datatype for the issue.
+            self._warn_ambiguous_record(exc)
+            return variable
         return Variable(
             name=f"{variable.name}.{field_path}",
             datatype=datatype or variable.datatype,

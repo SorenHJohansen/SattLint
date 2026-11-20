@@ -58,8 +58,8 @@ class AmbiguousRecordError(ValueError):
         self.libraries = libraries
         labels = ", ".join(sorted(library for library in libraries if library)) or "unknown libraries"
         super().__init__(
-            f"Record datatype {type_name!r} is declared in several libraries ({labels}); "
-            "resolve it from a library-aware caller instead of picking one arbitrarily."
+            f"Record datatype {type_name!r} is declared in more than one library ({labels}); "
+            "SattLint cannot tell which layout a reference means."
         )
 
 
@@ -84,11 +84,6 @@ def _ignore_leaf_issue(_issue: LeafExpansionIssue) -> None:
     return None
 
 
-def _raise_on_ambiguity(issue: LeafExpansionIssue) -> None:
-    if issue.kind == "ambiguous_record":
-        raise AmbiguousRecordError(issue.type_name, issue.libraries)
-
-
 @dataclass(frozen=True, slots=True)
 class LeafExpansionPolicy:
     """Caller policy for datatypes that cannot be expanded further.
@@ -105,7 +100,6 @@ class LeafExpansionPolicy:
 
 
 _DEFAULT_LEAF_POLICY = LeafExpansionPolicy()
-_AMBIGUITY_RAISING_POLICY = LeafExpansionPolicy(on_issue=_raise_on_ambiguity)
 
 
 class TypeGraph:
@@ -124,11 +118,11 @@ class TypeGraph:
     3. the sole remaining definition.
 
     A caller that passes no library still resolves a name declared by exactly
-    one library. When more than one definition remains, :meth:`record`,
-    :meth:`field`, :meth:`field_type`, and :meth:`iter_leaf_field_paths` raise
-    :class:`AmbiguousRecordError` instead of picking one arbitrarily, while
-    :meth:`expand_leaf_paths` reports the ambiguity through the caller's
-    :class:`LeafExpansionPolicy` and treats the type as a leaf.
+    one library. When more than one definition remains, :meth:`record` and
+    :meth:`field` raise :class:`AmbiguousRecordError` for callers that can
+    handle the case, while leaf expansion treats the type as a leaf. Production
+    consumers use :func:`resolve_record`, which reports an undecidable name
+    instead of raising.
     """
 
     def __init__(self, records_by_key: dict[tuple[str, str], RecordDef], *, root_library: str | None = None):
@@ -211,19 +205,13 @@ class TypeGraph:
             raise AmbiguousRecordError(type_name, tuple(record.library for record in candidates))
         return self._builtin_records().get(name_key)
 
-    def has_record(self, type_name: str, *, library: str | None = None) -> bool:
-        """Whether a record with this name resolves; an ambiguous name still exists."""
-        try:
-            return self._resolve_record(type_name, library) is not None
-        except AmbiguousRecordError:
-            return True
-
     def record(self, type_name: str, *, library: str | None = None) -> RecordDef | None:
         """Resolve a record by name, preferring the caller's library.
 
         ``library`` should be the library whose code references the type; pass
         ``None`` only when the caller genuinely has no library. A name that
-        several libraries declare then raises :class:`AmbiguousRecordError`.
+        several libraries declare then raises :class:`AmbiguousRecordError`;
+        production consumers use :func:`resolve_record` instead.
         """
         return self._resolve_record(type_name, library)
 
@@ -233,31 +221,32 @@ class TypeGraph:
             return None
         return rec.fields_by_key.get(_cf(field_name))
 
-    def field_type(
-        self, record_type: str, field_name: str, *, library: str | None = None
-    ) -> ScalarDatatype | str | None:
-        f = self.field(record_type, field_name, library=library)
-        return f.datatype if f else None
-
     def iter_leaf_field_paths(
         self,
         root_type: ScalarDatatype | str,
         *,
         library: str | None = None,
+        policy: LeafExpansionPolicy = _DEFAULT_LEAF_POLICY,
     ) -> Iterable[tuple[str, ...]]:
         """Yield field paths from a type down to leaf (simple) datatypes.
 
         For a simple datatype, yields empty path (no further fields).
         For a record datatype, yields tuples like ("I", "WT001", "value").
 
-        ``library`` is the library that uses the type. Without it, a record name
-        that several libraries declare raises :class:`AmbiguousRecordError`.
+        ``library`` is the library that uses the type. The default policy
+        treats a record name that several libraries declare as a leaf, because
+        expansion has no basis for choosing a layout. Pass a policy with
+        ``on_issue`` to report the ambiguity, or to stop on other structural
+        problems.
         """
         if isinstance(root_type, ScalarDatatype):
             yield ()
             return
 
-        yield from self._leaf_paths_for(str(root_type), library)
+        if policy is _DEFAULT_LEAF_POLICY:
+            yield from self._leaf_paths_for(str(root_type), library)
+            return
+        yield from self._expand_leaf_paths(str(root_type), policy, library)
 
     def expand_leaf_paths(
         self,
@@ -268,11 +257,12 @@ class TypeGraph:
     ) -> Iterable[tuple[str, ...]]:
         """Yield leaf paths using one traversal shared by every caller.
 
-        The default policy silently treats cycles and unknown records as
-        leaves; callers that need diagnostics or strictness pass their own
-        policy. Ordering is identical for every policy. An ambiguous record
-        name is reported as ``ambiguous_record`` and also treated as a leaf,
-        because the shared traversal has no basis for picking a library.
+        The default policy silently treats cycles, unknown records, and names
+        that several libraries declare as leaves; callers that need
+        diagnostics or strictness pass their own policy. Ordering is identical
+        for every policy. An ambiguous record name is reported as
+        ``ambiguous_record`` and also treated as a leaf, because the shared
+        traversal has no basis for picking a library.
         """
         if isinstance(root_type, ScalarDatatype):
             yield ()
@@ -291,7 +281,7 @@ class TypeGraph:
         if cached is not None:
             return cached
 
-        paths = tuple(self._expand_leaf_paths(type_name, _AMBIGUITY_RAISING_POLICY, library))
+        paths = tuple(self._expand_leaf_paths(type_name, _DEFAULT_LEAF_POLICY, library))
         self._leaf_paths_by_key[cache_key] = paths
         return paths
 
@@ -349,15 +339,45 @@ class TypeGraph:
                 else:
                     stack.append((str(field.datatype), new_prefix, next_ancestors, record.library))
 
-    def iter_all_addressable_paths(
-        self,
-        root_var: Variable,
-        *,
-        library: str | None = None,
-    ) -> Iterable[tuple[str, ...]]:
-        """Convenience: expand leaf paths for a variable's datatype.
 
-        ``library`` is the library that declares the variable, so a record name
-        it shares with another library resolves to the declaring layout.
-        """
-        yield from self.iter_leaf_field_paths(root_var.datatype, library=library)
+AmbiguityCallback = Callable[[AmbiguousRecordError], None]
+
+
+def resolve_record(
+    graph: TypeGraph,
+    type_name: str,
+    *,
+    library: str | None,
+    on_ambiguity: AmbiguityCallback | None = None,
+) -> RecordDef | None:
+    """Resolve a record and report an undecidable name instead of raising.
+
+    A name is undecidable when more than one library declares it and
+    ``library`` does not select one. It is not a broken program, so production
+    consumers must keep going: pass ``on_ambiguity`` when the caller can
+    report it, and otherwise treat the return value as unresolved. In both
+    cases the record layout stays unknown and the reference is treated as a
+    leaf rather than guessed.
+
+    :meth:`TypeGraph.record` keeps raising for callers that must distinguish
+    the case themselves.
+    """
+    try:
+        return graph.record(type_name, library=library)
+    except AmbiguousRecordError as exc:
+        if on_ambiguity is not None:
+            on_ambiguity(exc)
+        return None
+
+
+__all__ = [
+    "AmbiguityCallback",
+    "AmbiguousRecordError",
+    "FieldDef",
+    "LeafExpansionIssue",
+    "LeafExpansionIssueKind",
+    "LeafExpansionPolicy",
+    "RecordDef",
+    "TypeGraph",
+    "resolve_record",
+]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sattlint.parser_api import ScalarDatatype, Variable
 
-from ...resolution.type_graph import AmbiguousRecordError, FieldDef, TypeGraph
+from ...resolution.type_graph import FieldDef, TypeGraph, resolve_record
 
 
 def _field_def(
@@ -14,12 +14,11 @@ def _field_def(
     """Resolve one field and report the library that declares the record.
 
     The returned library becomes the lookup scope for the field's own datatype,
-    because a field's type belongs to the library that declares the record.
+    because a field's type belongs to the library that declares the record. ICF
+    validation has no warning channel per entry, so an undecidable record name
+    leaves the field unresolved.
     """
-    try:
-        record = type_graph.record(record_type, library=library)
-    except AmbiguousRecordError:
-        return None
+    record = resolve_record(type_graph, record_type, library=library)
     if record is None:
         return None
     field_def = record.fields_by_key.get(field_name.casefold())
@@ -37,8 +36,8 @@ def resolve_leaf_datatype(
 ) -> ScalarDatatype | str | None:
     """Walk a reference down to its leaf datatype.
 
-    ``library`` is the library whose module the ICF entry addresses. Without it
-    the record name must be unambiguous.
+    ``library`` is the library whose module the ICF entry addresses. An
+    undecidable record name has no known layout, so the leaf stays unresolved.
     """
     current_type: ScalarDatatype | str = root_var.datatype
     field_library = library

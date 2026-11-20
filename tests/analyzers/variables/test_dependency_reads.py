@@ -32,6 +32,9 @@ from tests.helpers.variable_test_support import (
     hdr as _hdr,
 )
 from tests.helpers.variable_test_support import (
+    ignore_ambiguity as _ignore_ambiguity,
+)
+from tests.helpers.variable_test_support import (
     varref as _varref,
 )
 
@@ -110,7 +113,7 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         id(context_var): _UsageStub(field_reads={"CleanCycle": [object()]}),
     }
 
-    def _leaf_field_paths(_datatype: object, library: object = None) -> list[tuple[str, ...]]:
+    def _leaf_field_paths(_datatype: object, library: object = None, policy: object = None) -> list[tuple[str, ...]]:
         return [("CleanCycle",), ("WaitCleanCycle",)]
 
     def _no_record(_datatype: object, library: object = None) -> None:
@@ -132,7 +135,12 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
                 param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
             )
         },
-        type_graph=SimpleNamespace(iter_leaf_field_paths=_leaf_field_paths, record=_no_record),
+        type_graph=SimpleNamespace(
+            iter_leaf_field_paths=_leaf_field_paths,
+            expand_leaf_paths=_leaf_field_paths,
+            record=_no_record,
+        ),
+        _warn_ambiguous_record=_ignore_ambiguity,
         is_from_root_origin=_always_root_origin,
         get_usage=_usage_for,
         append_issue=issues.append,

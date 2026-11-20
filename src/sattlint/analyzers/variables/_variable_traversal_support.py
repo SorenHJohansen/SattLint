@@ -25,7 +25,7 @@ from sattlint.parser_api import (
 
 from ...core.call_signatures import resolve_call_signature
 from ...reporting.variables_report import RecordComponentOrderIssue
-from ...resolution import AccessKind, AmbiguousRecordError
+from ...resolution import AccessKind, resolve_record
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import is_anytype_name
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
@@ -38,7 +38,7 @@ from ._variable_traversal_objects import (
     _walk_moduledef,
     _walk_typedef_groupconn,
 )
-from ._variables_access import _resolve_reference_library
+from ._variables_access import _reference_library
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -183,10 +183,12 @@ def _record_component_field_name(
     if not isinstance(current_type, str):
         return None
 
-    try:
-        record_type = self.type_graph.record(current_type, library=library)
-    except AmbiguousRecordError:
-        return None
+    record_type = resolve_record(
+        self.type_graph,
+        current_type,
+        library=library,
+        on_ambiguity=self._warn_ambiguous_record,
+    )
     if record_type is None:
         return None
 
@@ -240,7 +242,7 @@ def _append_record_component_order_issue(
             fn_name=fn_name,
             syntactic_ref=record_ref,
             path=path,
-            library=_resolve_reference_library(variable, context),
+            library=_reference_library(context),
         )
         if field_name is None:
             role = f"{role} (index {component_index})"

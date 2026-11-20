@@ -4,12 +4,13 @@ from .access_graph import AccessEvent, AccessGraph, AccessKind
 from .context_builder import ContextBuilder
 from .paths import CanonicalPath, CanonicalPathKey, ModuleSegment, decorate_segment
 from .symbol_table import CanonicalSymbolTable, SymbolDef, SymbolKind
-from .type_graph import AmbiguousRecordError, TypeGraph
+from .type_graph import AmbiguityCallback, AmbiguousRecordError, TypeGraph, resolve_record
 
 __all__ = [
     "AccessEvent",
     "AccessGraph",
     "AccessKind",
+    "AmbiguityCallback",
     "AmbiguousRecordError",
     "CanonicalPath",
     "CanonicalPathKey",
@@ -20,4 +21,5 @@ __all__ = [
     "SymbolKind",
     "TypeGraph",
     "decorate_segment",
+    "resolve_record",
 ]

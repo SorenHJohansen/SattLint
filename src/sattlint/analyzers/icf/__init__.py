@@ -32,7 +32,7 @@ from ...resolution.common import (
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
-from ...resolution.type_graph import AmbiguousRecordError, RecordDef, TypeGraph
+from ...resolution.type_graph import AmbiguousRecordError, RecordDef, TypeGraph, resolve_record
 from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 from ._icf_file_io import (
     decode_icf_text as _decode_icf_text_impl,
@@ -444,10 +444,15 @@ def _validate_field_path(
         if isinstance(current_type, ScalarDatatype):
             return False, f"datatype {current_type.value} has no field {field!r}"
 
-        try:
-            record = type_graph.record(str(current_type), library=field_library)
-        except AmbiguousRecordError as exc:
-            return False, str(exc)
+        ambiguity: list[AmbiguousRecordError] = []
+        record = resolve_record(
+            type_graph,
+            str(current_type),
+            library=field_library,
+            on_ambiguity=ambiguity.append,
+        )
+        if ambiguity:
+            return False, str(ambiguity[0])
         field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
         if record is None or field_def is None:
             return False, f"field {field!r} not found in datatype {current_type}"
@@ -480,10 +485,7 @@ def _resolve_canonical_leaf_name(
         if isinstance(current_type, ScalarDatatype):
             return None
 
-        try:
-            record = type_graph.record(str(current_type), library=field_library)
-        except AmbiguousRecordError:
-            return None
+        record = resolve_record(type_graph, str(current_type), library=field_library)
         field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
         if record is None or field_def is None:
             return None
@@ -574,13 +576,10 @@ def _record_for(
 ) -> RecordDef | None:
     """Resolve a record for ICF validation, preferring the entry's library.
 
-    A name several libraries declare with no decisive library is skipped rather
-    than guessed: the completeness check then simply has nothing to compare.
+    An undecidable name has no known layout, so the completeness check has
+    nothing to compare and the record stays unresolved.
     """
-    try:
-        return type_graph.record(datatype_name, library=library)
-    except AmbiguousRecordError:
-        return None
+    return resolve_record(type_graph, datatype_name, library=library)
 
 
 def _validate_parameter_record_completeness(

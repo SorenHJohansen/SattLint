@@ -1,5 +1,7 @@
 """Access, effect-flow, and datatype helpers for variable analysis."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import difflib
@@ -7,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
-from ...resolution import AccessKind, AmbiguousRecordError, CanonicalPath
+from ...resolution import AccessKind, AmbiguousRecordError, CanonicalPath, resolve_record
 from ...resolution.common import varname_full
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import LeafExpansionIssue, LeafExpansionPolicy
@@ -215,16 +217,14 @@ def _pop_site(self: VariablesAnalyzer) -> None:
         self.site_stack.pop()
 
 
-def _resolve_reference_library(variable: Variable, context: ScopeContext) -> str | None:
-    """Library that decides which same-named record a reference uses.
+def _reference_library(context: ScopeContext) -> str | None:
+    """Library whose code references a variable, or ``None`` when unknown.
 
-    A resolved variable may carry an explicit declaration library; otherwise the
-    library of the scope that references it decides. ``None`` means neither is
-    known, and record lookup then falls back to name-only resolution.
+    A parser ``Variable`` carries no declaration library, so the referencing
+    scope is the only evidence available. A record name shared by several
+    libraries therefore resolves only when it is unique, the graph's root
+    library declares it, or the scope's library declares it.
     """
-    declared_library = getattr(variable, "origin_lib", None)
-    if declared_library:
-        return str(declared_library)
     return getattr(context, "current_library", None)
 
 
@@ -264,19 +264,24 @@ def _strict_datatype_at_field_prefix(
         if current.casefold() in self.opaque_builtin_types:
             return current
 
-        try:
-            record_type = self.type_graph.record(str(current), library=field_library)
-        except AmbiguousRecordError as exc:
+        ambiguity: list[AmbiguousRecordError] = []
+        record_type = resolve_record(
+            self.type_graph,
+            str(current),
+            library=field_library,
+            on_ambiguity=ambiguity.append,
+        )
+        if ambiguity:
+            exc = ambiguity[0]
             site = _site_str(self)
-            reason = str(exc)
             detail = (
                 f"{fn_name}: at {' -> '.join(use_path)}"
                 f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                f"uses an ambiguous record datatype {str(current)!r}. {reason}"
+                f"uses an ambiguous record datatype {str(current)!r}. {exc}"
             )
             if self.fail_loudly:
                 raise ValueError(detail) from exc
-            self.warn(f"{detail} Treating as leaf.")
+            self._warn_ambiguous_record(exc)
             return current
 
         if record_type is None:
@@ -348,7 +353,7 @@ def _iter_leaf_field_paths_strict(
             )
             if self.fail_loudly:
                 raise ValueError(detail)
-            self.warn(f"{detail} Treating as leaf.")
+            self._warn_ambiguous_record(AmbiguousRecordError(issue.type_name, issue.libraries))
             return
         if self.unavailable_libraries:
             self.warn(
@@ -404,7 +409,7 @@ def _mark_record_wide_builtin_access(
         syntactic_ref=syntactic_ref,
         resolved_var_name=resolved_var.name,
         use_path=path,
-        library=_resolve_reference_library(resolved_var, context),
+        library=_reference_library(context),
     )
 
     leaf_paths = _iter_leaf_field_paths_strict(
@@ -413,7 +418,7 @@ def _mark_record_wide_builtin_access(
         fn_name=fn_name,
         syntactic_ref=syntactic_ref,
         resolved_var_name=resolved_var.name,
-        library=_resolve_reference_library(resolved_var, context),
+        library=_reference_library(context),
     )
 
     for leaf in leaf_paths:

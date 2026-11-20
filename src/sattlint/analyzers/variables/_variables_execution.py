@@ -257,6 +257,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     if context_builder is not None:
         context_builder.issues = self._issues
     _clear_or_set("_analysis_warnings", [])
+    _clear_or_set("_warned_ambiguous_types", set[str]())
     self._last_status_message = None
     self._limit_to_module_path = None
     _clear_or_set("_phase_timings", [])

@@ -14,7 +14,7 @@ from sattlint.parser_api import (
 )
 
 from ..models.project_graph import ProjectGraph
-from ..resolution import AmbiguousRecordError, TypeGraph
+from ..resolution import TypeGraph, resolve_record
 from ..resolution.common import resolve_moduletype_def_strict
 from .syntax import CodeMode
 
@@ -121,19 +121,16 @@ def _resolve_field_datatype(
     """Walk a field path and return its leaf datatype.
 
     ``library`` is the library that uses ``root_type``; it decides which
-    same-named record from a different library supplies the field layout. Pass
-    ``None`` only when the caller has no library, which then requires the record
-    name to be unambiguous.
+    same-named record from a different library supplies the field layout. This
+    helper has no warning channel, so an undecidable record name returns
+    ``None``: the layout is unknown and no leaf datatype is fabricated.
     """
     current: ScalarDatatype | str = root_type
     field_library = library
     for segment in field_path:
         if isinstance(current, ScalarDatatype):
             return current
-        try:
-            record = type_graph.record(str(current), library=field_library)
-        except AmbiguousRecordError:
-            return None
+        record = resolve_record(type_graph, str(current), library=field_library)
         if record is None:
             return None
         field = record.fields_by_key.get(_cf(segment))
