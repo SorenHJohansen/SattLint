@@ -83,8 +83,8 @@ def test_extract_report_findings_handles_rule_based_issues_and_message_fallback(
     report = SimpleNamespace(
         issues=[
             SimpleNamespace(
-                rule=SimpleNamespace(id="spec.sequence_step_prefix"),
-                message="step must start with a transition",
+                rule=SimpleNamespace(id="icf.program_mismatch"),
+                message="entry points to another program",
                 module_path=["Root", "Seq"],
             ),
             SimpleNamespace(kind="unused", module_path=["Root"]),
@@ -93,8 +93,8 @@ def test_extract_report_findings_handles_rule_based_issues_and_message_fallback(
 
     findings = extract_report_findings(report, default_name="Root")
 
-    assert findings[0].kind == "spec.sequence_step_prefix"
-    assert findings[0].message == "step must start with a transition"
+    assert findings[0].kind == "icf.program_mismatch"
+    assert findings[0].message == "entry points to another program"
     assert findings[0].module_path == ("Root", "Seq")
     assert findings[1].kind == "unused"
     assert findings[1].message  # falls back to str(item)
@@ -202,6 +202,13 @@ def test_kind_human_label_returns_short_phrase() -> None:
     assert kind_human_label("dataflow.condition_always_false") == "Condition always false"
     assert kind_human_label("sfc_missing_initial_step") == "Missing initial step at sequence start"
     assert kind_human_label("unknown_custom_kind") == "Unknown Custom Kind"
+
+
+def test_stored_runs_still_render_removed_analyzer_kinds() -> None:
+    # The analyzers are gone, but run history keeps their findings readable.
+    assert kind_human_label("module.version_drift") == "Version drift"
+    assert kind_human_label("spec.sequence_step_prefix") == "Sequence step prefix"
+    assert kind_human_label("spec.transition_name_missing") == "Transition name missing"
 
 
 def test_extract_report_findings_synthesizes_site_from_sequence_name() -> None:

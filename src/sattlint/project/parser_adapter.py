@@ -61,8 +61,8 @@ from .loading_support import (
 LoadStageTimingSink = Callable[[str, str, float], None]
 
 #: Parser rules SattLint deliberately does not enforce. Duplicate sibling names
-#: are accepted here because the version-drift analyzer fixtures use same-name
-#: siblings with different datecodes; the old adapter passed
+#: are accepted here because inline copies legitimately share a role name with
+#: different datecodes; the old adapter passed
 #: ``enforce_unique_submodule_names=False`` for the same reason.
 #: Language diagnostics owned by the parser CLI, not by SattLint analyzers.
 #:

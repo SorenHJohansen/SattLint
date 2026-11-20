@@ -16,8 +16,8 @@ from sattline_parser.models.expressions import Assignment, VarRef
 from sattlint.analyzers.datatype_fields import analyze_datatype_fields
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.registry import (
-    DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
+    get_selectable_analyzer_keys,
     get_selectable_analyzers,
 )
 from sattlint.analyzers.variables import analyze_variables
@@ -151,8 +151,8 @@ def test_default_variables_run_does_not_emit_datatype_field_kinds():
     assert all(issue.kind not in field_kinds for issue in report.issues)
 
 
-def test_datatype_fields_is_registered_selectable_but_not_default_cli():
-    assert "datatype-fields" not in DEFAULT_CLI_ANALYZER_KEYS
+def test_datatype_fields_is_registered_and_selectable():
+    assert "datatype-fields" in get_selectable_analyzer_keys()
     assert any(spec.key == "datatype-fields" for spec in get_selectable_analyzers())
 
     catalog = get_default_analyzer_catalog()

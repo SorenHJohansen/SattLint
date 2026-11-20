@@ -291,34 +291,6 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             direct_context=True,
         ),
         AnalyzerSpecTemplate(
-            key="spec-compliance",
-            name="Engineering spec compliance",
-            description=(
-                "Checks the code against the engineering style rules.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Transition has no name - a transition has no name.\n"
-                "  Example: 'SEQTRANSITION WAIT_FOR Done'.\n"
-                "\n"
-                "- Wrong sequence step prefix - a step name does not start with "
-                "the configured prefix (default 'ST_').\n"
-                "  Example: 'SEQSTEP step_mix'.\n"
-                "\n"
-                "- Wrong transition prefix - a transition name does not start "
-                "with the configured prefix (default 'TR_').\n"
-                "  Example: 'SEQTRANSITION MyTrans'.\n"
-                "\n"
-                "- Wrong sequence name prefix - a sequence name does not start "
-                "with the configured prefix.\n"
-                "\n"
-                "- Wrong equation block name prefix - an equation block name "
-                "does not start with the configured prefix."
-            ),
-            analyzer_attr="analyze_spec_compliance",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "config"),
-        ),
-        AnalyzerSpecTemplate(
             key="alarm-integrity",
             name="Alarm integrity",
             description=(
@@ -385,24 +357,6 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             ),
             analyzer_attr="analyze_same_cycle",
             context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
-        ),
-        AnalyzerSpecTemplate(
-            key="version-drift",
-            name="Version drift",
-            description=(
-                "Checks that two module types with the same name are really the "
-                "same version.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Version drift - two module types have the same name but "
-                "different DateCodes.\n"
-                "  Example: two 'Mixer' module types, one dated 2026-01-01 and "
-                "one dated 2026-06-01."
-            ),
-            analyzer_attr="analyze_version_drift",
-            category="correctness",
-            context_kwargs=("debug",),
         ),
         AnalyzerSpecTemplate(
             key="dataflow",

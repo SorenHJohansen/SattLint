@@ -17,10 +17,9 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from sattlint.analyzers.catalog import get_selectable_analyzers
+from sattlint.analyzers.catalog import get_selectable_analyzer_keys, get_selectable_analyzers
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.moduletype_usage import analyze_moduletype_usage
-from sattlint.analyzers.registry import DEFAULT_CLI_ANALYZER_KEYS
 from sattlint.application.findings import extract_report_findings, kind_human_label
 from sattlint.config import DEFAULT_CONFIG, ConfigDict
 from sattlint.models.project_graph import ProjectGraph
@@ -275,7 +274,7 @@ def test_module_type_usage_is_selectable_and_produces_readable_findings() -> Non
     library = _picture()
     spec = next(spec for spec in get_selectable_analyzers() if spec.key == "moduletype-usage")
 
-    assert spec.key not in DEFAULT_CLI_ANALYZER_KEYS
+    assert spec.key in get_selectable_analyzer_keys()
     report = spec.run(AnalysisContext(library, target_is_library=True))
     findings = extract_report_findings(report, default_name="EquipmentLib")
 

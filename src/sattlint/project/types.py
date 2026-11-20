@@ -12,6 +12,7 @@ from ..config.types import AnalysisConfig, ConfigMode
 class ProjectDict(TypedDict):
     slproj_version: int
     analyzed_programs_and_libraries: list[str]
+    analyzers: list[str]
     mode: ConfigMode
     program_dir: str
     ABB_lib_dir: str
@@ -23,6 +24,7 @@ class ProjectDict(TypedDict):
 DEFAULT_PROJECT_DICT: ProjectDict = {
     "slproj_version": 1,
     "analyzed_programs_and_libraries": [],
+    "analyzers": [],
     "mode": "official",
     "program_dir": "",
     "ABB_lib_dir": "",

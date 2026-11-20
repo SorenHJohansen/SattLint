@@ -102,7 +102,7 @@ Entry: `sattlint analyze` (CLI) or the Textual Analyze view. Both end up at
 
 ```mermaid
 flowchart TB
-    Keys["Selected keys<br/>(or the default CLI set, `DEFAULT_CLI_ANALYZER_KEYS`)"]
+    Keys["Selected keys<br/>(`--analyzer`, else the project's `analyzers` list)"]
     Canon["canonicalize_analyzer_keys<br/>(legacy aliases, casefold)"]
     Filter["get_cli_dispatch_analyzers<br/>resolve_selected_analyzers (exact filter)"]
     Split{"checks.py splits by scope"}

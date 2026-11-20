@@ -103,6 +103,7 @@ def _validate_project_data(raw: Mapping[str, object], path: Path) -> tuple[Proje
         "analyzed_programs_and_libraries", data["analyzed_programs_and_libraries"], path
     )
     data["other_lib_dirs"] = _string_list("other_lib_dirs", data["other_lib_dirs"], path)
+    data["analyzers"] = _string_list("analyzers", data["analyzers"], path)
 
     mode = data["mode"]
     if mode not in ("official", "draft"):

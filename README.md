@@ -80,7 +80,7 @@ The same capabilities are available without the TUI for scripts and AI agents:
 ```bash
 sattlint project show --project app.slproj --format json
 sattlint analyzers list --format json
-sattlint analyze --project app.slproj --format json
+sattlint analyze --project app.slproj --analyzer variables --format json
 sattlint findings --run latest --module Root.A --group-by module --format json
 sattlint show <finding-id> --format json
 ```
@@ -136,6 +136,25 @@ across machines.
 
 Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
 directly.
+
+### Analyzer selection
+
+Every run names the analyzers it uses; there is no default set. List the keys
+in the project file so a checked-in project reproduces its run:
+
+```toml
+analyzers = ["variables", "sfc", "dataflow"]
+```
+
+`sattlint analyzers list` prints the selectable keys. `--analyzer` on the
+command line overrides the project list:
+
+```bash
+sattlint analyze --project app.slproj --analyzer variables --analyzer sfc
+```
+
+A run with no selection, on the command line or in the project file, fails
+with an error that lists every selectable analyzer.
 
 When SattLint analyzes a target, all SattLine discovery, dependency resolution,
 and parsing run in `sattline-parser`'s project layer (`SattLineProject.load`);
