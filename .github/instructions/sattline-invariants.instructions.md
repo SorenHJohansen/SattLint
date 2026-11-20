@@ -47,6 +47,8 @@ A file can be syntactically valid but semantically broken:
 ## Variable-Analysis Gotchas
 
 - Field-level usage matters. Record access can flow through parameter mappings and nested aliases, not just direct reads or writes.
+- Record layouts are library-scoped. A record resolves in the library of the scopes that reference it, and a field's own datatype resolves in the library that declares the record holding it, so nested records keep their library. Two libraries may declare the same record name with different fields; no consumer may pick one layout by name alone.
+- Record ambiguity is not fatal. When more than one library declares a name and the reference's library cannot decide, treat the type as a leaf, warn once per type where a warning channel exists, and leave the layout unresolved elsewhere. Direct `TypeGraph.record`/`field` lookup still raises for callers that handle the case themselves; production consumers go through `resolution.type_graph.resolve_record` or a leaf-expansion policy with an `on_issue` callback.
 - Respect parameter mappings when tracing usage and datatype compatibility.
 - Whole-record access suppresses partial-field unused findings for that datatype.
 - Partial record-leaf reporting uses `UNUSED_DATATYPE_FIELD`, aggregated by datatype across the analyzed target rather than as per-variable noise.
