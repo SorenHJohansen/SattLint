@@ -426,14 +426,16 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 CACHE_KEY_SCHEMA_VERSION = 1
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-20-explicit-selection",
-    "cyclomatic-complexity": "2026-11-20-explicit-selection",
-    "sfc": "2026-11-20-explicit-selection",
-    "variables": "2026-11-20-explicit-selection",
-    "datatype-fields": "2026-11-20-explicit-selection",
-    "moduletype-usage": "2026-11-20-explicit-selection",
-    "picture-display-paths": "2026-11-20-explicit-selection",
-    "icf": "2026-11-20-explicit-selection",
-    "dataflow": "2026-11-20-explicit-selection",
+    "cyclomatic-complexity": "2026-11-21-worst-scope",
+    "sfc": "2026-11-21-branch-scope",
+    "variables": "2026-11-21-usage-cyclic-consumers",
+    "datatype-fields": "2026-11-21-global-unused",
+    "moduletype-usage": "2026-11-21-consumer-closure",
+    "picture-display-paths": "2026-11-21-wmf-emf-skip",
+    "icf": "2026-11-21-entry-programs",
+    "dataflow": "2026-11-21-write-conflicts",
+    "same-cycle": "2026-11-21-instance-dedupe",
+    "alarm-integrity": "2026-11-21-parameter-writeback",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol
