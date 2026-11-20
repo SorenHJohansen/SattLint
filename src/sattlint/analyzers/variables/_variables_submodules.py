@@ -338,7 +338,6 @@ def _walk_submodules(
     parent_context: ScopeContext,
     parent_path: list[str],
 ) -> None:
-    _reset_out_of_origin_consumer_scan(self, parent_path)
     for child in children:
         child_name = child.header.name
         child_path = [*parent_path, child_name]
@@ -407,17 +406,6 @@ def _propagate_mapping_to_parent(
         parent_context,
         child_context,
     )
-
-
-def _reset_out_of_origin_consumer_scan(self: VariablesAnalyzer, parent_path: list[str]) -> None:
-    """Start a fresh out-of-origin consumer evidence pass for the whole picture.
-
-    Issue collection runs after traversal, so the evidence has to be per analysis.
-    Only the base-picture walk covers the whole picture; a typedef walk reuses the
-    evidence its instances recorded, so it must not clear it.
-    """
-    if len(parent_path) == 1:
-        self.out_of_origin_consumer_variable_ids.clear()
 
 
 def _record_out_of_origin_consumer_actual(
