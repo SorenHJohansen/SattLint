@@ -20,9 +20,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 ### Changed
 
 - Record layouts resolve per library, so two libraries that define the same
-  record name keep their own fields and leaf paths. A lookup without a
-  decisive library reports an ambiguity instead of taking the last
-  definition it indexed.
+  record name keep their own fields and leaf paths. When a name is declared
+  by more than one library and the caller cannot decide, the analyzer warns
+  and treats the type as a leaf instead of guessing a layout or failing the
+  run.
 - Run timing values are typed inside the run pipeline while the stored run
   record keeps its existing JSON shape, and the run collector is split into
   execution, record, and result seams without changing cancellation,
