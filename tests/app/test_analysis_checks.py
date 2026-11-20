@@ -34,6 +34,7 @@ from sattlint.config.types import ConfigDict
 from sattlint.core import profiling as profiling_module
 from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
+from sattlint.project import loading as project_loading_module
 from sattlint.reporting import target_report as analysis_reporting_module
 from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
@@ -462,6 +463,34 @@ def test_collect_run_checks_result_runs_icf_once_as_whole_run_target(monkeypatch
     assert analyzer.status == "completed"
     assert analyzer.issue_count == 1
     assert analyzer.report_kind == "SimpleReport"
+
+
+def test_collect_run_checks_result_binds_the_program_loader_for_per_run_analyzers() -> None:
+    captured: list[AnalysisContext] = []
+
+    def _capture(context: AnalysisContext) -> SimpleReport:
+        captured.append(context)
+        return SimpleReport(name="Program loader probe")
+
+    result = checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["program-loader-probe"],
+        use_cache=False,
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="program-loader-probe",
+                name="Program loader probe",
+                scope="per-run",
+                run=_capture,
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.cancelled is False
+    assert len(captured) == 1
+    assert captured[0].program_ast_loader is project_loading_module.load_program_ast
 
 
 def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch: pytest.MonkeyPatch):
