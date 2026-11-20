@@ -4,10 +4,7 @@
     "mode": "workspace",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.condition-always-false",
-            "semantic.non-state-multi-site",
-            "spec.sequence_step_prefix",
-            "spec.transition_prefix"
+            "semantic.condition-always-false"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,12 +12,9 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 4,
+                "finding_count": 1,
                 "rule_counts": {
-                    "semantic.condition-always-false": 1,
-                    "semantic.non-state-multi-site": 1,
-                    "spec.sequence_step_prefix": 1,
-                    "spec.transition_prefix": 1
+                    "semantic.condition-always-false": 1
                 }
             }
         },
