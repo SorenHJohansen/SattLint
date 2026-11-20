@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportAttributeAccessIssue=false
 """Analyzer isolation and ordering tests (Phase R4).
 
 Verifies that each analyzer can run in isolation and that the full suite

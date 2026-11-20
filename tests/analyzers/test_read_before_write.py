@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
 from collections.abc import Sequence
 
 import pytest

@@ -1,3 +1,4 @@
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
 
 from __future__ import annotations

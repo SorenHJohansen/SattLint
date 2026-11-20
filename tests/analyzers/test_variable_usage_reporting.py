@@ -1,7 +1,8 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
-# The reporting helpers are reached through their private seams on purpose.
-# pyright: reportPrivateUsage=false
 from collections.abc import Callable
 from types import SimpleNamespace
 

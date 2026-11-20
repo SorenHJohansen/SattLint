@@ -1,6 +1,7 @@
-"""Late ICF helper grouping and path coverage tests split from test_icf_helpers.py."""
-
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
+"""Late ICF helper grouping and path coverage tests split from test_icf_helpers.py."""
 
 from __future__ import annotations
 

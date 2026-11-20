@@ -1,6 +1,8 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 """Focused tests for positional record component analyzer findings."""
 
-# pyright: reportPrivateUsage=false
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,

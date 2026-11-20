@@ -1,6 +1,8 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
-# pyright: reportPrivateUsage=false
 from pathlib import Path
 from typing import cast
 

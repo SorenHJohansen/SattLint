@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Focused tests for the opt-in ``datatype-fields`` analyzer."""
 
 import pytest

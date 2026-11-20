@@ -1,9 +1,10 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 import pytest
 from lark.exceptions import UnexpectedInput
 
 from sattlint.utils import text_processing
-
-# pyright: reportPrivateUsage=false
 
 
 def _always_valid(_text: str) -> bool:

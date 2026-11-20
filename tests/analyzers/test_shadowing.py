@@ -1,4 +1,3 @@
-# pyright: reportOptionalCall=false
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,

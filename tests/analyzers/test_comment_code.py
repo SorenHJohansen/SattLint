@@ -1,3 +1,6 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -21,8 +24,6 @@ from sattlint.parser_api import (
 )
 from sattlint.utils import text_processing
 from sattlint.utils.text_processing import find_comments_with_code
-
-# pyright: reportPrivateUsage=false
 
 
 def test_find_comments_with_code_detects_assignments_and_calls():

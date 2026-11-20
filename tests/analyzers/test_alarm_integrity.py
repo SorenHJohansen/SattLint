@@ -1,3 +1,6 @@
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from collections.abc import Callable
 
 import pytest
@@ -19,7 +22,6 @@ from sattline_parser.models.ast_model import (
 )
 from sattline_parser.models.expressions import VarRef
 
-# pyright: reportPrivateUsage=false
 from sattlint.analyzers import alarm_integrity as alarm_integrity_module
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.framework import Issue

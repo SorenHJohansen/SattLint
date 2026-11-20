@@ -1,6 +1,7 @@
-"""Focused coverage tests for reset contamination ratchet repayment."""
-
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
+"""Focused coverage tests for reset contamination ratchet repayment."""
 
 from __future__ import annotations
 

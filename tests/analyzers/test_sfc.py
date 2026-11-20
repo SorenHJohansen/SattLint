@@ -1,6 +1,7 @@
-"""Tests for SFC analyzer checks."""
-
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
+"""Tests for SFC analyzer checks."""
 
 from collections.abc import Sequence as SequenceABC
 
