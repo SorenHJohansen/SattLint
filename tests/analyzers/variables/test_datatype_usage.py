@@ -1,6 +1,3 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-
-
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     Assignment,
@@ -138,7 +135,8 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
                     name="ReadThisOp",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[_varref("ThisOPStation")],
+                    # A read-only self-assignment consumes the module parameter.
+                    code=[Assignment(target=_varref("ThisOPStation"), value=_varref("ThisOPStation"))],
                 )
             ],
             sequences=[],
