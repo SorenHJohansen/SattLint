@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from sattlint.parser_api import (
     Assignment,
@@ -45,10 +46,24 @@ class CallFact:
     args: tuple[FactRef | None, ...]
 
 
+class BlockKind(StrEnum):
+    """The kind of module-code block a statement was collected from.
+
+    An equation block re-evaluates every scan, so a read there is not an
+    ordering hazard: the value carries over from the previous scan. Step
+    phases and transition guards are judged in sequence order instead.
+    """
+
+    EQUATION = "equation"
+    STEP = "step"
+    TRANSITION = "transition"
+
+
 @dataclass(frozen=True)
 class StatementFact:
     module_path: tuple[str, ...]
     site: str
+    block_kind: BlockKind
     reads: tuple[FactRef, ...]
     writes: tuple[FactRef, ...]
     calls: tuple[CallFact, ...]
@@ -124,7 +139,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
         for equation in modulecode.equationblocks or []:
             site = f"equation block {equation.name!r}"
             for statement in equation.code or []:
-                self._append_statement_fact(statement, context, module_path, site)
+                self._append_statement_fact(statement, context, module_path, site, BlockKind.EQUATION)
         for sequence in modulecode.sequences or []:
             self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name or "")
 
@@ -144,11 +159,11 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                 ):
                     site = f"sequence {sequence_name!r} step {node.name!r} {phase}"
                     for statement in statements:
-                        self._append_statement_fact(statement, context, module_path, site)
+                        self._append_statement_fact(statement, context, module_path, site, BlockKind.STEP)
                 continue
             if isinstance(node, SFCTransition) and node.condition is not None:
                 site = f"sequence {sequence_name!r} transition {node.name!r} condition"
-                self._append_statement_fact(node.condition, context, module_path, site)
+                self._append_statement_fact(node.condition, context, module_path, site, BlockKind.TRANSITION)
                 continue
             if isinstance(node, SFCAlternative | SFCParallel):
                 for branch in node.branches or []:
@@ -163,6 +178,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
         context: ScopeContext,
         module_path: list[str],
         site: str,
+        block_kind: BlockKind,
     ) -> None:
         reads: list[FactRef] = []
         writes: list[FactRef] = []
@@ -184,6 +200,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             StatementFact(
                 module_path=tuple(module_path),
                 site=site,
+                block_kind=block_kind,
                 reads=tuple(reads),
                 writes=tuple(writes),
                 calls=tuple(calls),
