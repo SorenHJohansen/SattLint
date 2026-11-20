@@ -192,6 +192,17 @@ def _has_ignorable_output_binding(self: VariablesAnalyzer, variable: Variable) -
     return id(variable) in self.ignorable_output_variable_ids
 
 
+def _has_out_of_origin_consumer(self: VariablesAnalyzer, variable: Variable) -> bool:
+    """Whether a child outside the analyzed origin consumes this variable's value.
+
+    A mapping actual is proof of use even when the child's parameters never appear
+    in its body: the contract is real but its definition is not the analyzed origin,
+    so the analyzer cannot see the read.
+    """
+    variable_ids = getattr(self, "out_of_origin_consumer_variable_ids", None)
+    return variable_ids is not None and id(variable) in variable_ids
+
+
 class VariablesStatusMixin:
     def _bind_procedure_status(
         self: Any,
@@ -243,11 +254,15 @@ class VariablesStatusMixin:
     def _has_ignorable_output_binding(self: Any, variable: Variable) -> bool:
         return _has_ignorable_output_binding(self, variable)
 
+    def _has_out_of_origin_consumer(self: Any, variable: Variable) -> bool:
+        return _has_out_of_origin_consumer(self, variable)
+
 
 ProcedureStatusBinding = _ProcedureStatusBinding
 bind_ignorable_output = _bind_ignorable_output
 bind_procedure_status = _bind_procedure_status
 has_ignorable_output_binding = _has_ignorable_output_binding
+has_out_of_origin_consumer = _has_out_of_origin_consumer
 has_procedure_status_binding = _has_procedure_status_binding
 procedure_status_issue = _procedure_status_issue
 propagate_procedure_status_bindings = _propagate_procedure_status_bindings
@@ -260,6 +275,7 @@ __all__ = [
     "bind_ignorable_output",
     "bind_procedure_status",
     "has_ignorable_output_binding",
+    "has_out_of_origin_consumer",
     "has_procedure_status_binding",
     "procedure_status_issue",
     "propagate_procedure_status_bindings",

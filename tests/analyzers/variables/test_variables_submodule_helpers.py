@@ -325,6 +325,7 @@ def test_walk_submodules_respects_limit_paths(monkeypatch: pytest.MonkeyPatch) -
     walker: Any = _ns(
         limit_to_module_path=["Elsewhere"],
         context_builder=_ns(build_for_frame=_build_frame_context),
+        out_of_origin_consumer_variable_ids=set(),
     )
     monkeypatch.setattr(variables_submodules_module, "_walk_submodule_headers", _skip_headers)
     monkeypatch.setattr(variables_submodules_module, "_walk_framemodule_subtree", _skip_frame)

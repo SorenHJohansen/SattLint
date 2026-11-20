@@ -42,6 +42,9 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
     def has_ignorable_output_binding(self, variable: Variable) -> bool:
         return self._has_ignorable_output_binding(variable)
 
+    def has_out_of_origin_consumer(self, variable: Variable) -> bool:
+        return self._has_out_of_origin_consumer(variable)
+
     def procedure_status_issue(self, variable: Variable, usage: VariableUsage) -> tuple[str, str | None] | None:
         return self._procedure_status_issue(variable, usage)
 
