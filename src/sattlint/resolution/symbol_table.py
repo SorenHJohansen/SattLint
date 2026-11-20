@@ -56,9 +56,9 @@ class CanonicalSymbolTable:
     ) -> None:
         """Register a variable and every addressable leaf field below it.
 
-        ``library`` is the library that declares the variable. Without it the
-        record layout resolves by name only, so the name must not be shared by
-        several libraries.
+        ``library`` is the library that declares the variable. A record name
+        that several libraries declare and this library does not select is
+        treated as a leaf, because the layout is unknown.
         """
         if not self.collect:
             return

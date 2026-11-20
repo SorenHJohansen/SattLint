@@ -46,6 +46,6 @@ def test_type_graph_does_not_invent_fields():
     analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
     tg = analyzer.type_graph
 
-    assert tg.has_record("ApplDvType")
+    assert tg.record("ApplDvType") is not None
     assert tg.field("ApplDvType", "APPL") is None
     assert tg.field("MESBatchCtrlType", "APPL") is not None
