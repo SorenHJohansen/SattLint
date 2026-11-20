@@ -1,10 +1,7 @@
 # These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
 
-from typing import (
-    Any,
-    cast,
-)
+from typing import cast
 
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -54,7 +51,7 @@ def test_variables_report_coerces_visible_kinds_and_handles_unknown_selector_kin
     )
 
     assert isinstance(report.visible_kinds, frozenset)
-    assert report._issues_for_kind(cast(Any, object())) == []
+    assert report._issues_for_kind(cast(IssueKind, object())) == []
 
 
 def test_variables_report_coerces_mutable_visible_kinds_to_frozenset():

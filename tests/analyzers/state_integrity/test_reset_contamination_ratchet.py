@@ -275,7 +275,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         def rsplit(self, sep: str, maxsplit: int) -> list[str]:
             return self.value.rsplit(sep, maxsplit)
 
-    assert is_from_root_origin(cast(Any, BrokenPath("root.s")), "root.s") is True
+    assert is_from_root_origin(cast(str, BrokenPath("root.s")), "root.s") is True
 
     calls: list[str] = []
     ResetContaminationAnalyzer._check_for_single(
@@ -292,7 +292,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         [],
         check_fn=lambda *_args: calls.append("single"),
     )
-    ResetContaminationAnalyzer(cast(Any, None))._check_for_typedef(
+    ResetContaminationAnalyzer(cast(BasePicture, None))._check_for_typedef(
         ModuleTypeDef(
             name="NoCodeType",
             moduleparameters=[],
@@ -335,7 +335,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     ) -> None:
         traversed_paths.append(path.copy())
 
-    ResetContaminationAnalyzer(cast(Any, None))._collect_from_module(
+    ResetContaminationAnalyzer(cast(BasePicture, None))._collect_from_module(
         parent_module,
         ["Root"],
         [],

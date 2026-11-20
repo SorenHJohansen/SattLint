@@ -6,7 +6,7 @@ from __future__ import annotations
 import codecs
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from sattline_parser.models.ast_model import (
@@ -497,7 +497,7 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch: p
         False,
         "datatype integer has no field 'Field'",
     )
-    assert icf_module._validate_field_path(type_graph, cast(Any, unknown_var), ["Field"]) == (
+    assert icf_module._validate_field_path(type_graph, cast(Variable, unknown_var), ["Field"]) == (
         False,
         "field 'Field' not found in datatype None",
     )
@@ -506,7 +506,7 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch: p
     assert final_record_detail == "non-simple datatype LeafRecord referenced without field path"
 
     assert icf_datatype_module.resolve_leaf_datatype(type_graph, simple_var, ["Field"]) is None
-    assert icf_datatype_module.resolve_leaf_datatype(type_graph, cast(Any, unknown_var), ["Field"]) is None
+    assert icf_datatype_module.resolve_leaf_datatype(type_graph, cast(Variable, unknown_var), ["Field"]) is None
     assert icf_datatype_module.resolve_leaf_datatype(type_graph, record_var, ["Missing"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, simple_var.datatype, ["Field"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, unknown_var.datatype, ["Field"]) is None
