@@ -109,9 +109,17 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.READ_BEFORE_WRITE,
 )
 
+# Field verdicts are global: a field is reported only when no loaded unit
+# reads or writes it. Per-instance read-only and never-read verdicts are not
+# part of this analyzer.
 DATATYPE_FIELD_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED_DATATYPE,
     IssueKind.UNUSED_DATATYPE_FIELD,
+)
+
+# Retired per-instance field verdicts. They are no longer produced, but the
+# kinds and their report sections stay known so a stored run still renders.
+RETIRED_PER_INSTANCE_FIELD_KINDS: tuple[IssueKind, ...] = (
     IssueKind.FIELD_READ_ONLY,
     IssueKind.FIELD_NEVER_READ,
 )
@@ -128,6 +136,7 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
 ALL_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     *DEFAULT_VARIABLE_ANALYSIS_KINDS,
     *DATATYPE_FIELD_ANALYSIS_KINDS,
+    *RETIRED_PER_INSTANCE_FIELD_KINDS,
     *LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS,
 )
 

@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
 from pathlib import Path
 
+import pytest
 from sattline_parser.models.ast_model import (
     Assignment,
     BasePicture,
@@ -26,8 +27,6 @@ from sattlint.parser_api import parse_source_file
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DATATYPE_FIELD_ANALYSIS_KINDS,
-    FieldNeverReadIssue,
-    FieldReadOnlyIssue,
     NeverReadIssue,
     ReadOnlyNonConstIssue,
     UnusedDatatypeFieldIssue,
@@ -64,55 +63,50 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     assert ("QualityRecord", "UnusedField") in unused_fields
 
 
-def test_sample_fixture_catches_outletprod_sibling_field_miswire():
+def test_sample_fixture_reports_only_globally_unused_datatype_fields():
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "OutletProdSiblingMiswire.s"
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
-    field_read_only = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
-    }
     unused_fields = {
         (issue.datatype_name, issue.field_path) for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)
     }
 
-    assert ("OutletConfig", "OutletProd_Def.Std") in field_read_only
-    assert ("OutletConfig", "OutletProd_X_Def.Std") in field_never_read
+    # The sibling miswire is a per-instance asymmetry: one field is only read,
+    # the other only written. Globally both are used, so neither is reported.
+    assert not any(issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ} for issue in issues)
     assert ("OutletProdPair", "OutletProd_Def.Std") not in unused_fields
     assert ("OutletProdPair", "OutletProd_X_Def.Std") not in unused_fields
+    # Aux is never read or written anywhere, so it is genuinely unused.
+    assert ("OutletProdState", "Aux") in unused_fields
 
 
-def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> BasePicture:
+def _build_whole_record_basepicture(*, read_payload: bool) -> BasePicture:
     record_type = DataType(
         name="PayloadType",
         description=None,
         datecode=None,
         var_list=[
             Variable(name="Used", datatype=ScalarDatatype.INTEGER),
-            Variable(name="Miswired", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
         ],
     )
 
     payload = Variable(name="Payload", datatype="PayloadType")
-    whole_peer = Variable(name="WholePeer", datatype="PayloadType")
-    field_source = Variable(name="FieldSource", datatype=ScalarDatatype.INTEGER)
-    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
+    peer = Variable(name="Peer", datatype="PayloadType")
 
     whole_record_assignment = (
-        Assignment(target=_varref("WholePeer"), value=_varref("Payload"))
-        if include_whole_read
-        else Assignment(target=_varref("Payload"), value=_varref("WholePeer"))
+        Assignment(target=_varref("Peer"), value=_varref("Payload"))
+        if read_payload
+        else Assignment(target=_varref("Payload"), value=_varref("Peer"))
     )
 
     return BasePicture(
         header=_hdr("BasePicture"),
         datatype_defs=[record_type],
         moduletype_defs=[],
-        localvariables=[payload, whole_peer, field_source, sink],
+        localvariables=[payload, peer],
         submodules=[],
         modulecode=ModuleCode(
             equationblocks=[
@@ -121,19 +115,7 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
                     code=[whole_record_assignment],
-                ),
-                Equation(
-                    name="ReadUsedField",
-                    position=(1.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
-                ),
-                Equation(
-                    name="WriteMiswiredField",
-                    position=(2.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
-                ),
+                )
             ],
             sequences=[],
         ),
@@ -141,36 +123,14 @@ def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> Ba
     )
 
 
-def test_whole_record_write_does_not_hide_field_never_read_issue():
-    bp = _build_record_field_asymmetry_basepicture(include_whole_read=False)
+@pytest.mark.parametrize("read_payload", [True, False])
+def test_whole_record_access_marks_every_field_used_globally(read_payload: bool):
+    bp = _build_whole_record_basepicture(read_payload=read_payload)
 
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
-    field_read_only = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
-    }
-
-    assert ("Payload", "Used") not in field_read_only
-    assert ("Payload", "Miswired") in field_never_read
-
-
-def test_whole_record_read_does_not_hide_field_read_only_issue():
-    bp = _build_record_field_asymmetry_basepicture(include_whole_read=True)
-
-    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
-
-    field_read_only = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldReadOnlyIssue)
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path) for issue in issues if isinstance(issue, FieldNeverReadIssue)
-    }
-
-    assert ("Payload", "Used") in field_read_only
-    assert ("Payload", "Miswired") not in field_never_read
+    assert not [issue for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD]
+    assert not any(issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ} for issue in issues)
 
 
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
