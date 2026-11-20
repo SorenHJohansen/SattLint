@@ -1,11 +1,11 @@
+# pyright: reportPrivateUsage=false
+
 from typing import (
     Any,
     cast,
 )
 
 from sattline_parser.ast import MappingSource
-
-# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 from sattline_parser.models.ast_model import (
     ParameterMapping,
     ScalarDatatype,
@@ -598,7 +598,7 @@ def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():
 def test_effect_flow_tracker_records_copyvariable_output_edge():
     from collections import defaultdict  # noqa: PLC0415
 
-    edges = defaultdict(set)
+    edges: defaultdict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     context = ScopeContext(

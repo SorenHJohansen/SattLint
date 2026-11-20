@@ -1,5 +1,6 @@
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 """Late helper coverage tests split from test_reset_contamination_ratchet.py."""
+
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from sattline_parser.models.ast_model import ScalarDatatype, SFCAlternative, SFCParallel, Variable
 
 from sattlint.analyzers.reset_contamination import _reset_path_state as reset_path_state_module
@@ -29,16 +31,16 @@ from sattlint.analyzers.reset_contamination._reset_path_writes import (
 from sattlint.reporting.variables_report import VariableIssue
 
 
-def test_reset_contamination_helpers_cover_debug_and_parallel_edge_cases(caplog) -> None:
+def test_reset_contamination_helpers_cover_debug_and_parallel_edge_cases(caplog: pytest.LogCaptureFixture) -> None:
     debug = PathCollectionDebug(enabled=True)
     trace_events: list[tuple[str, dict[str, Any]]] = []
 
+    def _record_trace(action: str, **data: Any) -> None:
+        trace_events.append((action, data))
+
     with caplog.at_level(logging.DEBUG, logger="SattLint"):
         PathCollectionDebug(enabled=False).emit("suppressed")
-        PathCollectionDebug(
-            enabled=True,
-            trace_fn=lambda action, **data: trace_events.append((action, data)),
-        ).emit("empty-detail")
+        PathCollectionDebug(enabled=True, trace_fn=_record_trace).emit("empty-detail")
 
     assert "reset-contamination empty-detail" in "\n".join(caplog.messages)
     assert trace_events == [("reset-contamination-empty-detail", {})]
