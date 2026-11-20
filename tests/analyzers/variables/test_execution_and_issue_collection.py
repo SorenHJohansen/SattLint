@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -56,6 +56,78 @@ from tests.helpers.variable_test_support import (
 )
 
 
+def _ignore_call(*args: object, **kwargs: object) -> None:
+    """Accept and discard an analyzer callback."""
+
+
+def _false_flag(*args: object, **kwargs: object) -> bool:
+    return False
+
+
+def _true_flag(*args: object, **kwargs: object) -> bool:
+    return True
+
+
+def _typedef_analysis_helper(
+    *,
+    usage_by_id: dict[int, _UsageStub],
+    captured_display_paths: list[list[str]],
+    checked_targets: list[tuple[Variable | None, tuple[str, ...], tuple[str, ...]]],
+    collision_issues: list[VariableIssue],
+) -> Any:
+    """Analyzer stand-in for the typedef scope and collision paths."""
+
+    def _record_collision(issue: VariableIssue) -> None:
+        collision_issues.append(issue)
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    def _record_walk(moduledef: object, context: ScopeContext, path: list[str]) -> None:
+        captured_display_paths.append(list(context.display_module_path))
+
+    def _record_param_mapping(
+        mapping: object,
+        target_var: Variable | None,
+        env: dict[str, Variable],
+        context: ScopeContext,
+        path: list[str],
+    ) -> None:
+        checked_targets.append((target_var, tuple(sorted(env)), tuple(path)))
+
+    return SimpleNamespace(
+        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
+        _contexts_by_module_path={},
+        _append_issue=_record_collision,
+        _get_usage=_usage_for,
+        used_params_by_typedef={},
+        param_reads_by_typedef={},
+        param_ui_reads_by_typedef={},
+        param_non_ui_reads_by_typedef={},
+        param_writes_by_typedef={},
+        _walk_moduledef=_record_walk,
+        _walk_module_code=_ignore_call,
+        _walk_submodules=_ignore_call,
+        _walk_typedef_groupconn=_ignore_call,
+        _check_param_mapping=_record_param_mapping,
+    )
+
+
+def _single_module_helper(usage_by_id: dict[int, _UsageStub]) -> Any:
+    """Analyzer stand-in for the single-module context helpers."""
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    return SimpleNamespace(
+        _walk_moduledef=_ignore_call,
+        _walk_module_code=_ignore_call,
+        _walk_submodules=_ignore_call,
+        _get_usage=_usage_for,
+        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
+    )
+
+
 def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
     parameter = Variable(name="EnableVar", datatype=ScalarDatatype.BOOLEAN)
     bp = BasePicture(
@@ -81,12 +153,18 @@ def test_walk_tail_not_expression_marks_operand_variable_reads() -> None:
     assert analyzer._get_usage(parameter).ui_read is True
 
 
-def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_paths(monkeypatch):
+def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     log_messages: list[tuple[object, ...]] = []
+
+    def _record_log(*args: object) -> None:
+        log_messages.append(args)
+
     monkeypatch.setattr(
         variables_execution_module,
         "log",
-        SimpleNamespace(debug=lambda *args: log_messages.append(args)),
+        SimpleNamespace(debug=_record_log),
     )
 
     runner: Any = SimpleNamespace(
@@ -112,18 +190,18 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _analysis_warnings=[],
         _selected_issue_kinds=None,
         _alias_links=[],
-        _trace=lambda *args, **kwargs: None,
-        _analyze_root_scope=lambda: None,
-        _apply_alias_back_propagation=lambda: None,
-        _propagate_procedure_status_bindings=lambda: None,
-        _run_post_traversal_analyses=lambda: None,
-        _collect_basepicture_issues=lambda bp_path: None,
-        _collect_typedef_issues=lambda: None,
-        _analyze_library_dependency_typedef_usage=lambda: None,
-        _add_global_scope_minimization_issues=lambda: None,
-        _add_hidden_global_coupling_issues=lambda: None,
-        _add_high_fan_in_out_issues=lambda: None,
-        _add_unused_datatype_field_issues=lambda *_args, **_kwargs: None,
+        _trace=_ignore_call,
+        _analyze_root_scope=_ignore_call,
+        _apply_alias_back_propagation=_ignore_call,
+        _propagate_procedure_status_bindings=_ignore_call,
+        _run_post_traversal_analyses=_ignore_call,
+        _collect_basepicture_issues=_ignore_call,
+        _collect_typedef_issues=_ignore_call,
+        _analyze_library_dependency_typedef_usage=_ignore_call,
+        _add_global_scope_minimization_issues=_ignore_call,
+        _add_hidden_global_coupling_issues=_ignore_call,
+        _add_high_fan_in_out_issues=_ignore_call,
+        _add_unused_datatype_field_issues=_ignore_call,
     )
 
     assert variables_execution_module.run(runner) == []
@@ -162,25 +240,11 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     captured_display_paths: list[list[str]] = []
     checked_targets: list[tuple[Variable | None, tuple[str, ...], tuple[str, ...]]] = []
     collision_issues: list[VariableIssue] = []
-    helper: Any = SimpleNamespace(
-        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
-        _contexts_by_module_path={},
-        _append_issue=lambda issue: collision_issues.append(issue),
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        used_params_by_typedef={},
-        param_reads_by_typedef={},
-        param_ui_reads_by_typedef={},
-        param_non_ui_reads_by_typedef={},
-        param_writes_by_typedef={},
-        _walk_moduledef=lambda moduledef, context, path: captured_display_paths.append(
-            list(context.display_module_path)
-        ),
-        _walk_module_code=lambda *args, **kwargs: None,
-        _walk_submodules=lambda *args, **kwargs: None,
-        _walk_typedef_groupconn=lambda *args, **kwargs: None,
-        _check_param_mapping=lambda mapping, target_var, env, context, path: checked_targets.append(
-            (target_var, tuple(sorted(env)), tuple(path))
-        ),
+    helper = _typedef_analysis_helper(
+        usage_by_id=usage_by_id,
+        captured_display_paths=captured_display_paths,
+        checked_targets=checked_targets,
+        collision_issues=collision_issues,
     )
 
     variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
@@ -221,13 +285,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         current_library=None,
         parent_context=None,
     )
-    simple_helper: Any = SimpleNamespace(
-        _walk_moduledef=lambda *args, **kwargs: None,
-        _walk_module_code=lambda *args, **kwargs: None,
-        _walk_submodules=lambda *args, **kwargs: None,
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        _analyzing_typedefs={TypedefUsageKey("", "childtype")},
-    )
+    simple_helper = _single_module_helper(usage_by_id)
     used_reads, used_ui_reads, used_non_ui_reads, used_writes = (
         variables_execution_module._analyze_single_module_with_context(
             simple_helper,
@@ -273,9 +331,13 @@ def test_variables_execution_apply_alias_back_propagation_covers_prefixed_and_di
         id(root_parent): root_parent_usage,
         id(root_child): root_child_usage,
     }
+
+    def _alias_usage(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
     helper: Any = SimpleNamespace(
         _alias_links=[(parent, child, "Alias"), (root_parent, root_child, "")],
-        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _get_usage=_alias_usage,
     )
 
     variables_execution_module._apply_alias_back_propagation(helper)
@@ -406,6 +468,27 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
         id(primitive_var): _UsageStub(),
     }
     issues: list[VariableIssue] = []
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append(issue)
+
+    def _issue_usage(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    def _not_external(origin: str, origin_lib: str | None = None) -> bool:
+        return origin != "external.s"
+
+    def _leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+        return {
+            "EmptyPayload": [],
+            "LibraryPayload": [("FieldA",)],
+            "PayloadNoAccess": [("FieldA",)],
+            "PayloadPartial": [("Used",), ("Unused",)],
+        }.get(name, [])
+
+    def _missing_record(name: str, library: str | None = None) -> None:
+        return None
+
     helper: Any = SimpleNamespace(
         bp=BasePicture(
             header=_hdr("Root"),
@@ -426,24 +509,16 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
             moduledef=None,
         ),
         analyzed_target_is_library=True,
-        append_issue=lambda issue: issues.append(issue),
-        get_usage=lambda variable: usage_by_id[id(variable)],
-        is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
+        append_issue=_record_issue,
+        get_usage=_issue_usage,
+        is_from_root_origin=_not_external,
         limit_to_module_path=None,
         _selected_issue_kinds=None,
-        _is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
-        type_graph=SimpleNamespace(
-            iter_leaf_field_paths=lambda name, library=None: {
-                "EmptyPayload": [],
-                "LibraryPayload": [("FieldA",)],
-                "PayloadNoAccess": [("FieldA",)],
-                "PayloadPartial": [("Used",), ("Unused",)],
-            }.get(name, []),
-            record=lambda name, library=None: None,
-        ),
+        _is_from_root_origin=_not_external,
+        type_graph=SimpleNamespace(iter_leaf_field_paths=_leaf_paths, record=_missing_record),
         _analyzed_target_is_library=True,
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        _append_issue=lambda issue: issues.append(issue),
+        _get_usage=_issue_usage,
+        _append_issue=_record_issue,
         contexts_by_module_path={},
     )
 
@@ -467,6 +542,32 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
         field_writes={"OutletProd_X_Def.Std": [["Root", "Writer"]]},
     )
     issues: list[VariableIssue] = []
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append(issue)
+
+    def _asymmetry_usage(variable: Variable) -> _UsageStub:
+        return usage
+
+    def _root_origin(origin: str, origin_lib: str | None = None) -> bool:
+        return True
+
+    def _missing_field(record_type: object, field_name: str, library: str | None = None) -> None:
+        return None
+
+    def _missing_record(record_type: object, library: str | None = None) -> None:
+        return None
+
+    def _payload_leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+        return (
+            [
+                ("OutletProd_Def", "Std"),
+                ("OutletProd_X_Def", "Std"),
+            ]
+            if name == "Payload"
+            else []
+        )
+
     helper: Any = SimpleNamespace(
         bp=BasePicture(
             header=_hdr("Root"),
@@ -480,21 +581,14 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
         _selected_issue_kinds=None,
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
-        append_issue=lambda issue: issues.append(issue),
-        get_usage=lambda variable: usage,
-        is_from_root_origin=lambda origin, origin_lib=None: True,
+        append_issue=_record_issue,
+        get_usage=_asymmetry_usage,
+        is_from_root_origin=_root_origin,
         limit_to_module_path=None,
         type_graph=SimpleNamespace(
-            field=lambda record_type, field_name, library=None: None,
-            record=lambda record_type, library=None: None,
-            iter_leaf_field_paths=lambda name, library=None: (
-                [
-                    ("OutletProd_Def", "Std"),
-                    ("OutletProd_X_Def", "Std"),
-                ]
-                if name == "Payload"
-                else []
-            ),
+            field=_missing_field,
+            record=_missing_record,
+            iter_leaf_field_paths=_payload_leaf_paths,
         ),
         contexts_by_module_path={},
     )
@@ -576,6 +670,10 @@ def test_read_only_fields_exclude_constants_but_unused_fields_remain_reported(co
 def test_variable_issue_collection_direct_global_helpers_cover_remaining_branches():
     shared = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
     issues: list[VariableIssue] = []
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append(issue)
+
     helper: Any = SimpleNamespace(
         bp=BasePicture(
             header=_hdr("Root"),
@@ -587,11 +685,11 @@ def test_variable_issue_collection_direct_global_helpers_cover_remaining_branche
             moduledef=None,
         ),
         analyzed_target_is_library=False,
-        append_issue=lambda issue: issues.append(issue),
-        trace=lambda *args, **kwargs: None,
+        append_issue=_record_issue,
+        trace=_ignore_call,
         _analyzed_target_is_library=False,
-        _trace=lambda *args, **kwargs: None,
-        _append_issue=lambda issue: issues.append(issue),
+        _trace=_ignore_call,
+        _append_issue=_record_issue,
     )
     helper.access_graph = SimpleNamespace(
         events=[
@@ -775,8 +873,9 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         modulecode=None,
         parametermappings=[],
     )
-    helper: Any = SimpleNamespace(
-        append_issue=lambda issue: issues.append(
+
+    def _record_module_issue(issue: VariableIssue) -> None:
+        issues.append(
             (
                 issue.kind,
                 tuple(issue.module_path),
@@ -784,22 +883,29 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
                 issue.role or "",
                 issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
             )
-        ),
+        )
+
+    def _module_usage(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    def _status_issue(variable: Variable, usage: _UsageStub) -> tuple[str, str] | None:
+        if variable is procedure_param or variable is procedure_local:
+            return ("procedure-status", "Status")
+        return None
+
+    helper: Any = SimpleNamespace(
+        append_issue=_record_module_issue,
         _selected_issue_kinds=None,
-        get_usage=lambda variable: usage_by_id[id(variable)],
-        has_output_effect=lambda *args, **kwargs: False,
-        has_procedure_status_binding=lambda *args, **kwargs: False,
-        is_const_candidate=lambda *args, **kwargs: True,
-        procedure_status_issue=lambda variable, usage: (
-            ("procedure-status", "Status") if variable is procedure_param or variable is procedure_local else None
-        ),
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        _procedure_status_issue=lambda variable, usage: (
-            ("procedure-status", "Status") if variable is procedure_param or variable is procedure_local else None
-        ),
-        _has_output_effect=lambda *args, **kwargs: False,
-        _has_procedure_status_binding=lambda *args, **kwargs: False,
-        _is_const_candidate=lambda *args, **kwargs: True,
+        get_usage=_module_usage,
+        has_output_effect=_false_flag,
+        has_procedure_status_binding=_false_flag,
+        is_const_candidate=_true_flag,
+        procedure_status_issue=_status_issue,
+        _get_usage=_module_usage,
+        _procedure_status_issue=_status_issue,
+        _has_output_effect=_false_flag,
+        _has_procedure_status_binding=_false_flag,
+        _is_const_candidate=_true_flag,
     )
 
     variable_issue_collection_module._collect_issues_from_module(helper, module, ["Root"])
@@ -835,7 +941,9 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
     ) in issues
 
 
-def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remaining_branches(monkeypatch):
+def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remaining_branches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     nested_param = Variable(name="NestedParam", datatype="OuterPayload")
     nested_local = Variable(name="NestedLocal", datatype=ScalarDatatype.INTEGER)
     child_local = Variable(name="ChildLocal", datatype=ScalarDatatype.INTEGER)
@@ -865,6 +973,24 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         ),
     }
     issues: list[VariableIssue] = []
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append(issue)
+
+    def _root_origin(*args: object, **kwargs: object) -> bool:
+        return True
+
+    def _record_lookup(name: str, library: str | None = None) -> object | None:
+        return type_records.get(name)
+
+    def _whole_leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+        return {"WholePayload": [("Inner", "Leaf")]}.get(name, [])
+
+    def _helper_usage(variable: Variable) -> _UsageStub:
+        return {
+            id(whole_access_var): _UsageStub(usage_locations=[("Root", "read")]),
+        }.get(id(variable), _UsageStub())
+
     helper: Any = SimpleNamespace(
         bp=BasePicture(
             header=_hdr("Root"),
@@ -907,16 +1033,11 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         limit_to_module_path=None,
         _selected_issue_kinds=None,
         contexts_by_module_path={},
-        is_from_root_origin=lambda *args, **kwargs: True,
-        type_graph=SimpleNamespace(
-            record=lambda name, library=None: type_records.get(name),
-            iter_leaf_field_paths=lambda name, library=None: {"WholePayload": [("Inner", "Leaf")]}.get(name, []),
-        ),
-        get_usage=lambda variable: {
-            id(whole_access_var): _UsageStub(usage_locations=[("Root", "read")]),
-        }.get(id(variable), _UsageStub()),
-        append_issue=lambda issue: issues.append(issue),
-        trace=lambda *args, **kwargs: None,
+        is_from_root_origin=_root_origin,
+        type_graph=SimpleNamespace(record=_record_lookup, iter_leaf_field_paths=_whole_leaf_paths),
+        get_usage=_helper_usage,
+        append_issue=_record_issue,
+        trace=_ignore_call,
         site_str=lambda: "Root > Worker",
     )
 
@@ -948,18 +1069,24 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     shared = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
     helper.bp.localvariables = [shared]
 
-    monkeypatch.setattr(
-        variable_issue_collection_module,
-        "_build_root_variable_access_summaries",
-        lambda _self: {"shared": summary_without_modules},
-    )
-    variable_issue_collection_module._add_global_scope_minimization_issues(helper)
-    assert issues == []
+    def _summaries(_self: object) -> dict[str, object]:
+        return {"shared": summary_without_modules}
 
     monkeypatch.setattr(
         variable_issue_collection_module,
         "_build_root_variable_access_summaries",
-        lambda _self: {"shared": divergent_summary},
+        _summaries,
+    )
+    variable_issue_collection_module._add_global_scope_minimization_issues(helper)
+    assert issues == []
+
+    def _divergent_summaries(_self: object) -> dict[str, object]:
+        return {"shared": divergent_summary}
+
+    monkeypatch.setattr(
+        variable_issue_collection_module,
+        "_build_root_variable_access_summaries",
+        _divergent_summaries,
     )
     variable_issue_collection_module._add_global_scope_minimization_issues(helper)
     assert issues == []
