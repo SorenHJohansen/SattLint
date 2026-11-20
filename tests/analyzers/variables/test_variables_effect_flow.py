@@ -1,14 +1,16 @@
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportUnusedFunction=false
+# pyright: reportPrivateUsage=false
 """Focused tests for effect-flow helper coverage and mapping propagation."""
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import Any
 
+import pytest
 from sattline_parser.ast import BinOp, FuncCall, MappingSource
 from sattline_parser.models.ast_model import (
-    ModuleHeader,
     ParameterMapping,
     ScalarDatatype,
     Variable,
@@ -23,15 +25,37 @@ from sattlint.resolution import AccessKind
 from sattlint.resolution.scope import ScopeContext
 
 
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
 def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def _string_source(text: str) -> VarRef:
+def _missing_signature(name: str) -> Any:
+    """No builtin signature for any name."""
+    return None
+
+
+def _two_direction_signature(name: str) -> Any:
+    """A two-parameter signature for one function name only."""
+    if name == "SignedFn":
+        return SimpleNamespace(
+            parameters=[
+                SimpleNamespace(direction="in"),
+                SimpleNamespace(direction="out"),
+            ]
+        )
+    return None
+
+
+def _missing_aware_ref_text(raw: object) -> str | None:
+    """Ref text that reports one deliberately unresolvable name as missing."""
+    if isinstance(raw, VarRef) and raw.name == "Missing":
+        return None
+    if isinstance(raw, VarRef):
+        return raw.name
+    return str(raw)
+
+
+def string_source(text: str) -> VarRef:
     return VarRef(name=text)
 
 
@@ -78,7 +102,16 @@ class _UsageRecorder:
         self.field_writes.append((field_path, tuple(path)))
 
 
-def _build_tracker(*, lookup_global=None):
+def build_tracker(
+    *,
+    lookup_global: Callable[[str], Variable | None] | None = None,
+) -> tuple[
+    EffectFlowTracker,
+    defaultdict[tuple[str, ...], set[tuple[str, ...]]],
+    set[tuple[str, ...]],
+    dict[str, _UsageRecorder],
+    list[tuple[AccessKind, tuple[tuple[str, ...], str, str], tuple[str, ...], str]],
+]:
     edges: defaultdict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
     effect_flow_display_names: dict[tuple[str, ...], str] = {}
     external_effect_sinks: set[tuple[str, ...]] = set()
@@ -112,7 +145,7 @@ def _build_tracker(*, lookup_global=None):
     return tracker, edges, external_effect_sinks, usage_by_name, access_calls
 
 
-def _context(
+def scope_context(
     *,
     env: dict[str, Variable],
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] | None = None,
@@ -144,17 +177,17 @@ class _ResolveContext(ScopeContext):
         return self._result
 
 
-def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -> None:
+def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
-    tracker, _edges, _external, _usage, _access = _build_tracker()
-    context = _context(
+    tracker, _edges, _external, _usage, _access = build_tracker()
+    context = scope_context(
         env={"source": source, "target": target},
         param_mappings={"mapped": (mapped, "inner", ["Decl"], ["Decl"])},
     )
 
-    def _signature(name: str):
+    def _signature(name: str) -> Any:
         if name == "SignedFn":
             return SimpleNamespace(
                 parameters=[
@@ -198,11 +231,11 @@ def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -
     assert expression_sources == expected
 
 
-def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkeypatch) -> None:
+def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
-    context = _context(env={"source": source})
+    context = scope_context(env={"source": source})
 
-    monkeypatch.setattr(call_signatures_module, "get_function_signature", lambda _name: None)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _missing_signature)
 
     assert (
         effect_sources_module.collect_expression_effect_sources(
@@ -244,7 +277,7 @@ def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkey
 def test_effect_flow_tracker_initvariable_inputs_include_source_only() -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
-    context = _context(env={"source": source, "target": target})
+    context = scope_context(env={"source": source, "target": target})
     tracker = EffectFlowTracker(
         effect_flow_edges={},
         effect_flow_display_names={},
@@ -275,10 +308,10 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
     local = Variable(name="Local", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
-    tracker, edges, _external, _usage, _access = _build_tracker(
+    tracker, edges, _external, _usage, _access = build_tracker(
         lookup_global=lambda name: local if name == "fallback" else None
     )
-    context = _context(
+    context = scope_context(
         env={"local": local, "target": target},
         param_mappings={"mapped": (mapped, "inner", ["Decl"], ["Decl"])},
     )
@@ -336,8 +369,8 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
 def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_missing_cases() -> None:
     parent_local = Variable(name="ParentLocal", datatype=ScalarDatatype.INTEGER)
     parent_global = Variable(name="ParentGlobal", datatype=ScalarDatatype.INTEGER)
-    tracker, _edges, _external, _usage, _access = _build_tracker()
-    parent_context = _context(
+    tracker, _edges, _external, _usage, _access = build_tracker()
+    parent_context = scope_context(
         env={"parentlocal": parent_local, "parentglobal": parent_global},
         module_path=["Root", "Parent"],
     )
@@ -347,7 +380,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
-        source=_string_source("ParentGlobal.Member"),
+        source=string_source("ParentGlobal.Member"),
         source_literal=None,
     )
     missing_global = ParameterMapping(
@@ -355,7 +388,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
-        source=_string_source(""),
+        source=string_source(""),
         source_literal=None,
     )
     unknown_global = ParameterMapping(
@@ -363,7 +396,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=True,
-        source=_string_source("Unknown.Member"),
+        source=string_source("Unknown.Member"),
         source_literal=None,
     )
     local_string = ParameterMapping(
@@ -371,7 +404,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
-        source=_string_source("ParentLocal.Member"),
+        source=string_source("ParentLocal.Member"),
         source_literal=None,
     )
     missing_local = ParameterMapping(
@@ -379,7 +412,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
-        source=_string_source(""),
+        source=string_source(""),
         source_literal=None,
     )
     unknown_local = ParameterMapping(
@@ -387,7 +420,7 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source_type=MappingSource.VARIABLE,
         is_duration=False,
         is_source_global=False,
-        source=_string_source("Unknown.Member"),
+        source=string_source("Unknown.Member"),
         source_literal=None,
     )
 
@@ -410,17 +443,19 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
     assert tracker.mapping_source_effect_key(unknown_local, parent_env={}, parent_context=None) is None
 
 
-def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and_signature_paths(monkeypatch) -> None:
+def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and_signature_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
-    tracker, edges, _external, _usage, _access = _build_tracker()
-    context = _context(
+    tracker, edges, _external, _usage, _access = build_tracker()
+    context = scope_context(
         env={"source": source, "target": target},
         param_mappings={"mapped": (mapped, "inner", ["Decl"], ["Decl"])},
     )
 
-    def _signature(name: str):
+    def _signature(name: str) -> Any:
         if name == "SignedFn":
             return SimpleNamespace(
                 parameters=[
@@ -454,24 +489,17 @@ def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and
     assert ("decl", "mapped") in edges[("decl", "mapped")]
 
 
-def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved_outputs(monkeypatch) -> None:
+def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
-    tracker, edges, _external, _usage, _access = _build_tracker()
-    context = _context(env={"source": source})
+    tracker, edges, _external, _usage, _access = build_tracker()
+    context = scope_context(env={"source": source})
 
     monkeypatch.setattr(
         call_signatures_module,
         "get_function_signature",
-        lambda name: (
-            SimpleNamespace(
-                parameters=[
-                    SimpleNamespace(direction="in"),
-                    SimpleNamespace(direction="out"),
-                ]
-            )
-            if name == "SignedFn"
-            else None
-        ),
+        _two_direction_signature,
     )
 
     tracker.record_function_call_effect_flow("InitVariable", [_varref("Source")], context)
@@ -486,20 +514,16 @@ def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved
     assert dict(edges) == {}
 
 
-def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(monkeypatch) -> None:
+def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(monkeypatch: pytest.MonkeyPatch) -> None:
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
-    tracker, edges, _external, _usage, _access = _build_tracker()
-    context = _context(env={"source": source, "target": target})
+    tracker, edges, _external, _usage, _access = build_tracker()
+    context = scope_context(env={"source": source, "target": target})
 
     monkeypatch.setattr(
         effect_flow_module,
         "_var_ref_text",
-        lambda raw: (
-            None
-            if isinstance(raw, VarRef) and raw.name == "Missing"
-            else (raw.name if isinstance(raw, VarRef) else str(raw))
-        ),
+        _missing_aware_ref_text,
     )
 
     tracker.record_function_call_effect_flow("CopyVariable", [_varref("Missing"), _varref("Target")], context)
@@ -512,8 +536,8 @@ def test_effect_flow_tracker_records_dynamic_array_edges() -> None:
     array_var = Variable(name="Arr", datatype="ArrayObject")
     source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
-    tracker, edges, _external, _usage, _access = _build_tracker()
-    context = _context(env={"arr": array_var, "source": source, "target": target})
+    tracker, edges, _external, _usage, _access = build_tracker()
+    context = scope_context(env={"arr": array_var, "source": source, "target": target})
 
     tracker.record_function_call_effect_flow(
         "CreateArray",
