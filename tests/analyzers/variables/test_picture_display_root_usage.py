@@ -1,5 +1,3 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,

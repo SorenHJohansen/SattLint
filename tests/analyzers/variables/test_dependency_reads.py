@@ -1,5 +1,6 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
+from typing import Any
 
 from sattline_parser.models.ast_model import (
     Assignment,
@@ -35,6 +36,11 @@ from tests.helpers.variable_test_support import (
 )
 
 
+def _always_root_origin(origin_file: str, origin_lib: str | None = None) -> bool:
+    """Every origin belongs to the root program."""
+    return True
+
+
 def test_iter_variables_for_datatype_field_analysis_includes_context_only_variables():
     root_var = Variable(name="RootTexts", datatype="StepTextType")
     context_var = Variable(name="StepText", datatype="StepTextType")
@@ -49,7 +55,7 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
-    fake_analyzer = SimpleNamespace(
+    fake_analyzer: Any = SimpleNamespace(
         bp=bp,
         limit_to_module_path=None,
         analyzed_target_is_library=True,
@@ -60,7 +66,7 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
                 param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
             )
         },
-        is_from_root_origin=lambda origin_file, origin_lib=None: True,
+        is_from_root_origin=_always_root_origin,
     )
 
     collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(fake_analyzer)
@@ -103,8 +109,18 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         id(root_var): _UsageStub(field_reads={"WaitCleanCycle": [object()]}),
         id(context_var): _UsageStub(field_reads={"CleanCycle": [object()]}),
     }
+
+    def _leaf_field_paths(_datatype: object, library: object = None) -> list[tuple[str, ...]]:
+        return [("CleanCycle",), ("WaitCleanCycle",)]
+
+    def _no_record(_datatype: object, library: object = None) -> None:
+        return None
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
     issues: list[VariableIssue] = []
-    fake_analyzer = SimpleNamespace(
+    fake_analyzer: Any = SimpleNamespace(
         bp=bp,
         limit_to_module_path=None,
         analyzed_target_is_library=False,
@@ -116,12 +132,9 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
                 param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
             )
         },
-        type_graph=SimpleNamespace(
-            iter_leaf_field_paths=lambda _datatype, library=None: [("CleanCycle",), ("WaitCleanCycle",)],
-            record=lambda _datatype, library=None: None,
-        ),
-        is_from_root_origin=lambda origin_file, origin_lib=None: True,
-        get_usage=lambda variable: usage_by_id[id(variable)],
+        type_graph=SimpleNamespace(iter_leaf_field_paths=_leaf_field_paths, record=_no_record),
+        is_from_root_origin=_always_root_origin,
+        get_usage=_usage_for,
         append_issue=issues.append,
     )
 

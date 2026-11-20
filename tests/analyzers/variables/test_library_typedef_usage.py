@@ -1,4 +1,4 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 
 from dataclasses import replace
 
@@ -18,6 +18,7 @@ from sattline_parser.ast import (
     ProcedureCall,
     Sequence,
     SFCAlternative,
+    SFCBodyItem,
     SFCCodeBlocks,
     SFCFork,
     SFCParallel,
@@ -238,7 +239,7 @@ def test_display_read_is_an_observable_effect(display_kind: str) -> None:
 @pytest.mark.parametrize("observable", [False, True])
 def test_transition_guard_contributes_to_following_step_effect(alternative: bool, observable: bool) -> None:
     guard = Variable(name="Ready", datatype=ScalarDatatype.BOOLEAN)
-    following = [
+    following: list[SFCBodyItem] = [
         SFCTransition(name="Proceed", condition=_varref("Ready")),
         SFCStep(
             kind="step",
@@ -358,7 +359,7 @@ def test_fallthrough_guard_reaches_joined_step_but_jump_guard_does_not(observabl
 @pytest.mark.parametrize("observable", [False, True])
 def test_nested_sequence_guard_reaches_following_output(container: str, observable: bool) -> None:
     guard = Variable(name="Ready", datatype=ScalarDatatype.BOOLEAN)
-    body = [SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))]
+    body: list[SFCBodyItem] = [SFCTransition(name="ReadyToProceed", condition=_varref("Ready"))]
     if container == "parallel":
         node = SFCParallel(branches=[body, []])
     elif container == "subsequence":

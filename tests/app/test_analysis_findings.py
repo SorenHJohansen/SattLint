@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import ScalarDatatype, Variable

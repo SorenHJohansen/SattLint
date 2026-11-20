@@ -1,4 +1,3 @@
-# pyright: reportPrivateUsage=false
 """Where module-type findings are attributed in full and scoped runs."""
 
 from sattline_parser.models.ast_model import (
