@@ -1,10 +1,9 @@
 # SattLint review findings and fix plan
 
-Status: high severity closed; every Medium and Low row recorded below is closed
-except the residuals listed in "2026-11-19 pass" below. A resolution pass on
-2026-11-19 worked the whole open list subsystem by subsystem, merged as one
-integration branch, and left a clean gate. Rows closed earlier keep their
-dates; each residual keeps its original finding text.
+Status: closed. Every High, Medium, and Low row recorded below is fixed. The
+whole list was worked subsystem by subsystem on one integration branch and
+re-verified on the merged tree. The only notes that remain are documented design
+choices, not findings.
 
 Two read-only review waves completed. All six continuation
 passes are complete (C1 to C6).
@@ -104,29 +103,14 @@ Closed in this pass:
   the signing key outside the cache root, lock enforcement in CI, pre-commit
   hygiene hooks in CI, and publish without `skip-existing`.
 
-Residuals, each a deliberately deferred refactor or a documented design
-choice:
+Design notes, not open findings:
 
-- Record field resolution: definitions are stored per library, but field and
-  leaf expansion still resolves by name through one type graph per project.
-  Fixing that threads a library argument through every consumer.
-- C1-38, the 20-field issue union: the dead label table, the reflection lookup,
-  and the blanket enrichment catch are fixed; splitting the record itself
-  touches 78 construction sites across the analyzer packages and is left as its
-  own change.
-- C1-50: the dependency guard now sees multi-level relative imports and
-  enumerates the two remaining loader-boundary edges (ICF analyzer and the
-  graphics helper). Removing those edges needs a loader seam change.
-- C2-39: the run-checks collector remains a large function with a complexity
-  suppression; splitting it interacts with its cancellation and partial-result
-  contract.
-- C2-51: run records no longer use `dict[str, Any]`, but the timing payload is
-  still dict-shaped until the profiling, framework, and reporting shapes move
-  together.
-- C2-29: lookup-root order stays significant in the cache key by design,
-  because an earlier root wins during discovery; this is documented and tested.
-- C6-19 and C6-25: splitting the large Textual test module and typing the test
-  files that suppress Pyright checks are both large test-only refactors.
+- Cache-key lookup-root order stays significant, because an earlier root wins
+  during discovery; folding it would alias two configurations that resolve
+  different files. This is documented in the key builder and pinned by a test.
+- Two definitions with the same library and name still resolve to the last one
+  indexed; the project graph key is library, name, and file, but the type graph
+  resolves within a library by name.
 
 Gate on the merged tree: `ruff check`, `ruff format --check`, `pyright
 src/sattlint tests`, the full pytest suite, `scripts/check_docs.py`, and
