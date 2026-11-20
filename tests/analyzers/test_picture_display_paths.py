@@ -39,7 +39,7 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path) -> None:
+def test_wmf_asset_that_exists_on_disk_is_a_silent_skip(tmp_path: Path) -> None:
     (tmp_path / "nne_blue_web.wmf").write_bytes(b"asset")
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -56,10 +56,11 @@ def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path
 
     assert resolution.ok
     assert resolution.failure_reason is None
+    assert resolution.detail is None
     assert resolution.resolved_module_path == ("Root",)
 
 
-def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) -> None:
+def test_wmf_asset_that_is_missing_is_a_silent_skip(tmp_path: Path) -> None:
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
@@ -73,8 +74,10 @@ def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) ->
         declaring_module_path=["Root"],
     )
 
-    assert not resolution.ok
-    assert resolution.failure_reason == "unimplemented_asset"
+    assert resolution.ok
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def _string_length_call(name: str) -> FuncCall:
@@ -671,7 +674,7 @@ def test_resolve_picture_display_path_uses_extra_plus_for_implicit_descent() -> 
     assert resolution.resolved_module_path == ("Root", "L1", "Panel")
 
 
-def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -680,12 +683,13 @@ def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_env_var_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -694,12 +698,13 @@ def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() 
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
+def test_resolve_picture_display_path_skips_emf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -708,9 +713,10 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has_dependencies() -> None:
