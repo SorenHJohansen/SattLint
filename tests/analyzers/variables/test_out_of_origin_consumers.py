@@ -58,6 +58,20 @@ def _opaque_dependency_type(name: str = "EquipModPanelShort") -> ModuleTypeDef:
     )
 
 
+def _opaque_dependency_type_with(*parameters: str) -> ModuleTypeDef:
+    """A dependency-owned type with several formals, all unused in its body."""
+    return ModuleTypeDef(
+        name="EquipModPanelShort",
+        moduleparameters=[Variable(name=name, datatype=ScalarDatatype.INTEGER) for name in parameters],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        origin_file="nnestruct.x",
+        origin_lib="nnestruct",
+    )
+
+
 def _root_owned_type(name: str = "LocalPanel") -> ModuleTypeDef:
     """A type in the analyzed origin, so its body is authoritative."""
     return ModuleTypeDef(
@@ -250,3 +264,100 @@ def test_read_only_non_const_is_untouched_by_the_consumer_rule() -> None:
     )
 
     assert _reported(analyzer, IssueKind.READ_ONLY_NON_CONST, consumed)
+
+
+def test_unused_base_picture_locals_mapped_into_dependency_child_are_not_reported() -> None:
+    unwritten = Variable(name="RootState", datatype=ScalarDatatype.INTEGER)
+    written = Variable(name="RootWritten", datatype=ScalarDatatype.INTEGER)
+    instance = ModuleTypeInstance(
+        header=_hdr("Panel1"),
+        moduletype_name="EquipModPanelShort",
+        parametermappings=[
+            _mapping("First", "RootState"),
+            _mapping("Second", "RootWritten"),
+        ],
+    )
+    filling = SingleModule(header=_hdr("Fyldning"), submodules=[instance])
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[_opaque_dependency_type_with("First", "Second")],
+        localvariables=[unwritten, written],
+        submodules=[filling],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Publish",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("RootWritten"), value=IntLiteral(1))],
+                )
+            ]
+        ),
+        moduledef=None,
+        origin_file=ROOT_ORIGIN,
+    )
+    analyzer = _run(bp)
+
+    assert not _reported(analyzer, IssueKind.UNUSED, unwritten)
+    assert not _reported(analyzer, IssueKind.NEVER_READ, written)
+    assert analyzer.get_usage(unwritten).is_unused is True
+    assert analyzer.get_usage(written).read is False
+
+
+def test_unused_typedef_members_mapped_into_dependency_child_are_not_reported() -> None:
+    parameter = Variable(name="Level", datatype=ScalarDatatype.INTEGER)
+    local = Variable(name="CurrentState", datatype=ScalarDatatype.INTEGER)
+    written = Variable(name="Published", datatype=ScalarDatatype.INTEGER)
+    instance = ModuleTypeInstance(
+        header=_hdr("Panel1"),
+        moduletype_name="EquipModPanelShort",
+        parametermappings=[
+            _mapping("First", "Level"),
+            _mapping("Second", "CurrentState"),
+            _mapping("Third", "Published"),
+        ],
+    )
+    root_type = ModuleTypeDef(
+        name="RootPanel",
+        moduleparameters=[parameter],
+        localvariables=[local, written],
+        submodules=[instance],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Publish",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Published"), value=IntLiteral(1))],
+                )
+            ]
+        ),
+        origin_file=ROOT_ORIGIN,
+    )
+    bp = _base_picture([], root_type, _opaque_dependency_type_with("First", "Second", "Third"))
+    analyzer = _run(bp)
+
+    assert not _reported(analyzer, IssueKind.UNUSED, parameter)
+    assert not _reported(analyzer, IssueKind.UNUSED, local)
+    assert not _reported(analyzer, IssueKind.NEVER_READ, written)
+    assert analyzer.get_usage(parameter).is_unused is True
+    assert analyzer.get_usage(local).is_unused is True
+
+
+def test_out_of_origin_consumer_evidence_is_reset_between_runs() -> None:
+    state = Variable(name="CurrentState", datatype=ScalarDatatype.INTEGER)
+    instance = ModuleTypeInstance(
+        header=_hdr("Panel1"),
+        moduletype_name="EquipModPanelShort",
+        parametermappings=[_mapping("CurrentState", "CurrentState")],
+    )
+    filling = SingleModule(header=_hdr("Fyldning"), localvariables=[state], submodules=[instance])
+    analyzer = _run(_base_picture([filling], _opaque_dependency_type()))
+    assert not _reported(analyzer, IssueKind.UNUSED, state)
+
+    filling.submodules.clear()
+    analyzer.run()
+
+    assert _reported(analyzer, IssueKind.UNUSED, state)

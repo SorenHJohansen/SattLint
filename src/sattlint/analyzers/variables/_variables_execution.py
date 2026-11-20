@@ -59,6 +59,7 @@ from ._variables_picture_display_support import (
 )
 from ._variables_read_before_write import collect_read_before_write_issues as _collect_read_before_write_issues
 from ._variables_shadowing import collect_shadowing_issues as _collect_shadowing_issues
+from ._variables_status import has_out_of_origin_consumer as _has_out_of_origin_consumer
 from ._variables_unsafe_defaults import collect_unsafe_default_issues as _collect_unsafe_default_issues
 
 if TYPE_CHECKING:
@@ -281,6 +282,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_effective_output_keys", set[tuple[str, ...]]())
     _clear_or_set("_procedure_status_bindings", {})
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
+    _clear_or_set("_out_of_origin_consumer_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
     _clear_or_set("_analyzing_typedefs", set[TypedefUsageKey]())
     _clear_or_set("datatype_leaf_index_cache", {})
@@ -405,7 +407,10 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
     for variable in self.bp.localvariables or []:
         role = "localvariable"
         usage = self._get_usage(variable)
-        if collect_unused and usage.is_unused:
+        # A contract outside the analyzed origin proves the variable is consumed even
+        # though the read is invisible, so absence of use is not evidence of dead code.
+        consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+        if collect_unused and usage.is_unused and not consumed_out_of_origin:
             self._append_issue(UnusedIssue(module_path=bp_path.copy(), variable=variable, role=role))
             continue
         procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
@@ -428,7 +433,11 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
         ):
             self._append_issue(ReadOnlyNonConstIssue(module_path=bp_path.copy(), variable=variable, role=role))
         elif (
-            collect_never_read and usage.written and not usage.read and not self._has_ignorable_output_binding(variable)
+            collect_never_read
+            and usage.written
+            and not usage.read
+            and not consumed_out_of_origin
+            and not self._has_ignorable_output_binding(variable)
         ):
             self._append_issue(NeverReadIssue(module_path=bp_path.copy(), variable=variable, role=role))
         elif collect_write_without_effect and (
@@ -498,7 +507,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
         for variable in moduletype.moduleparameters or []:
             role = "moduleparameter"
             usage = self._get_usage(variable)
-            if collect_unused and usage.is_unused:
+            if collect_unused and usage.is_unused and not _has_out_of_origin_consumer(self, variable):
                 self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
@@ -519,7 +528,8 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
         for variable in moduletype.localvariables or []:
             role = "localvariable"
             usage = self._get_usage(variable)
-            if collect_unused and usage.is_unused:
+            consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+            if collect_unused and usage.is_unused and not consumed_out_of_origin:
                 self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
@@ -545,6 +555,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 collect_never_read
                 and usage.written
                 and not usage.read
+                and not consumed_out_of_origin
                 and not self._has_ignorable_output_binding(variable)
             ):
                 self._append_issue(NeverReadIssue(module_path=td_path.copy(), variable=variable, role=role))
