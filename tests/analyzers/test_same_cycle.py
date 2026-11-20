@@ -1,6 +1,8 @@
 # These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
 
+from typing import cast
+
 import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -24,15 +26,18 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, SLExpression, VarRef
+from sattline_parser.models.expressions import Assignment, BinOp, SLExpression, VarRef
 
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.dataflow._dataflow_non_state_sites import (
     _group_site_accesses,
     _SiteAccess,
 )
+from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.registry import get_default_analyzers, get_selectable_analyzer_keys
 from sattlint.analyzers.same_cycle import analyze_same_cycle
+
+_MULTI_SITE_KIND = "dataflow.non_state_multi_site"
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -51,18 +56,46 @@ def _assign(name: str, value: SLExpression) -> Assignment:
     return Assignment(target=_varref(name), value=value)
 
 
+def _increment(name: str) -> Assignment:
+    return Assignment(target=_varref(name), value=BinOp(left=_varref(name), op="+", right=1))
+
+
 def _step(name: str, active_stmts: list[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
 
 
-def _sequence(nodes: list[SFCBodyItem]) -> Sequence:
+def _sequence(nodes: list[SFCBodyItem], name: str = "SeqMain") -> Sequence:
     return Sequence(
-        name="SeqMain",
+        name=name,
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=nodes,
     )
+
+
+def _multi_site_issues(bp: BasePicture) -> list[Issue]:
+    return [issue for issue in analyze_dataflow(bp).issues if issue.kind == _MULTI_SITE_KIND]
+
+
+def _continuous_sites(issue: Issue) -> list[dict[str, object]]:
+    assert issue.data is not None
+    sites = issue.data.get("continuous_sites")
+    assert isinstance(sites, list)
+    return [cast("dict[str, object]", site) for site in cast("list[object]", sites)]
+
+
+def _site_labels(issue: Issue) -> list[str]:
+    return [str(site["site"]) for site in _continuous_sites(issue)]
+
+
+def _kinds_by_site(issue: Issue) -> dict[str, list[str]]:
+    kinds_by_site: dict[str, list[str]] = {}
+    for site in _continuous_sites(issue):
+        kinds = site["kinds"]
+        assert isinstance(kinds, list)
+        kinds_by_site[str(site["site"])] = [str(kind) for kind in cast("list[object]", kinds)]
+    return kinds_by_site
 
 
 def test_same_cycle_analyzer_is_registered_and_selectable() -> None:
@@ -109,6 +142,64 @@ def test_same_cycle_reports_parallel_read_write_hazard() -> None:
         "site": "SQ:SeqMain > PAR:BLOCK:1",
         "context": "Root.SharedValue",
     }
+
+
+def _parallel_worker_typedef() -> ModuleTypeDef:
+    return ModuleTypeDef(
+        name="Worker",
+        moduleparameters=[],
+        localvariables=[Variable(name="Shared", datatype=ScalarDatatype.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Shared", 1)])],
+                                [_step("Right", [_assign("Shared", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
+    )
+
+
+def test_same_cycle_reports_a_parallel_once_when_the_typedef_is_invoked() -> None:
+    worker = _parallel_worker_typedef()
+    bp = BasePicture(
+        header=_hdr("Root"),
+        moduletype_defs=[worker],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("WorkerInst"), moduletype_name="Worker", parametermappings=[]),
+        ],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    write_races = [issue for issue in report.issues if issue.kind == "sfc_parallel_write_race"]
+    assert len(write_races) == 1
+    assert write_races[0].module_path == ["Root", "WorkerInst"]
+
+
+def test_same_cycle_still_walks_an_uninvoked_root_typedef() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        moduletype_defs=[_parallel_worker_typedef()],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+    )
+
+    report = analyze_same_cycle(bp)
+
+    write_races = [issue for issue in report.issues if issue.kind == "sfc_parallel_write_race"]
+    assert len(write_races) == 1
+    assert write_races[0].module_path == ["Root", "TypeDef:Worker"]
 
 
 def test_cross_module_read_write_overlap_is_not_a_proven_hazard() -> None:
@@ -198,7 +289,48 @@ def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
     assert report.issues == []
 
 
-def test_dataflow_non_state_multi_site_across_equations() -> None:
+def test_dataflow_non_state_multi_site_reports_two_writing_equations() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq("First", [_assign("SharedValue", 1)]),
+                _eq("Second", [_assign("SharedValue", 2)]),
+            ],
+            sequences=[],
+        ),
+    )
+
+    issues = _multi_site_issues(bp)
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert "written from multiple continuous scan sites" in issue.message
+    assert "read and written" not in issue.message
+    assert issue.data == {
+        "symbol": "Root.SharedValue",
+        "decl_module_path": ["Root"],
+        "continuous_sites": [
+            {
+                "module_path": ["Root"],
+                "site": "EQ:First",
+                "kinds": ["write"],
+                "evidence_sites": ["EQ:First"],
+            },
+            {
+                "module_path": ["Root"],
+                "site": "EQ:Second",
+                "kinds": ["write"],
+                "evidence_sites": ["EQ:Second"],
+            },
+        ],
+        "site": "Root:EQ:First",
+        "context": "Root.SharedValue",
+    }
+
+
+def test_dataflow_non_state_multi_site_ignores_read_write_across_equations() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
@@ -214,30 +346,51 @@ def test_dataflow_non_state_multi_site_across_equations() -> None:
         ),
     )
 
-    report = analyze_dataflow(bp)
+    assert _multi_site_issues(bp) == []
 
-    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
-    assert "Root.SharedValue" in issue.message
-    assert issue.data == {
-        "symbol": "Root.SharedValue",
-        "decl_module_path": ["Root"],
-        "continuous_sites": [
-            {
-                "module_path": ["Root"],
-                "site": "EQ:ReadEq",
-                "kinds": ["read"],
-                "evidence_sites": ["EQ:ReadEq"],
-            },
-            {
-                "module_path": ["Root"],
-                "site": "EQ:WriteEq",
-                "kinds": ["write"],
-                "evidence_sites": ["EQ:WriteEq"],
-            },
+
+def test_dataflow_non_state_multi_site_ignores_read_write_in_a_step() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Sink", datatype=ScalarDatatype.INTEGER),
         ],
-        "site": "Root:EQ:ReadEq",
-        "context": "Root.SharedValue",
-    }
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step(
+                            "Reads",
+                            [_assign("Sink", _varref("SharedValue"))],
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[_eq("WriteEq", [_assign("SharedValue", 2)])],
+        ),
+    )
+
+    assert _multi_site_issues(bp) == []
+
+
+def test_dataflow_non_state_multi_site_counts_a_self_update_and_another_write() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq("Increment", [_increment("SharedValue")]),
+                _eq("Reset", [_assign("SharedValue", 0)]),
+            ],
+            sequences=[],
+        ),
+    )
+
+    issues = _multi_site_issues(bp)
+
+    assert len(issues) == 1
+    assert _kinds_by_site(issues[0]) == {"EQ:Increment": ["read", "write"], "EQ:Reset": ["write"]}
 
 
 def test_dataflow_non_state_multi_site_ignores_single_equation() -> None:
@@ -261,9 +414,7 @@ def test_dataflow_non_state_multi_site_ignores_single_equation() -> None:
         ),
     )
 
-    report = analyze_dataflow(bp)
-
-    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
+    assert _multi_site_issues(bp) == []
 
 
 @pytest.mark.parametrize("written_field, expected", [("First", True), ("Second", False)])
@@ -281,23 +432,21 @@ def test_continuous_sites_compare_record_fields_not_whole_record(written_field: 
                 ],
             )
         ],
-        localvariables=[
-            Variable(name="Record", datatype="RecordType"),
-            Variable(name="Sink", datatype=ScalarDatatype.INTEGER),
-        ],
+        localvariables=[Variable(name="Record", datatype="RecordType")],
         modulecode=ModuleCode(
             equationblocks=[
-                _eq("ReadFirst", [_assign("Sink", _varref("Record.First"))]),
+                _eq("WriteFirst", [_assign("Record.First", 1)]),
                 _eq("WriteField", [_assign(f"Record.{written_field}", 2)]),
             ]
         ),
     )
-    report = analyze_dataflow(bp)
-    conflicts = [issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site"]
-    assert bool(conflicts) is expected
-    if conflicts:
-        assert conflicts[0].data is not None
-        assert conflicts[0].data["symbol"] == "Root.Record.First"
+
+    issues = _multi_site_issues(bp)
+
+    assert bool(issues) is expected
+    if issues:
+        assert issues[0].data is not None
+        assert issues[0].data["symbol"] == "Root.Record.First"
 
 
 def test_dataflow_non_state_multi_site_ignores_single_active_step() -> None:
@@ -325,12 +474,133 @@ def test_dataflow_non_state_multi_site_ignores_single_active_step() -> None:
         ),
     )
 
-    report = analyze_dataflow(bp)
-
-    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
+    assert _multi_site_issues(bp) == []
 
 
-def test_dataflow_non_state_multi_site_transition_self_loop() -> None:
+def test_dataflow_non_state_multi_site_ignores_exclusive_steps_in_one_sequence() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("First", [_assign("SharedValue", 1)]),
+                        SFCTransition(name="Advance", condition=True),
+                        _step("Second", [_assign("SharedValue", 2)]),
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
+    )
+
+    assert _multi_site_issues(bp) == []
+
+
+def test_dataflow_non_state_multi_site_compares_steps_in_different_sequences() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence([_step("First", [_assign("SharedValue", 1)])], name="SeqOne"),
+                _sequence([_step("Second", [_assign("SharedValue", 2)])], name="SeqTwo"),
+            ],
+            equationblocks=[],
+        ),
+    )
+
+    issues = _multi_site_issues(bp)
+
+    assert len(issues) == 1
+    assert _site_labels(issues[0]) == [
+        "STEP:First:ACTIVE",
+        "STEP:Second:ACTIVE",
+    ]
+
+
+def test_dataflow_non_state_multi_site_compares_equation_and_active_step() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[_sequence([_step("Writer", [_assign("SharedValue", 1)])])],
+            equationblocks=[_eq("Reset", [_assign("SharedValue", 0)])],
+        ),
+    )
+
+    issues = _multi_site_issues(bp)
+
+    assert len(issues) == 1
+    assert _site_labels(issues[0]) == [
+        "EQ:Reset",
+        "STEP:Writer:ACTIVE",
+    ]
+
+
+def test_terminal_step_without_a_fork_is_not_a_continuous_self_loop() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="Terminal",
+                            code=SFCCodeBlocks(
+                                enter=[_assign("SharedValue", 1)],
+                                exit=[_assign("SharedValue", 2)],
+                            ),
+                        ),
+                        SFCTransition(name="Finish", condition=True),
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
+    )
+
+    assert _multi_site_issues(bp) == []
+
+
+def test_explicit_fork_makes_the_step_phases_continuous() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCStep(
+                            kind="step",
+                            name="Loop",
+                            code=SFCCodeBlocks(
+                                enter=[_assign("SharedValue", 1)],
+                                exit=[_assign("SharedValue", 2)],
+                            ),
+                            fork=SFCFork(targets=("Loop",)),
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[_eq("Reset", [_assign("SharedValue", 0)])],
+        ),
+    )
+
+    issues = _multi_site_issues(bp)
+
+    assert len(issues) == 1
+    assert _site_labels(issues[0]) == [
+        "EQ:Reset",
+        "STEP:Loop:ENTER",
+        "STEP:Loop:EXIT",
+    ]
+
+
+def test_self_loop_transition_requires_an_explicit_fork_target() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="SharedFlag", datatype=ScalarDatatype.BOOLEAN)],
@@ -343,21 +613,24 @@ def test_dataflow_non_state_multi_site_transition_self_loop() -> None:
                             name="Loop",
                             code=SFCCodeBlocks(enter=[_assign("SharedFlag", True)]),
                         ),
-                        SFCTransition(name="Gate", condition=_varref("SharedFlag")),
+                        SFCTransition(
+                            name="Gate",
+                            condition=_varref("SharedFlag"),
+                            fork=SFCFork(targets=("Loop",)),
+                        ),
                     ]
                 )
             ],
-            equationblocks=[],
+            equationblocks=[_eq("Reset", [_assign("SharedFlag", False)])],
         ),
     )
 
-    report = analyze_dataflow(bp)
+    issues = _multi_site_issues(bp)
 
-    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
-    assert issue.data is not None
-    assert [site["site"] for site in issue.data["continuous_sites"]] == [
+    assert len(issues) == 1
+    assert _site_labels(issues[0]) == [
+        "EQ:Reset",
         "STEP:Loop:ENTER",
-        "STEP:Loop:TRANS:Gate",
     ]
 
 
@@ -386,80 +659,48 @@ def test_hold_step_with_false_transition_is_not_a_continuous_self_loop() -> None
             ]
         ),
     )
-    report = analyze_dataflow(bp)
-    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
+
+    assert _multi_site_issues(bp) == []
 
 
-def test_dataflow_non_state_multi_site_fork_self_loop() -> None:
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="SharedFlag", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="Sink", datatype=ScalarDatatype.BOOLEAN),
-        ],
+def test_dataflow_non_state_multi_site_reports_an_invoked_typedef_once() -> None:
+    worker = ModuleTypeDef(
+        name="Worker",
+        moduleparameters=[],
+        localvariables=[Variable(name="Shared", datatype=ScalarDatatype.INTEGER)],
+        submodules=[],
+        moduledef=None,
         modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        SFCStep(
-                            kind="step",
-                            name="Loop",
-                            code=SFCCodeBlocks(
-                                enter=[_assign("SharedFlag", True)],
-                                exit=[_assign("Sink", _varref("SharedFlag"))],
-                            ),
-                            fork=SFCFork(targets=("Loop",)),
-                        ),
-                    ]
-                )
+            equationblocks=[
+                _eq("First", [_assign("Shared", 1)]),
+                _eq("Second", [_assign("Shared", 2)]),
             ],
-            equationblocks=[],
+            sequences=[],
         ),
     )
-
-    report = analyze_dataflow(bp)
-
-    issue = next(issue for issue in report.issues if issue.kind == "dataflow.non_state_multi_site")
-    assert issue.data is not None
-    assert [site["site"] for site in issue.data["continuous_sites"]] == [
-        "STEP:Loop:ENTER",
-        "STEP:Loop:EXIT",
-    ]
-
-
-def test_dataflow_non_state_multi_site_ignores_single_active_site_in_self_loop() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[
-            Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER),
-            Variable(name="Sink", datatype=ScalarDatatype.INTEGER),
+        moduletype_defs=[worker],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("WorkerInst"), moduletype_name="Worker", parametermappings=[]),
         ],
-        modulecode=ModuleCode(
-            sequences=[
-                _sequence(
-                    [
-                        _step(
-                            "Loop",
-                            [
-                                _assign("Sink", _varref("SharedValue")),
-                                _assign("SharedValue", 1),
-                            ],
-                        ),
-                        SFCTransition(name="Gate", condition=True),
-                    ]
-                )
-            ],
-            equationblocks=[],
-        ),
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
     )
 
-    report = analyze_dataflow(bp)
+    issues = _multi_site_issues(bp)
 
-    assert not any(issue.kind == "dataflow.non_state_multi_site" for issue in report.issues)
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "WorkerInst"]
+    assert "TypeDef:" not in issues[0].message
 
 
 def test_non_state_grouping_joins_every_prefix_of_a_symbol_path() -> None:
-    def access(symbol_key: tuple[str, ...], kind: str, site: str) -> _SiteAccess:
+    def access(
+        symbol_key: tuple[str, ...],
+        kind: str,
+        site: str,
+        sequence_key: tuple[str, ...] | None = None,
+    ) -> _SiteAccess:
         return _SiteAccess(
             module_path=("root",),
             symbol_key=symbol_key,
@@ -469,6 +710,7 @@ def test_non_state_grouping_joins_every_prefix_of_a_symbol_path() -> None:
             continuous_site=site,
             kind=kind,
             site=site,
+            sequence_key=sequence_key,
         )
 
     groups = _group_site_accesses(
