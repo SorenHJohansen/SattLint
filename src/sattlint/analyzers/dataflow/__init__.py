@@ -16,7 +16,7 @@ from sattlint.parser_api import (
 )
 
 from ...core.call_signatures import resolve_call_signature
-from ...resolution import AmbiguousRecordError
+from ...resolution import resolve_record
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport
@@ -243,7 +243,7 @@ class DataflowAnalyzer(
         resolved_state = self._resolve_state_flag(
             variable,
             field_path,
-            library=getattr(variable, "origin_lib", None) or context.current_library,
+            library=context.current_library,
         )
         display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
         state_access = requested_state_access
@@ -277,17 +277,16 @@ class DataflowAnalyzer(
         """Resolve a field's STATE flag.
 
         ``library`` is the library whose code references the variable; it keeps
-        same-named records from different libraries on their own layouts.
+        same-named records from different libraries on their own layouts. This
+        analyzer has no warning channel, so an undecidable record name leaves
+        the flag unresolved instead of guessing a layout.
         """
         resolved_state = getattr(variable, "state", None)
         current_datatype = getattr(variable, "datatype", None)
         for field_name in (segment for segment in field_path.split(".") if segment):
             if current_datatype is None or not isinstance(current_datatype, str):
                 return None
-            try:
-                record = self._type_graph.record(current_datatype, library=library)
-            except AmbiguousRecordError:
-                return None
+            record = resolve_record(self._type_graph, current_datatype, library=library)
             field = record.fields_by_key.get(field_name.casefold()) if record is not None else None
             if record is None or field is None:
                 return None

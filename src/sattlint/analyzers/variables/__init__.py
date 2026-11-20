@@ -37,7 +37,7 @@ from ...reporting.variables_report import (
     VariablesReport,
     VariableTargetIssue,
 )
-from ...resolution import CanonicalSymbolTable, TypeGraph
+from ...resolution import AmbiguousRecordError, CanonicalSymbolTable, TypeGraph
 from ...resolution.context_builder import ContextBuilder
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
@@ -424,6 +424,7 @@ class VariablesAnalyzer(
         self._shared_artifacts = shared_artifacts
         self._config = config
         self._suppress_param_mapping_validation_depth = 0
+        self._warned_ambiguous_types: set[str] = set()
         self._limit_to_module_path: list[str] | None = None
         self._unresolved_variable_lookup_total = 0
         self._unresolved_variable_lookup_counts: dict[str, int] = defaultdict(int)
@@ -457,6 +458,19 @@ class VariablesAnalyzer(
 
     def warn(self, message: str) -> None:
         self._warn(message)
+
+    def _warn_ambiguous_record(self, error: AmbiguousRecordError) -> None:
+        """Report an undecidable record name once per type.
+
+        More than one library declares the type and nothing selects a layout,
+        so the reference is treated as a leaf. Deduplicating by type keeps one
+        shared name from producing a warning per variable that uses it.
+        """
+        key = error.type_name.casefold()
+        if key in self._warned_ambiguous_types:
+            return
+        self._warned_ambiguous_types.add(key)
+        self._warn(str(error))
 
     @contextmanager
     def divert_issue_collection(self) -> Generator[None]:

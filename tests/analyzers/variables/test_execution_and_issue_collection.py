@@ -478,7 +478,7 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
     def _not_external(origin: str, origin_lib: str | None = None) -> bool:
         return origin != "external.s"
 
-    def _leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+    def _leaf_paths(name: str, library: str | None = None, policy: object = None) -> list[tuple[str, ...]]:
         return {
             "EmptyPayload": [],
             "LibraryPayload": [("FieldA",)],
@@ -515,7 +515,12 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
         limit_to_module_path=None,
         _selected_issue_kinds=None,
         _is_from_root_origin=_not_external,
-        type_graph=SimpleNamespace(iter_leaf_field_paths=_leaf_paths, record=_missing_record),
+        type_graph=SimpleNamespace(
+            iter_leaf_field_paths=_leaf_paths,
+            expand_leaf_paths=_leaf_paths,
+            record=_missing_record,
+        ),
+        _warn_ambiguous_record=_ignore_call,
         _analyzed_target_is_library=True,
         _get_usage=_issue_usage,
         _append_issue=_record_issue,
@@ -558,7 +563,7 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
     def _missing_record(record_type: object, library: str | None = None) -> None:
         return None
 
-    def _payload_leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+    def _payload_leaf_paths(name: str, library: str | None = None, policy: object = None) -> list[tuple[str, ...]]:
         return (
             [
                 ("OutletProd_Def", "Std"),
@@ -589,7 +594,9 @@ def test_field_usage_asymmetry_detects_sibling_miswire_and_treats_whole_record_r
             field=_missing_field,
             record=_missing_record,
             iter_leaf_field_paths=_payload_leaf_paths,
+            expand_leaf_paths=_payload_leaf_paths,
         ),
+        _warn_ambiguous_record=_ignore_call,
         contexts_by_module_path={},
     )
 
@@ -983,7 +990,7 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
     def _record_lookup(name: str, library: str | None = None) -> object | None:
         return type_records.get(name)
 
-    def _whole_leaf_paths(name: str, library: str | None = None) -> list[tuple[str, ...]]:
+    def _whole_leaf_paths(name: str, library: str | None = None, policy: object = None) -> list[tuple[str, ...]]:
         return {"WholePayload": [("Inner", "Leaf")]}.get(name, [])
 
     def _helper_usage(variable: Variable) -> _UsageStub:
@@ -1034,7 +1041,12 @@ def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remainin
         _selected_issue_kinds=None,
         contexts_by_module_path={},
         is_from_root_origin=_root_origin,
-        type_graph=SimpleNamespace(record=_record_lookup, iter_leaf_field_paths=_whole_leaf_paths),
+        type_graph=SimpleNamespace(
+            record=_record_lookup,
+            iter_leaf_field_paths=_whole_leaf_paths,
+            expand_leaf_paths=_whole_leaf_paths,
+        ),
+        _warn_ambiguous_record=_ignore_call,
         get_usage=_helper_usage,
         append_issue=_record_issue,
         trace=_ignore_call,

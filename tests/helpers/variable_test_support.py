@@ -34,6 +34,10 @@ def issue_kinds(report: Any) -> set[Any]:
     return {issue.kind for issue in report.issues}
 
 
+def ignore_ambiguity(_error: object) -> None:
+    """Callback for fakes that do not exercise the ambiguity warning."""
+
+
 def status_bridge_typedef() -> ModuleTypeDef:
     return ModuleTypeDef(
         name="StatusBridge",

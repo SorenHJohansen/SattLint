@@ -19,13 +19,13 @@ from sattlint.parser_api import (
 from ..models._variable_issues import VariableIssue
 from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, program_identity
 from ..resolution import (
-    AmbiguousRecordError,
     CanonicalPath,
     CanonicalSymbolTable,
     ContextBuilder,
     SymbolKind,
     TypeGraph,
     decorate_segment,
+    resolve_record,
 )
 from ..resolution.scope import ScopeContext
 from ._semantic_helpers import (
@@ -213,10 +213,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
         def resolve_datatype(type_name: str, library: str | None) -> DataType | None:
             """Resolve through the type graph so identity matches every other consumer."""
-            try:
-                record = self.type_graph.record(type_name, library=library)
-            except AmbiguousRecordError:
-                return None
+            record = resolve_record(self.type_graph, type_name, library=library)
             if record is None:
                 return None
             return datatypes_by_key.get(((record.library or "").casefold(), type_name.casefold()))
@@ -285,10 +282,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         if isinstance(root_type, ScalarDatatype):
             return None
         path_key = tuple(cf(segment) for segment in field_path)
-        try:
-            record = self.type_graph.record(root_type, library=library)
-        except AmbiguousRecordError:
-            record = None
+        record = resolve_record(self.type_graph, root_type, library=library)
         if record is not None:
             key = ((record.library or "").casefold(), root_type.casefold(), path_key)
             definition = self._datatype_field_definitions.get(key)
