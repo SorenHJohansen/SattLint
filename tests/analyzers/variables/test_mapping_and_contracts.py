@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -11,7 +12,6 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from sattlint.analyzers.shared import _validators as validators_module
 from sattlint.analyzers.variables import (
     IssueKind,
@@ -501,7 +501,7 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 
 
 @pytest.mark.parametrize("is_source_global", [False, True])
-def test_extra_mapping_target_is_accepted_for_single_module(is_source_global):
+def test_extra_mapping_target_is_accepted_for_single_module(is_source_global: bool) -> None:
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
@@ -549,7 +549,7 @@ def test_extra_mapping_target_is_accepted_for_single_module(is_source_global):
 
 
 @pytest.mark.parametrize("is_source_global", [False, True])
-def test_extra_mapping_target_is_accepted_for_moduletype_instance(is_source_global):
+def test_extra_mapping_target_is_accepted_for_moduletype_instance(is_source_global: bool) -> None:
     typedef = ModuleTypeDef(
         name="ChildType",
         moduleparameters=[Variable(name="DeclaredValue", datatype=ScalarDatatype.INTEGER)],
@@ -759,7 +759,7 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
     )
 
 
-def test_contract_mapping_validator_helper_branches(monkeypatch):
+def test_contract_mapping_validator_helper_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     validator = validators_module.ContractMappingValidator(TypeGraph({}))
     source_var = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target_var = Variable(name="AnyParam", datatype="AnyType")
@@ -772,11 +772,14 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
         source_literal=None,
     )
 
-    monkeypatch.setattr(
-        validators_module,
-        "_resolve_variable_field_datatype",
-        lambda _var, field_path, _graph: ScalarDatatype.BOOLEAN if tuple(field_path) == ("child",) else None,
-    )
+    def _field_datatype(
+        _variable: Variable,
+        field_path: tuple[str, ...],
+        _graph: object,
+    ) -> ScalarDatatype | None:
+        return ScalarDatatype.BOOLEAN if tuple(field_path) == ("child",) else None
+
+    monkeypatch.setattr(validators_module, "_resolve_variable_field_datatype", _field_datatype)
 
     assert validator._resolve_target_datatype("AnyParam", target_var) == ("AnyType", None)
     assert validator._resolve_target_datatype("AnyParam.child", target_var) == (ScalarDatatype.BOOLEAN, "child")
@@ -806,7 +809,7 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
     ) == (ScalarDatatype.BOOLEAN, "Source.child")
 
 
-def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
+def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     validator = validators_module.ContractMappingValidator(TypeGraph({}))
     target_var = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     source_var = Variable(name="Source", datatype=ScalarDatatype.STRING)
@@ -819,10 +822,16 @@ def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
         source_literal=None,
     )
 
-    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (None, None))
+    def _unresolved_target(*_args: object) -> tuple[ScalarDatatype | str | None, str | None]:
+        return (None, None)
+
+    def _integer_target(*_args: object) -> tuple[ScalarDatatype | str | None, str | None]:
+        return (ScalarDatatype.INTEGER, None)
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", _unresolved_target)
     assert validator.resolve_target_datatype("Target", target_var) == (None, None)
 
-    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (ScalarDatatype.INTEGER, None))
+    monkeypatch.setattr(validator, "_resolve_target_datatype", _integer_target)
     assert validator.resolve_target_datatype("Target", target_var) == (ScalarDatatype.INTEGER, None)
 
     assert validator.resolve_source_datatype(mapping, source_var) == (ScalarDatatype.STRING, "Source")

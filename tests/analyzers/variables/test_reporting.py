@@ -1,6 +1,6 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -24,6 +24,7 @@ from sattlint.reporting.variables_report import (
     NeverReadIssue,
     StringMappingMismatchIssue,
     UnusedIssue,
+    VariableIssue,
     VariablesReport,
 )
 from sattlint.types import VariableId
@@ -98,7 +99,9 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
         )
     ]
 
-    summary = VariablesReport(basepicture_name=bp.header.name, issues=duplication_issues).summary()
+    summary = VariablesReport(
+        basepicture_name=bp.header.name, issues=cast(list[VariableIssue], duplication_issues)
+    ).summary()
     assert "Datatype 'Timer' declared 2 times in BasePicture.TypeDef:Fyld:" in summary
     assert "+ PhaseTimerCopy (localvariable)" in summary
     assert "AnyType" not in summary
@@ -219,24 +222,45 @@ def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files()
         origin_lib="ProjectLib",
     )
     usage_by_id = {id(foreign_local): _UsageStub(read=True, is_read_only=True)}
-    issues: list[tuple[IssueKind, tuple[str, ...], str]] = []
-    helper: Any = SimpleNamespace(
+    issues: list[tuple[IssueKind, tuple[str, ...], str | None]] = []
+    helper: Any
+
+    def _ignore(*args: object, **kwargs: object) -> None:
+        return None
+
+    def _no_effective_output_keys() -> set[str]:
+        return set()
+
+    def _root_origin(origin: str, origin_lib: str | None = None) -> bool:
+        return VariablesAnalyzer._is_from_root_origin(helper, origin, origin_lib)
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append((issue.kind, tuple(issue.module_path), issue.role))
+
+    def _false_flag(*args: object, **kwargs: object) -> bool:
+        return False
+
+    def _true_flag(*args: object, **kwargs: object) -> bool:
+        return True
+
+    helper = SimpleNamespace(
         bp=bp,
         analyzed_target_is_library=True,
         _limit_to_module_path=None,
         _selected_issue_kinds=None,
-        _analyze_typedef=lambda *args, **kwargs: None,
-        _compute_effective_output_keys=lambda: set(),
-        _is_from_root_origin=lambda origin, origin_lib=None: VariablesAnalyzer._is_from_root_origin(
-            helper, origin, origin_lib
-        ),
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        _procedure_status_issue=lambda *_args, **_kwargs: None,
-        _append_issue=lambda issue: issues.append((issue.kind, tuple(issue.module_path), issue.role)),
-        _has_output_effect=lambda *args, **kwargs: False,
-        _has_procedure_status_binding=lambda *args, **kwargs: False,
-        _is_const_candidate=lambda *args, **kwargs: True,
-        _collect_issues_from_module=lambda *args, **kwargs: None,
+        _analyze_typedef=_ignore,
+        _compute_effective_output_keys=_no_effective_output_keys,
+        _is_from_root_origin=_root_origin,
+        _get_usage=_usage_for,
+        _procedure_status_issue=_ignore,
+        _append_issue=_record_issue,
+        _has_output_effect=_false_flag,
+        _has_procedure_status_binding=_false_flag,
+        _is_const_candidate=_true_flag,
+        _collect_issues_from_module=_ignore,
     )
 
     variables_execution_module._collect_typedef_issues(helper)
@@ -260,7 +284,7 @@ def test_unused_summary_splits_moduletype_and_singlemodule_groups():
         ),
     ]
 
-    summary = VariablesReport(basepicture_name="BasePicture", issues=issues).summary()
+    summary = VariablesReport(basepicture_name="BasePicture", issues=cast(list[VariableIssue], issues)).summary()
 
     assert "      Moduletype:" in summary
     assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
@@ -285,7 +309,7 @@ def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
         ),
     ]
 
-    summary = VariablesReport(basepicture_name="BasePicture", issues=issues).summary()
+    summary = VariablesReport(basepicture_name="BasePicture", issues=cast(list[VariableIssue], issues)).summary()
 
     assert "Written but never read variables" in summary
     assert "      Moduletype:" in summary
@@ -346,7 +370,7 @@ def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
     assert issues[0].source_decl_module_path == ["Root", "TypeDef:ParentType"]
     assert issues[0].source_role == "moduleparameter"
 
-    summary = VariablesReport(basepicture_name=bp.header.name, issues=issues).summary()
+    summary = VariablesReport(basepicture_name=bp.header.name, issues=cast(list[VariableIssue], issues)).summary()
 
     assert "Root.TypeDef:ParentType.Child" in summary
     assert "Root.Parent.Child" not in summary
@@ -422,7 +446,7 @@ def test_string_mapping_summary_prefers_original_declaration_type_for_intermedia
     assert issues[0].source_variable.name == "OriginalValue"
     assert issues[0].source_variable.datatype_text == "identstring"
 
-    summary = VariablesReport(basepicture_name=bp.header.name, issues=issues).summary()
+    summary = VariablesReport(basepicture_name=bp.header.name, issues=cast(list[VariableIssue], issues)).summary()
 
     assert "Intermediate path mismatch only (1):" in summary
     assert "Declaration/final destination mismatch (0):" in summary

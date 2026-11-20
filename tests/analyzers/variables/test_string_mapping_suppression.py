@@ -1,6 +1,4 @@
 from sattline_parser.ast import MappingSource
-
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleTypeDef,
@@ -13,6 +11,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers.variables import (
     IssueKind,
+    StringMappingMismatchIssue,
     VariablesAnalyzer,
 )
 from tests.helpers.variable_test_support import (
@@ -21,6 +20,12 @@ from tests.helpers.variable_test_support import (
 from tests.helpers.variable_test_support import (
     varref as _varref,
 )
+
+
+def _source_name(issue: StringMappingMismatchIssue) -> str:
+    """Name of the source variable a mismatch record names, which must be present."""
+    assert issue.source_variable is not None
+    return issue.source_variable.name
 
 
 def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_but_edge_mismatches_remain():
@@ -95,7 +100,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -178,7 +183,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -261,7 +266,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -338,6 +343,6 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]

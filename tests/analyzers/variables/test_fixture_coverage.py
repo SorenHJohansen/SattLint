@@ -1,4 +1,4 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -25,6 +25,7 @@ from sattlint.reporting.variables_report import (
     ImplicitLatchIssue,
     NeverReadIssue,
     ReadOnlyNonConstIssue,
+    VariableIssue,
     VariableTargetIssue,
     WriteWithoutEffectIssue,
 )
@@ -71,18 +72,24 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         id(effect_local): _UsageStub(read=True, written=True),
     }
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
-    helper: Any = SimpleNamespace(
-        bp=bp,
-        _limit_to_module_path=None,
-        _selected_issue_kinds=None,
-        _analyze_typedef=lambda *args, **kwargs: None,
-        _compute_effective_output_keys=lambda: set(),
-        _is_from_root_origin=lambda origin, origin_lib=None: True,
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-        _procedure_status_issue=lambda variable, usage: (
-            ("procedure-status", "Status") if variable is procedure_local else None
-        ),
-        _append_issue=lambda issue: issues.append(
+
+    def _ignore(*args: object, **kwargs: object) -> None:
+        return None
+
+    def _no_effective_output_keys() -> set[str]:
+        return set()
+
+    def _always_root_origin(origin: str, origin_lib: str | None = None) -> bool:
+        return True
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    def _procedure_status_for(variable: Variable, usage: _UsageStub) -> tuple[str, str] | None:
+        return ("procedure-status", "Status") if variable is procedure_local else None
+
+    def _record_issue(issue: VariableIssue) -> None:
+        issues.append(
             (
                 issue.kind,
                 tuple(issue.module_path),
@@ -90,11 +97,28 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
                 issue.role or "",
                 issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
             )
-        ),
-        _has_output_effect=lambda *args, **kwargs: False,
-        _has_ignorable_output_binding=lambda *args, **kwargs: False,
-        _has_procedure_status_binding=lambda *args, **kwargs: False,
-        _is_const_candidate=lambda *args, **kwargs: True,
+        )
+
+    def _false_flag(*args: object, **kwargs: object) -> bool:
+        return False
+
+    def _true_flag(*args: object, **kwargs: object) -> bool:
+        return True
+
+    helper: Any = SimpleNamespace(
+        bp=bp,
+        _limit_to_module_path=None,
+        _selected_issue_kinds=None,
+        _analyze_typedef=_ignore,
+        _compute_effective_output_keys=_no_effective_output_keys,
+        _is_from_root_origin=_always_root_origin,
+        _get_usage=_usage_for,
+        _procedure_status_issue=_procedure_status_for,
+        _append_issue=_record_issue,
+        _has_output_effect=_false_flag,
+        _has_ignorable_output_binding=_false_flag,
+        _has_procedure_status_binding=_false_flag,
+        _is_const_candidate=_true_flag,
     )
 
     variables_execution_module._collect_typedef_issues(helper)
