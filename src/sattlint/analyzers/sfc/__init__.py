@@ -68,16 +68,33 @@ def _node_fork_terminator(node: object) -> SfcTerminator | None:
     return SfcTerminator(kind="SFCFork", targets=tuple(fork.targets))
 
 
+def _is_empty_step(node: object) -> bool:
+    """A step with no code and no fork; the grammar needs one to close a branch."""
+    if not isinstance(node, SFCStep) or node.fork is not None:
+        return False
+    code = node.code
+    return not (code.enter or code.active or code.exit)
+
+
 def _inspect_sfc_linear_nodes(
     findings: list[SfcReachabilityFinding],
     nodes: SequenceABC[object] | None,
     module_path: list[str],
     sequence_name: str,
     branch_path: tuple[int, ...] = (),
+    *,
+    enclosing_parallel: bool = False,
 ) -> None:
     terminated_by: SfcTerminator | None = None
-    for index, node in enumerate(nodes or []):
+    linear_nodes = list(nodes or [])
+    last_index = len(linear_nodes) - 1
+    for index, node in enumerate(linear_nodes):
         if terminated_by is not None:
+            closes_parallel_branch = (
+                enclosing_parallel and index == last_index and terminated_by.kind == "SFCFork" and _is_empty_step(node)
+            )
+            if closes_parallel_branch:
+                continue
             findings.append(
                 SfcReachabilityFinding(
                     module_path=tuple(module_path),
@@ -99,11 +116,19 @@ def _inspect_sfc_linear_nodes(
                     module_path,
                     sequence_name,
                     (*branch_path, branch_index),
+                    enclosing_parallel=isinstance(node, SFCParallel),
                 )
             continue
 
         if isinstance(node, SFCSubsequence | SFCTransitionSub):
-            _inspect_sfc_linear_nodes(findings, node.body, module_path, sequence_name, branch_path)
+            _inspect_sfc_linear_nodes(
+                findings,
+                node.body,
+                module_path,
+                sequence_name,
+                branch_path,
+                enclosing_parallel=enclosing_parallel,
+            )
             continue
 
         fork_terminator = _node_fork_terminator(node)
