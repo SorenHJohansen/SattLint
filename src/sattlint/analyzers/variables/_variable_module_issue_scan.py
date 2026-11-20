@@ -21,6 +21,7 @@ from ._variables_contracts import (
 from ._variables_contracts import (
     should_collect_issue_kind as _should_collect_issue_kind,
 )
+from ._variables_status import has_out_of_origin_consumer as _has_out_of_origin_consumer
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -61,7 +62,10 @@ def _collect_variable_issues(
 
     for variable in variables or []:
         usage = self.get_usage(variable)
-        if collect_unused and usage.is_unused:
+        # A contract outside the analyzed origin proves the variable is consumed even
+        # though the read is invisible, so absence of use is not evidence of dead code.
+        consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+        if collect_unused and usage.is_unused and not consumed_out_of_origin:
             self.append_issue(UnusedIssue(module_path=path.copy(), variable=variable, role=role))
             continue
 
@@ -93,6 +97,7 @@ def _collect_variable_issues(
             and role == "localvariable"
             and usage.written
             and not usage.read
+            and not consumed_out_of_origin
             and not self.has_ignorable_output_binding(variable)
         ):
             self.append_issue(NeverReadIssue(module_path=path.copy(), variable=variable, role=role))

@@ -366,6 +366,7 @@ class VariablesAnalyzer(
         self._effective_output_keys: set[tuple[str, ...]] = set()
         self._procedure_status_bindings: dict[int, list[ProcedureStatusBinding]] = defaultdict(list)
         self._ignorable_output_variable_ids: set[int] = set()
+        self._out_of_origin_consumer_variable_ids: set[int] = set()
         self._effect_flow_tracker = EffectFlowTracker(
             effect_flow_edges=self._effect_flow_edges,
             effect_flow_display_names=self._effect_flow_display_names,

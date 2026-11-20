@@ -29,6 +29,7 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _alias_links: list[tuple[Variable, Variable, str]]
     _procedure_status_bindings: dict[int, list[ProcedureStatusBinding]]
     _ignorable_output_variable_ids: set[int]
+    _out_of_origin_consumer_variable_ids: set[int]
     _any_var_index: dict[str, list[Variable]]
     _contract_validator: ContractMappingValidator
     _min_max_validator: MinMaxValidator
@@ -82,6 +83,11 @@ class VariablesAnalyzerFacadePropertiesMixin:
     @property
     def ignorable_output_variable_ids(self) -> set[int]:
         return self._state()._ignorable_output_variable_ids
+
+    @property
+    def out_of_origin_consumer_variable_ids(self) -> set[int]:
+        """Variables wired into a child whose contract lives outside the analyzed origin."""
+        return self._state()._out_of_origin_consumer_variable_ids
 
     @property
     def any_var_index(self) -> dict[str, list[Variable]]:
