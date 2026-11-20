@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-
 import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -13,6 +11,10 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     ParameterMapping,
     ScalarDatatype,
+    Sequence,
+    SFCBodyItem,
+    SFCCodeBlocks,
+    SFCStep,
     SingleModule,
     Variable,
 )
@@ -34,8 +36,16 @@ def _rbw_only_report(bp: BasePicture):
     return analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.READ_BEFORE_WRITE}))
 
 
-def _equation(code: Sequence[Assignment]) -> Equation:
+def _equation(code: list[Assignment]) -> Equation:
     return Equation(name="Main", position=(0.0, 0.0), size=(1.0, 1.0), code=list(code))
+
+
+def _step(name: str, statements: list[Assignment]) -> SFCStep:
+    return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=list(statements)))
+
+
+def _sequence(nodes: list[SFCBodyItem]) -> Sequence:
+    return Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=list(nodes))
 
 
 def test_read_before_write_reports_reads_before_writes():
@@ -48,12 +58,17 @@ def test_read_before_write_reports_reads_before_writes():
         ],
         submodules=[],
         modulecode=ModuleCode(
-            equationblocks=[
-                _equation(
+            sequences=[
+                _sequence(
                     [
-                        Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
-                        Assignment(target=_varref("InputSignal"), value=True),
-                        Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal")),
+                                Assignment(target=_varref("InputSignal"), value=True),
+                                Assignment(target=_varref("ObservedSignal"), value=_varref("OutputSignal")),
+                            ],
+                        )
                     ]
                 )
             ]
@@ -75,6 +90,36 @@ def test_read_before_write_reports_initialization_order_hazard():
             Variable(name="Output", datatype=ScalarDatatype.INTEGER),
         ],
         modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("Output"), value=_varref("Source")),
+                                Assignment(target=_varref("Source"), value=3),
+                            ],
+                        )
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = _rbw_only_report(bp)
+
+    rbw = [issue for issue in report.issues if issue.kind is IssueKind.READ_BEFORE_WRITE]
+    assert any(issue.context == "Source" for issue in rbw)
+
+
+def test_read_before_write_ignores_equation_block_reads():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.INTEGER),
+        ],
+        modulecode=ModuleCode(
             equationblocks=[
                 _equation(
                     [
@@ -88,8 +133,40 @@ def test_read_before_write_reports_initialization_order_hazard():
 
     report = _rbw_only_report(bp)
 
-    rbw = [issue for issue in report.issues if issue.kind is IssueKind.READ_BEFORE_WRITE]
-    assert any(issue.context == "Source" for issue in rbw)
+    assert not any(issue.kind is IssueKind.READ_BEFORE_WRITE for issue in report.issues)
+
+
+def test_equation_block_writes_initialize_later_step_reads():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="Published", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Unwritten", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _equation([Assignment(target=_varref("Published"), value=3)]),
+            ],
+            sequences=[
+                _sequence(
+                    [
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("Output"), value=_varref("Published")),
+                                Assignment(target=_varref("Output"), value=_varref("Unwritten")),
+                            ],
+                        )
+                    ]
+                )
+            ],
+        ),
+    )
+
+    report = _rbw_only_report(bp)
+
+    assert [issue.context for issue in report.issues if issue.kind is IssueKind.READ_BEFORE_WRITE] == ["Unwritten"]
 
 
 def test_read_before_write_is_default_variable_analysis_kind():
@@ -116,7 +193,7 @@ def test_read_before_write_ignores_initialized_and_parameter_values():
         ],
         submodules=[child],
         modulecode=ModuleCode(
-            equationblocks=[_equation([Assignment(target=_varref("Out"), value=_varref("PreInit"))])]
+            sequences=[_sequence([_step("S1", [Assignment(target=_varref("Out"), value=_varref("PreInit"))])])]
         ),
     )
 
@@ -135,8 +212,20 @@ def test_read_before_write_ignores_module_parameter_inherited_by_frame_module():
             FrameModule(
                 header=_hdr("Frame"),
                 modulecode=ModuleCode(
-                    equationblocks=[
-                        _equation([Assignment(target=_varref("OutputSignal"), value=_varref("InputSignal"))])
+                    sequences=[
+                        _sequence(
+                            [
+                                _step(
+                                    "S1",
+                                    [
+                                        Assignment(
+                                            target=_varref("OutputSignal"),
+                                            value=_varref("InputSignal"),
+                                        )
+                                    ],
+                                )
+                            ]
+                        )
                     ]
                 ),
                 submodules=[],
@@ -162,11 +251,16 @@ def test_read_before_write_clean_when_all_reads_follow_writes():
             Variable(name="Output", datatype=ScalarDatatype.INTEGER),
         ],
         modulecode=ModuleCode(
-            equationblocks=[
-                _equation(
+            sequences=[
+                _sequence(
                     [
-                        Assignment(target=_varref("Source"), value=3),
-                        Assignment(target=_varref("Output"), value=_varref("Source")),
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("Source"), value=3),
+                                Assignment(target=_varref("Output"), value=_varref("Source")),
+                            ],
+                        )
                     ]
                 )
             ]
@@ -206,11 +300,16 @@ def test_child_output_mapping_is_not_an_unwritten_local(dependency: bool, reusab
         ],
         submodules=[child],
         modulecode=ModuleCode(
-            equationblocks=[
-                _equation(
+            sequences=[
+                _sequence(
                     [
-                        Assignment(target=_varref("Output"), value=_varref("ErrorSignal")),
-                        Assignment(target=_varref("Output"), value=_varref("Unwritten")),
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("Output"), value=_varref("ErrorSignal")),
+                                Assignment(target=_varref("Output"), value=_varref("Unwritten")),
+                            ],
+                        )
                     ]
                 )
             ]
@@ -293,11 +392,16 @@ def test_child_field_output_does_not_initialize_sibling():
             )
         ],
         modulecode=ModuleCode(
-            equationblocks=[
-                _equation(
+            sequences=[
+                _sequence(
                     [
-                        Assignment(target=_varref("Output"), value=_varref("Signals.Provided")),
-                        Assignment(target=_varref("Output"), value=_varref("Signals.Missing")),
+                        _step(
+                            "S1",
+                            [
+                                Assignment(target=_varref("Output"), value=_varref("Signals.Provided")),
+                                Assignment(target=_varref("Output"), value=_varref("Signals.Missing")),
+                            ],
+                        )
                     ]
                 )
             ]

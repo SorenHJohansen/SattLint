@@ -4,6 +4,10 @@ Merges the former ``signal-lifecycle`` read-before-write and ``data-dependency``
 initialization-order checks into one lifecycle finding: a local value (same-module
 declaration, not a module parameter, no initializer) that is read before any known
 write in the same module scope.
+
+Equation blocks are evaluated cyclically every scan, so a read there is not an
+ordering hazard: their reads are ignored while their writes still count as
+initialization for later step reads.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from ...reporting.variables_report import ReadBeforeWriteIssue
 from ...resolution import AccessKind
-from ..shared._dependency_usage_facts import FactRef, StatementFact, collect_statement_facts
+from ..shared._dependency_usage_facts import BlockKind, FactRef, StatementFact, collect_statement_facts
 from ..shared.instance_paths import collect_instance_paths
 
 if TYPE_CHECKING:
@@ -70,7 +74,10 @@ def _analyze_module(
     context = self.contexts_by_module_path.get(context_path)
 
     for fact in module_facts:
-        for read in fact.reads:
+        # Equation blocks re-evaluate every scan, so their reads are not ordering
+        # hazards; their writes still initialize later step reads.
+        reads = () if fact.block_kind is BlockKind.EQUATION else fact.reads
+        for read in reads:
             if _is_read_before_write(read, module_path, initialized_roots):
                 if any(read.key[: len(key)] == key for key in supplied_writes):
                     continue

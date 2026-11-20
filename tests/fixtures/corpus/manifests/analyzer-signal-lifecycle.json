@@ -4,8 +4,7 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "never_read",
-            "read_before_write"
+            "never_read"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,14 +14,14 @@
             },
             "summary.json": {
                 "analyzer_key": "variables",
-                "finding_count": 2,
+                "finding_count": 1,
                 "rule_counts": {
-                    "never_read": 1,
-                    "read_before_write": 1
+                    "never_read": 1
                 }
             }
         },
         "forbidden_finding_ids": [
+            "read_before_write",
             "corpus.execution-error",
             "syntax.parse"
         ]
