@@ -13,6 +13,27 @@ _PICTURE_DISPLAY_WARNING_RE = re.compile(
     r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"
 )
 
+#: Prefix for a program that failed parsing or transformation. The failure
+#: carries an optional source position.
+PARSE_FAILURE_MARKER = " parse/transform error: "
+#: Prefix for a target the loader could not load at all. There is no source
+#: position; the detail names the failing program and its dependency edge.
+LOAD_FAILURE_MARKER = " load error: "
+FAILURE_MARKERS = (PARSE_FAILURE_MARKER, LOAD_FAILURE_MARKER)
+
+
+def split_failure_item(item: str) -> tuple[str, str] | None:
+    """Split a recorded failure entry into ``(name, detail)``.
+
+    Both failure kinds are recorded in ``ProjectGraph.missing`` with a stable
+    marker, so the report can regroup them under the target they belong to.
+    """
+    for marker in FAILURE_MARKERS:
+        if marker in item:
+            name, detail = item.split(marker, 1)
+            return name, detail
+    return None
+
 
 class TargetLoadError(RuntimeError):
     def __init__(
@@ -35,9 +56,9 @@ class TargetLoadError(RuntimeError):
 
     @staticmethod
     def _extract_missing_name(item: str) -> str | None:
-        marker = " parse/transform error: "
-        if marker in item:
-            return item.split(marker, 1)[0]
+        failure = split_failure_item(item)
+        if failure is not None:
+            return failure[0]
         match = re.match(r"Missing code file for '([^']+)'", item)
         if match:
             return match.group(1)
@@ -63,11 +84,11 @@ class TargetLoadError(RuntimeError):
         return f" ({', '.join(parts)})"
 
     def _format_missing_item(self, item: str) -> str:
-        marker = " parse/transform error: "
-        if marker not in item:
+        failure_item = split_failure_item(item)
+        if failure_item is None:
             return item
 
-        name, detail = item.split(marker, 1)
+        name, detail = failure_item
         failure = self.failures.get(casefold_key(name))
         suffix = "" if failure is None else self._format_failure_location(failure)
         return f"{name}: {detail}{suffix}"

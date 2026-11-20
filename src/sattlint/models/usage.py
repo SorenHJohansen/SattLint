@@ -27,6 +27,9 @@ class VariableUsage:
     written: bool = False
     ui_read: bool = False
     non_ui_read: bool = False
+    whole_read: bool = False
+    whole_write: bool = False
+    record_locations: bool = True
     usage_locations: list[tuple[list[str], str]] = field(default_factory=_empty_usage_locations)
     field_reads: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
     field_writes: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
@@ -46,12 +49,15 @@ class VariableUsage:
 
     def mark_read(self, module_path: list[str], *, ui: bool = False) -> None:
         self.read = True
+        self.whole_read = True
         if ui:
             self.ui_read = True
-            self.ui_usage_locations.append(list(module_path))
+            if self.record_locations:
+                self.ui_usage_locations.append(list(module_path))
         else:
             self.non_ui_read = True
-        self.usage_locations.append((list(module_path), "read"))
+        if self.record_locations:
+            self.usage_locations.append((list(module_path), "read"))
 
     def mark_ui_read(self, module_path: list[str]) -> None:
         self.mark_read(module_path, ui=True)
@@ -70,13 +76,16 @@ class VariableUsage:
         self.read = True
         if ui:
             self.ui_read = True
-            self.ui_usage_locations.append(list(location))
+            if self.record_locations:
+                self.ui_usage_locations.append(list(location))
         else:
             self.non_ui_read = True
 
     def mark_written(self, module_path: list[str]) -> None:
         self.written = True
-        self.usage_locations.append((list(module_path), "write"))
+        self.whole_write = True
+        if self.record_locations:
+            self.usage_locations.append((list(module_path), "write"))
 
     def mark_field_written(self, field_path: str, location: list[str]) -> None:
         """Mark a specific field (or nested field) as written."""

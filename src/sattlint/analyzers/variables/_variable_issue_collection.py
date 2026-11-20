@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sattlint.parser_api import (
     FrameModule,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     SourceSpan,
     Variable,
@@ -20,6 +20,7 @@ from ...models.usage import VariableUsage
 from ...reporting.variables_report import IssueKind, VariableIssue
 from ...resolution import AccessEvent, AccessKind
 from ...resolution.common import resolve_moduletype_def_strict
+from ._datatype_leaf_index import LeafPathIndex
 from ._variable_module_issue_scan import collect_issues_from_module
 from ._variables_contracts import should_collect_issue_kind as _should_collect_issue_kind
 
@@ -122,14 +123,21 @@ def _build_root_variable_access_summaries(
     return summaries
 
 
+type _DatatypeFieldVariable = tuple[list[str], Variable, str, bool]
+
+
+def _empty_prefix_set() -> set[str]:
+    return set()
+
+
 @dataclass(slots=True)
 class _DatatypeDefinitionState:
     """Field-usage state for one datatype definition across the analyzed target."""
 
     datatype_name: str
     module_path: tuple[str, ...]
-    leaf_paths: set[str]
-    accessed_prefixes: set[str]
+    index: LeafPathIndex
+    accessed_prefixes: set[str] = field(default_factory=_empty_prefix_set)
     has_whole_access: bool = False
     externally_open: bool = False
 
@@ -144,9 +152,9 @@ def _record_nested_datatype_access(
     if not segments:
         return
 
-    current_type: Simple_DataType | str = variable.datatype
+    current_type: ScalarDatatype | str = variable.datatype
     for index, segment in enumerate(segments):
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return
 
         record_type = self.type_graph.record(str(current_type))
@@ -158,7 +166,7 @@ def _record_nested_datatype_access(
             return
 
         current_type = field_def.datatype
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return
 
         state = datatype_state.get(str(current_type).casefold())
@@ -191,45 +199,13 @@ def _add_issue(
     )
 
 
-def _normalize_field_path(field_path: str) -> str:
-    return ".".join(segment for segment in field_path.split(".") if segment)
-
-
-def _expand_field_usage_to_leaf_keys(
-    leaf_paths_by_key: dict[str, str],
-    field_paths: dict[str, list[list[str]]],
-) -> tuple[set[str], bool]:
-    matched_leaf_keys: set[str] = set()
-    has_whole_access = False
-
-    for raw_field_path in field_paths:
-        normalized = _normalize_field_path(raw_field_path)
-        if not normalized:
-            has_whole_access = True
-            continue
-
-        normalized_key = normalized.casefold()
-        matched = {
-            leaf_key
-            for leaf_key in leaf_paths_by_key
-            if leaf_key == normalized_key or leaf_key.startswith(f"{normalized_key}.")
-        }
-        matched_leaf_keys.update(matched)
-
-    return matched_leaf_keys, has_whole_access
-
-
-def _empty_leaf_key_set() -> set[str]:
-    return set()
-
-
 @dataclass(slots=True)
 class _DatatypeFieldUsage:
     """Field usage aggregated across every instance of one datatype."""
 
-    leaf_paths_by_key: dict[str, str]
-    read_leaf_keys: set[str] = field(default_factory=_empty_leaf_key_set)
-    write_leaf_keys: set[str] = field(default_factory=_empty_leaf_key_set)
+    index: LeafPathIndex
+    read_mask: int = 0
+    write_mask: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,22 +217,42 @@ class _InstanceFieldUsage:
     role: str
     has_whole_read: bool
     has_whole_write: bool
-    read_leaf_keys: frozenset[str]
-    write_leaf_keys: frozenset[str]
+    read_mask: int
+    write_mask: int
 
 
-def _leaf_paths_by_key(self: VariablesAnalyzer, datatype_text: str) -> dict[str, str]:
-    leaf_paths = {
-        ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype_text) if field_path
-    }
-    return {leaf_path.casefold(): leaf_path for leaf_path in leaf_paths}
+def _leaf_index(self: VariablesAnalyzer, datatype_text: str) -> LeafPathIndex:
+    """Return the shared leaf index for one datatype definition."""
+    cache: dict[str, tuple[object, LeafPathIndex]] | None = getattr(self, "datatype_leaf_index_cache", None)
+    if cache is None:
+        cache = {}
+        self.datatype_leaf_index_cache = cache
+
+    key = datatype_text.casefold()
+    type_graph = self.type_graph
+    cached = cache.get(key)
+    if cached is not None and cached[0] is type_graph:
+        return cached[1]
+
+    index = LeafPathIndex.from_paths(
+        ".".join(field_path) for field_path in type_graph.iter_leaf_field_paths(datatype_text) if field_path
+    )
+    cache[key] = (type_graph, index)
+    return index
 
 
 def _has_whole_record_access(usage: VariableUsage, kind: str) -> bool:
+    if kind == "read" and getattr(usage, "whole_read", False):
+        return True
+    if kind == "write" and getattr(usage, "whole_write", False):
+        return True
     return any(access_kind == kind for _, access_kind in usage.usage_locations)
 
 
-def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
+def _add_field_usage_asymmetry_issues(
+    self: VariablesAnalyzer,
+    variables: list[_DatatypeFieldVariable] | None = None,
+) -> None:
     collect_field_read_only = _should_collect_issue_kind(self, IssueKind.FIELD_READ_ONLY)
     collect_field_never_read = _should_collect_issue_kind(self, IssueKind.FIELD_NEVER_READ)
     if not collect_field_read_only and not collect_field_never_read:
@@ -264,27 +260,30 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
 
     datatype_usage: dict[str, _DatatypeFieldUsage] = {}
     instances: list[_InstanceFieldUsage] = []
-    for path, variable, role, _root_owned_decl in iter_variables_for_datatype_field_analysis(self):
-        if isinstance(variable.datatype, Simple_DataType):
+    for path, variable, role, root_owned_decl in (
+        variables if variables is not None else iter_variables_for_datatype_field_analysis(self)
+    ):
+        if isinstance(variable.datatype, ScalarDatatype):
             continue
 
         datatype_key = variable.datatype_text.casefold()
         state = datatype_usage.get(datatype_key)
         if state is None:
-            state = _DatatypeFieldUsage(leaf_paths_by_key=_leaf_paths_by_key(self, variable.datatype_text))
+            index = _leaf_index(self, variable.datatype_text)
+            if not index.leaf_keys:
+                continue
+            state = _DatatypeFieldUsage(index=index)
             datatype_usage[datatype_key] = state
 
         usage = self.get_usage(variable)
-        read_leaf_keys, has_whole_field_read = _expand_field_usage_to_leaf_keys(
-            state.leaf_paths_by_key,
-            usage.field_reads,
-        )
-        write_leaf_keys, has_whole_field_write = _expand_field_usage_to_leaf_keys(
-            state.leaf_paths_by_key,
-            usage.field_writes,
-        )
-        state.read_leaf_keys.update(read_leaf_keys)
-        state.write_leaf_keys.update(write_leaf_keys)
+        read_mask, has_whole_field_read = state.index.match(usage.field_reads or ())
+        write_mask, has_whole_field_write = state.index.match(usage.field_writes or ())
+        state.read_mask |= read_mask
+        state.write_mask |= write_mask
+        # Dependency typedef bodies contribute usage evidence above, but a
+        # finding belongs to the analyzed target only.
+        if not root_owned_decl:
+            continue
         instances.append(
             _InstanceFieldUsage(
                 path=tuple(path),
@@ -292,8 +291,8 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
                 role=role,
                 has_whole_read=has_whole_field_read or _has_whole_record_access(usage, "read"),
                 has_whole_write=has_whole_field_write or _has_whole_record_access(usage, "write"),
-                read_leaf_keys=frozenset(read_leaf_keys),
-                write_leaf_keys=frozenset(write_leaf_keys),
+                read_mask=read_mask,
+                write_mask=write_mask,
             )
         )
 
@@ -304,9 +303,9 @@ def _add_field_usage_asymmetry_issues(self: VariablesAnalyzer) -> None:
             continue
         state = datatype_usage[instance.variable.datatype_text.casefold()]
         if collect_field_read_only and not instance.has_whole_write:
-            _emit_field_issues(self, IssueKind.FIELD_READ_ONLY, instance, state, instance.read_leaf_keys)
+            _emit_field_issues(self, IssueKind.FIELD_READ_ONLY, instance, state)
         if collect_field_never_read and not instance.has_whole_read:
-            _emit_field_issues(self, IssueKind.FIELD_NEVER_READ, instance, state, instance.write_leaf_keys)
+            _emit_field_issues(self, IssueKind.FIELD_NEVER_READ, instance, state)
 
 
 def _emit_field_issues(
@@ -314,33 +313,88 @@ def _emit_field_issues(
     kind: IssueKind,
     instance: _InstanceFieldUsage,
     state: _DatatypeFieldUsage,
-    instance_leaf_keys: frozenset[str],
 ) -> None:
     if kind is IssueKind.FIELD_READ_ONLY:
-        global_leaf_keys = state.read_leaf_keys
-        counterpart_leaf_keys = state.write_leaf_keys
+        candidate_mask = instance.read_mask & ~state.write_mask
     else:
-        global_leaf_keys = state.write_leaf_keys
-        counterpart_leaf_keys = state.read_leaf_keys
-    for leaf_key in sorted(global_leaf_keys - counterpart_leaf_keys):
-        if leaf_key not in instance_leaf_keys:
+        candidate_mask = instance.write_mask & ~state.read_mask
+    if not candidate_mask:
+        return
+
+    leaf_items: list[tuple[str, str]] = []
+    while candidate_mask:
+        lowest = candidate_mask & -candidate_mask
+        position = lowest.bit_length() - 1
+        candidate_mask ^= lowest
+        leaf_items.append((state.index.leaf_keys[position], state.index.leaf_paths[position]))
+
+    for _leaf_key, leaf_path in sorted(leaf_items):
+        if kind is IssueKind.FIELD_READ_ONLY and _is_const_field(self, instance.variable, leaf_path):
             continue
-        leaf_path = state.leaf_paths_by_key.get(leaf_key)
-        if leaf_path is not None:
-            _add_issue(
-                self,
-                kind,
-                list(instance.path),
-                instance.variable,
-                instance.role,
-                field_path=leaf_path,
-            )
+        _add_issue(
+            self,
+            kind,
+            list(instance.path),
+            instance.variable,
+            instance.role,
+            field_path=leaf_path,
+        )
+
+
+def _is_const_field(self: VariablesAnalyzer, variable: Variable, field_path: str) -> bool:
+    if variable.const:
+        return True
+    datatype = variable.datatype
+    for segment in field_path.split("."):
+        if isinstance(datatype, ScalarDatatype):
+            return False
+        definition = self.type_graph.field(datatype, segment)
+        if definition is None:
+            return False
+        if definition.const:
+            return True
+        datatype = definition.datatype
+    return False
+
+
+def _typedef_root_ownership(self: VariablesAnalyzer) -> dict[str, bool]:
+    """Map each typedef name to whether some definition belongs to the target.
+
+    Built once per pass: scanning every merged typedef for every context would
+    be quadratic on a large project, and the merged list holds every dependency
+    type.
+    """
+    ownership: dict[str, bool] = {}
+    for mt in self.bp.moduletype_defs or []:
+        key = mt.name.casefold()
+        owned = self.is_from_root_origin(getattr(mt, "origin_file", None), getattr(mt, "origin_lib", None))
+        ownership[key] = ownership.get(key, False) or owned
+    return ownership
+
+
+def _typedef_path_is_root_owned(path: list[str], ownership: dict[str, bool]) -> bool:
+    """Whether every typedef named in *path* belongs to the analyzed target.
+
+    Variables reached through a scope context carry no origin of their own, so
+    the enclosing ``TypeDef:`` segment is the only evidence available.
+    """
+    for segment in path:
+        if segment.startswith("TypeDef:") and not ownership.get(segment.removeprefix("TypeDef:").casefold(), True):
+            return False
+    return True
 
 
 def iter_variables_for_datatype_field_analysis(
     self: VariablesAnalyzer,
-) -> list[tuple[list[str], Variable, str, bool]]:
-    variables: list[tuple[list[str], Variable, str, bool]] = []
+) -> list[_DatatypeFieldVariable]:
+    """Collect each in-scope variable once with the module path that owns it.
+
+    Paths are shared between variables declared in the same module. Callers only
+    read them, and issue construction copies the path, so one list per module
+    replaces one list per variable on projects with tens of thousands of
+    declarations.
+    """
+    variables: list[_DatatypeFieldVariable] = []
     seen_variable_ids: set[int] = set()
 
     def _append_variable(path: list[str], variable: Variable, role: str, root_owned: bool) -> None:
@@ -348,7 +402,7 @@ def iter_variables_for_datatype_field_analysis(
         if variable_id in seen_variable_ids:
             return
         seen_variable_ids.add(variable_id)
-        variables.append((path.copy(), variable, role, root_owned))
+        variables.append((path, variable, role, root_owned))
 
     bp_path = [self.bp.header.name]
     for variable in self.bp.localvariables or []:
@@ -388,8 +442,10 @@ def iter_variables_for_datatype_field_analysis(
             for variable in mt.localvariables or []:
                 _append_variable(td_path, variable, "localvariable", root_owned)
 
+    typedef_ownership = _typedef_root_ownership(self)
     for module_path, context in self.contexts_by_module_path.items():
         path = list(module_path)
+        path_is_root_owned = _typedef_path_is_root_owned(path, typedef_ownership)
         moduleparameter_keys = set(getattr(context, "moduleparameter_keys", ()))
         param_mapping_keys = set(getattr(context, "param_mappings", {}).keys())
         for variable_name, variable in getattr(context, "env", {}).items():
@@ -398,7 +454,7 @@ def iter_variables_for_datatype_field_analysis(
                 if variable_name in moduleparameter_keys or variable_name in param_mapping_keys
                 else "localvariable"
             )
-            root_owned = self.is_from_root_origin(
+            root_owned = path_is_root_owned and self.is_from_root_origin(
                 getattr(variable, "origin_file", None),
                 getattr(variable, "origin_lib", None),
             )
@@ -407,32 +463,38 @@ def iter_variables_for_datatype_field_analysis(
     return variables
 
 
-def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
+def _datatype_field_variables(self: VariablesAnalyzer) -> list[_DatatypeFieldVariable]:
+    return iter_variables_for_datatype_field_analysis(self)
+
+
+def _add_unused_datatype_field_issues(
+    self: VariablesAnalyzer,
+    variables: list[_DatatypeFieldVariable] | None = None,
+) -> None:
     datatype_state: dict[str, _DatatypeDefinitionState] = {}
 
     for datatype in self.bp.datatype_defs or []:
         if not self.is_from_root_origin(datatype.origin_file, datatype.origin_lib):
             continue
-        leaf_paths = {
-            ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype.name) if field_path
-        }
-        if not leaf_paths:
+        index = _leaf_index(self, datatype.name)
+        if not index.leaf_keys:
             continue
         datatype_state.setdefault(
             datatype.name.casefold(),
             _DatatypeDefinitionState(
                 datatype_name=datatype.name,
                 module_path=(self.bp.header.name, f"DataType:{datatype.name}"),
-                leaf_paths=leaf_paths,
-                accessed_prefixes=set(),
+                index=index,
             ),
         )
 
     if not datatype_state:
         return
 
-    for path, variable, role, root_owned_decl in iter_variables_for_datatype_field_analysis(self):
-        if isinstance(variable.datatype, Simple_DataType):
+    for path, variable, role, root_owned_decl in (
+        variables if variables is not None else _datatype_field_variables(self)
+    ):
+        if isinstance(variable.datatype, ScalarDatatype):
             continue
 
         state = datatype_state.get(variable.datatype_text.casefold())
@@ -448,7 +510,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             state.externally_open = True
 
         usage = self.get_usage(variable)
-        if usage.usage_locations:
+        if getattr(usage, "whole_read", False) or getattr(usage, "whole_write", False) or usage.usage_locations:
             state.has_whole_access = True
 
         for field_path in list((usage.field_reads or {}).keys()) + list((usage.field_writes or {}).keys()):
@@ -463,22 +525,23 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
         if not state.accessed_prefixes:
             continue
 
-        for leaf_path in sorted(state.leaf_paths):
-            leaf_key = leaf_path.casefold()
-            if any(
-                leaf_key == accessed_prefix or leaf_key.startswith(f"{accessed_prefix}.")
-                for accessed_prefix in state.accessed_prefixes
-            ):
-                continue
+        unused_mask = state.index.all_mask & ~state.index.mask_for_prefixes(state.accessed_prefixes)
+        unused_paths: list[str] = []
+        while unused_mask:
+            lowest = unused_mask & -unused_mask
+            position = lowest.bit_length() - 1
+            unused_mask ^= lowest
+            unused_paths.append(state.index.leaf_paths[position])
 
+        for leaf_path in sorted(unused_paths):
             self.append_issue(
                 VariableIssue(
                     kind=IssueKind.UNUSED_DATATYPE_FIELD,
                     module_path=list(state.module_path),
                     variable=None,
                     datatype_name=state.datatype_name,
-                    role="datatype field",
                     field_path=leaf_path,
+                    role="datatype field",
                 )
             )
 
@@ -664,8 +727,11 @@ def _collect_issues_from_module(
 
 
 class VariablesIssueCollectionMixin:
-    def _add_field_usage_asymmetry_issues(self: Any) -> None:
-        _add_field_usage_asymmetry_issues(self)
+    def _add_field_usage_asymmetry_issues(
+        self: Any,
+        variables: list[_DatatypeFieldVariable] | None = None,
+    ) -> None:
+        _add_field_usage_asymmetry_issues(self, variables)
 
     def _build_root_variable_access_summaries(self: Any) -> dict[str, _RootVariableAccessSummary]:
         return _build_root_variable_access_summaries(self)
@@ -685,8 +751,11 @@ class VariablesIssueCollectionMixin:
     ) -> list[tuple[list[str], Variable, str, bool]]:
         return iter_variables_for_datatype_field_analysis(self)
 
-    def _add_unused_datatype_field_issues(self: Any) -> None:
-        _add_unused_datatype_field_issues(self)
+    def _add_unused_datatype_field_issues(
+        self: Any,
+        variables: list[_DatatypeFieldVariable] | None = None,
+    ) -> None:
+        _add_unused_datatype_field_issues(self, variables)
 
     def _add_hidden_global_coupling_issues(self: Any) -> None:
         _add_hidden_global_coupling_issues(self)

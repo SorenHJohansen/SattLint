@@ -1,4 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportMissingTypeArgument=false
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -6,17 +7,30 @@ from sattline_parser.models.ast_model import (
     IntLiteral,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
     Sequence,
     SFCCodeBlocks,
     SFCStep,
     SFCTransition,
-    Simple_DataType,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, IfStmt, VarRef
 
-from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
+from sattlint.analyzers.cyclomatic_complexity import (
+    DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD,
+    DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
+    DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+    analyze_cyclomatic_complexity,
+)
 from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.shared.instance_paths import rewrite_typedef_paths
+from sattlint.config.analysis import (
+    cyclomatic_equation_block_threshold,
+    cyclomatic_module_threshold,
+    cyclomatic_step_threshold,
+)
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -34,19 +48,17 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> No
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="MainEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -55,7 +67,8 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode() -> No
     assert not any(issue.kind == "step.cyclomatic_complexity" for issue in report.issues)
 
 
-def test_cyclomatic_complexity_flags_high_complexity_program_modulecode() -> None:
+@pytest.mark.parametrize("decisions, expected", [(19, False), (20, True)])
+def test_cyclomatic_complexity_flags_high_complexity_program_modulecode(decisions: int, expected: bool) -> None:
     decision_statements: list[CodeItem] = [
         IfStmt(
             branches=(
@@ -66,97 +79,100 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode() -> Non
             ),
             else_block=(),
         )
-        for index in range(10)
+        for index in range(decisions)
     ]
     bp = BasePicture(
         header=_hdr("Program"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name=f"Cond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
+        localvariables=[Variable(name=f"Cond{index}", datatype=ScalarDatatype.BOOLEAN) for index in range(decisions)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="MainEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=decision_statements,
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(bp)
 
     issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
+    assert bool(issues) is expected
+    if not expected:
+        return
     assert len(issues) == 1
     assert issues[0].data == {
         "scope": "program",
-        "complexity": 11,
-        "threshold": 10,
+        "complexity": 21,
+        "threshold": 20,
         "site": ".".join(issues[0].module_path or []),
-        "context": "complexity 11 > 10",
+        "context": "complexity 21 > 20",
     }
 
 
-def test_cyclomatic_complexity_flags_high_complexity_sfc_step() -> None:
+@pytest.mark.parametrize("decisions, expected", [(9, False), (10, True)])
+def test_cyclomatic_complexity_flags_high_complexity_sfc_step(decisions: int, expected: bool) -> None:
     bp = BasePicture(
         header=_hdr("Program"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    Sequence(
-                        name="MainSeq",
-                        type="SEQUENCE",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            SFCStep(
-                                kind="step",
-                                name="HeatUp",
-                                code=SFCCodeBlocks(
-                                    active=[
-                                        IfStmt(
-                                            branches=(
-                                                (
-                                                    _varref(f"StepCond{index}"),
-                                                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
-                                                ),
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSeq",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="step",
+                            name="HeatUp",
+                            code=SFCCodeBlocks(
+                                active=[
+                                    IfStmt(
+                                        branches=(
+                                            (
+                                                _varref(f"StepCond{index}"),
+                                                (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
                                             ),
-                                            else_block=(),
-                                        )
-                                        for index in range(6)
-                                    ]
-                                ),
+                                        ),
+                                        else_block=(),
+                                    )
+                                    for index in range(decisions)
+                                ]
                             ),
-                            SFCTransition(name="Continue", condition=_varref("Proceed")),
-                        ],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+                        ),
+                        SFCTransition(name="Continue", condition=_varref("Proceed")),
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(bp)
 
     issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
+    assert bool(issues) is expected
+    if not expected:
+        return
     assert len(issues) == 1
     assert issues[0].data == {
         "scope": "step",
         "sequence": "MainSeq",
         "step": "HeatUp",
-        "complexity": 7,
-        "threshold": 6,
+        "complexity": 11,
+        "threshold": 10,
         "site": "SQ:MainSeq > STEP:HeatUp",
-        "context": "complexity 7 > 6",
+        "context": "complexity 11 > 10",
     }
 
 
@@ -184,21 +200,19 @@ def test_cyclomatic_complexity_flags_high_equation_block_complexity() -> None:
         header=_hdr("Program"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
+        localvariables=[Variable(name=f"EqCond{index}", datatype=ScalarDatatype.BOOLEAN) for index in range(10)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="BusyBlock",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=decision_statements,
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="BusyBlock",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -232,21 +246,19 @@ def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
         header=_hdr("Program"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name=f"EqCond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(3)],
+        localvariables=[Variable(name=f"EqCond{index}", datatype=ScalarDatatype.BOOLEAN) for index in range(3)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="SmallBlock",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=decision_statements,
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="SmallBlock",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(
@@ -259,3 +271,68 @@ def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
     assert issues[0].data is not None
     assert issues[0].data["complexity"] == 4
     assert issues[0].data["threshold"] == 2
+
+
+def test_cyclomatic_complexity_moduletype_findings_land_on_the_invocation() -> None:
+    decisions: list[CodeItem] = [
+        IfStmt(
+            branches=((_varref(f"Cond{index}"), (Assignment(target=_varref("Output"), value=IntLiteral(index)),)),),
+            else_block=(),
+        )
+        for index in range(20)
+    ]
+    moduletype = ModuleTypeDef(
+        name="Worker",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(name="Work", position=(0.0, 0.0), size=(1.0, 1.0), code=decisions),
+            ]
+        ),
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker1"),
+        moduletype_name="Worker",
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[moduletype],
+        localvariables=[],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Program", "TypeDef:Worker"]
+    assert issues[0].data is not None
+    assert issues[0].data["site"] == "Program.TypeDef:Worker"
+
+    rewrite_typedef_paths(report.issues, bp)
+
+    assert issues[0].module_path == ["Program", "Worker1"]
+    assert issues[0].data["site"] == "Program.Worker1"
+
+
+def test_complexity_defaults_and_project_overrides_are_consistent() -> None:
+    assert cyclomatic_module_threshold(None) == DEFAULT_MODULE_COMPLEXITY_THRESHOLD == 20
+    assert cyclomatic_step_threshold(None) == DEFAULT_STEP_COMPLEXITY_THRESHOLD == 10
+    assert cyclomatic_equation_block_threshold(None) == DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD == 10
+    config = {
+        "analysis": {
+            "cyclomatic_module_threshold": 12,
+            "cyclomatic_step_threshold": 8,
+            "cyclomatic_equation_block_threshold": 15,
+        }
+    }
+    assert cyclomatic_module_threshold(config) == 12
+    assert cyclomatic_step_threshold(config) == 8
+    assert cyclomatic_equation_block_threshold(config) == 15

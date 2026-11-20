@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
     ModuleTypeDef,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 
@@ -20,23 +21,23 @@ from tests.analyzers.variables.test_variables_effect_flow import _build_tracker,
 def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
     tracker, _edges, external_sinks, _usage, _access = _build_tracker()
     external_sinks.add(("external", "sink"))
-    program_var = Variable(name="ProgramVar", datatype=Simple_DataType.INTEGER)
-    included_param = Variable(name="IncludedParam", datatype=Simple_DataType.INTEGER)
-    skipped_param = Variable(name="SkippedParam", datatype=Simple_DataType.INTEGER)
+    program_var = Variable(name="ProgramVar", datatype=ScalarDatatype.INTEGER)
+    included_param = Variable(name="IncludedParam", datatype=ScalarDatatype.INTEGER)
+    skipped_param = Variable(name="SkippedParam", datatype=ScalarDatatype.INTEGER)
     included_typedef = ModuleTypeDef(
         name="Included",
         moduleparameters=[included_param],
         localvariables=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
     )
     included_typedef.origin_file = "root.s"
     skipped_typedef = ModuleTypeDef(
         name="Skipped",
         moduleparameters=[skipped_param],
         localvariables=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
     )
     skipped_typedef.origin_file = "dep.s"
     bp = BasePicture(
@@ -45,8 +46,8 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
         moduletype_defs=[included_typedef, skipped_typedef],
         localvariables=[program_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     program_sinks = tracker.collect_effect_sink_keys(
@@ -63,9 +64,35 @@ def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
     assert library_sinks == {("external", "sink"), ("root", "typedef:included", "includedparam")}
 
 
+def test_frame_inherited_variable_keeps_declaration_effect_key() -> None:
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    parent = _context(env={"source": source}, module_path=["Root", "Parent"])
+    frame = _context(env=parent.env, module_path=["Root", "Parent", "Frame"], parent_context=parent)
+    tracker, _, _, _, _ = _build_tracker()
+
+    assert tracker.resolve_effect_key("Source", frame) == ("root", "parent", "source")
+    assert tracker.resolve_local_effect_key("Source", frame) == ("root", "parent", "source")
+
+
+def test_conditional_effect_scope_is_cleared_after_error() -> None:
+    context = _context(
+        env={
+            "condition": Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
+            "output": Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
+        }
+    )
+    tracker, edges, _, _, _ = _build_tracker()
+    with pytest.raises(RuntimeError, match="stop"), tracker.conditional_effects(_varref("Condition"), context):
+        tracker.record_controlled_write("Output", context)
+        raise RuntimeError("stop")
+    edges.clear()
+    tracker.record_controlled_write("Output", context)
+    assert not edges
+
+
 def test_effect_flow_tracker_propagates_internal_mapping_reads_writes_and_edges() -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    input_var = Variable(name="Input", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    input_var = Variable(name="Input", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, usage_by_name, _access = _build_tracker()
     child_context = _context(env={"input": input_var}, module_path=["Root", "Child"])
     mapping = ParameterMapping(
@@ -99,8 +126,8 @@ def test_effect_flow_tracker_propagates_internal_mapping_reads_writes_and_edges(
 
 
 def test_effect_flow_tracker_propagates_global_internal_field_mapping_and_ignores_invalid_local_source() -> None:
-    global_source = Variable(name="GlobalSource", datatype=Simple_DataType.INTEGER)
-    invalid_local = Variable(name="InvalidLocal", datatype=Simple_DataType.INTEGER)
+    global_source = Variable(name="GlobalSource", datatype=ScalarDatatype.INTEGER)
+    invalid_local = Variable(name="InvalidLocal", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, _external, usage_by_name, access_calls = _build_tracker()
     parent_context = _context(env={"globalsource": global_source}, module_path=["Root", "Parent"])
     global_internal_mapping = ParameterMapping(
@@ -149,8 +176,8 @@ def test_effect_flow_tracker_propagates_global_internal_field_mapping_and_ignore
 
 
 def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_external_mappings() -> None:
-    lookup_global = Variable(name="LookupGlobal", datatype=Simple_DataType.INTEGER)
-    fallback_global = Variable(name="FallbackGlobal", datatype=Simple_DataType.INTEGER)
+    lookup_global = Variable(name="LookupGlobal", datatype=ScalarDatatype.INTEGER)
+    fallback_global = Variable(name="FallbackGlobal", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, _external, usage_by_name, access_calls = _build_tracker(
         lookup_global=lambda name: {
             "lookupglobal": lookup_global,
@@ -222,7 +249,7 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
 
 
 def test_effect_flow_tracker_external_global_mapping_records_external_sink() -> None:
-    global_source = Variable(name="GlobalSource", datatype=Simple_DataType.INTEGER)
+    global_source = Variable(name="GlobalSource", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, external_sinks, _usage, _access = _build_tracker()
     parent_context = _context(env={"globalsource": global_source}, module_path=["Root", "Parent"])
 
@@ -251,7 +278,7 @@ def test_effect_flow_tracker_external_global_mapping_records_external_sink() -> 
 
 
 def test_effect_flow_tracker_external_local_mapping_records_external_sink() -> None:
-    local_source = Variable(name="LocalSource", datatype=Simple_DataType.INTEGER)
+    local_source = Variable(name="LocalSource", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, external_sinks, _usage, _access = _build_tracker()
     parent_context = _context(env={"localsource": local_source}, module_path=["Root", "Parent"])
 
@@ -280,8 +307,8 @@ def test_effect_flow_tracker_external_local_mapping_records_external_sink() -> N
 
 
 def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
-    global_source = Variable(name="GlobalSource", datatype=Simple_DataType.INTEGER)
-    local_source = Variable(name="LocalSource", datatype=Simple_DataType.INTEGER)
+    global_source = Variable(name="GlobalSource", datatype=ScalarDatatype.INTEGER)
+    local_source = Variable(name="LocalSource", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, external_sinks, usage_by_name, access_calls = _build_tracker()
     parent_context = _context(env={"globalsource": global_source}, module_path=["Root", "Parent"])
 

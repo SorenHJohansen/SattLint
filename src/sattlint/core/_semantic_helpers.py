@@ -9,11 +9,12 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
 )
 
 from ..models.project_graph import ProjectGraph
+from ..project.support import split_failure_item
 from ..resolution import TypeGraph
 from ..resolution.common import resolve_moduletype_def_strict
 from .syntax import CodeMode
@@ -25,10 +26,10 @@ def _cf(value: str) -> str:
     return value.casefold()
 
 
-def _format_datatype(datatype: Simple_DataType | str | None) -> str | None:
+def _format_datatype(datatype: ScalarDatatype | str | None) -> str | None:
     if datatype is None:
         return None
-    if isinstance(datatype, Simple_DataType):
+    if isinstance(datatype, ScalarDatatype):
         return str(datatype.value)
     return str(datatype)
 
@@ -66,9 +67,10 @@ def _format_workspace_snapshot_failure(
     *,
     detail: str | None = None,
 ) -> str:
-    target_prefix = f"{entry_name} parse/transform error:"
     dependency_issues = [
-        message for message in graph.missing if not message.casefold().startswith(target_prefix.casefold())
+        message
+        for message in graph.missing
+        if (failure := split_failure_item(message)) is None or failure[0].casefold() != entry_name.casefold()
     ]
     resolved = sorted(graph.ast_by_name.keys(), key=str.casefold)
     unavailable = sorted(graph.unavailable_libraries, key=str.casefold)
@@ -111,12 +113,12 @@ def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
 
 def _resolve_field_datatype(
     type_graph: TypeGraph,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_path: tuple[str, ...],
-) -> Simple_DataType | str | None:
-    current: Simple_DataType | str = root_type
+) -> ScalarDatatype | str | None:
+    current: ScalarDatatype | str = root_type
     for segment in field_path:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             return current
         field = type_graph.field(str(current), segment)
         if field is None:

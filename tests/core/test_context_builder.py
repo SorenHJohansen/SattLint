@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -43,20 +43,20 @@ def test_build_for_single_skips_empty_non_global_sources() -> None:
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name="Outer", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Outer", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     builder, issues = _builder(base_picture)
     parent_context = builder.build_for_basepicture()
     module = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=VarRef(name="Input"),
@@ -85,11 +85,11 @@ def test_build_for_basepicture_registers_moduleparameters() -> None:
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
-        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Local", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Local", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     builder, issues = _builder(base_picture)
 
@@ -110,18 +110,17 @@ def test_build_for_typedef_without_parent_context_skips_source_resolution() -> N
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     builder, issues = _builder(base_picture)
     moduletype = ModuleTypeDef(
         name="WorkerType",
-        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     instance = ModuleTypeInstance(
         header=_hdr("Worker"),
@@ -150,15 +149,105 @@ def test_build_for_typedef_without_parent_context_skips_source_resolution() -> N
     assert issues == []
 
 
+def test_build_for_typedef_uses_typedef_library_for_instance_context() -> None:
+    base_picture = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    builder, issues = _builder(base_picture)
+    parent_context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root<BP>"],
+        current_library="ParentLib",
+        parent_context=None,
+    )
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        origin_lib="TypeLib",
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker"),
+        moduletype_name="WorkerType",
+        parametermappings=[],
+    )
+
+    context = builder.build_for_typedef(
+        moduletype,
+        instance,
+        parent_context=parent_context,
+        module_path=["Root", "Worker"],
+        display_module_path=["Root<BP>", "Worker<MT:WorkerType>"],
+    )
+
+    assert context.current_library == "TypeLib"
+    assert issues == []
+
+
+def test_build_for_typedef_falls_back_to_parent_library_when_typedef_has_none() -> None:
+    base_picture = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    builder, _issues = _builder(base_picture)
+    parent_context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root<BP>"],
+        current_library="ParentLib",
+        parent_context=None,
+    )
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Worker"),
+        moduletype_name="WorkerType",
+        parametermappings=[],
+    )
+
+    context = builder.build_for_typedef(
+        moduletype,
+        instance,
+        parent_context=parent_context,
+        module_path=["Root", "Worker"],
+        display_module_path=["Root<BP>", "Worker<MT:WorkerType>"],
+    )
+
+    assert context.current_library == "ParentLib"
+
+
 def test_build_for_basepicture_uses_explicit_root_library() -> None:
     base_picture = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name="Outer", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Outer", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     builder = ContextBuilder(
         base_picture=base_picture,
@@ -175,15 +264,15 @@ def test_build_for_basepicture_uses_explicit_root_library() -> None:
 
 
 def test_build_for_typedef_reuses_cached_template_for_equivalent_mappings() -> None:
-    outer = Variable(name="Outer", datatype=Simple_DataType.INTEGER)
+    outer = Variable(name="Outer", datatype=ScalarDatatype.INTEGER)
     base_picture = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[outer],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     builder, issues = _builder(base_picture)
     parent_context = ScopeContext(
@@ -204,12 +293,11 @@ def test_build_for_typedef_reuses_cached_template_for_equivalent_mappings() -> N
 
     moduletype = ModuleTypeDef(
         name="WorkerType",
-        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Buffer", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Buffer", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     instance = ModuleTypeInstance(
         header=_hdr("Worker"),
@@ -255,19 +343,18 @@ def test_resolve_variable_in_scope_uses_parent_scope_context() -> None:
         moduletype_defs=[
             ModuleTypeDef(
                 name="WorkerType",
-                moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
-                localvariables=[Variable(name="Inner", datatype=Simple_DataType.INTEGER)],
+                moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
+                localvariables=[Variable(name="Inner", datatype=ScalarDatatype.INTEGER)],
                 submodules=[],
-                moduledefs=[],
-                modulecodes=[],
-                parametermappings=[],
+                moduledef=None,
+                modulecode=None,
             )
         ],
-        localvariables=[Variable(name="Outer", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Outer", datatype=ScalarDatatype.INTEGER)],
         submodules=[
             SingleModule(
                 header=_hdr("Parent"),
-                moduleparameters=[Variable(name="ParentValue", datatype=Simple_DataType.INTEGER)],
+                moduleparameters=[Variable(name="ParentValue", datatype=ScalarDatatype.INTEGER)],
                 localvariables=[],
                 submodules=[
                     ModuleTypeInstance(
@@ -276,13 +363,13 @@ def test_resolve_variable_in_scope_uses_parent_scope_context() -> None:
                         parametermappings=[],
                     )
                 ],
-                moduledefs=[],
-                modulecodes=[],
+                moduledef=None,
+                modulecode=None,
                 parametermappings=[],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     assert (

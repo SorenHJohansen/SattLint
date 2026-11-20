@@ -163,7 +163,6 @@ class AnalysisContext:
     target_is_library: bool = False
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
-    variables_collector_class: type[Any] | None = None
     include_dependency_moduletype_usage: bool | None = None
 
     @property
@@ -180,7 +179,6 @@ def build_analysis_context(
     config: Mapping[str, Any] | None = None,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
-    variables_collector_class: type[Any] | None = None,
     include_dependency_moduletype_usage: bool | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
@@ -207,7 +205,6 @@ def build_analysis_context(
         target_is_library=target_is_library,
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
-        variables_collector_class=variables_collector_class,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
     )
 

@@ -55,6 +55,16 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="moduletype-usage",
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/analyzers/test_moduletype_usage.py",
+                "tests/app/test_analysis_project_cache.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="picture-display-paths",
             scope="workspace",
             implementation_bucket="workspace-navigation",
@@ -97,6 +107,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="alarm-integrity",
+            cli_exposed=True,
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS,),
@@ -111,6 +122,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="same-cycle",
+            cli_exposed=True,
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_same_cycle.py",),
@@ -128,6 +140,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="dataflow",
+            cli_exposed=True,
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(

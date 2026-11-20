@@ -12,7 +12,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -91,7 +91,7 @@ def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
 def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
     base_picture = BasePicture(header=_header("Program"), submodules=[])
     instance = ModuleTypeInstance(header=_header("Unit221A"), moduletype_name="TankType")
-    family_module = SingleModule(header=_header("Unit221B"), moduledefs=[])
+    family_module = SingleModule(header=_header("Unit221B"), moduledef=None)
 
     def _resolve_module(_bp, path, moduletype_index=None):
         if path == "Unit221A":
@@ -133,20 +133,20 @@ def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
 
 
 def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
-    local_var = Variable(name="Local", datatype=Simple_DataType.INTEGER)
-    param_var = Variable(name="Param", datatype=Simple_DataType.INTEGER)
-    type_local = Variable(name="TypeLocal", datatype=Simple_DataType.INTEGER)
-    type_param = Variable(name="TypeParam", datatype=Simple_DataType.INTEGER)
+    local_var = Variable(name="Local", datatype=ScalarDatatype.INTEGER)
+    param_var = Variable(name="Param", datatype=ScalarDatatype.INTEGER)
+    type_local = Variable(name="TypeLocal", datatype=ScalarDatatype.INTEGER)
+    type_param = Variable(name="TypeParam", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[type_param],
         localvariables=[type_local],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
     )
     single = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[param_var],
         localvariables=[local_var],
     )
@@ -231,11 +231,11 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
         name="ACSSignOffLOGData",
         description=None,
         datecode=None,
-        var_list=[Variable(name="LogTag", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="LogTag", datatype=ScalarDatatype.STRING)],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
     )
     bp = BasePicture(
@@ -337,7 +337,7 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         name="NestedRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.STRING)],
     )
     root = DataType(
         name="RootRecord",
@@ -356,7 +356,7 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         root_datatype="RootRecord",
         field_path="Nested.Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     placeholder_mismatch = _entry("Leaf", "H::.", unit="Other", journal="Other", group="JournalData_Parameters")
 
@@ -370,16 +370,16 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         root_datatype="RootRecord",
         field_path=None,
         leaf_name="Record",
-        datatype=Simple_DataType.STRING,
+        datatype=ScalarDatatype.STRING,
     )
     simple_entry = ICFResolvedEntry(
         entry=entry,
         module_path=["Program", "Unit"],
         variable_name="Record",
-        root_datatype=Simple_DataType.INTEGER,
+        root_datatype=ScalarDatatype.INTEGER,
         field_path="Leaf",
         leaf_name="Leaf",
-        datatype=Simple_DataType.INTEGER,
+        datatype=ScalarDatatype.INTEGER,
     )
     assert icf_module._validate_parameter_record_completeness(type_graph, [pathless_entry, simple_entry]) == []
 
@@ -391,8 +391,8 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         BasePicture(
             header=_header("Program"),
             submodules=[
-                SingleModule(header=_header("Unit221A"), moduledefs=[]),
-                SingleModule(header=_header("Unit221B"), moduledefs=[]),
+                SingleModule(header=_header("Unit221A"), moduledef=None),
+                SingleModule(header=_header("Unit221B"), moduledef=None),
             ],
         ),
         structure_entries,
@@ -449,12 +449,12 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
         name="LeafRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="Value", datatype=ScalarDatatype.INTEGER)],
     )
     bp = BasePicture(header=_header("Program"), datatype_defs=[record, leaf], submodules=[])
     type_graph = icf_module.TypeGraph.from_basepicture(bp)
     record_var = Variable(name="Rec", datatype="NestedRecord")
-    simple_var = Variable(name="Count", datatype=Simple_DataType.INTEGER)
+    simple_var = Variable(name="Count", datatype=ScalarDatatype.INTEGER)
     unknown_var = SimpleNamespace(name="Mystery", datatype=None)
 
     assert icf_module._validate_field_path(type_graph, simple_var, ["Field"]) == (
@@ -478,7 +478,7 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner", "Value"]) is None
 
     resolved = SimpleNamespace(
-        node=SingleModule(header=_header("Unit"), moduledefs=[], localvariables=[record_var]),
+        node=SingleModule(header=_header("Unit"), moduledef=None, localvariables=[record_var]),
         current_library=None,
         current_file=None,
         display_path_str="Program.Unit",

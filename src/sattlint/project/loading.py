@@ -9,15 +9,21 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from sattlint.parser_api import BasePicture, LoadValidation
+from sattlint.parser_api import (
+    BasePicture,
+    LoadMode,
+    LoadValidation,
+    ProjectLoadError,
+    resolve_distribution_companion_path,
+)
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import log_debug_exception
+from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
-from ..models.project_graph import ProjectGraph, RootOrigin, merge_project_basepicture
-from ..utils.casefolding import casefold_equal, casefold_key
+from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
@@ -28,8 +34,10 @@ from .loading_support import (
     _include_reverse_library_consumers,
     _with_status_line,
     log,
+    record_project_load_failure,
 )
 from .parser_adapter import (
+    CircularDependencyError,
     ParserProjectBinding,
     convert_project_into_graph,
     find_dependency_path,
@@ -59,7 +67,7 @@ def iter_loaded_projects(
                 use_cache=use_cache,
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
             log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
             if failure_sink is not None:
                 failure_sink(target_name, str(exc))
@@ -78,12 +86,10 @@ def source_paths_for_current_target(
     casefold_equal_fn: Callable[[str, str], bool],
     casefold_key_fn: Callable[[str], str],
 ) -> set[Path]:
-    source_files: set[Path] = getattr(graph, "source_files", set())
-    root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
-    if callable(root_source_path_for_basepicture):
-        root_source_path = root_source_path_for_basepicture(project_bp)
-        if isinstance(root_source_path, Path):
-            return {root_source_path}
+    source_files: set[Path] = graph.source_files
+    root_source_path = graph.root_source_path_for_basepicture(project_bp)
+    if isinstance(root_source_path, Path):
+        return {root_source_path}
 
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
@@ -91,7 +97,9 @@ def source_paths_for_current_target(
         if matches:
             return matches
 
-    target_name = casefold_key_fn(project_bp.header.name)
+    target_name = casefold_key_fn(
+        getattr(project_bp, "program_name", None) or getattr(project_bp, "name", None) or project_bp.header.name
+    )
     return {path for path in source_files if casefold_key_fn(path.stem) == target_name}
 
 
@@ -119,48 +127,42 @@ def cache_manifest_files(
     cfg: ConfigDict,
     graph: ProjectGraph,
     *,
-    find_dependency_path_fn: Callable[[str, Path | None], Path | None],
+    find_dependency_path_fn: Callable[[str], Path | None],
     resolve_graphics_companion_path_fn: Callable[..., Path | None],
-    casefold_equal_fn: Callable[[str, str], bool],
-    casefold_key_fn: Callable[[str], str],
+    resolve_distribution_companion_path_fn: Callable[..., Path | None] = resolve_distribution_companion_path,
 ) -> set[Path]:
-    manifest_files: set[Path] = set(getattr(graph, "source_files", set()))
+    manifest_files: set[Path] = set(graph.source_files)
+    parser_mode = LoadMode((normalize_code_mode(cfg.get("mode")) or CodeMode.OFFICIAL).value)
 
     for source_path in tuple(manifest_files):
         companion_path = resolve_graphics_companion_path_fn(source_path, mode=cfg.get("mode"))
         if companion_path is not None and companion_path != source_path:
             manifest_files.add(companion_path)
 
-    ast_by_name = cast(dict[str, BasePicture], getattr(graph, "ast_by_name", {}))
-    for target_name, project_bp in ast_by_name.items():
-        source_paths = source_paths_for_current_target(
-            project_bp,
-            graph,
-            casefold_equal_fn=casefold_equal_fn,
-            casefold_key_fn=casefold_key_fn,
-        )
-        requester_dirs = {path.parent for path in source_paths}
-        if not requester_dirs:
-            root_source_path_for_basepicture = getattr(graph, "root_source_path_for_basepicture", None)
-            if callable(root_source_path_for_basepicture):
-                root_source_path = root_source_path_for_basepicture(project_bp)
-                if isinstance(root_source_path, Path):
-                    requester_dirs = {root_source_path.parent}
+        # A distribution companion is a second artifact beside the same body.
+        # Editing it changes what the parser sees, so it belongs in the
+        # manifest even though SattLint never analyzes its contents.
+        distribution_path = resolve_distribution_companion_path_fn(source_path, mode=parser_mode)
+        if distribution_path is not None:
+            manifest_files.add(distribution_path)
 
-        if not requester_dirs:
-            origin_file = getattr(project_bp, "origin_file", None)
-            if isinstance(origin_file, str) and origin_file.strip():
-                requester_dirs = {Path(cfg["program_dir"])}
-
-        for requester_dir in requester_dirs or {None}:
-            deps_path = find_dependency_path_fn(target_name, requester_dir)
-            if deps_path is not None:
-                manifest_files.add(deps_path)
+    for target_name in graph.ast_by_name:
+        # The parser resolves a sidecar beside the selected body, so the lookup
+        # needs no requester directory.
+        deps_path = find_dependency_path_fn(target_name)
+        if deps_path is not None:
+            manifest_files.add(deps_path)
 
     # ICF inputs participate in analysis-input tracking so ICF analysis
-    # results go stale when configured ICF files change.
-    _, icf_files = configured_icf_files(cfg)
+    # results go stale when configured ICF files change. The directory itself
+    # is part of the manifest too: the file list is a snapshot, so a newly
+    # added ICF file would otherwise change neither the key nor the manifest.
+    icf_dir, icf_files = configured_icf_files(cfg)
     manifest_files.update(icf_files)
+    if icf_dir is not None:
+        # A missing directory is recorded too: creating it later must
+        # invalidate the entry, and a stat of a missing path fails validation.
+        manifest_files.add(icf_dir)
 
     return manifest_files
 
@@ -175,7 +177,7 @@ def _load_parser_graph(
     index_program_view: bool = True,
 ) -> ProjectGraph:
     graph = ProjectGraph()
-    project = load_parser_project(binding, [target_name], strict=strict, validate=validate)
+    project = load_parser_project(binding, [target_name], validate=validate)
     convert_project_into_graph(
         project,
         graph,
@@ -197,19 +199,42 @@ def _visit_targets_into_graph(
 ) -> None:
     if not targets:
         return
+    names = [name for name, _ in targets]
     # One batched parser load for every reverse-library consumer: the union
     # closure is parsed once instead of once per consumer, so shared dependency
     # programs (typically the selected library's own closure) are not re-parsed.
-    project = load_parser_project(binding, [name for name, _ in targets], strict=False)
-    extra_roots = tuple(name for name, _ in targets)
+    try:
+        project = load_parser_project(binding, names)
+    except (ProjectLoadError, CircularDependencyError):
+        # The parser returns a complete closure or raises, so one broken
+        # consumer fails the batch. The selected target is already in the graph,
+        # so retry per consumer and record the ones that cannot load.
+        for name in names:
+            try:
+                single = load_parser_project(binding, [name])
+            except (ProjectLoadError, CircularDependencyError) as exc:
+                # A cycle is a load failure of the consumer; keep its parser
+                # explanation but record it through the load-failure channel.
+                load_error = exc if isinstance(exc, ProjectLoadError) else ProjectLoadError(name, str(exc))
+                record_project_load_failure(graph, name, load_error)
+                continue
+            convert_project_into_graph(
+                single,
+                graph,
+                binding=binding,
+                root_name=name,
+                strict=False,
+                lib_names=lib_names,
+            )
+        return
     convert_project_into_graph(
         project,
         graph,
         binding=binding,
-        root_name=extra_roots[0],
+        root_name=names[0],
         strict=False,
         lib_names=lib_names,
-        extra_roots=extra_roots[1:],
+        extra_roots=tuple(names[1:]),
     )
 
 
@@ -223,7 +248,7 @@ def load_project(  # noqa: PLR0915
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     target_load_error_factory: Callable[..., Exception] | None,
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     ast_cache_cls: type[Any],
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
@@ -232,24 +257,22 @@ def load_project(  # noqa: PLR0915
     selected_target = target_name or targets[0]
     ast_only = str(refresh_mode).strip().lower() == "ast-only"
     cache_dir = get_cache_dir_fn()
-    cache = cache_module.build_ast_cache(cache_dir, ast_cache_cls)
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
 
     def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
         if ast_only:
             return root_bp
         project_bp = merge_project_basepicture(root_bp, graph)
-        root_origin_for_basepicture = getattr(graph, "root_origin_for_basepicture", None)
-        if callable(root_origin_for_basepicture):
-            root_origin = cast(RootOrigin | None, root_origin_for_basepicture(project_bp))
-            if root_origin is not None:
-                origin_file = root_origin.origin_file
-                origin_lib = root_origin.library_name
-                if origin_file and origin_file != getattr(project_bp, "origin_file", None):
-                    project_bp = replace(project_bp, origin_file=origin_file, origin_lib=origin_lib)
+        root_origin = graph.root_origin_for_basepicture(project_bp)
+        if root_origin is not None:
+            origin_file = root_origin.origin_file
+            origin_lib = root_origin.library_name
+            if origin_file and origin_file != getattr(project_bp, "origin_file", None):
+                project_bp = replace(project_bp, origin_file=origin_file, origin_lib=origin_lib)
         return project_bp
 
     key = cache_key_for_target_fn(cfg, selected_target)
-    if use_cache:
+    if use_cache and cache is not None:
         cached = cache.load_validated(key)
         payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
         cached_project = payload_map.get("project") if payload_map is not None else None
@@ -297,7 +320,7 @@ def load_project(  # noqa: PLR0915
         index_program_view=not ast_only,
     )
     root_bp = graph.ast_by_name.get(selected_target)
-    deps_path = find_dependency_path(binding, selected_target, Path(cfg["program_dir"]))
+    deps_path = find_dependency_path(binding, selected_target)
     direct_dependencies = list(read_dependency_names(deps_path)) if deps_path is not None else []
 
     if not root_bp:
@@ -308,9 +331,8 @@ def load_project(  # noqa: PLR0915
             "missing": graph.missing,
             "warnings": graph.warnings,
             "direct_dependencies": direct_dependencies,
+            "failures": graph.failures,
         }
-        if hasattr(graph, "failures"):
-            error_kwargs["failures"] = graph.failures
         raise target_load_error_factory(selected_target, **error_kwargs)
 
     if collect_stage_timings:
@@ -331,41 +353,41 @@ def load_project(  # noqa: PLR0915
         selected_target=selected_target,
         root_bp=root_bp,
         graph=graph,
-        find_dependency_path_fn=lambda name, requester_dir: find_dependency_path(binding, name, requester_dir),
+        find_dependency_path_fn=lambda name: find_dependency_path(binding, name),
         read_dependency_names_fn=lambda deps_path: (
             list(read_dependency_names(deps_path)) if deps_path is not None else []
         ),
         visit_targets_fn=lambda targets: _visit_targets_into_graph(binding, graph, targets, lib_names=lib_names),
         require_analyzed_targets_fn=require_analyzed_targets_fn,
-        is_within_directory_fn=is_within_directory,
-        target_is_library_fn=target_is_library,
-        source_paths_for_current_target_fn=lambda project_bp, current_graph: source_paths_for_current_target(
-            project_bp,
-            current_graph,
-            casefold_equal_fn=casefold_equal,
-            casefold_key_fn=casefold_key,
-        ),
     )
 
     project_bp = build_project_view(root_bp, graph)
     manifest_files = cache_manifest_files(
         cfg,
         graph,
-        find_dependency_path_fn=lambda name, requester_dir: find_dependency_path(binding, name, requester_dir),
+        find_dependency_path_fn=lambda name: find_dependency_path(binding, name),
         resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
-        casefold_equal_fn=casefold_equal,
-        casefold_key_fn=casefold_key,
     )
+    if graph.unavailable_libraries or getattr(graph, "failures", None):
+        # A dependency that is absent now can appear as a file later, and the
+        # manifest cannot see a file that does not exist yet. Persisting this
+        # graph would replay the unresolved or failed result after the cause is
+        # fixed, so load again next run instead. The graph carries no
+        # report-cache metadata either, so a caller cannot key a report cache
+        # against it.
+        return project_bp, graph
     _attach_analysis_cache_metadata(
         graph,
         cache_key=key,
         manifest_files=manifest_files,
     )
-    cache.save(
-        key,
-        project=(root_bp, graph),
-        files=manifest_files,
-    )
+    if cache is not None:
+        with contextlib.suppress(OSError):
+            cache.save(
+                key,
+                project=(root_bp, graph),
+                files=manifest_files,
+            )
     return project_bp, graph
 
 
@@ -379,7 +401,7 @@ def load_project_with_live_status(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     target_load_error_factory: Callable[..., Exception] | None,
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     ast_cache_cls: type[Any],
     live_status_line_factory: Callable[[], Any],
 ) -> tuple[BasePicture, ProjectGraph]:
@@ -447,14 +469,15 @@ def force_refresh_ast(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     emit_output_fn: Callable[..., None],
 ) -> tuple[BasePicture, ProjectGraph] | None:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return None
 
-    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
+    cache_dir = get_cache_dir_fn()
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
     profiler = profiling_module.create_profiler()
     result = None
     total_targets = len(targets)
@@ -462,26 +485,31 @@ def force_refresh_ast(
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
-        cache.clear(cache_key_for_target_fn(cfg, target_name))
+        if cache is not None:
+            cache.clear(cache_key_for_target_fn(cfg, target_name))
         started_at = perf_counter()
-        result = _call_load_project_compat(
-            load_project_fn,
-            cfg,
-            target_name=target_name,
-            use_cache=False,
-            refresh_mode="ast-only",
-            collect_stage_timings=collect_stage_timings,
-        )
+        try:
+            result = _call_load_project_compat(
+                load_project_fn,
+                cfg,
+                target_name=target_name,
+                use_cache=False,
+                refresh_mode="ast-only",
+                collect_stage_timings=collect_stage_timings,
+            )
+        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
+            log_debug_exception(cfg, f"Failed to refresh AST cache for {target_name!r}", logger=log)
+            emit_output_fn(f"❌ Failed to refresh AST cache for {target_name}: {exc}")
+            continue
         duration_ms = (perf_counter() - started_at) * 1000
         if collect_stage_timings:
             _bp, graph = result
-            stage_timings = getattr(graph, "load_stage_timings", None)
-            if isinstance(stage_timings, dict):
-                stage_timings_s = dict(cast(dict[str, float], stage_timings))
+            stage_timings_s = dict(graph.load_stage_timings)
+            if stage_timings_s:
                 stage_timings_ms = profiling_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
                 stage_bottleneck = profiling_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
                 graphics_timings_ms = profiling_module.normalize_named_timings_ms(
-                    getattr(graph, "graphics_load_timings", None),
+                    graph.graphics_load_timings,
                     scale=1000.0,
                 )
                 graphics_bottleneck = profiling_module.bottleneck_from_named_timings(
@@ -549,14 +577,18 @@ def ensure_ast_cache(
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     ast_cache_cls: type[Any],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
     emit_output_fn: Callable[..., None],
 ) -> bool:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return True
 
-    cache = cache_module.build_ast_cache(get_cache_dir_fn(), ast_cache_cls)
+    cache_dir = get_cache_dir_fn()
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
+    if cache is None:
+        emit_output_fn("AST cache is unavailable; skipping the cache refresh.")
+        return True
     ok = True
     total_targets = len(targets)
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
@@ -587,7 +619,7 @@ def ensure_ast_cache(
                 status_update_fn=emit_output_fn,
             )
             emit_output_fn("✔ AST cache updated")
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
             log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False

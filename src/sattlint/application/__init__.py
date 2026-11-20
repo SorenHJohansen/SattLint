@@ -6,11 +6,8 @@ direct imports from the owning implementation modules.  They do not depend
 on a concrete terminal: console-facing behaviour is injected through
 explicit parameters whose defaults target the standard helpers in
 :mod:`sattlint.console`.
+
+Submodules are imported explicitly by their callers; this package deliberately
+re-exports nothing, because eager imports here would make ``sattlint.runs``
+import its own consumer while the package is still initializing.
 """
-
-from __future__ import annotations
-
-from . import analyze as analyze
-from . import project as project
-
-__all__ = ["analyze", "project"]

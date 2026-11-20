@@ -34,6 +34,7 @@ try:
     from textual.app import ComposeResult as _ImportedComposeResult  # type: ignore[import-untyped]
     from textual.containers import Horizontal as _ImportedHorizontal  # type: ignore[import-untyped]
     from textual.containers import Vertical as _ImportedVertical  # type: ignore[import-untyped]
+    from textual.containers import VerticalScroll as _ImportedVerticalScroll  # type: ignore[import-untyped]
     from textual.css.query import NoMatches as _ImportedNoMatches  # type: ignore[import-untyped]
     from textual.css.query import WrongType as _ImportedWrongType  # type: ignore[import-untyped]
     from textual.screen import ModalScreen as _ImportedModalScreen  # type: ignore[import-untyped]
@@ -58,6 +59,7 @@ except ImportError:  # pragma: no cover - optional dependency path
     _TEXTUAL_QUERY_ERRORS: tuple[type[BaseException], ...] = (LookupError, AttributeError, TypeError)
     _TEXTUAL_HORIZONTAL: Any = None
     _TEXTUAL_VERTICAL: Any = None
+    _TEXTUAL_VERTICAL_SCROLL: Any = None
     _TEXTUAL_MODAL_SCREEN: Any = object
     _TEXTUAL_BUTTON: Any = None
     _TEXTUAL_DIRECTORY_TREE: Any = None
@@ -75,6 +77,15 @@ except ImportError:  # pragma: no cover - optional dependency path
 else:
 
     class _CompatStatic(_ImportedStatic):  # pyright: ignore[reportUntypedBaseClass]
+        def __init__(self, content: object = "", **kwargs: Any) -> None:
+            # Static parses Rich markup by default, and the UI feeds it
+            # untrusted text such as exception messages, project paths, and file
+            # names. A bracketed message would lose text or raise MarkupError
+            # exactly when the error dialog is needed, so plain text is the
+            # default here. Callers that want markup pass ``markup=True``.
+            kwargs.setdefault("markup", False)
+            super().__init__(content, **kwargs)
+
         @property
         def renderable(self) -> object:
             return self.content
@@ -84,6 +95,7 @@ else:
     _TEXTUAL_QUERY_ERRORS = (_ImportedNoMatches, _ImportedWrongType)
     _TEXTUAL_HORIZONTAL = _ImportedHorizontal
     _TEXTUAL_VERTICAL = _ImportedVertical
+    _TEXTUAL_VERTICAL_SCROLL = _ImportedVerticalScroll
     _TEXTUAL_MODAL_SCREEN = _ImportedModalScreen
     _TEXTUAL_BUTTON = _ImportedButton
     _TEXTUAL_DIRECTORY_TREE = _ImportedDirectoryTree
@@ -190,6 +202,7 @@ class InteractionRequest:
     intro: str | None = None
     note: str | None = None
     response: object | None = None
+    cancelled: bool = False
     result_future: Future[object | None] = field(default_factory=Future, repr=False)
 
 

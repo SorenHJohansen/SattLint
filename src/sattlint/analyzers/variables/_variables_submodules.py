@@ -10,7 +10,7 @@ from sattlint.parser_api import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
     VarRef,
@@ -303,6 +303,8 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
                 mapping_reads.add(target_name)
             if writes_to_source:
                 mapping_writes.add(target_name)
+        if dependency_owned_moduletype and mapping_reads is not None and target_name in mapping_reads:
+            self.effect_flow_tracker.record_external_mapping_input(mapping, parent_context.env, parent_context)
         _propagate_mapping_to_parent(
             self,
             mapping,
@@ -327,7 +329,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             parent_env=parent_context.env,
             parent_context=parent_context,
             parent_path=[*parent_path, child_name],
-            current_library=parent_context.current_library,
+            current_library=moduletype.origin_lib or parent_context.current_library,
         )
 
 
@@ -456,7 +458,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
     complex_vars = [
         (variable, path, role)
         for variable, path, role in var_locations
-        if not isinstance(variable.datatype, Simple_DataType) and not is_anytype_name(variable.datatype_text)
+        if not isinstance(variable.datatype, ScalarDatatype) and not is_anytype_name(variable.datatype_text)
     ]
 
     by_datatype: dict[tuple[tuple[str, ...], str], list[tuple[Any, list[str], str]]] = {}

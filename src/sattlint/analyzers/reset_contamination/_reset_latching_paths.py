@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import product
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -176,20 +175,75 @@ def collect_boolean_seq_node_paths(
     return states
 
 
+_LATCH_FRONTIER_LIMIT = 64
+
+
+def _boolean_write_fingerprint(
+    bucket: dict[WriteKey, tuple[Variable, str]],
+) -> tuple[tuple[WriteKey, str, str], ...]:
+    return tuple(sorted((key, entry[0].name.casefold(), entry[1]) for key, entry in bucket.items()))
+
+
+def _boolean_state_fingerprint(
+    state: BooleanPathState,
+) -> tuple[tuple[tuple[WriteKey, str, str], ...], tuple[tuple[WriteKey, str, str], ...]]:
+    return (
+        _boolean_write_fingerprint(state.true_writes),
+        _boolean_write_fingerprint(state.false_writes),
+    )
+
+
+def _compact_boolean_path_states(
+    states: list[BooleanPathState],
+    *,
+    limit: int = _LATCH_FRONTIER_LIMIT,
+) -> list[BooleanPathState]:
+    if not states:
+        return []
+
+    distinct: dict[
+        tuple[tuple[tuple[WriteKey, str, str], ...], tuple[tuple[WriteKey, str, str], ...]],
+        BooleanPathState,
+    ] = {}
+    for state in states:
+        distinct.setdefault(_boolean_state_fingerprint(state), state)
+
+    exact_states = list(distinct.values())
+    if len(exact_states) <= limit:
+        return exact_states
+
+    # A parallel fan-out of this size is unusual. Collapsing the frontier keeps
+    # the analysis bounded; the merged writes stay a conservative superset of
+    # every path, matching the non-boolean frontier behaviour.
+    merged = BooleanPathState()
+    for state in exact_states:
+        merged.true_writes.update(state.true_writes)
+        merged.false_writes.update(state.false_writes)
+    return [merged]
+
+
 def merge_boolean_parallel_branch_results(
     branch_results: list[list[BooleanPathState]],
+    *,
+    limit: int = _LATCH_FRONTIER_LIMIT,
 ) -> list[BooleanPathState]:
     if not branch_results:
         return []
 
-    merged_states: list[BooleanPathState] = []
-    for combo in product(*branch_results):
-        merged = combo[0].clone()
-        for branch_state in combo[1:]:
-            merged.true_writes.update(branch_state.true_writes)
-            merged.false_writes.update(branch_state.false_writes)
-        merged_states.append(merged)
-    return merged_states
+    frontier = _compact_boolean_path_states(branch_results[0], limit=limit)
+    for branch in branch_results[1:]:
+        branch_frontier = _compact_boolean_path_states(branch, limit=limit)
+        next_frontier: list[BooleanPathState] = []
+        for left in frontier:
+            for right in branch_frontier:
+                merged = left.clone()
+                merged.true_writes.update(right.true_writes)
+                merged.false_writes.update(right.false_writes)
+                next_frontier.append(merged)
+        frontier = _compact_boolean_path_states(next_frontier, limit=limit)
+        if not frontier:
+            break
+    return frontier
 
 
 def record_boolean_assignment(

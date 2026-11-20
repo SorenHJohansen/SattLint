@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
+from typing import cast
 
 from sattlint.parser_api import (
     Assignment,
@@ -24,10 +25,11 @@ from sattlint.parser_api import (
 )
 
 from ...reporting.variables_report import IssueKind, VariableIssue
+from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.paths import path_startswith_casefold
 from ...types import VariableId
 from ..framework import AnalysisSharedArtifacts, BasePictureAnalyzer
-from ..shared.variable_utils import same_origin_file_stem
+from ..shared.variable_utils import matches_root_origin, same_origin_file_stem
 from ._reset_latching import check_for_modulecode_latching
 from ._reset_path_collection import collect_paths_in_modulecode, path_covers_write
 from ._reset_path_state import PathCollectionDebug, WriteMap
@@ -43,6 +45,9 @@ __all__ = [
 
 class ResetContaminationAnalyzer(BasePictureAnalyzer):
     """Class-backed owner for reset-contamination scans and helper traversal."""
+
+    _visited_typedef_keys: set[tuple[str, str, str]]
+    _active_typedef_keys: set[tuple[str, str, str]]
 
     @staticmethod
     def _should_analyze_path(path: list[str], limit_to_module_path: list[str] | None) -> bool:
@@ -95,27 +100,74 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         )
         check_fn(mod.modulecode, env, path, issues)
 
-    @staticmethod
     def _check_for_typedef(
+        self,
         mt: ModuleTypeDef,
         path: list[str],
         issues: list[VariableIssue],
+        limit_to_module_path: list[str] | None,
         *,
         check_fn: Callable[..., None],
         shared_artifacts: AnalysisSharedArtifacts | None = None,
     ) -> None:
-        if mt.modulecode is None:
+        key = (mt.name.casefold(), (mt.origin_file or "").casefold(), (mt.origin_lib or "").casefold())
+        visited = cast("set[tuple[str, str, str]] | None", getattr(self, "_visited_typedef_keys", None))
+        if visited is not None and key in visited:
             return
-        env = ResetContaminationAnalyzer._build_local_env(
-            mt,
-            mt.moduleparameters,
-            mt.localvariables,
-            shared_artifacts=shared_artifacts,
-        )
-        check_fn(mt.modulecode, env, path, issues)
+        active = cast("set[tuple[str, str, str]] | None", getattr(self, "_active_typedef_keys", None))
+        if active is not None and key in active:
+            return
+        if visited is not None:
+            visited.add(key)
+        if active is None:
+            active = set[tuple[str, str, str]]()
+            self._active_typedef_keys = active
+        active.add(key)
+        try:
+            self._check_for_typedef_body(
+                mt,
+                key,
+                path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
+        finally:
+            active.discard(key)
 
-    @staticmethod
+    def _check_for_typedef_body(
+        self,
+        mt: ModuleTypeDef,
+        key: tuple[str, str, str],
+        path: list[str],
+        issues: list[VariableIssue],
+        limit_to_module_path: list[str] | None,
+        *,
+        check_fn: Callable[..., None],
+        shared_artifacts: AnalysisSharedArtifacts | None = None,
+    ) -> None:
+        del key
+        if mt.modulecode is not None and self._should_analyze_path(path, limit_to_module_path):
+            env = ResetContaminationAnalyzer._build_local_env(
+                mt,
+                mt.moduleparameters,
+                mt.localvariables,
+                shared_artifacts=shared_artifacts,
+            )
+            check_fn(mt.modulecode, env, path, issues)
+        for child in mt.submodules or []:
+            self._collect_from_module(
+                child,
+                path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
+
     def _collect_from_module(
+        self,
         mod: SingleModule | FrameModule | ModuleTypeInstance,
         path: list[str],
         issues: list[VariableIssue],
@@ -124,6 +176,24 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         check_fn: Callable[..., None],
         shared_artifacts: AnalysisSharedArtifacts | None = None,
     ) -> None:
+        if isinstance(mod, ModuleTypeInstance):
+            mod_path = [*path, mod.header.name]
+            try:
+                moduletype = resolve_moduletype_def_strict(self.bp, mod.moduletype_name)
+            except ValueError:
+                return
+            if not self._typedef_is_from_root(moduletype):
+                return
+            self._check_for_typedef(
+                moduletype,
+                mod_path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
+            return
+
         if isinstance(mod, SingleModule):
             mod_path = [*path, mod.header.name]
             if ResetContaminationAnalyzer._should_analyze_path(mod_path, limit_to_module_path):
@@ -135,7 +205,7 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                     shared_artifacts=shared_artifacts,
                 )
             for child in mod.submodules or []:
-                ResetContaminationAnalyzer._collect_from_module(
+                self._collect_from_module(
                     child,
                     mod_path,
                     issues,
@@ -145,17 +215,17 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 )
             return
 
-        if isinstance(mod, FrameModule):
-            mod_path = [*path, mod.header.name]
-            for child in mod.submodules or []:
-                ResetContaminationAnalyzer._collect_from_module(
-                    child,
-                    mod_path,
-                    issues,
-                    limit_to_module_path,
-                    check_fn=check_fn,
-                    shared_artifacts=shared_artifacts,
-                )
+        # FrameModule (and any remaining transparent container).
+        mod_path = [*path, mod.header.name]
+        for child in mod.submodules or []:
+            self._collect_from_module(
+                child,
+                mod_path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
 
     @staticmethod
     def _check_for_modulecode(
@@ -247,6 +317,21 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 reset_old_vars.add(obj.target.name)
         return reset_old_vars
 
+    def _typedef_is_from_root(self, moduletype: ModuleTypeDef) -> bool:
+        """Whether a module type definition belongs to the analyzed target.
+
+        A definition without an origin file is only treated as root-owned when
+        its library also matches, so a dependency typedef that lost its origin
+        file during the merge is not reported under the program.
+        """
+        return matches_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(self.bp, "origin_file", None),
+            analyzed_target_is_library=getattr(self, "_analyzed_target_is_library", False),
+            origin_lib=getattr(moduletype, "origin_lib", None),
+            root_origin_lib=getattr(self.bp, "origin_lib", None),
+        )
+
     def detect_reset_contamination(
         self,
         issues: list[VariableIssue],
@@ -255,9 +340,12 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         debug: bool = False,
         trace_fn: Callable[..., None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         """Scan all SingleModules and ModuleTypeDefs for reset-contaminated variables."""
-        root_origin = getattr(self.bp, "origin_file", None)
+        self._analyzed_target_is_library = analyzed_target_is_library
+        self._visited_typedef_keys = set()
+        self._active_typedef_keys = set()
         path_debug = PathCollectionDebug(enabled=debug, trace_fn=trace_fn)
         reset_check = partial(self._check_for_modulecode, path_debug=path_debug)
 
@@ -275,10 +363,17 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
             return
 
         for mt in self.bp.moduletype_defs or []:
-            if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
+            if not self._typedef_is_from_root(mt):
                 continue
             td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
-            self._check_for_typedef(mt, td_path, issues, check_fn=reset_check, shared_artifacts=shared_artifacts)
+            self._check_for_typedef(
+                mt,
+                td_path,
+                issues,
+                limit_to_module_path,
+                check_fn=reset_check,
+                shared_artifacts=shared_artifacts,
+            )
 
     def detect_implicit_latching(
         self,
@@ -286,9 +381,12 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         limit_to_module_path: list[str] | None = None,
         *,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         """Scan module code for boolean latch patterns across branches and steps."""
-        root_origin = getattr(self.bp, "origin_file", None)
+        self._analyzed_target_is_library = analyzed_target_is_library
+        self._visited_typedef_keys = set()
+        self._active_typedef_keys = set()
 
         if self.bp.modulecode is not None and self._should_analyze_path(self.root_path, limit_to_module_path):
             env = self._build_local_env(self.bp, None, self.bp.localvariables, shared_artifacts=shared_artifacts)
@@ -308,13 +406,14 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
             return
 
         for mt in self.bp.moduletype_defs or []:
-            if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
+            if not self._typedef_is_from_root(mt):
                 continue
             td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
             self._check_for_typedef(
                 mt,
                 td_path,
                 issues,
+                limit_to_module_path,
                 check_fn=check_for_modulecode_latching,
                 shared_artifacts=shared_artifacts,
             )
@@ -328,6 +427,7 @@ def detect_reset_contamination(
     debug: bool = False,
     trace_fn: Callable[..., None] | None = None,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> None:
     analyzer = ResetContaminationAnalyzer(bp)
     analyzer.detect_reset_contamination(
@@ -336,6 +436,7 @@ def detect_reset_contamination(
         debug=debug,
         trace_fn=trace_fn,
         shared_artifacts=shared_artifacts,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
 
 
@@ -345,12 +446,14 @@ def detect_implicit_latching(
     limit_to_module_path: list[str] | None = None,
     *,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> None:
     analyzer = ResetContaminationAnalyzer(bp)
     analyzer.detect_implicit_latching(
         issues,
         limit_to_module_path,
         shared_artifacts=shared_artifacts,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
 
 

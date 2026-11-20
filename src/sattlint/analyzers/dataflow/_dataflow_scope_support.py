@@ -19,12 +19,14 @@ class DataflowScopeSupportMixin:
         module_path: list[str],
         current_library: str | None,
         parent_context: ScopeContext | None,
+        moduleparameter_keys: frozenset[str] = frozenset(),
     ) -> ScopeContext:
         return ScopeContext(
             env={casefold_key(variable.name): variable for variable in variables},
             param_mappings=param_mappings,
             module_path=module_path.copy(),
             display_module_path=module_path.copy(),
+            moduleparameter_keys=moduleparameter_keys,
             current_library=current_library,
             parent_context=parent_context,
         )
@@ -52,6 +54,9 @@ class DataflowScopeSupportMixin:
             module_path=module_path,
             current_library=moduletype.origin_lib or getattr(self.bp, "origin_lib", None),
             parent_context=None,
+            moduleparameter_keys=frozenset(
+                casefold_key(variable.name) for variable in moduletype.moduleparameters or []
+            ),
         )
         return context, self._seed_state({}, module_path, variables)
 
@@ -70,6 +75,7 @@ class DataflowScopeSupportMixin:
             module_path=module_path,
             current_library=parent_context.current_library,
             parent_context=parent_context,
+            moduleparameter_keys=frozenset(casefold_key(variable.name) for variable in mod.moduleparameters or []),
         )
 
     def _build_typedef_context(
@@ -88,6 +94,9 @@ class DataflowScopeSupportMixin:
             module_path=module_path,
             current_library=moduletype.origin_lib or parent_context.current_library,
             parent_context=parent_context,
+            moduleparameter_keys=frozenset(
+                casefold_key(variable.name) for variable in moduletype.moduleparameters or []
+            ),
         )
 
     def _build_parameter_mappings(

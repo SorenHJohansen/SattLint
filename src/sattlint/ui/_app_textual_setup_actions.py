@@ -62,8 +62,8 @@ def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool 
             if self._cfg.get(field_key) == new_value:
                 return
             self._cfg[field_key] = new_value
-        self._persist_project()
-        self._dirty = self._dirty or not self._project_loaded()
+        persisted = bool(self._persist_project())
+        self._dirty = self._dirty or not persisted
         self._setup_candidate_index = 0
         self._refresh_summary()
         self._refresh_view()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from sattlint.parser_api import Simple_DataType, SourceSpan, Variable
+from sattlint.parser_api import ScalarDatatype, SourceSpan, Variable
 
 from ..types import VariableId
 
@@ -210,7 +210,7 @@ class VariableIssue:
             return f"[{mp}]"
         dt = (
             self.variable.datatype.value
-            if isinstance(self.variable.datatype, Simple_DataType)
+            if isinstance(self.variable.datatype, ScalarDatatype)
             else str(self.variable.datatype)
         )
         role_txt = f"{self.role} "

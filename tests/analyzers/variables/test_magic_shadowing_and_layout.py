@@ -48,9 +48,9 @@ def test_magic_number_detection_in_equations_and_sfc():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
-        moduledefs=[],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -73,11 +73,11 @@ def test_magic_number_detection_in_equations_and_sfc():
 def test_shadowing_detected_for_nested_locals():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="value", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="value", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -85,10 +85,10 @@ def test_shadowing_detected_for_nested_locals():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Value", datatype=ScalarDatatype.INTEGER)],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
@@ -100,11 +100,10 @@ def test_shadowing_detected_for_moduletype_instance_locals():
     mt = ModuleTypeDef(
         name="TypeA",
         moduleparameters=[],
-        localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Setting", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
 
     instance = ModuleTypeInstance(
@@ -117,10 +116,10 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[mt],
-        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="setting", datatype=ScalarDatatype.INTEGER)],
         submodules=[instance],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))

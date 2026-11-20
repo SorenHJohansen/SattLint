@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Sequence as SequenceABC
 from collections.abc import Set
 from dataclasses import dataclass, field
@@ -33,7 +32,6 @@ from .variables import VariablesAnalyzer
 from .variables._variables_mapping_refs import mapping_source_ref
 from .variables._variables_picture_display_support import build_typedef_root_context
 
-_SAME_CYCLE_SHARED_ACCESS_KIND = "same_cycle_shared_access_hazard"
 _SAME_CYCLE_PARALLEL_READ_WRITE_KIND = "same_cycle_parallel_read_write_hazard"
 _SAME_CYCLE_PARALLEL_WRITE_KIND = "sfc_parallel_write_race"
 
@@ -45,11 +43,6 @@ type ParallelKey = tuple[tuple[str, ...], str, int]
 class _CycleEvent:
     kind: AccessKind
     canonical_path: CanonicalPath
-    decl_module_path: tuple[str, ...]
-    access_module_path: tuple[str, ...]
-    site: str
-    order: int
-    is_state_variable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,12 +97,10 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             None if selected_issue_kinds is None else frozenset(selected_issue_kinds)
         )
         self._report_issues: list[Issue] = []
-        self._events: list[_CycleEvent] = []
         self._parallel_events: dict[ParallelKey, dict[int, list[_CycleEvent]]] = {}
         self._parallel_meta: dict[ParallelKey, _ParallelMeta] = {}
         self._parallel_stack: list[tuple[ParallelKey, int]] = []
         self._parallel_counter = 0
-        self._current_order = 0
         self._current_seq_name = "<unnamed>"
         self._active_typedefs: set[str] = set()
         self._dependency_param_usage_cache: dict[
@@ -140,7 +131,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
             self._walk_root_typedef(moduletype, context, path)
 
         self._collect_parallel_branch_hazards()
-        self._collect_shared_access_hazards()
         self._report_issues.sort(
             key=lambda issue: (
                 issue.kind,
@@ -198,34 +188,14 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                 *(part for part in field_path.split(".") if part),
             )
         )
-        self._current_order += 1
         event = _CycleEvent(
             kind=kind,
             canonical_path=canonical,
-            decl_module_path=tuple(decl_module_path),
-            access_module_path=tuple(path),
-            site=self._site_str(),
-            order=self._current_order,
-            is_state_variable=self._resolve_state_flag(variable, field_path),
         )
-        self._events.append(event)
 
         for parallel_key, branch_index in self._parallel_stack:
             branch_events = self._parallel_events.setdefault(parallel_key, {})
             branch_events.setdefault(branch_index, []).append(event)
-
-    def _resolve_state_flag(self, variable: Any, field_path: str) -> bool:
-        resolved_state = getattr(variable, "state", False)
-        current_datatype = getattr(variable, "datatype", None)
-        for field_name in (segment for segment in field_path.split(".") if segment):
-            if current_datatype is None or not isinstance(current_datatype, str):
-                return bool(resolved_state)
-            field = self.type_graph.field(current_datatype, field_name)
-            if field is None:
-                return bool(resolved_state)
-            current_datatype = field.datatype
-            resolved_state = field.state
-        return bool(resolved_state)
 
     def _should_collect_issue_kind(self, *issue_kinds: str) -> bool:
         if self._selected_same_cycle_issue_kinds is None:
@@ -588,109 +558,6 @@ class SameCycleAnalyzer(VariablesAnalyzer):
                         },
                     )
                 )
-
-    def _collect_shared_access_hazards(self) -> None:
-        if not self._should_collect_issue_kind(_SAME_CYCLE_SHARED_ACCESS_KIND):
-            return
-
-        grouped: dict[
-            tuple[str, ...],
-            tuple[
-                CanonicalPath, tuple[str, ...], dict[tuple[str, ...], set[AccessKind]], dict[tuple[str, ...], set[str]]
-            ],
-        ] = {}
-
-        for index, left_event in enumerate(self._events):
-            for right_event in self._events[index + 1 :]:
-                if left_event.access_module_path == right_event.access_module_path:
-                    continue
-                if not paths_conflict(left_event.canonical_path, right_event.canonical_path):
-                    continue
-                if AccessKind.WRITE not in {left_event.kind, right_event.kind}:
-                    continue
-
-                representative = conflict_rep(left_event.canonical_path, right_event.canonical_path)
-                conflict_key = representative.key()
-                if conflict_key not in grouped:
-                    grouped[conflict_key] = (
-                        representative,
-                        left_event.decl_module_path,
-                        defaultdict(set),
-                        defaultdict(set),
-                    )
-
-                _representative, _decl_path, actions, sites = grouped[conflict_key]
-                for event in (left_event, right_event):
-                    actions[event.access_module_path].add(event.kind)
-                    if event.site:
-                        sites[event.access_module_path].add(event.site)
-
-        for representative, decl_module_path, actions, sites in sorted(
-            grouped.values(),
-            key=lambda item: str(item[0]),
-        ):
-            if not any(AccessKind.READ in kinds for kinds in actions.values()):
-                continue
-            if not any(AccessKind.WRITE in kinds for kinds in actions.values()):
-                continue
-
-            access_summaries = [
-                self._format_access_summary(module_path, actions[module_path])
-                for module_path in sorted(actions, key=self._module_path_sort_key)
-            ]
-            self._report_issues.append(
-                Issue(
-                    kind=_SAME_CYCLE_SHARED_ACCESS_KIND,
-                    message=(
-                        f"Variable {str(representative)!r} is read and written in the same scan across modules: "
-                        f"{'; '.join(access_summaries)}"
-                    ),
-                    module_path=list(decl_module_path),
-                    data={
-                        "symbol": str(representative),
-                        "decl_module_path": list(decl_module_path),
-                        "accesses": [
-                            {
-                                "module_path": list(module_path),
-                                "kinds": self._kind_labels(actions[module_path]),
-                                "sites": sorted(site for site in sites[module_path] if site),
-                            }
-                            for module_path in sorted(actions, key=self._module_path_sort_key)
-                        ],
-                        "site": next(
-                            (
-                                site
-                                for module_path in sorted(actions, key=self._module_path_sort_key)
-                                for site in sorted(site for site in sites[module_path] if site)
-                            ),
-                            None,
-                        ),
-                        "context": str(representative),
-                    },
-                )
-            )
-
-    def _kind_labels(self, kinds: set[AccessKind]) -> list[str]:
-        labels: list[str] = []
-        if AccessKind.READ in kinds:
-            labels.append("read")
-        if AccessKind.WRITE in kinds:
-            labels.append("write")
-        return labels
-
-    def _format_access_summary(self, module_path: tuple[str, ...], kinds: set[AccessKind]) -> str:
-        location = self._relative_module_label(module_path)
-        return f"{location} ({'/'.join(self._kind_labels(kinds))})"
-
-    def _relative_module_label(self, module_path: tuple[str, ...]) -> str:
-        if len(module_path) == 0:
-            return ""
-        if len(module_path) == 1:
-            return module_path[0]
-        return ".".join(module_path[1:])
-
-    def _module_path_sort_key(self, module_path: tuple[str, ...]) -> tuple[int, tuple[str, ...]]:
-        return (len(module_path), tuple(segment.casefold() for segment in module_path))
 
     def _preview_list(self, values: list[str]) -> str:
         preview = ", ".join(values[:6])

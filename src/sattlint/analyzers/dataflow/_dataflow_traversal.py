@@ -19,11 +19,12 @@ from sattlint.parser_api import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
+    VarRef,
 )
 
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
-from ._dataflow_common import StateMap
+from ._dataflow_common import PendingWrite, StateMap
 from ._dataflow_scope_support import DataflowScopeSupportMixin
 
 
@@ -96,8 +97,8 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
             if isinstance(child, FrameModule):
                 frame_context = ScopeContext(
-                    env=parent_context.env,
-                    param_mappings=parent_context.param_mappings,
+                    env={},
+                    param_mappings={},
                     module_path=child_path.copy(),
                     display_module_path=child_path.copy(),
                     current_library=parent_context.current_library,
@@ -153,6 +154,9 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             return state
 
         current_state = state
+        for equation in modulecode.equationblocks or []:
+            for root_key in self._active_write_roots(equation.code or [], context):
+                current_state = self._invalidate_symbol(current_state, root_key)
         for sequence in modulecode.sequences or []:
             self._push_site(f"SQ:{getattr(sequence, 'name', '<unnamed>')}")
             try:
@@ -212,7 +216,9 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 label = f"TRANS:{node.name or '<unnamed>'}"
                 self._push_site(label)
                 try:
-                    self._report_condition(node.condition, context, module_path, current_state)
+                    self._report_condition(
+                        node.condition, context, module_path, self._external_scan_state(context, current_state)
+                    )
                 finally:
                     self._pop_site()
                 if isinstance(node.fork, SFCFork):
@@ -311,13 +317,16 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         finally:
             self._pop_site()
 
+        active_state = self._external_scan_state(context, current_state)
+        for root_key in self._active_write_roots(step.code.active or [], context):
+            active_state = self._invalidate_symbol(active_state, root_key)
         self._push_site(f"{base}:ACTIVE")
         try:
             current_state = self._analyze_block(
                 step.code.active or [],
                 context,
                 module_path,
-                self._clear_write_effect_state(current_state),
+                self._clear_write_effect_state(active_state),
             )
         finally:
             self._pop_site()
@@ -334,6 +343,36 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             self._pop_site()
 
         return current_state
+
+    def _external_scan_state(self: Any, context: ScopeContext, state: StateMap) -> StateMap:
+        next_state = state
+        scope: ScopeContext | None = context
+        while scope is not None:
+            for name in scope.moduleparameter_keys | scope.param_mappings.keys():
+                variable, _, _, _ = scope.resolve_variable(name)
+                if variable is None or variable.const:
+                    continue
+                resolved = self._resolve_ref(VarRef(name=name), scope)
+                if resolved is not None:
+                    next_state = self._invalidate_symbol(next_state, resolved.symbol_key)
+            scope = scope.parent_context
+        return next_state
+
+    def _active_write_roots(self: Any, statements: list[object], context: ScopeContext) -> set[tuple[str, ...]]:
+        roots: set[tuple[str, ...]] = set()
+        pending: list[object] = list(statements)
+        while pending:
+            statement = pending.pop()
+            if isinstance(statement, IfStmt):
+                for _condition, branch in statement.branches:
+                    pending.extend(branch)
+                pending.extend(statement.else_block or [])
+                continue
+            if isinstance(statement, Assignment):
+                resolved = self._resolve_ref(statement.target, context)
+                if resolved is not None:
+                    roots.add(resolved.symbol_root_key)
+        return roots
 
     def _analyze_block(
         self: Any,
@@ -411,11 +450,17 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 continue
 
             assumed_true_state = self._assume(condition, True, fallthrough_state, context, module_path)
+            if condition_value is None:
+                self._conditional_entry_writes.append(
+                    {value for value in fallthrough_state.values() if isinstance(value, PendingWrite)}
+                )
             self._push_site(f"{branch_label}:BRANCH:{index}")
             try:
                 branch_state = self._analyze_block(statements or [], context, module_path, assumed_true_state)
             finally:
                 self._pop_site()
+                if condition_value is None:
+                    self._conditional_entry_writes.pop()
             reachable_states.append(branch_state)
 
             if condition_value is True:
@@ -452,11 +497,15 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             fallthrough_state = self._assume(condition, False, fallthrough_state, context, module_path)
 
         if else_block is not None:
+            self._conditional_entry_writes.append(
+                {value for value in fallthrough_state.values() if isinstance(value, PendingWrite)}
+            )
             self._push_site("ELSE:BRANCH")
             try:
                 reachable_states.append(self._analyze_block(else_block or [], context, module_path, fallthrough_state))
             finally:
                 self._pop_site()
+                self._conditional_entry_writes.pop()
         else:
             reachable_states.append(fallthrough_state)
 

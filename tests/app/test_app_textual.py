@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import select
 import shutil
@@ -27,7 +28,7 @@ from sattlint.application.findings import AnalysisFinding
 from sattlint.cli import startup as app
 from sattlint.config.types import ConfigDict
 from sattlint.project.io import init_project, load_project
-from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_app as app_textual_module
 from sattlint.ui import _app_textual_results as app_textual_results_module
@@ -233,6 +234,98 @@ def test_run_textual_shell_passes_ensure_ast_cache_fn_to_app(monkeypatch: pytest
     assert events[-1] == ("clear-interaction", True)
 
 
+def test_textual_ast_refresh_modal_renders_only_the_status_tail() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=lambda _emit_status: True)
+    modal._status_lines = [f"line {index}" for index in range(modal._RENDERED_STATUS_TAIL + 25)]
+
+    rendered = modal._render_status_text()
+
+    assert "25 earlier line(s) hidden" in rendered
+    assert rendered.endswith(f"line {modal._RENDERED_STATUS_TAIL + 24}")
+    assert "line 0\n" not in rendered
+
+
+def test_textual_ast_refresh_modal_keeps_a_large_failure_report_on_screen() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    release_refresh = threading.Event()
+    results: list[object] = []
+
+    def _refresh(emit_status: Callable[..., None]) -> bool:
+        emit_status("Checking AST cache for Demo... (1/1)")
+        emit_status("\n".join(f"  - dependency{index}" for index in range(300)))
+        release_refresh.wait(timeout=10)
+        return False
+
+    async def _run() -> None:
+        app_instance = app_textual.SattLintTextualApp(
+            cfg={},
+            summarize_targets_fn=lambda _cfg: "targets",
+            save_config_fn=lambda _path, _cfg: None,
+            config_path=None,
+            quit_app_error=RuntimeError,
+        )
+        modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=_refresh)
+
+        try:
+            async with app_instance.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                app_instance.push_screen(modal, callback=results.append)
+                for _ in range(20):
+                    await pilot.pause()
+                    if "dependency299" in str(modal._render_status_text()):
+                        break
+
+                dialog = modal.query_one("#ast-refresh-dialog")
+                log_region = modal.query_one("#ast-refresh-log")
+                assert dialog.region.height <= app_instance.size.height
+                assert dialog.region.width <= app_instance.size.width
+                # The oversized report scrolls inside the dialog instead of
+                # pushing the dialog past the bottom of the terminal.
+                assert log_region.virtual_size.height > log_region.region.height
+                assert app_instance.focused is modal.query_one("#ast-refresh-close")
+
+                # The report is reachable with the keyboard, not just clipped.
+                log_region.focus()
+                await pilot.pause()
+                await pilot.press("pagedown")
+                await pilot.pause()
+                assert log_region.scroll_offset.y > 0
+
+                await pilot.press("escape")
+                for _ in range(10):
+                    await pilot.pause()
+                    if results:
+                        break
+                assert results == [None]
+        finally:
+            release_refresh.set()
+
+    asyncio.run(_run())
+
+
+def test_textual_ast_refresh_modal_ignores_a_result_after_close() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    dismissed: list[object] = []
+    modal = app_textual_widgets_module._AstRefreshModalScreen(refresh_fn=lambda _emit_status: True)
+    modal.query_one = lambda *_args, **_kwargs: SimpleNamespace(update=lambda _text: None)
+    modal.dismiss = lambda result: dismissed.append(result)
+
+    modal.action_close()
+    modal._update_status("late line")
+    modal._finish_refresh(ok=False, exc=None)
+
+    assert dismissed == [None]
+    assert modal._refresh_failed is True
+    assert modal._render_status_text() == "Starting cached AST refresh..."
+
+
 def test_textual_ast_refresh_modal_records_exception_and_dismisses(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -250,6 +343,9 @@ def test_textual_ast_refresh_modal_records_exception_and_dismisses(monkeypatch: 
         lambda *_args, **_kwargs: SimpleNamespace(update=lambda text: status_updates.append(str(text))),
     )
     monkeypatch.setattr(modal, "dismiss", lambda result: dismissed.append(result))
+    # Run the UI hop inline: this test covers the refresh failure path, and the
+    # worker thread has no running app to marshal onto.
+    monkeypatch.setattr(modal, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     modal._run_refresh()
 
@@ -275,12 +371,37 @@ def test_textual_ast_refresh_modal_propagates_type_errors(monkeypatch: pytest.Mo
         lambda *_args, **_kwargs: SimpleNamespace(update=lambda _text: None),
     )
     monkeypatch.setattr(modal, "dismiss", lambda _result: None)
+    # Run the UI hop inline so the raised TypeError reaches this test.
+    monkeypatch.setattr(modal, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
 
     with pytest.raises(TypeError, match="bad refresh wiring"):
         modal._run_refresh()
 
     assert modal._refresh_failed is True
     assert modal._refresh_exception is None
+
+
+def test_textual_ast_refresh_modal_skips_ui_callback_without_running_app(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    class _NoRunningApp:
+        def call_from_thread(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("no running app")
+
+    invoked: list[str] = []
+
+    with caplog.at_level(logging.DEBUG, logger=app_textual_widgets_module.__name__):
+        app_textual_widgets_module._AstRefreshModalScreen._call_on_ui(
+            SimpleNamespace(app=_NoRunningApp()),
+            invoked.append,
+            "ignored",
+        )
+
+    assert invoked == []
+    assert any("Skipping UI callback" in record.getMessage() for record in caplog.records)
 
 
 def test_run_textual_shell_passes_app_config_without_startup_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -658,6 +779,10 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
+            app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-select-all")))
+            await pilot.pause()
+            assert app_instance._analyze_selected_entry_ids == {"comment-code", "timing"}
+
             app_instance._set_analyze_filter_text("timing")
             await pilot.pause()
 
@@ -665,6 +790,9 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
             assert 'Filter: "timing"' in title_text
             assert app_instance.query_one("#analyze-clear-filter") is not None
             assert app_instance._analyzer_entry_ids() == ("timing",)
+            # Filtering changes what is visible, not what is selected.
+            assert app_instance._analyze_selected_entry_ids == {"comment-code", "timing"}
+            assert app_instance._selected_analyzer_keys() == ("comment-code", "timing")
 
             app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="analyze-clear-filter")))
             await pilot.pause()
@@ -673,6 +801,7 @@ def test_textual_analyze_filter_section_title_and_clear_filter_button() -> None:
             assert "Filter:" not in str(app_instance.query_one("#analyze-section-title").renderable)
             assert len(list(app_instance.query("#analyze-clear-filter"))) == 0
             assert set(app_instance._analyzer_entry_ids()) == {"comment-code", "timing"}
+            assert set(app_instance.query_one("#analyze-section-analyzers").selected) == {"comment-code", "timing"}
 
     asyncio.run(_run())
 
@@ -902,6 +1031,91 @@ def test_textual_present_request_uses_inline_host_and_preserves_shell_chrome() -
     asyncio.run(_run())
 
 
+def test_textual_second_request_waits_instead_of_being_denied() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+        first = app_textual_shared_module.InteractionRequest(
+            kind="confirm",
+            title="First",
+            message="Proceed?",
+        )
+        second = app_textual_shared_module.InteractionRequest(
+            kind="prompt",
+            title="Second",
+            message="Name?",
+            default="keep",
+        )
+
+        async with app_instance.run_test() as pilot:
+            app_instance.present_request(first)
+            app_instance.present_request(second)
+            await pilot.pause()
+
+            assert app_instance._active_request is first
+            assert second.result_future.done() is False
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert first.result_future.done() is True
+            assert app_instance._active_request is second
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert second.result_future.done() is True
+            assert second.result_future.result() == "keep"
+            assert app_instance._active_request is None
+
+    asyncio.run(_run())
+
+
+def test_textual_cancelled_prompt_does_not_run_its_response_callback() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app()
+        responses: list[object] = []
+        request = app_textual_shared_module.InteractionRequest(
+            kind="prompt",
+            title="New configuration",
+            message="Enter a name.",
+            default=None,
+        )
+
+        async with app_instance.run_test() as pilot:
+            app_instance.present_request(request, on_response_fn=responses.append)
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert request.cancelled is True
+            assert responses == []
+            assert request.result_future.result() is None
+            assert app_instance._active_request is None
+
+            submitted = app_textual_shared_module.InteractionRequest(
+                kind="prompt",
+                title="New configuration",
+                message="Enter a name.",
+                default=None,
+            )
+            app_instance.present_request(submitted, on_response_fn=responses.append)
+            await pilot.pause()
+            app_instance.query_one("#interaction-input").value = "Alpha"
+            await pilot.click("#submit")
+            await pilot.pause()
+
+            assert submitted.cancelled is False
+            assert responses == ["Alpha"]
+
+    asyncio.run(_run())
+
+
 def test_textual_toolbar_navigation_switches_view_without_starting_action(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
@@ -919,6 +1133,34 @@ def test_textual_toolbar_navigation_switches_view_without_starting_action(monkey
     assert app_instance._active_view == "setup"
     assert app_instance._busy is False
     assert started == []
+
+
+def test_textual_menu_file_actions_respect_the_busy_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+    opened: list[str] = []
+    messages: list[str] = []
+    app_instance._busy = True
+    monkeypatch.setattr(app_instance, "_open_project_browser", lambda: opened.append("open"))
+    monkeypatch.setattr(app_instance, "_new_project", lambda: opened.append("new"))
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(str(text)))
+
+    app_instance._handle_toolbar_action("menu-file-open-project")
+    app_instance._handle_toolbar_action("menu-file-new-project")
+
+    assert opened == []
+    assert messages == ["Another action is still running. Wait for it to finish first."] * 2
+
+    app_instance._busy = False
+    app_instance._handle_toolbar_action("menu-file-open-project")
+    app_instance._handle_toolbar_action("menu-file-new-project")
+
+    assert opened == ["open", "new"]
 
 
 def test_textual_toolbar_help_action_opens_help_popup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -975,7 +1217,7 @@ def _make_textual_app(
 def _attach_test_project(app_instance: Any) -> None:
     project_dir = Path(tempfile.mkdtemp(prefix="sattlint-test-project-"))
     _TEMP_TEST_DIRS.append(str(project_dir))
-    app_instance._project = init_project(project_dir / ".slproj", name="TestProject")
+    app_instance._project = init_project(project_dir / ".slproj")
 
 
 _TEMP_TEST_DIRS: list[str] = []
@@ -1596,15 +1838,12 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     asyncio.run(_run())
 
 
-def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
+def test_textual_analyze_view_offers_no_cancel_control() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
     async def _run() -> None:
-        app_instance = _make_textual_app(
-            cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            analysis_handlers={"run_checks_result": lambda _cfg: None},
-        )
+        app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]})
 
         async with app_instance.run_test() as pilot:
             await pilot.pause()
@@ -1612,12 +1851,11 @@ def test_textual_analyze_cancel_button_enables_for_running_queue() -> None:
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
             app_instance._active_job_label = "Run selected analyses"
-            app_instance._active_job_cancel_event = threading.Event()
-            app_instance._active_job_thread = SimpleNamespace(ident=None, is_alive=lambda: True)
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            assert getattr(app_instance.query_one("#analyze-cancel-running"), "disabled", True) is False
+            with pytest.raises(app_textual_shared_module._TEXTUAL_QUERY_ERRORS):
+                app_instance.query_one("#analyze-cancel-running")
 
     asyncio.run(_run())
 
@@ -1728,6 +1966,26 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_finish_analysis_run_reports_a_run_without_stored_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_instance = _make_textual_app()
+    messages: list[str] = []
+    activated: list[str] = []
+
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(text))
+    monkeypatch.setattr(app_instance, "_activate_view", lambda view_name: activated.append(view_name))
+
+    app_instance._finish_analysis_run(SimpleNamespace(run_id=None))
+
+    assert activated == []
+    assert messages == ["This run was not saved to run history, so the Results view still shows earlier runs."]
+
+    app_instance._finish_analysis_run(SimpleNamespace(run_id="stored-run"))
+
+    assert activated == ["results"]
+
+
 def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     result = SimpleNamespace(failures=(SimpleNamespace(target_name="Broken"),))
@@ -1742,7 +2000,7 @@ def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pyt
 
     assert emitted == [
         "Running 1 selected analyzer(s).",
-        "Analysis finished with target load failures: Broken. Review the output above.",
+        "Analysis finished with problems: 1 target(s) could not be loaded (Broken). Review the output above.",
     ]
 
 
@@ -1785,7 +2043,6 @@ def test_textual_start_action_tracks_active_worker_thread(monkeypatch: pytest.Mo
     assert len(created_workers) == 1
     assert app_instance._active_job_worker is created_workers[0]
     assert app_instance._active_job_thread is None
-    assert app_instance._active_job_cancel_event is not None
 
 
 def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1883,55 +2140,17 @@ def test_textual_open_help_popup_propagates_type_errors(monkeypatch: pytest.Monk
     assert shown_help == []
 
 
-def test_textual_ctrl_g_cancel_binding_requests_stop_for_running_analysis() -> None:
-    if not app_textual.has_textual():
-        pytest.skip("Textual not installed")
+def test_textual_analyze_running_note_does_not_promise_cancellation() -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]})
 
-    async def _run() -> None:
-        app_instance = _make_textual_app(
-            cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]},
-            get_enabled_analyzers_fn=lambda: [
-                SimpleNamespace(
-                    key="comment-code",
-                    name="Commented-out code",
-                    description="Detect commented-out code.",
-                    category="code-quality",
-                ),
-            ],
-            analysis_handlers={"run_checks_result": lambda _cfg: None},
-        )
+    app_instance._busy = True
+    app_instance._active_job_action_id = "action-analyze"
 
-        async with app_instance.run_test() as pilot:
-            await pilot.pause()
+    note = app_instance._analyze_note_text()
 
-            analyzers_list = app_instance.query_one("#analyze-section-analyzers")
-            analyzers_list.select("comment-code")
-            app_instance._sync_analyze_selection_from_selection_list(analyzers_list)
-            app_instance._write_focused_entry_to_output()
-            app_instance._busy = True
-            app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyzers"
-            app_instance._active_job_cancel_event = threading.Event()
-            app_instance._active_job_cancel_requested = False
-            app_instance._active_job_worker = SimpleNamespace(cancel=lambda: None)
-            app_instance._refresh_summary()
-            app_instance._refresh_shell_state()
-            app_instance._refresh_view()
-            await pilot.pause()
-
-            assert app_instance.query_one("#analyze-cancel-running") is not None
-            app_instance.action_cancel_running_analysis()
-
-            output_text = getattr(app_instance.query_one("#output"), "text", "")
-
-            assert app_instance._active_job_cancel_requested is True
-            assert app_instance._active_job_cancel_event is not None
-            assert app_instance._active_job_cancel_event.is_set() is True
-            assert "Cancellation requested. The running analysis will stop at the next checkpoint." in output_text
-            assert str(app_instance.query_one("#view-note").renderable) == ""
-            assert "Analyzer:" in output_text
-
-    asyncio.run(_run())
+    assert "Selected analyses are running." in note
+    assert "Cancel" not in note
+    assert "Ctrl+G" not in note
 
 
 def test_textual_analyze_clear_selection_resets_analyze_state() -> None:
@@ -2206,6 +2425,65 @@ def test_textual_setup_view_shows_selected_target_preview(tmp_path: Path) -> Non
     asyncio.run(_run())
 
 
+def test_textual_setup_target_list_keeps_its_highlight_across_a_rebuild() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+3")
+            await pilot.pause()
+
+            app_instance._selected_configured_target = "TargetB"
+            app_instance._refresh_setup_target_list()
+            await pilot.pause()
+
+            list_view = app_instance.query_one("#setup-target-listview")
+            assert list_view.index == 1
+
+            # Adding a target rebuilds the list; the selection must survive it.
+            app_instance._cfg["analyzed_programs_and_libraries"] = ["TargetA", "TargetB", "TargetC"]
+            app_instance._refresh_setup_target_list()
+            for _ in range(10):
+                await pilot.pause()
+                if list_view.index == 1:
+                    break
+
+            assert app_instance._selected_configured_target == "TargetB"
+            assert list_view.index == 1
+            assert app_instance.query_one("#setup-target-remove").disabled is False
+
+    asyncio.run(_run())
+
+
+def test_textual_project_picker_selects_the_first_project_after_mount(tmp_path: Path) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    for name in ("Alpha", "Beta"):
+        (tmp_path / f"{name}.slproj").write_text("{}", encoding="utf-8")
+
+    async def _run() -> None:
+        app_instance = _make_textual_app(project=False)
+        screen = app_textual_widgets_module._ProjectPickerScreen(projects_dir=tmp_path)
+
+        async with app_instance.run_test() as pilot:
+            app_instance.push_screen(screen)
+            await pilot.pause()
+            await pilot.pause()
+
+            assert screen._selected_path == tmp_path / "Alpha.slproj"
+            assert screen.query_one("#project-picker-open").disabled is False
+            assert screen.query_one("#project-picker-delete").disabled is False
+            assert screen.query_one("#project-picker-list").index == 0
+
+    asyncio.run(_run())
+
+
 def test_textual_setup_shows_empty_dirs_when_no_configuration_is_open() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -2338,6 +2616,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
         selected_analyzers=("variables",),
         targets=(
             RunTargetRecord(
@@ -2365,6 +2644,7 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2375,36 +2655,39 @@ def test_textual_results_view_lists_runs_and_renders_tree(monkeypatch: pytest.Mo
             assert app_instance._active_view == "results"
             results_browser = app_instance.query_one("#results-browser")
             assert results_browser.has_class("is-hidden") is False
-            assert len(list(app_instance.query_one("#results-tree-host").children)) == 1
+            assert app_instance.query_one("#results-tree-host .results-pane-title").renderable == "Modules"
+            assert app_instance.query_one("#results-findings-host .results-pane-title").renderable == "Findings"
+            assert (
+                app_instance.query_one("#results-tree-host").size.width
+                > app_instance.query_one("#results-runs-section").size.width
+            )
 
             tree = app_instance._results_tree_widget
             assert tree is not None
             assert tree.root.is_expanded is True
             target_node = tree.root.children[0]
-            analyzer_node = next(iter(target_node.children))
-            kind_node = next(iter(analyzer_node.children))
-            assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
+            assert target_node.label.plain == "TargetA"
+            assert not list(target_node.children)
+            findings_report = app_instance._results_findings_widget
+            assert findings_report.id == "results-findings-report"
+            assert not list(app_instance.query("#results-findings-host Tree"))
+            assert "Unused variable (1)" in findings_report.renderable
+            assert "declared but never read" in findings_report.renderable
 
             app_instance._collapse_all_results()
             await pilot.pause()
-            assert tree.root.is_expanded is False
-            assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
+            assert tree.root.is_expanded is True
+            assert target_node.is_expanded is False
 
             app_instance._expand_all_results()
             await pilot.pause()
             assert tree.root.is_expanded is True
             assert target_node.is_expanded is True
-            assert analyzer_node.is_expanded is True
-            assert kind_node.is_expanded is True
 
     asyncio.run(_run())
 
 
-def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_results_module_selection_updates_findings_pane(monkeypatch: pytest.MonkeyPatch) -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -2413,10 +2696,19 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
         started_at="2026-09-06T10:00:00Z",
         finished_at="2026-09-06T10:05:00Z",
         project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
         targets=(
             RunTargetRecord(
                 target_name="TargetA",
                 is_library=False,
+                module=RunModuleRecord(
+                    name="TargetA",
+                    kind="SingleModule",
+                    children=(
+                        RunModuleRecord(name="Charging", kind="FrameModule"),
+                        RunModuleRecord(name="Idle", kind="SingleModule"),
+                    ),
+                ),
                 analyzers=(
                     RunAnalyzerRecord(
                         key="variables",
@@ -2427,6 +2719,7 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("TargetA", "Charging"),
+                                data={"context": "Spare", "previous_sites": ["SQ:Run > STEP:Start:ENTER"]},
                             ),
                         ),
                     ),
@@ -2450,6 +2743,7 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda run_id: record if run_id == "run1" else None)
 
@@ -2457,26 +2751,33 @@ def test_textual_results_group_toggle_switches_to_module_grouping(monkeypatch: p
             await pilot.press("ctrl+2")
             await pilot.pause()
 
-            group_button = app_instance.query_one("#results-toggle-group")
-            assert str(group_button.label) == "Group: Analyzer"
-            assert app_instance._results_group_by() == "analyzer"
-
-            await pilot.click("#results-toggle-group")
-            await pilot.pause()
-
-            assert str(group_button.label) == "Group: Module"
-            assert app_instance._results_group_by() == "module"
             tree = app_instance._results_tree_widget
             assert tree is not None
-            target_node = tree.root.children[0]
-            module_node = next(iter(target_node.children))
-            assert module_node.label.plain == "TargetA.Charging"
-            analyzer_nodes = list(module_node.children)
-            assert [node.data.key for node in analyzer_nodes] == ["variables", "patterns"]
-            assert [next(iter(node.children)).label.plain for node in analyzer_nodes] == [
-                "Unused variable (1)",
-                "Magic number (1)",
-            ]
+            findings_report = app_instance._results_findings_widget
+            assert findings_report.id == "results-findings-report"
+            root = tree.root.children[0]
+            assert [node.label.plain for node in root.children] == ["Charging (FrameModule)"]
+            assert findings_report.renderable.plain == "No findings for this module"
+
+            await pilot.resize_terminal(140, 50)
+            tree.select_node(root.children[0])
+            await pilot.pause()
+            assert "Variable issues\nUnused variable (1)" in findings_report.renderable
+            assert "Pattern checks\nMagic number (1)" in findings_report.renderable
+            assert findings_report.renderable.spans
+            assert "declared but never read" not in findings_report.renderable.plain
+            detail_line = findings_report.renderable.plain.splitlines().index("  Details")
+            assert await pilot.click(findings_report, offset=(4, detail_line))
+            await pilot.pause()
+            assert "declared but never read" in findings_report.renderable.plain
+            assert "Previous write: Run \u203a Start \u203a Enter" in findings_report.renderable.plain
+            await pilot.click(findings_report, offset=(4, detail_line))
+            await pilot.pause()
+            assert "declared but never read" not in findings_report.renderable.plain
+
+            tree.select_node(root)
+            await pilot.pause()
+            assert findings_report.renderable.plain == "No findings for this module"
 
     asyncio.run(_run())
 
@@ -2485,11 +2786,18 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
-    record = RunRecord(run_id="run9", started_at="s", finished_at="f", project_tag="TargetA")
+    record = RunRecord(
+        run_id="run9",
+        started_at="s",
+        finished_at="f",
+        project_tag="TargetA",
+        project_path="/tmp/sattlint-test.slproj",
+    )
     summary = RunSummary.from_record(record)
 
     async def _run() -> None:
         app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+        app_instance._config_path = "/tmp/sattlint-test.slproj"
         monkeypatch.setattr(app_textual_results_module, "list_runs", lambda: (summary,))
         monkeypatch.setattr(app_textual_results_module, "load_run", lambda _run_id: record)
 
@@ -2500,6 +2808,7 @@ def test_textual_analysis_completion_switches_to_results_view(monkeypatch: pytes
                 output_lines=("=== Target: TargetA ===", "state inference summary"),
                 targets=(),
                 selected_analyzers=("state-inference",),
+                run_id="run9",
             )
             app_instance._finish_analysis_run(result)
             await pilot.pause()
@@ -3229,12 +3538,55 @@ def test_textual_write_output_caps_retained_lines(monkeypatch: pytest.MonkeyPatc
 
     app_instance._write_output("\n".join(f"line {index}" for index in range(4005)))
 
-    assert len(app_instance._session_output_lines) == 4000
-    assert app_instance._session_output_lines[0] == "line 5"
-    assert app_instance._session_output_dropped_line_count == 5
+    assert len(app_instance._session_output_lines) == 2000
+    assert app_instance._session_output_lines[0] == "line 2005"
+    assert app_instance._session_output_dropped_line_count == 2005
     assert app_instance._output_title_text() == "Session output - retaining last 4000 lines"
-    assert fake_widget.text.startswith("line 5\n")
-    assert "line 4\n" not in fake_widget.text
+    assert fake_widget.text.startswith("line 2005\n")
+    assert "line 2004\n" not in fake_widget.text
+
+
+def test_textual_write_output_rebuilds_in_batches_after_retention(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app(
+        cfg={"analyzed_programs_and_libraries": ["TargetA"], "output": {"retention_lines": 100}}
+    )
+
+    class FakeRichOutput:
+        def __init__(self) -> None:
+            self.text = ""
+            self._plain_text_parts: list[str] = []
+
+        def clear(self) -> None:
+            self.text = ""
+
+        def append_plain_text(self, text: str) -> None:
+            self._plain_text_parts.append(text)
+            self.text += text
+
+        def write(self, _renderable: object, **_kwargs: Any) -> None:
+            return None
+
+        def scroll_end(self, animate: bool = False) -> None:
+            return None
+
+    fake_widget = FakeRichOutput()
+    retained_sizes_at_rebuild: list[int] = []
+    original_rebuild = app_instance._rebuild_output_widget
+
+    def _rebuild_and_record(widget: Any) -> None:
+        retained_sizes_at_rebuild.append(len(app_instance._session_output_lines))
+        original_rebuild(widget)
+
+    monkeypatch.setattr(app_instance, "query_one", lambda *_args, **_kwargs: fake_widget)
+    monkeypatch.setattr(app_instance, "_rebuild_output_widget", _rebuild_and_record)
+
+    for index in range(1000):
+        app_instance._write_output(f"line {index}")
+
+    assert len(app_instance._session_output_lines) <= 100
+    assert retained_sizes_at_rebuild
+    assert max(retained_sizes_at_rebuild) <= 50
+    assert len(retained_sizes_at_rebuild) <= 20
 
 
 def test_textual_write_output_promotes_target_load_error_to_popup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3444,7 +3796,7 @@ def test_textual_new_project_failure_shows_error_modal(monkeypatch: pytest.Monke
     monkeypatch.setattr(
         app_textual_actions_module,
         "_init_project",
-        lambda _path, name: (_ for _ in ()).throw(OSError("no space")),
+        lambda _path: (_ for _ in ()).throw(OSError("no space")),
     )
 
     app_instance._new_project()
@@ -3855,6 +4207,73 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     assert "slproj_version" in saved.data
 
 
+def test_textual_setup_save_failure_keeps_the_dirty_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = _make_textual_app()
+    errors: list[str] = []
+
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: errors.append(f"{title}: {message}"))
+    monkeypatch.setattr(
+        app_textual_actions_module,
+        "_save_slproj",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read-only configuration")),
+    )
+    app_instance._active_view = "setup"
+
+    app_instance._cfg["program_dir"] = "/some/program/dir"
+    app_instance._mark_setup_changed("updated")
+
+    assert app_instance._dirty is True
+    assert errors == ["Failed to save configuration: Failed to save configuration: read-only configuration"]
+
+
+def test_textual_file_browser_duplicate_target_leaves_other_lib_dirs_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget"]})
+    messages: list[str] = []
+    replacements: list[object] = []
+    target_file = tmp_path / "DemoTarget.s"
+    target_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(text))
+    monkeypatch.setattr(
+        app_instance,
+        "_replace_setup_list_value",
+        lambda *args, **_kwargs: replacements.append(args),
+    )
+
+    app_instance._add_target_from_path(target_file)
+
+    assert not app_instance._cfg.get("other_lib_dirs")
+    assert replacements == []
+    assert messages == ["Target 'DemoTarget' is already configured."]
+
+
+def test_textual_file_browser_add_records_target_and_containing_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app_instance = _make_textual_app(cfg={"analyzed_programs_and_libraries": []})
+    target_file = tmp_path / "NewTarget.s"
+    target_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+
+    app_instance._add_target_from_path(target_file)
+
+    assert app_instance._cfg["other_lib_dirs"] == [str(tmp_path)]
+    assert app_instance._cfg["analyzed_programs_and_libraries"] == ["NewTarget"]
+    assert app_instance._dirty is False
+
+
 def test_textual_settings_change_autosaves_to_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = _make_textual_app()
     monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
@@ -3882,7 +4301,7 @@ def test_textual_open_project_loads_and_unlocks_views(monkeypatch: pytest.Monkey
     monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="OpenedProject")
+    project = init_project(project_dir / ".slproj")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
     app_instance._load_project_object(project)
@@ -3914,7 +4333,7 @@ def test_textual_open_project_refreshes_ast_cache_before_interaction(
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="OpenedProject")
+    project = init_project(project_dir / ".slproj")
     project.data["analyzed_programs_and_libraries"] = ["TargetA"]
 
     app_instance._load_project_object(project)
@@ -3951,7 +4370,7 @@ def test_textual_open_project_without_targets_skips_ast_refresh(
     monkeypatch.setattr(app_instance, "push_screen", lambda screen, callback=None: pushed.append((screen, callback)))
 
     project_dir = tmp_path / "opened-project"
-    project = init_project(project_dir / ".slproj", name="EmptyProject")
+    project = init_project(project_dir / ".slproj")
 
     app_instance._load_project_object(project)
 
@@ -4125,3 +4544,9 @@ def test_textual_no_content_clipped_outside_visible_area() -> None:
             _assert_no_content_clipped_outside_visible_area(app_instance)
 
     asyncio.run(_run())
+
+
+def test_ui_static_treats_untrusted_text_as_plain_text() -> None:
+    static = app_textual_shared_module._TEXTUAL_STATIC("[bold]not markup[/bold] and [unclosed")
+
+    assert str(static.renderable) == "[bold]not markup[/bold] and [unclosed"

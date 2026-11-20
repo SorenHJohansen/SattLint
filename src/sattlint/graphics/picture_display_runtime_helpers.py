@@ -152,6 +152,8 @@ def _resolve_runtime_moduletype(
             current_library=current_library,
             current_file=current_file,
             unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
+            library_dependencies=(graph.library_dependencies if graph is not None else None),
+            source_dependencies=(graph.source_dependencies if graph is not None else None),
         )
     except ValueError:
         return None

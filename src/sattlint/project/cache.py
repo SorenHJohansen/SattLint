@@ -28,7 +28,7 @@ def create_analysis_report_cache(
     use_cache: bool,
     debug_enabled_fn: Callable[[ConfigDict], bool],
     analysis_report_cache_cls: type[AnalysisReportCache],
-    get_cache_dir_fn: Callable[[], Path],
+    get_cache_dir_fn: Callable[[], Path | None],
 ) -> AnalysisReportCache | None:
     if not use_cache:
         if log.isEnabledFor(logging.DEBUG):
@@ -38,10 +38,19 @@ def create_analysis_report_cache(
         if log.isEnabledFor(logging.DEBUG):
             log.debug("Analysis report cache disabled in debug mode")
         return None
-    return cast(
-        AnalysisReportCache,
-        cache_module.build_analysis_report_cache(get_cache_dir_fn(), analysis_report_cache_cls),
-    )
+    cache_dir = get_cache_dir_fn()
+    if cache_dir is None:
+        log.debug("Analysis report cache unavailable: the cache directory cannot be created")
+        return None
+    try:
+        return cast(
+            AnalysisReportCache,
+            cache_module.build_analysis_report_cache(cache_dir, analysis_report_cache_cls),
+        )
+    except OSError as exc:
+        # An unusable cache location must degrade to "no cache", not abort the analysis.
+        log.debug("Analysis report cache unavailable: %s", exc)
+        return None
 
 
 def graph_analysis_cache_metadata(graph: ProjectGraph) -> tuple[str, frozenset[Path]] | None:

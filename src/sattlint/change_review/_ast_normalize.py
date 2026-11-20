@@ -37,11 +37,17 @@ def _field_is_ignored(field: Field[object]) -> bool:
 
 def normalize_ast_value(value: object) -> object:
     """Return a canonical, hashable fingerprint with spans/layout stripped."""
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
+    if value is None:
+        return None
 
+    # Enum members of ``StrEnum`` and ``IntEnum`` are instances of ``str`` and
+    # ``int``, so the kind tag has to be decided before the primitive check.
+    # Primitive leaves are tagged by kind so ``True`` and ``1`` stay distinct.
     if isinstance(value, Enum):
         return ("enum", type(value).__name__, value.name)
+
+    if isinstance(value, (bool, int, float, str)):
+        return ("prim", type(value).__name__, value)
 
     if isinstance(value, tuple):
         typed_items = cast(tuple[object, ...], value)

@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from ..application.findings import AnalysisFinding
 
-RUN_RECORD_SCHEMA_VERSION = 1
+RUN_RECORD_SCHEMA_VERSION = 2
 
 
 def _optional_str(value: object) -> str | None:
@@ -127,12 +127,48 @@ def _optional_float(value: object) -> float | None:
 
 
 @dataclass(frozen=True, slots=True)
+class RunModuleRecord:
+    name: str
+    kind: str = ""
+    moduletype_name: str | None = None
+    children: tuple[RunModuleRecord, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "moduletype_name": self.moduletype_name,
+            "children": [child.to_dict() for child in self.children],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> RunModuleRecord:
+        raw_children = payload.get("children")
+        children = (
+            tuple(
+                cls.from_dict(cast(Mapping[str, object], child))
+                for child in cast(Sequence[object], raw_children)
+                if isinstance(child, Mapping)
+            )
+            if isinstance(raw_children, (list, tuple))
+            else ()
+        )
+        return cls(
+            name=str(payload.get("name") or ""),
+            kind=str(payload.get("kind") or ""),
+            moduletype_name=_optional_str(payload.get("moduletype_name")),
+            children=children,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RunTargetRecord:
     target_name: str
     is_library: bool = False
     analyzers: tuple[RunAnalyzerRecord, ...] = ()
     stage_timings_ms: dict[str, float] | None = None
     graphics_timings_ms: dict[str, float] | None = None
+    module: RunModuleRecord | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -141,6 +177,7 @@ class RunTargetRecord:
             "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
             "stage_timings_ms": self.stage_timings_ms,
             "graphics_timings_ms": self.graphics_timings_ms,
+            "module": self.module.to_dict() if self.module is not None else None,
         }
 
     @classmethod
@@ -161,6 +198,9 @@ class RunTargetRecord:
             analyzers=analyzers,
             stage_timings_ms=_timings_dict_value(payload.get("stage_timings_ms")),
             graphics_timings_ms=_timings_dict_value(payload.get("graphics_timings_ms")),
+            module=RunModuleRecord.from_dict(cast(Mapping[str, object], payload["module"]))
+            if isinstance(payload.get("module"), Mapping)
+            else None,
         )
 
 
@@ -170,9 +210,11 @@ class RunRecord:
     started_at: str
     finished_at: str
     project_tag: str
+    project_path: str = ""
     selected_analyzers: tuple[str, ...] = ()
     cancelled: bool = False
     targets: tuple[RunTargetRecord, ...] = ()
+    project_analyzers: tuple[RunAnalyzerRecord, ...] = ()
     output_lines: tuple[str, ...] = ()
 
     @property
@@ -181,11 +223,13 @@ class RunRecord:
 
     @property
     def analyzer_count(self) -> int:
-        return sum(len(target.analyzers) for target in self.targets)
+        return sum(len(target.analyzers) for target in self.targets) + len(self.project_analyzers)
 
     @property
     def issue_count(self) -> int:
-        return sum(len(analyzer.findings) for target in self.targets for analyzer in target.analyzers)
+        return sum(len(analyzer.findings) for target in self.targets for analyzer in target.analyzers) + sum(
+            len(analyzer.findings) for analyzer in self.project_analyzers
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -194,14 +238,26 @@ class RunRecord:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "project_tag": self.project_tag,
+            "project_path": self.project_path,
             "selected_analyzers": list(self.selected_analyzers),
             "cancelled": self.cancelled,
             "targets": [target.to_dict() for target in self.targets],
+            "project_analyzers": [analyzer.to_dict() for analyzer in self.project_analyzers],
             "output_lines": list(self.output_lines),
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunRecord:
+        raw_project_analyzers = payload.get("project_analyzers")
+        project_analyzers = (
+            tuple(
+                RunAnalyzerRecord.from_dict(cast(Mapping[str, object], analyzer))
+                for analyzer in cast(Sequence[object], raw_project_analyzers)
+                if isinstance(analyzer, Mapping)
+            )
+            if isinstance(raw_project_analyzers, (list, tuple))
+            else ()
+        )
         raw_targets = payload.get("targets")
         targets = (
             tuple(
@@ -217,9 +273,11 @@ class RunRecord:
             started_at=str(payload.get("started_at") or ""),
             finished_at=str(payload.get("finished_at") or ""),
             project_tag=str(payload.get("project_tag") or ""),
+            project_path=str(payload.get("project_path") or ""),
             selected_analyzers=_tuple_str(payload.get("selected_analyzers")),
             cancelled=bool(payload.get("cancelled", False)),
             targets=targets,
+            project_analyzers=project_analyzers,
             output_lines=_tuple_str(payload.get("output_lines")),
         )
 
@@ -234,6 +292,7 @@ class RunSummary:
     analyzer_count: int
     issue_count: int
     cancelled: bool
+    project_path: str = ""
 
     @classmethod
     def from_record(cls, record: RunRecord) -> RunSummary:
@@ -246,6 +305,7 @@ class RunSummary:
             analyzer_count=record.analyzer_count,
             issue_count=record.issue_count,
             cancelled=record.cancelled,
+            project_path=record.project_path,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -258,6 +318,7 @@ class RunSummary:
             "analyzer_count": self.analyzer_count,
             "issue_count": self.issue_count,
             "cancelled": self.cancelled,
+            "project_path": self.project_path,
         }
 
     @classmethod
@@ -271,6 +332,8 @@ class RunSummary:
             analyzer_count=_int_value(payload.get("analyzer_count")),
             issue_count=_int_value(payload.get("issue_count")),
             cancelled=bool(payload.get("cancelled", False)),
+            # Older records and sidecars predate the field; an empty path means unknown.
+            project_path=str(payload.get("project_path") or ""),
         )
 
 

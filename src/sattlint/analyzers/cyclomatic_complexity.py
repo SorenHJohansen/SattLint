@@ -29,6 +29,15 @@ from sattlint.parser_api import (
 )
 
 from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD as DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD,
+)
+from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_MODULE_THRESHOLD as DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
+)
+from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_STEP_THRESHOLD as DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+)
+from ..config.analysis import (
     cyclomatic_equation_block_threshold,
     cyclomatic_module_threshold,
     cyclomatic_step_threshold,
@@ -37,9 +46,13 @@ from .framework import Issue, SimpleReport
 from .shared._walk_utils import iter_nested_modules
 from .shared.target_origin import build_target_origin_filter_for_basepicture
 
-DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
-DEFAULT_STEP_COMPLEXITY_THRESHOLD = 6
-DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD = 10
+__all__ = [
+    "DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD",
+    "DEFAULT_MODULE_COMPLEXITY_THRESHOLD",
+    "DEFAULT_STEP_COMPLEXITY_THRESHOLD",
+    "CyclomaticComplexityAnalyzer",
+    "analyze_cyclomatic_complexity",
+]
 
 
 class CyclomaticComplexityAnalyzer:
@@ -88,7 +101,7 @@ class CyclomaticComplexityAnalyzer:
         *,
         parent_path: list[str],
     ) -> None:
-        module_path = [*parent_path, moduletype.name]
+        module_path = [*parent_path, f"TypeDef:{moduletype.name}"]
         self._record_scope_complexity_issue(
             module_path=module_path,
             scope_kind="module type",

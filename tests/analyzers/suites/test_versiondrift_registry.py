@@ -6,45 +6,41 @@ def test_version_drift_ignores_datecode_only_differences():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -55,8 +51,8 @@ def test_version_drift_ignores_datecode_only_differences():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 
@@ -80,9 +76,7 @@ def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
     assert catalog.enabled_specs()
     assert report["generated_by"] == "test-suite"
     assert report["analyzers"]
-    assert registry_module.get_declared_cli_analyzer_keys() == tuple(
-        sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.cli_exposed)
-    )
+    assert registry_module.get_declared_cli_analyzer_keys() == tuple(sorted(registry_module.DEFAULT_CLI_ANALYZER_KEYS))
     assert registry_module.get_actual_cli_analyzer_keys() == tuple(
         spec.key for spec in registry_module.get_default_cli_analyzers()
     )
@@ -96,7 +90,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
         run=lambda context: cast(Any, "custom-analyzer"),
     )
 
-    delivery = registry_module.build_delivery_metadata(spec, ())
+    delivery = registry_module.build_delivery_metadata(spec)
 
     assert delivery.scope == "workspace"
     assert delivery.implementation_bucket == "analyzers"

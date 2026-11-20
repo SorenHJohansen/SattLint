@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -28,12 +29,15 @@ from ._app_textual_shared import (
     _TEXTUAL_MODAL_SCREEN,
     _TEXTUAL_STATIC,
     _TEXTUAL_VERTICAL,
+    _TEXTUAL_VERTICAL_SCROLL,
     InteractionRequest,
     _menu_option_keys,
     _query_required,
     advance_menu_choice_buffer,
     interaction_ledger_text,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -127,7 +131,8 @@ if _TEXTUAL_APP is not None:
                 return focused_id.removeprefix("option-")
             return None
 
-        def _submit_response(self, response: object) -> None:
+        def _submit_response(self, response: object, *, cancelled: bool = False) -> None:
+            self._request.cancelled = cancelled
             self._submit_response_fn(response)
 
         def _submit_current_request(self) -> None:
@@ -154,17 +159,17 @@ if _TEXTUAL_APP is not None:
             if self._request.kind == "menu":
                 option_keys = _menu_option_keys(self._request.options)
                 if "b" in option_keys:
-                    self._submit_response("b")
+                    self._submit_response("b", cancelled=True)
                     return
-                self._submit_response(None)
+                self._submit_response(None, cancelled=True)
                 return
             if self._request.kind == "prompt":
-                self._submit_response(self._request.default)
+                self._submit_response(self._request.default, cancelled=True)
                 return
             if self._request.kind == "confirm":
-                self._submit_response(False)
+                self._submit_response(False, cancelled=True)
                 return
-            self._submit_response(None)
+            self._submit_response(None, cancelled=True)
 
         def action_submit_or_activate(self) -> None:
             self._submit_current_request()
@@ -552,12 +557,27 @@ if _TEXTUAL_APP is not None:
             )
             list_view = _query_required(self, "#project-picker-list", _TEXTUAL_LIST_VIEW)
             list_view.clear()
-            for path in self._project_paths:
-                list_view.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(path.stem)))
+            for index, path in enumerate(self._project_paths):
+                item = _TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(path.stem))
+                if index == 0:
+                    # Marking the item keeps it visible while ``clear`` queues
+                    # its highlight reset; the index is restored after mount.
+                    item.set_class(True, "-highlight")
+                list_view.append(item)
             self._set_selection(None)
             if self._project_paths:
-                list_view.index = 0
+                self._select_first_project()
+                list_view.call_after_refresh(self._select_first_project)
                 list_view.focus()
+
+        def _select_first_project(self) -> None:
+            """Select the first project once the rebuilt list has mounted."""
+            if not self._project_paths:
+                return
+            list_view = _query_required(self, "#project-picker-list", _TEXTUAL_LIST_VIEW)
+            if len(getattr(list_view, "children", ())):
+                list_view.index = 0
+            self._set_selection(self._project_paths[0])
 
         def _set_selection(self, path: Path | None) -> None:
             self._selected_path = path
@@ -571,6 +591,11 @@ if _TEXTUAL_APP is not None:
             index = getattr(list_view, "index", None)
             if isinstance(index, int) and 0 <= index < len(self._project_paths):
                 self._set_selection(self._project_paths[index])
+            elif len(getattr(list_view, "children", ())) and self._project_paths:
+                # ``clear`` posts a highlight reset during a rebuild. Restore
+                # the first row instead of leaving Open and Delete disabled.
+                list_view.index = 0
+                self._set_selection(self._project_paths[0])
             else:
                 self._set_selection(None)
 
@@ -594,7 +619,19 @@ if _TEXTUAL_APP is not None:
         Pushed on top of the main shell right after a project is opened, so the
         user cannot interact with Analyze/Setup/Results until the cache check
         completes. Dismisses with an ``_AstRefreshModalResult``.
+
+        A failed load reports every dependency it tried plus every warning it
+        collected, which is far taller than a terminal. The report therefore
+        lives in a scrolling region inside a size-bounded dialog, and the Close
+        button (and Escape) always leaves the modal even if a rebuild hangs, so
+        an oversized report can never leave the shell unreachable.
         """
+
+        BINDINGS: ClassVar[list[tuple[str, str, str]]] = [("escape", "close", "Close")]
+
+        #: Tail of the status log rendered inside the dialog. The complete log
+        #: still travels in the result, so the Output pane keeps every line.
+        _RENDERED_STATUS_TAIL = 200
 
         def __init__(self, *, refresh_fn: Any) -> None:
             super().__init__()
@@ -603,6 +640,7 @@ if _TEXTUAL_APP is not None:
             self._activity_line: str | None = None
             self._refresh_failed = False
             self._refresh_exception: BaseException | None = None
+            self._dismissed = False
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:
             with _TEXTUAL_VERTICAL(id="ast-refresh-dialog"):
@@ -611,16 +649,46 @@ if _TEXTUAL_APP is not None:
                     "Checking the cached project graphs for the opened configuration before you can select analyses.",
                     id="ast-refresh-body",
                 )
-                yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
-                yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
+                with _TEXTUAL_VERTICAL_SCROLL(id="ast-refresh-log"):
+                    yield _TEXTUAL_STATIC("\n".join(self._status_lines), id="ast-refresh-status")
+                    yield _TEXTUAL_STATIC("", id="ast-refresh-activity")
+                with _TEXTUAL_HORIZONTAL(id="ast-refresh-actions"):
+                    yield _TEXTUAL_BUTTON("Close", id="ast-refresh-close", classes="raised-button dialog-button")
 
         def on_mount(self) -> None:
+            self.query_one("#ast-refresh-close", _TEXTUAL_BUTTON).focus()
             threading.Thread(target=self._run_refresh, daemon=True).start()
 
+        def on_button_pressed(self, event: Any) -> None:
+            if getattr(event.button, "id", "") == "ast-refresh-close":
+                self.action_close()
+
+        def action_close(self) -> None:
+            """Leave the modal without claiming a result for a rebuild still running.
+
+            The refresh thread may finish later; its outcome is logged rather
+            than dismissed twice.
+            """
+            if self._dismissed:
+                return
+            self._dismissed = True
+            self.dismiss(None)
+
         def _render_status_text(self) -> str:
-            return "\n".join(self._status_lines)
+            lines = self._status_lines
+            if len(lines) <= self._RENDERED_STATUS_TAIL:
+                return "\n".join(lines)
+            hidden = len(lines) - self._RENDERED_STATUS_TAIL
+            return "\n".join(
+                [
+                    f"... {hidden} earlier line(s) hidden; the full report is written to Output.",
+                    *lines[-self._RENDERED_STATUS_TAIL :],
+                ]
+            )
 
         def _update_status(self, message: str) -> None:
+            if self._dismissed:
+                return
             normalized = message.replace("\r\n", "\n").replace("\r", "\n")
             if not normalized:
                 return
@@ -640,8 +708,11 @@ if _TEXTUAL_APP is not None:
         def _call_on_ui(self, callback: Any, *args: object, **kwargs: object) -> None:
             try:
                 self.app.call_from_thread(callback, *args, **kwargs)
-            except (AttributeError, RuntimeError, _NoActiveAppError):  # pragma: no cover - no running app / loop
-                callback(*args, **kwargs)
+            except (AttributeError, RuntimeError, _NoActiveAppError):
+                # There is no running app to marshal onto, so the callback stays
+                # on the worker thread. Running it here would touch widgets off
+                # the UI thread, which is what this hop exists to prevent.
+                _LOGGER.debug("Skipping UI callback %r: no running app to dispatch to", callback)
 
         def _emit_status(self, *parts: object) -> None:
             rendered_parts = [str(part) for part in parts if part is not None]
@@ -657,7 +728,14 @@ if _TEXTUAL_APP is not None:
         def _finish_refresh(self, *, ok: bool, exc: BaseException | None) -> None:
             self._refresh_failed = not ok
             self._refresh_exception = exc
+            if self._dismissed:
+                # The user closed the modal while the rebuild was still running.
+                # The report stays available from the next refresh, and the
+                # result must not dismiss a screen that is already gone.
+                _LOGGER.info("AST cache refresh finished after the modal was closed (ok=%s)", ok)
+                return
             result = _AstRefreshModalResult(ok=ok, output="\n".join(self._status_lines).strip("\n"))
+            self._dismissed = True
             self.dismiss(result)
 
         def _run_refresh(self) -> None:

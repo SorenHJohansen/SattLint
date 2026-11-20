@@ -38,7 +38,12 @@ SKIP_DIRS = frozenset(
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp:", "git@")
 # The upgrade plan is a historical record that intentionally names paths that
 # were later removed or renamed, so its links are not part of the live docs set.
-IGNORED_PATHS = frozenset({"docs/parser-upgrade-plan.md"})
+IGNORED_PATHS = frozenset(
+    {
+        "docs/parser-upgrade-plan.md",
+        "docs/parser-upgrade-plan-2026.11.5.md",
+    }
+)
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 

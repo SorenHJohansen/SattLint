@@ -31,11 +31,24 @@ def generate_change_review(
 
     selected_output_dir = output_dir or resolve_review_output_dir(cfg)
     generated: list[tuple[str, Path, Path]] = []
+    failures: list[tuple[str, str]] = []
     for target in targets:
-        result = run_review(cfg, target, output_dir=selected_output_dir)
+        try:
+            result = run_review(cfg, target, output_dir=selected_output_dir)
+        except Exception as exc:  # noqa: BLE001 - one bad target must not block the rest
+            failures.append((target, str(exc)))
+            continue
         generated.append((target, result.json_path, result.markdown_path))
+
+    if not generated:
+        details = "\n".join(f"- {target}: {message}" for target, message in failures)
+        raise RuntimeError(f"Change Review failed for every target:\n{details}")
 
     lines = [f"Change Review generated for {len(generated)} target(s) in {selected_output_dir}:"]
     for target, _json_path, markdown_path in generated:
         lines.append(f"- {target}: {markdown_path.name}")
+    if failures:
+        lines.append(f"Change Review failed for {len(failures)} target(s):")
+        for target, message in failures:
+            lines.append(f"- {target}: {message}")
     return "\n".join(lines)

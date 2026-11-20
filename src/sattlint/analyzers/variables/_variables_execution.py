@@ -125,12 +125,6 @@ _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.HIGH_FAN_IN_OUT,
     }
 )
-_PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.STRING_MAPPING_MISMATCH,
-        IssueKind.MIN_MAX_MAPPING_MISMATCH,
-    }
-)
 
 
 def _maybe_update_status(self: object, detail: str) -> None:
@@ -257,7 +251,11 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     self._limit_to_module_path = None
     _clear_or_set("_phase_timings", [])
     _clear_or_set("_record_component_order_datatypes_seen", set[str]())
-    self.usage_tracker = UsageTracker()
+    previous_tracker = getattr(self, "usage_tracker", None)
+    self.usage_tracker = UsageTracker(
+        record_access_graph=getattr(previous_tracker, "record_access_graph", True),
+        record_locations=getattr(previous_tracker, "record_locations", True),
+    )
     _clear_or_set("_site_stack", [])
     _clear_or_set("_used_dependency_libraries", set[str]())
     _clear_or_set("used_params_by_typedef", {})
@@ -274,6 +272,7 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
     _clear_or_set("_analyzing_typedefs", set[str]())
+    _clear_or_set("datatype_leaf_index_cache", {})
     self._root_variable_access_summary_cache_token = None
     self._root_variable_access_summary_cache = {}
 
@@ -306,6 +305,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             debug=self.debug,
             trace_fn=self._trace,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "reset-contamination-scan",
@@ -319,6 +319,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             self._issues,
             self._limit_to_module_path,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "implicit-latch-scan",
@@ -645,9 +646,13 @@ def run(  # noqa: PLR0915
     if should_collect_datatype_field_issues:
 
         def _collect_datatype_field_issues() -> None:
-            self._add_unused_datatype_field_issues()
+            # Both passes need the same variable inventory. Build it once; the
+            # inventory is the expensive part when the dependency closure is
+            # large, and each pass only reads it.
+            variables = self.iter_variables_for_datatype_field_analysis()
+            self._add_unused_datatype_field_issues(variables)
             if hasattr(self, "_add_field_usage_asymmetry_issues"):
-                self._add_field_usage_asymmetry_issues()
+                self._add_field_usage_asymmetry_issues(variables)
 
         _run_timed_phase(self, "datatype-field-scan", _collect_datatype_field_issues)
     if not should_finalize_issues:
@@ -716,11 +721,6 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
         self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
 
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, env, context, path)
     finally:
         self._analyzing_typedefs.discard(mt_key)
 
@@ -818,12 +818,6 @@ def _analyze_typedef_with_context(
         self._walk_module_code(mt.modulecode, context, path)
         self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
         self._walk_typedef_groupconn(mt, context, path)
-
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = context.env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, context.env, context, path)
 
         used_reads = {
             casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).read

@@ -7,21 +7,20 @@ from tests.helpers.analyzers_variables_support import *
 
 
 def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles():
-    display_param = Variable(name="DisplayParam", datatype=Simple_DataType.INTEGER)
-    effect_param = Variable(name="EffectParam", datatype=Simple_DataType.INTEGER)
-    procedure_local = Variable(name="ProcedureLocal", datatype=Simple_DataType.INTEGER)
-    display_local = Variable(name="DisplayLocal", datatype=Simple_DataType.INTEGER)
-    read_only_local = Variable(name="ReadOnlyLocal", datatype=Simple_DataType.INTEGER)
-    written_only_local = Variable(name="WrittenOnlyLocal", datatype=Simple_DataType.INTEGER)
-    effect_local = Variable(name="EffectLocal", datatype=Simple_DataType.INTEGER)
+    display_param = Variable(name="DisplayParam", datatype=ScalarDatatype.INTEGER)
+    effect_param = Variable(name="EffectParam", datatype=ScalarDatatype.INTEGER)
+    procedure_local = Variable(name="ProcedureLocal", datatype=ScalarDatatype.INTEGER)
+    display_local = Variable(name="DisplayLocal", datatype=ScalarDatatype.INTEGER)
+    read_only_local = Variable(name="ReadOnlyLocal", datatype=ScalarDatatype.INTEGER)
+    written_only_local = Variable(name="WrittenOnlyLocal", datatype=ScalarDatatype.INTEGER)
+    effect_local = Variable(name="EffectLocal", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[display_param, effect_param],
         localvariables=[procedure_local, display_local, read_only_local, written_only_local, effect_local],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -29,8 +28,8 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         moduletype_defs=[moduletype],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     usage_by_id = {
         id(display_param): _UsageStub(is_display_only=True),
@@ -126,12 +125,7 @@ def test_variable_quality_issues_fixture_contains_expected_issue_kinds():
 
 def test_module_structure_issues_fixture_contains_expected_issue_kinds():
     fixture = (
-        Path(__file__).resolve().parents[2]
-        / "fixtures"
-        / "corpus"
-        / "semantic"
-        / "analyzer"
-        / "ModuleStructureIssues.s"
+        Path(__file__).resolve().parents[2] / "fixtures" / "corpus" / "semantic" / "analyzer" / "ModuleStructIssues.s"
     )
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
@@ -142,7 +136,7 @@ def test_module_structure_issues_fixture_contains_expected_issue_kinds():
         if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT and issue.variable is not None
     }
 
-    assert any("BogusParam" in str(issue) for issue in issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET)
+    assert not any(issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET for issue in issues)
     assert "Internal" in write_without_effect
 
 
@@ -166,7 +160,7 @@ def test_parameter_mapping_fixture_contains_expected_issue_kinds():
 
 
 def test_sequence_lifetime_fixture_contains_expected_issue_kinds():
-    fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "SequenceLifetimeIssues.s"
+    fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "SequenceLifetime.s"
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 

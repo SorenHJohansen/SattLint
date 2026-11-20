@@ -10,7 +10,7 @@ from sattlint.parser_api import (
     BasePicture,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     SourceSpan,
     Variable,
 )
@@ -64,12 +64,14 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         unavailable_libraries: set[str] | None = None,
         include_dependency_modules: bool = True,
         graphics_attachments: GraphicsAttachments | None = None,
+        build_reference_index: bool = True,
     ):
         self.base_picture = base_picture
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.include_dependency_modules = include_dependency_modules
+        self.build_reference_index = build_reference_index
         self.type_graph = TypeGraph.from_basepicture(base_picture)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
@@ -86,6 +88,9 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self._datatype_field_definitions = self._build_datatype_field_definitions()
         for moduletype in base_picture.moduletype_defs or []:
             self._moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+        self._known_typedef_ids = {
+            id(moduletype) for moduletypes in self._moduletype_index.values() for moduletype in moduletypes
+        }
         self.context_builder = ContextBuilder(
             base_picture=base_picture,
             symbol_table=self.symbol_table,
@@ -205,7 +210,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                     datatype.origin_file,
                     datatype.origin_lib,
                 )
-                if not isinstance(variable_field.datatype, Simple_DataType):
+                if not isinstance(variable_field.datatype, ScalarDatatype):
                     walk(root_type_name, str(variable_field.datatype), path, next_active)
 
         for datatype in self.base_picture.datatype_defs or []:
@@ -214,10 +219,10 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
     def _lookup_field_definition(
         self,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_path: tuple[str, ...],
     ) -> tuple[Variable, str | None, str | None] | None:
-        if isinstance(root_type, Simple_DataType):
+        if isinstance(root_type, ScalarDatatype):
             return None
         return self._datatype_field_definitions.get(
             (root_type.casefold(), tuple(cf(segment) for segment in field_path))
@@ -330,6 +335,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 if not field_segments:
                     continue
                 field_definition = self._lookup_field_definition(variable.datatype, field_segments)
+                field_variable = field_definition[0] if field_definition else None
                 self._record_definition(
                     canonical_path=root_path.join(*field_segments),
                     kind="field",
@@ -339,7 +345,11 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                     field_path=".".join(field_segments),
                     origin_file=field_definition[1] if field_definition else origin_file,
                     origin_library=field_definition[2] if field_definition else origin_library,
-                    declaration_span=field_definition[0].declaration_span if field_definition else None,
+                    declaration_span=field_variable.declaration_span if field_variable is not None else None,
+                    initializer=self._initializer_text(field_variable.init_value)
+                    if field_variable is not None
+                    else None,
+                    modifiers=self._variable_modifiers(field_variable) if field_variable is not None else (),
                 )
 
     def _record_definition(
@@ -347,7 +357,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         *,
         canonical_path: CanonicalPath,
         kind: str,
-        datatype: Simple_DataType | str | None,
+        datatype: ScalarDatatype | str | None,
         module_path: tuple[str, ...],
         display_module_path: tuple[str, ...],
         field_path: str | None,

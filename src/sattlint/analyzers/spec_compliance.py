@@ -79,7 +79,7 @@ class SpecComplianceAnalyzer:
         moduletype: ModuleTypeDef,
         root_path: list[str],
     ) -> None:
-        path = [*root_path, moduletype.name]
+        path = [*root_path, f"TypeDef:{moduletype.name}"]
         self._check_module_code(moduletype.modulecode, path)
         self._walk_modules(moduletype.submodules or [], path)
 

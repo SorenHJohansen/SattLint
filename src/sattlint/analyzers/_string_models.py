@@ -17,10 +17,12 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
+
+from .shared._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
 
 if TYPE_CHECKING:
     from ..resolution.scope import ScopeContext
@@ -37,19 +39,11 @@ def _noop_progress(_msg: str) -> None:
     pass
 
 
-_STRING_LIMITS: dict[Simple_DataType, int] = {
-    Simple_DataType.IDENTSTRING: 15,
-    Simple_DataType.TAGSTRING: 30,
-    Simple_DataType.STRING: 40,
-    Simple_DataType.LINESTRING: 80,
-    Simple_DataType.MAXSTRING: 140,
-}
+_STRING_LIMITS = STRING_CAPACITIES
 
 
-def _string_capacity_for_datatype(datatype: Simple_DataType | str | None) -> int | None:
-    if isinstance(datatype, Simple_DataType):
-        return _STRING_LIMITS.get(datatype)
-    return None
+def _string_capacity_for_datatype(datatype: ScalarDatatype | str | None) -> int | None:
+    return string_capacity_for_datatype(datatype)
 
 
 @dataclass(frozen=True, slots=True)

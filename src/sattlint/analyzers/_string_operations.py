@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from sattlint.parser_api import Simple_DataType
+from sattlint.parser_api import ScalarDatatype
 
 from ._string_models import (
     _MAX_CURSOR_POSITIONS,
@@ -181,7 +181,7 @@ def _concatenate_results(
     right: StringInferenceResult,
     *,
     target_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
 ) -> StringInferenceResult:
     candidates: list[StringCandidate] = []
     cursor_positions: list[int] = []
@@ -244,7 +244,7 @@ def _insert_string_result(
     source: StringInferenceResult,
     length_result: _IntResult,
     *,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
     operation_name: str = "InsertString",
 ) -> StringInferenceResult:
     if not target.candidates or not source.candidates or not target.cursor_positions or not length_result.values:
@@ -373,7 +373,7 @@ def _put_blanks_result(
     target: StringInferenceResult,
     length_result: _IntResult,
     *,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
 ) -> StringInferenceResult:
     if not length_result.values:
         return _preserve_unchanged(
@@ -403,7 +403,7 @@ def _extract_string_result(
     length_result: _IntResult,
     *,
     target_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
     operation_name: str = "ExtractString",
 ) -> StringInferenceResult:
     if not source.candidates or not source.cursor_positions or not length_result.values:
@@ -521,7 +521,7 @@ def _transform_string_result(
 
 def _copy_into_target(
     source_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
     *,
     operation_name: str = "CopyString",
     target_result: StringInferenceResult,

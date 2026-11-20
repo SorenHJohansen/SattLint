@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..__version__ import __version__ as _sattlint_version
-from ..core.syntax import CodeMode, code_ext, deps_ext, normalize_code_mode
-from ..runs import load_run as _load_run
+from ..core.syntax import CodeMode, code_ext_candidates, deps_ext_candidates, normalize_code_mode
 from ._app_textual_setup_display import (
     _configured_target_names,
     _setup_candidate_display_paths,
@@ -44,10 +43,10 @@ def _set_setup_candidate_by_name(self: Any, target_name: str) -> None:
 
 
 def _mark_setup_changed(self: Any, message: str, *, reset_candidate_selection: bool = False) -> None:
-    self._persist_project()
-    self._dirty = self._dirty or not self._project_loaded()
+    persisted = bool(self._persist_project())
     if reset_candidate_selection:
         self._setup_candidate_index = 0
+    self._dirty = self._dirty or not persisted
     self._refresh_summary()
     self._refresh_view()
     self._set_active_action(None)
@@ -97,23 +96,55 @@ def _refresh_setup_target_list(self: Any) -> None:
 
     self._setup_target_names_list = configured_targets
 
+    highlight_index: int | None = None
+    if self._selected_configured_target is not None:
+        for index, name in enumerate(configured_targets):
+            if name.casefold() == self._selected_configured_target.casefold():
+                highlight_index = index
+                break
+
     existing_labels = [
         str(getattr(next(iter(child.children), _TEXTUAL_STATIC("")), "renderable", "")) for child in lv.children
     ]
     if existing_labels != configured_targets:
         lv.clear()
-        for target in configured_targets:
-            lv.append(_TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target)))
-
-    if self._selected_configured_target is not None:
-        for i, name in enumerate(configured_targets):
-            if name.casefold() == self._selected_configured_target.casefold():
-                lv.index = i
-                break
+        for index, target in enumerate(configured_targets):
+            item = _TEXTUAL_LIST_ITEM(_TEXTUAL_STATIC(target))
+            if index == highlight_index:
+                # ``ListView.clear`` posts a highlight reset; marking the item
+                # at creation keeps the selection visible even when the reset
+                # is processed after the rebuild.
+                item.set_class(True, "-highlight")
+            lv.append(item)
+        if highlight_index is not None:
+            _apply_setup_target_index(self, lv, highlight_index)
+            lv.call_after_refresh(_apply_setup_target_index, self, lv, highlight_index)
+    elif highlight_index is not None:
+        lv.index = highlight_index
 
     has_selection = self._selected_configured_target is not None and bool(configured_targets)
     with suppress(*_TEXTUAL_QUERY_ERRORS):
         self.query_one("#setup-target-remove", _TEXTUAL_BUTTON).disabled = not has_selection
+
+
+def _apply_setup_target_index(self: Any, list_view: Any, index: int) -> None:
+    """Restore the highlight after a rebuilt list has mounted its items."""
+    if not (0 <= index < len(getattr(list_view, "children", ()))):
+        return
+    list_view.index = index
+    if index < len(self._setup_target_names_list):
+        self._selected_configured_target = self._setup_target_names_list[index]
+    with suppress(*_TEXTUAL_QUERY_ERRORS):
+        self.query_one("#setup-target-remove", _TEXTUAL_BUTTON).disabled = False
+
+
+def _selected_setup_target_index(self: Any) -> int | None:
+    if self._selected_configured_target is None:
+        return None
+    for index, name in enumerate(self._setup_target_names_list):
+        if name.casefold() == self._selected_configured_target.casefold():
+            return index
+    return None
 
 
 def _refresh_setup_settings_labels(self: Any) -> None:
@@ -147,6 +178,14 @@ def on_list_view_highlighted(self: Any, event: Any) -> None:
     index = getattr(lv, "index", None)
     if index is not None and 0 <= index < len(self._setup_target_names_list):
         self._selected_configured_target = self._setup_target_names_list[index]
+    elif len(getattr(lv, "children", ())):
+        # An empty highlight while items are mounted is the queued reset that
+        # ``ListView.clear`` posts during a rebuild. Restore the selected row
+        # instead of treating it as a real deselection.
+        restored = _selected_setup_target_index(self)
+        if restored is not None and restored != index:
+            lv.index = restored
+            return
     else:
         self._selected_configured_target = None
     has_selection = self._selected_configured_target is not None
@@ -164,12 +203,7 @@ def on_results_runs_list_highlighted(self: Any, event: Any) -> None:
     summary = summaries[index]
     if summary.run_id == getattr(self, "_results_tree_run_id", None):
         return
-    record = _load_run(summary.run_id)
-    if record is None:
-        self._report_error("Could not load run", "That run could not be loaded.")
-        return
-    self._selected_run_record = record
-    self._render_selected_run()
+    self._request_results_run_selection(summary.run_id)
 
 
 def _setup_browser_detail_text(self: Any) -> str:
@@ -262,16 +296,17 @@ def _add_target_from_path(self: Any, selected_path: Path) -> None:
         target_dir = selected_path.parent
         stem = selected_path.stem
 
+    target_values = list(_stringify_list_values(self._cfg.get("analyzed_programs_and_libraries")))
+    if stem is not None and any(existing.casefold() == stem.casefold() for existing in target_values):
+        self._write_output(f"Target '{stem}' is already configured.")
+        return
+
     configured_dirs = {d.resolve() for d in _config_directory_paths(self._cfg)}
     if target_dir.resolve() not in configured_dirs:
         other_dirs = list(_stringify_list_values(self._cfg.get("other_lib_dirs")))
         self._cfg["other_lib_dirs"] = [*other_dirs, str(target_dir)]
 
     if stem is not None:
-        target_values = list(_stringify_list_values(self._cfg.get("analyzed_programs_and_libraries")))
-        if any(existing.casefold() == stem.casefold() for existing in target_values):
-            self._write_output(f"Target '{stem}' is already configured.")
-            return
         self._replace_setup_list_value(
             "analyzed_programs_and_libraries",
             [*target_values, stem],
@@ -311,7 +346,7 @@ def _open_raw_file_browser(self: Any) -> None:
         start_paths = [Path.home()]
 
     mode = normalize_code_mode(str(self._cfg.get("mode", "official")).strip().casefold()) or CodeMode.OFFICIAL
-    suffixes = (code_ext(mode), deps_ext(mode))
+    suffixes = (*code_ext_candidates(mode), *deps_ext_candidates(mode))
 
     def _on_browser_result(result: object) -> None:
         if isinstance(result, Path):
@@ -364,8 +399,8 @@ def _apply_setup_dir_choice(self: Any, field_key: str, selected_path: Path, *, l
         if self._cfg.get(field_key) == new_value:
             return
         self._cfg[field_key] = new_value
-    self._persist_project()
-    self._dirty = self._dirty or not self._project_loaded()
+    persisted = bool(self._persist_project())
+    self._dirty = self._dirty or not persisted
     self._setup_candidate_index = 0
     self._refresh_summary()
     self._refresh_view()

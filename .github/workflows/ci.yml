@@ -36,7 +36,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Ruff lint
         run: uv run --frozen ruff check .
@@ -81,7 +81,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Ruff lint
         run: uv run --frozen ruff check .
@@ -125,7 +125,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked fuzz environment
-        run: uv sync --frozen --extra fuzz
+        run: uv sync --locked --extra fuzz
 
       - name: ICF reader fuzz smoke
         run: uv run --frozen python scripts/fuzz/icf_fuzzer.py -runs=200000 -max_len=4096 -timeout=5
@@ -153,7 +153,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Audit the locked dependency set
         run: uv run --frozen pip-audit
@@ -168,11 +168,6 @@ jobs:
 
       - name: Markdown style
         uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
-        with:
-          globs: |
-            *.md
-            docs/**/*.md
-            .github/**/*.md
 
       - name: Set up Python 3.13
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

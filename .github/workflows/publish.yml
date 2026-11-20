@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Expected package version (for example 2026.11.4); checked against the package metadata"
+        description: "Expected package version (for example the release version); checked against the package metadata"
         required: false
         type: string
 
@@ -39,7 +39,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       # A release may not publish a package whose internal version differs from
       # the git tag (or the explicitly supplied workflow_dispatch version).
@@ -72,6 +72,7 @@ jobs:
           /tmp/clean-venv/bin/python -c "import sattlint; assert sattlint.__version__; print('version', sattlint.__version__)"
           /tmp/clean-venv/bin/python -c "import sattlint.ui; print('ui package importable')"
           /tmp/clean-venv/bin/python -c "from sattlint.cli.startup import cli; print('entry point reachable')"
+          /tmp/clean-venv/bin/sattlint --version
 
       - name: Upload distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

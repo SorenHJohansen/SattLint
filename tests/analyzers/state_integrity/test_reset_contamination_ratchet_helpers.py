@@ -8,9 +8,9 @@ from typing import Any
 
 from sattlint.analyzers.reset_contamination import _reset_path_state as reset_path_state_module
 from tests.analyzers.state_integrity.test_reset_contamination_ratchet import (
+    ScalarDatatype,
     SFCAlternative,
     SFCParallel,
-    Simple_DataType,
     Variable,
     VariableIssue,
     logging,
@@ -40,8 +40,8 @@ def test_reset_contamination_helpers_cover_debug_and_parallel_edge_cases(caplog)
 
 def test_implicit_latch_helper_guard_paths_and_issue_suppression() -> None:
     env = {
-        "flag": Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-        "other": Variable(name="Other", datatype=Simple_DataType.INTEGER),
+        "flag": Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+        "other": Variable(name="Other", datatype=ScalarDatatype.INTEGER),
     }
     base_states = [reset_contamination_module._BooleanPathState()]
 

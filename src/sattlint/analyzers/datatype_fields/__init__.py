@@ -35,7 +35,15 @@ def analyze_datatype_fields(
     Delegates to :func:`analyze_variables` with the three datatype-field kinds
     explicitly selected. Reverse-consumer loading is driven by
     ``analyzed_target_is_library`` exactly like the ``variables`` analyzer.
+
+    When a full variable analyzer is already published on the shared context,
+    this run only needs field evidence: it skips access-graph, per-access
+    location, and effect-flow bookkeeping and leaves the full analyzer in place
+    for later checks.
     """
+    shared_artifacts = analysis_context.shared_artifacts if analysis_context is not None else None
+    existing_analyzer = shared_artifacts.variable_analyzer if shared_artifacts is not None else None
+    reuse_full_variables = existing_analyzer is not None and not getattr(existing_analyzer, "_field_usage_only", False)
     return _analyze_variables_impl(
         base_picture,
         analysis_context=analysis_context,
@@ -46,4 +54,6 @@ def analyze_datatype_fields(
         selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS),
         config=config,
         status_update_fn=status_update_fn,
+        field_usage_only=reuse_full_variables,
+        publish_shared_artifacts=not reuse_full_variables,
     )

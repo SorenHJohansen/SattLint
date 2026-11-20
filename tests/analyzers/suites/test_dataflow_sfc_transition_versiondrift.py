@@ -13,31 +13,29 @@ def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
-                                        (Assignment(target=_varref("Output"), value=True),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
+                                    (Assignment(target=_varref("Output"), value=True),),
                                 ),
-                                else_block=(Assignment(target=_varref("Output"), value=False),),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=(Assignment(target=_varref("Output"), value=False),),
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
     report = analyze_dataflow(bp)
@@ -50,37 +48,35 @@ def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite(
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        BoolOp(
-                                            op="AND",
-                                            operands=(
-                                                Compare(left=_varref("Counter"), op="==", right=1),
-                                                Compare(left=_varref("Counter"), op="==", right=2),
-                                            ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    BoolOp(
+                                        op="AND",
+                                        operands=(
+                                            Compare(left=_varref("Counter"), op="==", right=1),
+                                            Compare(left=_varref("Counter"), op="==", right=2),
                                         ),
-                                        (Assignment(target=_varref("Output"), value=True),),
                                     ),
+                                    (Assignment(target=_varref("Output"), value=True),),
                                 ),
-                                else_block=None,
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=None,
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
     report = analyze_dataflow(bp)
@@ -132,12 +128,12 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
                 name="RecType",
                 description=None,
                 datecode=None,
-                var_list=[Variable(name="Field", datatype=Simple_DataType.INTEGER)],
+                var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
             )
         ],
         localvariables=[Variable(name="Rec", datatype="RecType")],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
-        moduledefs=[],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
+        moduledef=None,
     )
 
     report = analyze_same_cycle(bp)
@@ -163,8 +159,8 @@ def test_dataflow_detects_always_true_transition_guard():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_dataflow(bp)
@@ -188,8 +184,8 @@ def test_dataflow_detects_always_false_transition_guard():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_dataflow(bp)
@@ -218,10 +214,10 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Permit", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Ready", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Ready", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_sfc(bp)
@@ -236,45 +232,41 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=2)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=2)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -285,8 +277,8 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 
@@ -308,21 +300,21 @@ def test_version_drift_records_modified_variable_shape_diffs():
     variant_a = SingleModule(
         header=_hdr("Mixer"),
         datecode=100,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     variant_b = SingleModule(
         header=_hdr("Mixer"),
         datecode=200,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.REAL)],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.REAL)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     cast(Any, variant_a).origin_file = "Root.s"
@@ -333,8 +325,8 @@ def test_version_drift_records_modified_variable_shape_diffs():
         moduletype_defs=[],
         localvariables=[],
         submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
     )
 

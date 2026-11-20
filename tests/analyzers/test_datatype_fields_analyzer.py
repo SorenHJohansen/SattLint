@@ -1,19 +1,21 @@
 # pyright: reportPrivateUsage=false
 """Focused tests for the opt-in ``datatype-fields`` analyzer."""
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.analyzers.datatype_fields import analyze_datatype_fields
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.registry import (
     DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
@@ -37,30 +39,28 @@ def _picture_with_unused_field() -> BasePicture:
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
         ],
     )
     rec = Variable(name="Rec", datatype="RecType")
     m1 = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[rec],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="UseField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Rec.A"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="UseField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Rec.A"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     return BasePicture(
@@ -69,9 +69,55 @@ def _picture_with_unused_field() -> BasePicture:
         moduletype_defs=[],
         localvariables=[],
         submodules=[m1],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
+
+
+def test_dependency_typedef_does_not_emit_field_findings() -> None:
+    from dataclasses import replace  # noqa: PLC0415
+
+    from sattline_parser.models.ast_model import ModuleTypeDef  # noqa: PLC0415
+
+    nested = SingleModule(
+        header=_hdr("Nested"),
+        moduleparameters=[],
+        localvariables=[Variable(name="Foreign", datatype="RecType")],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadForeign",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Foreign.B"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    foreign_type = ModuleTypeDef(
+        name="ForeignHolder",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[nested],
+        moduledef=None,
+        modulecode=None,
+        origin_file="DependencyLib.s",
+        origin_lib="ProjectLib",
+    )
+    picture = replace(
+        _picture_with_unused_field(),
+        moduletype_defs=[foreign_type],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    report = analyze_datatype_fields(picture, analyzed_target_is_library=True)
+
+    assert not any("TypeDef:ForeignHolder" in ".".join(issue.module_path or ()) for issue in report.issues)
 
 
 def _unused_field_names(report: VariablesReport) -> set[str]:
@@ -111,36 +157,34 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
         ],
     )
     param_rec = Variable(name="ParamRec", datatype="RecType")
     local_rec = Variable(name="LocalRec", datatype="RecType")
-    sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
     module = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[param_rec],
         localvariables=[local_rec, sink],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="UseFields",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("LocalRec.A"), value=1),
-                            Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
-                            Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="UseFields",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("LocalRec.A"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("LocalRec.B")),
+                        Assignment(target=_varref("Sink"), value=_varref("ParamRec.B")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     bp = BasePicture(
@@ -149,8 +193,8 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     return bp, param_rec, local_rec
 
@@ -179,3 +223,41 @@ def test_field_asymmetry_still_reports_local_record_fields():
     }
 
     assert local_kinds == {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+
+
+def test_reduced_mode_reuses_published_variables_analyzer_and_keeps_findings():
+    bp = _picture_with_unused_field()
+    shared = AnalysisSharedArtifacts()
+    context = AnalysisContext(base_picture=bp, shared_artifacts=shared)
+
+    analyze_variables(bp, analysis_context=context)
+    published = shared.variable_analyzer
+    assert published is not None
+    assert getattr(published, "_field_usage_only", False) is False
+
+    reduced = analyze_datatype_fields(bp, analysis_context=context)
+    full = analyze_datatype_fields(bp)
+
+    assert shared.variable_analyzer is published
+    assert reduced.accesses_by_definition_key == {}
+    assert full.accesses_by_definition_key != {}
+
+    def issue_key(report: VariablesReport) -> set[tuple[object, ...]]:
+        return {
+            (
+                issue.kind,
+                tuple(issue.module_path or ()),
+                issue.field_path,
+                issue.variable.name if issue.variable else None,
+            )
+            for issue in report.issues
+        }
+
+    assert issue_key(reduced) == issue_key(full)
+
+
+def test_field_usage_only_rejects_non_field_issue_kinds():
+    bp = _picture_with_unused_field()
+
+    with pytest.raises(ValueError, match="field_usage_only"):
+        analyze_variables(bp, selected_issue_kinds={IssueKind.UNUSED}, field_usage_only=True)

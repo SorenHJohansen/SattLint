@@ -4,7 +4,6 @@ import difflib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sattlint.parser_api import (
     BasePicture,
@@ -14,10 +13,13 @@ from sattlint.parser_api import (
     SingleModule,
 )
 
+type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
+type ModuleNode = BasePicture | SubmoduleNode
+
 
 @dataclass(frozen=True)
 class ResolvedModulePath:
-    node: Any
+    node: ModuleNode
     path: list[str]
     display_path_str: str
     current_library: str | None = None
@@ -77,6 +79,7 @@ def select_moduletype_def_strict(
     current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
+    source_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     if not matches:
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
@@ -87,6 +90,30 @@ def select_moduletype_def_strict(
 
     matches = dedupe_moduletype_defs(matches)
     preferred_extensions = preferred_source_extensions(current_file or bp.origin_file)
+
+    if current_file is not None:
+        current_file_cf = current_file.casefold()
+        # A unit's own definition is the one its code means, even when other
+        # units in the same library folder declare the same name.
+        same_file = [mt for mt in matches if (mt.origin_file or "").casefold() == current_file_cf]
+        if len(same_file) == 1:
+            return same_file[0]
+
+        # ``PRIVATE_`` types are visible only inside their declaring unit.
+        visible = [mt for mt in matches if not mt.is_private or (mt.origin_file or "").casefold() == current_file_cf]
+        if visible:
+            matches = visible
+
+        # The dependency sidecar names the units this file may use, which is
+        # more precise than the library folder several units can share.
+        unit_dependencies = (source_dependencies or {}).get(Path(current_file).stem.casefold(), ())
+        dependencies = {item.casefold() for item in unit_dependencies}
+        if dependencies:
+            declared_by_dependency = [
+                mt for mt in matches if Path(mt.origin_file or "").stem.casefold() in dependencies
+            ]
+            if declared_by_dependency:
+                matches = declared_by_dependency
 
     if len(matches) > 1:
         if current_library is None and bp.origin_lib:
@@ -138,6 +165,7 @@ def resolve_moduletype_def_strict(
     unavailable_libraries: set[str] | None = None,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
+    source_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     key = moduletype_name.casefold()
     if moduletype_index is not None:
@@ -152,6 +180,7 @@ def resolve_moduletype_def_strict(
         current_file=current_file,
         unavailable_libraries=unavailable_libraries,
         library_dependencies=library_dependencies,
+        source_dependencies=source_dependencies,
     )
 
 
@@ -188,7 +217,7 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
     if any(not segment.strip() for segment in segments):
         raise ValueError(f"Invalid module path syntax: {module_path!r}")
 
-    current: Any = bp
+    current: ModuleNode = bp
     resolved_path: list[str] = [bp.header.name]
     current_library = bp.origin_lib
     current_file = bp.origin_file
@@ -211,15 +240,12 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
             current_file=current_file,
         )
 
-    def children_of(node: Any) -> list[Any]:
-        if isinstance(node, BasePicture):
-            return list(node.submodules or [])
-        if isinstance(node, SingleModule | FrameModule | ModuleTypeDef):
+    def children_of(node: object) -> list[ModuleNode]:
+        if isinstance(node, BasePicture | SingleModule | FrameModule | ModuleTypeDef):
             return list(node.submodules or [])
         if isinstance(node, ModuleTypeInstance):
-            mt = resolve_moduletype(node)
-            return list(mt.submodules or [])
-        return []
+            return list(resolve_moduletype(node).submodules or [])
+        raise TypeError(f"Unexpected module node {type(node).__name__} while resolving a module path")
 
     for segment in segments:
         wanted = segment.strip()
@@ -230,20 +256,16 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
                 f"(node type: {type(current).__name__})."
             )
 
-        matches: list[Any] = [
-            module
-            for module in candidates
-            if hasattr(module, "header") and module.header.name.casefold() == wanted.casefold()
+        matches: list[ModuleNode] = [
+            module for module in candidates if module.header.name.casefold() == wanted.casefold()
         ]
 
         if not matches:
-            names = [module.header.name for module in candidates if hasattr(module, "header")]
+            names = [module.header.name for module in candidates]
             close = difflib.get_close_matches(wanted, names, n=5, cutoff=0.6)
 
             details: list[str] = []
             for module in candidates:
-                if not hasattr(module, "header"):
-                    continue
                 if isinstance(module, ModuleTypeInstance):
                     try:
                         mt = resolve_moduletype(module)

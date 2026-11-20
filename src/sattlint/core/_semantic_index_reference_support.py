@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan
+from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, SourceSpan, Variable
 
 from ..resolution import CanonicalPath, decorate_segment
 from ..resolution.scope import ScopeContext
@@ -11,6 +13,10 @@ from ._semantic_helpers import source_file_key, try_resolve_instance_typedef
 from ._semantic_snapshot import ReferenceOccurrence
 from .ast_tools import iter_call_sites, iter_variable_refs
 from .call_signatures import CallSignatureOccurrence, resolve_call_signature
+
+
+def _is_frame_variable(env: dict[str, Variable], variable: Variable) -> bool:
+    return variable.name.casefold() in env
 
 
 class SemanticIndexReferenceSupportMixin:
@@ -21,6 +27,7 @@ class SemanticIndexReferenceSupportMixin:
         context: ScopeContext,
         source_file: str | None,
         source_library: str | None,
+        variable_filter: Callable[[Variable], bool] | None = None,
     ) -> None:
         file_key = source_file_key(source_file)
         if file_key is None or node is None:
@@ -36,6 +43,8 @@ class SemanticIndexReferenceSupportMixin:
 
             resolved_var, field_path, declaration_path, _ = context.resolve_variable(full_name)
             if resolved_var is None:
+                continue
+            if variable_filter is not None and not variable_filter(resolved_var):
                 continue
 
             reference_segments = tuple(segment for segment in full_name.split(".") if segment)
@@ -64,6 +73,8 @@ class SemanticIndexReferenceSupportMixin:
             )
             self._references_by_file.setdefault(file_key, []).append(occurrence)
 
+            if not self.build_reference_index:
+                continue
             recorded_keys: set[tuple[str, ...]] = set()
             for definition_key in occurrence.definition_keys:
                 if definition_key in recorded_keys:
@@ -98,21 +109,6 @@ class SemanticIndexReferenceSupportMixin:
                 )
             )
 
-    def _repath_context(
-        self: Any,
-        context: ScopeContext,
-        module_path: tuple[str, ...],
-        display_module_path: tuple[str, ...],
-    ) -> ScopeContext:
-        return ScopeContext(
-            env=context.env,
-            param_mappings=context.param_mappings,
-            module_path=list(module_path),
-            display_module_path=list(display_module_path),
-            current_library=context.current_library,
-            parent_context=context.parent_context,
-        )
-
     def _walk_submodules(
         self: Any,
         modules: list[SingleModule | FrameModule | ModuleTypeInstance],
@@ -122,6 +118,7 @@ class SemanticIndexReferenceSupportMixin:
         display_module_path: tuple[str, ...],
         current_origin_file: str | None,
         current_origin_library: str | None,
+        record_frame_code: bool = True,
     ) -> None:
         for module in modules:
             if isinstance(module, SingleModule):
@@ -134,7 +131,15 @@ class SemanticIndexReferenceSupportMixin:
                     display_module_path=list(child_display_path),
                 )
                 self._record_variables(
-                    list(module.moduleparameters or []) + list(module.localvariables or []),
+                    list(module.moduleparameters or []),
+                    module_path=child_module_path,
+                    display_module_path=child_display_path,
+                    kind=self._symbol_kind_parameter(),
+                    origin_file=current_origin_file,
+                    origin_library=current_origin_library,
+                )
+                self._record_variables(
+                    list(module.localvariables or []),
                     module_path=child_module_path,
                     display_module_path=child_display_path,
                     kind=self._symbol_kind_local(),
@@ -172,17 +177,83 @@ class SemanticIndexReferenceSupportMixin:
                     display_module_path=child_display_path,
                     current_origin_file=current_origin_file,
                     current_origin_library=current_origin_library,
+                    record_frame_code=record_frame_code,
                 )
                 continue
 
             if isinstance(module, FrameModule):
                 child_module_path = (*module_path, module.header.name)
                 child_display_path = (*display_module_path, decorate_segment(module.header.name, "FM"))
-                frame_context = self._repath_context(
-                    parent_context,
+                frame_env = {
+                    variable.name.casefold(): variable
+                    for variable in (*(module.moduleparameters or []), *(module.localvariables or []))
+                    if variable.name
+                }
+                frame_context = ScopeContext(
+                    env=frame_env,
+                    param_mappings={},
+                    module_path=list(child_module_path),
+                    display_module_path=list(child_display_path),
+                    current_library=parent_context.current_library,
+                    parent_context=parent_context,
+                )
+                frame_variable_filter = partial(_is_frame_variable, frame_env)
+                self._record_variables(
+                    list(module.moduleparameters or []),
                     module_path=child_module_path,
                     display_module_path=child_display_path,
+                    kind=self._symbol_kind_parameter(),
+                    origin_file=current_origin_file,
+                    origin_library=current_origin_library,
                 )
+                self._record_variables(
+                    list(module.localvariables or []),
+                    module_path=child_module_path,
+                    display_module_path=child_display_path,
+                    kind=self._symbol_kind_local(),
+                    origin_file=current_origin_file,
+                    origin_library=current_origin_library,
+                )
+                if record_frame_code:
+                    self._record_scope_references(
+                        module.moduledef,
+                        context=frame_context,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                    )
+                    self._record_call_signatures(
+                        module.moduledef,
+                        module_path=child_module_path,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                    )
+                    self._record_scope_references(
+                        module.modulecode,
+                        context=frame_context,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                    )
+                    self._record_call_signatures(
+                        module.modulecode,
+                        module_path=child_module_path,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                    )
+                else:
+                    self._record_scope_references(
+                        module.moduledef,
+                        context=frame_context,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                        variable_filter=frame_variable_filter,
+                    )
+                    self._record_scope_references(
+                        module.modulecode,
+                        context=frame_context,
+                        source_file=current_origin_file,
+                        source_library=current_origin_library,
+                        variable_filter=frame_variable_filter,
+                    )
                 self._walk_submodules(
                     module.submodules or [],
                     parent_context=frame_context,
@@ -190,6 +261,7 @@ class SemanticIndexReferenceSupportMixin:
                     display_module_path=child_display_path,
                     current_origin_file=current_origin_file,
                     current_origin_library=current_origin_library,
+                    record_frame_code=record_frame_code,
                 )
                 continue
 
@@ -217,10 +289,18 @@ class SemanticIndexReferenceSupportMixin:
                 display_module_path=list(child_display_path),
             )
             self._record_variables(
-                list(moduletype.moduleparameters or []) + list(moduletype.localvariables or []),
+                list(moduletype.moduleparameters or []),
                 module_path=child_module_path,
                 display_module_path=child_display_path,
                 kind=self._symbol_kind_parameter(),
+                origin_file=moduletype.origin_file,
+                origin_library=moduletype.origin_lib,
+            )
+            self._record_variables(
+                list(moduletype.localvariables or []),
+                module_path=child_module_path,
+                display_module_path=child_display_path,
+                kind=self._symbol_kind_local(),
                 origin_file=moduletype.origin_file,
                 origin_library=moduletype.origin_lib,
             )
@@ -255,6 +335,7 @@ class SemanticIndexReferenceSupportMixin:
                 display_module_path=child_display_path,
                 current_origin_file=moduletype.origin_file,
                 current_origin_library=moduletype.origin_lib,
+                record_frame_code=id(moduletype) not in self._known_typedef_ids,
             )
 
     def _walk_moduletype_defs(

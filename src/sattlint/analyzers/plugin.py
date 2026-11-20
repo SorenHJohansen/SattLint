@@ -14,9 +14,27 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ._registry_spec_templates import default_spec_templates
 from .framework import Analyzer, AnalyzerSpec
 
 _plugin_analyzers: dict[str, AnalyzerSpec] = {}
+_plugin_generation = 0
+_BUILTIN_ANALYZER_KEYS = frozenset(template.key.casefold() for template in default_spec_templates())
+
+
+def get_plugin_registry_generation() -> int:
+    """Return a counter that changes on every plugin registration change.
+
+    The analyzer catalogue is expensive to build, so it is cached. Keying the
+    cache by this counter keeps the catalogue in step with the plugin registry
+    regardless of whether a plugin registers before or after the first build.
+    """
+    return _plugin_generation
+
+
+def _bump_plugin_registry_generation() -> None:
+    global _plugin_generation
+    _plugin_generation += 1
 
 
 def register_analyzer(
@@ -41,6 +59,8 @@ def register_analyzer(
         The decorator that registers the given runnable and returns it unchanged.
     """
     canonical_key = key.casefold()
+    if canonical_key in _BUILTIN_ANALYZER_KEYS:
+        raise ValueError(f"Analyzer key {key!r} is reserved by a built-in analyzer.")
 
     def decorator(run: Analyzer) -> Analyzer:
         spec = AnalyzerSpec(
@@ -53,6 +73,7 @@ def register_analyzer(
             contributes=contributes,
         )
         _plugin_analyzers[canonical_key] = spec
+        _bump_plugin_registry_generation()
         return run
 
     return decorator
@@ -70,6 +91,12 @@ def get_registered_plugin_analyzers() -> tuple[AnalyzerSpec, ...]:
 def clear_registered_plugin_analyzers() -> None:
     """Reset the plugin registry (used by tests)."""
     _plugin_analyzers.clear()
+    _bump_plugin_registry_generation()
 
 
-__all__ = ["get_registered_plugin_analyzers", "register_analyzer"]
+__all__ = [
+    "clear_registered_plugin_analyzers",
+    "get_plugin_registry_generation",
+    "get_registered_plugin_analyzers",
+    "register_analyzer",
+]

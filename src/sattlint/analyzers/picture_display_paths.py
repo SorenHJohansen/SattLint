@@ -21,8 +21,14 @@ def analyze_picture_display_paths(
     graph: ProjectGraph | None = None,
     analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
-    occurrences = graph.graphics_attachments_for(base_picture).picture_display_occurrences if graph else ()
-    diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
+    attachments = graph.graphics_attachments_for(base_picture) if graph else None
+    if attachments is not None and attachments.picture_display_diagnostics_computed:
+        # The companion attach already diagnosed these occurrences, so reuse the
+        # result instead of walking every path a second time.
+        diagnostics = attachments.picture_display_diagnostics
+    else:
+        occurrences = attachments.picture_display_occurrences if attachments is not None else ()
+        diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
     issues: list[Issue] = []
     for diagnostic in diagnostics:
         if _is_library_suppressed(diagnostic, analyzed_target_is_library=analyzed_target_is_library):

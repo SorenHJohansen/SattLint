@@ -8,8 +8,8 @@ import pytest
 from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
     FloatLiteral,
+    ScalarDatatype,
     SFCFork,
-    Simple_DataType,
     Variable,
 )
 
@@ -73,6 +73,9 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
     def _record_function_call_effect_flow(fn_name: str | None, _args: list[object], _context: object) -> None:
         tracker_calls.append(("call", fn_name))
 
+    def _record_controlled_write(full_ref: str, _context: object) -> None:
+        tracker_calls.append(("controlled", full_ref))
+
     usage_tracker = _ns(
         record_access=_record_access,
         mark_ref_access=_mark_access,
@@ -88,14 +91,15 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
         collect_expression_effect_sources=_collect_expression_effect_sources,
         record_assignment_effect_flow=_record_assignment_effect_flow,
         record_function_call_effect_flow=_record_function_call_effect_flow,
+        record_controlled_write=_record_controlled_write,
     )
     helper: Any = SimpleNamespace(
         usage_tracker=usage_tracker,
         effect_flow_tracker=effect_tracker,
         root_env={},
-        any_var_index={"fallback": [Variable(name="Fallback", datatype=Simple_DataType.INTEGER)]},
+        any_var_index={"fallback": [Variable(name="Fallback", datatype=ScalarDatatype.INTEGER)]},
     )
-    variable = Variable(name="Demo", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="Demo", datatype=ScalarDatatype.INTEGER)
 
     def _resolve_variable(full_ref: str) -> tuple[Variable | None, str | None, list[str], None]:
         if full_ref == "local.field":
@@ -145,7 +149,7 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
 
 
 def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> None:
-    variable = Variable(name="Demo", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="Demo", datatype=ScalarDatatype.INTEGER)
     sink_keys = {("sink",)}
 
     def _is_from_root_origin(*_args: object) -> bool:
@@ -172,6 +176,7 @@ def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> 
             effect_key_for_variable=_effect_key_for_variable,
         ),
         effective_output_keys={("effect", "Demo", "Root")},
+        contexts_by_module_path={},
         site_stack=[],
     )
 
@@ -204,7 +209,7 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
     warnings: list[str] = []
     record_with_known_field = _ns(
         name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
+        fields_by_key={"known": _ns(name="Known", datatype=ScalarDatatype.INTEGER)},
     )
 
     def _resolve_record(name: str) -> object | None:
@@ -220,14 +225,14 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
     assert (
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
-            Simple_DataType.INTEGER,
+            ScalarDatatype.INTEGER,
             "field",
             fn_name="Fn",
             syntactic_ref="Ref",
             resolved_var_name="Demo",
             use_path=["Root"],
         )
-        == Simple_DataType.INTEGER
+        == ScalarDatatype.INTEGER
     )
     assert any("cannot access field" in warning for warning in warnings)
 
@@ -235,7 +240,7 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
     with pytest.raises(ValueError):
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
-            Simple_DataType.INTEGER,
+            ScalarDatatype.INTEGER,
             "field",
             fn_name="Fn",
             syntactic_ref="Ref",
@@ -305,7 +310,7 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
     warnings: list[str] = []
     record_with_known_field = _ns(
         name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
+        fields_by_key={"known": _ns(name="Known", datatype=ScalarDatatype.INTEGER)},
     )
 
     def _resolve_record(name: str) -> object | None:
@@ -448,7 +453,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
 
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
-        Simple_DataType.INTEGER,
+        ScalarDatatype.INTEGER,
         fn_name="Fn",
         syntactic_ref="Ref",
         resolved_var_name="Demo",
@@ -473,7 +478,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
 
     def _resolve_scalar_wrapper(name: str) -> object | None:
         if name == "ScalarWrapper":
-            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype=Simple_DataType.INTEGER)})
+            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype=ScalarDatatype.INTEGER)})
         return None
 
     helper.type_graph = _ns(record=_resolve_scalar_wrapper)
@@ -663,7 +668,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     assert delegate_probe.unavailable_libraries == {"Lib"}
     assert (
         delegate_probe.build_scope_context(
-            [Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+            [Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
             param_mappings={},
             module_path=["Root"],
             current_library=None,
@@ -671,7 +676,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
         )[0]
         == "scope"
     )
-    assert delegate_probe.seed_state({}, ["Root"], [Variable(name="Local", datatype=Simple_DataType.INTEGER)]) == {
+    assert delegate_probe.seed_state({}, ["Root"], [Variable(name="Local", datatype=ScalarDatatype.INTEGER)]) == {
         ("seeded",): (("Root",), 1)
     }
     assert delegate_probe.build_single_context(_ns(), _ns(), ["Root", "Child"]) == ("single", ("Root", "Child"))
@@ -745,7 +750,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     def _resolve_context_variable(full_name: str) -> tuple[Variable | None, str, list[str], None]:
         if full_name == "Missing":
             return (None, "", ["Root"], None)
-        return (Variable(name="Value", datatype=Simple_DataType.INTEGER), "", ["Root"], None)
+        return (Variable(name="Value", datatype=ScalarDatatype.INTEGER), "", ["Root"], None)
 
     helper_probe._type_graph = _ns(field=_field)
 
@@ -786,7 +791,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    parameter = Variable(name="Required", datatype=Simple_DataType.INTEGER)
+    parameter = Variable(name="Required", datatype=ScalarDatatype.INTEGER)
     mapping: Any = _ns(target={"var_name": "Required"})
     mod: Any = _ns(moduleparameters=[parameter], parametermappings=[mapping])
     calls: list[str] = []
@@ -895,8 +900,8 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
 
 def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
     guard_calls: list[str] = []
-    mapped_parameter = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
-    idle_parameter = Variable(name="Idle", datatype=Simple_DataType.INTEGER)
+    mapped_parameter = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
+    idle_parameter = Variable(name="Idle", datatype=ScalarDatatype.INTEGER)
     mapping = _ns(target={"var_name": "Mapped"})
 
     def _append_guard_checked(*_args: object, **_kwargs: object) -> None:
@@ -965,7 +970,7 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
     variables_contracts_impl._check_param_mapping(
         check_helper,
         _ns(is_source_global=False, source={"var_name": "Unknown"}, source_literal=None),
-        Variable(name="Target", datatype=Simple_DataType.INTEGER),
+        Variable(name="Target", datatype=ScalarDatatype.INTEGER),
         {},
         cast(Any, None),
         ["Root"],

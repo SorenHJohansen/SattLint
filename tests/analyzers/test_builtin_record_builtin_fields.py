@@ -5,7 +5,7 @@ from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -33,33 +33,31 @@ def _eq(code: list[object]) -> Equation:
 
 def test_builtin_progstationdata_fields_are_addressable() -> None:
     progstation_data = Variable(name="ProgStationData", datatype="ProgStationData")
-    format_text = Variable(name="FormatText", datatype=Simple_DataType.STRING)
-    warning_colour = Variable(name="WarningColour", datatype=Simple_DataType.INTEGER)
+    format_text = Variable(name="FormatText", datatype=ScalarDatatype.STRING)
+    warning_colour = Variable(name="WarningColour", datatype=ScalarDatatype.INTEGER)
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[progstation_data, format_text, warning_colour],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        [
-                            Assignment(
-                                target=_varref("FormatText"),
-                                value=_varref("ProgStationData.FormatString"),
-                            ),
-                            Assignment(
-                                target=_varref("WarningColour"),
-                                value=_varref("ProgStationData.WarningColour"),
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    [
+                        Assignment(
+                            target=_varref("FormatText"),
+                            value=_varref("ProgStationData.FormatString"),
+                        ),
+                        Assignment(
+                            target=_varref("WarningColour"),
+                            value=_varref("ProgStationData.WarningColour"),
+                        ),
+                    ]
+                )
+            ]
+        ),
         parametermappings=[],
     )
 
@@ -69,8 +67,8 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
         moduletype_defs=[],
         localvariables=[progstation_data, format_text, warning_colour],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -84,7 +82,7 @@ def test_builtin_progstationdata_fields_are_addressable() -> None:
 def test_builtin_progstationdata_nested_field_addressable() -> None:
     pass
     progstation_data = Variable(name="ProgStationData", datatype="ProgStationData")
-    result = Variable(name="Result", datatype=Simple_DataType.INTEGER)
+    result = Variable(name="Result", datatype=ScalarDatatype.INTEGER)
 
     bp = BasePicture(
         header=_hdr("Root"),
@@ -92,21 +90,19 @@ def test_builtin_progstationdata_nested_field_addressable() -> None:
         moduletype_defs=[],
         localvariables=[progstation_data, result],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        [
-                            Assignment(
-                                target=_varref("Result"),
-                                value=_varref("ProgStationData.Timestamp"),
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    [
+                        Assignment(
+                            target=_varref("Result"),
+                            value=_varref("ProgStationData.Timestamp"),
+                        ),
+                    ]
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -119,19 +115,18 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
     from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance  # noqa: PLC0415
 
     record_var = Variable(name="MyRecord", datatype="InnerType")
-    target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    target_var = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
 
     typedef = ModuleTypeDef(
         name="InnerType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="X", datatype=Simple_DataType.INTEGER),
-            Variable(name="Y", datatype=Simple_DataType.STRING),
+            Variable(name="X", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Y", datatype=ScalarDatatype.STRING),
         ],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
 
     bp = BasePicture(
@@ -146,21 +141,19 @@ def test_builtin_record_fields_from_parameter_mapping() -> None:
                 parametermappings=[],
             )
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        [
-                            Assignment(
-                                target=_varref("Target"),
-                                value=_varref("MyRecord.X"),
-                            ),
-                        ]
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    [
+                        Assignment(
+                            target=_varref("Target"),
+                            value=_varref("MyRecord.X"),
+                        ),
+                    ]
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)

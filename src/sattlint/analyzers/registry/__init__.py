@@ -17,8 +17,9 @@ from ..datatype_fields import analyze_datatype_fields
 from ..framework import AnalyzerSpec
 from ..icf.analyzer import analyze_icf_configuration
 from ..modules import analyze_version_drift
+from ..moduletype_usage import analyze_moduletype_usage
 from ..picture_display_paths import analyze_picture_display_paths
-from ..plugin import get_registered_plugin_analyzers, register_analyzer
+from ..plugin import get_plugin_registry_generation, get_registered_plugin_analyzers, register_analyzer
 from ..same_cycle import analyze_same_cycle
 from ..sfc import analyze_sfc
 from ..spec_compliance import analyze_spec_compliance
@@ -49,7 +50,6 @@ def _registry_repo_root() -> Path:
 
 
 REPO_ROOT = _registry_repo_root()
-DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
 LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
     "same_cycle": "same-cycle",
@@ -65,7 +65,6 @@ class AnalyzerMetadataDict(TypedDict):
     category: str
     enabled: bool
     summary_output: str
-    rule_ids: list[str]
     scope: str
     implementation_bucket: str
     output_artifacts: list[str]
@@ -85,7 +84,6 @@ class AnalyzerCatalogReport(TypedDict):
 @dataclass(frozen=True)
 class AnalyzerMetadata:
     spec: AnalyzerSpec
-    rule_ids: tuple[str, ...] = ()
     delivery: AnalyzerDeliveryMetadata = field(
         default_factory=lambda: AnalyzerDeliveryMetadata(
             scope="workspace",
@@ -106,7 +104,6 @@ class AnalyzerMetadata:
             category=self.spec.category,
             enabled=self.spec.enabled,
             summary_output=self.summary_output,
-            rule_ids=list(self.rule_ids),
             scope=delivery.scope,
             implementation_bucket=delivery.implementation_bucket,
             output_artifacts=list(delivery.output_artifacts),
@@ -153,20 +150,21 @@ def get_actual_cli_analyzer_keys() -> tuple[str, ...]:
     return tuple(spec.key for spec in get_default_cli_analyzers())
 
 
-@lru_cache(maxsize=1)
-def _build_default_analyzer_catalog() -> AnalyzerCatalog:
-    # Building this from the static rule/analyzer registry costs tens of ms (delivery-metadata
+@lru_cache(maxsize=8)
+def _build_default_analyzer_catalog(plugin_generation: int) -> AnalyzerCatalog:
+    # Building this from the analyzer registry costs tens of ms (delivery-metadata
     # construction for every analyzer), and was previously rebuilt from scratch on every
-    # collect_run_checks_result() call. All inputs are static module-level data, so caching it for
-    # the process lifetime is safe; get_default_analyzer_catalog stays the public, monkeypatch-friendly
-    # entry point tests already rely on.
+    # collect_run_checks_result() call. The plugin generation is part of the cache key, so a
+    # plugin registered after the first build still reaches the catalogue; the remainder of
+    # the inputs is static module-level data. get_default_analyzer_catalog stays the public,
+    # monkeypatch-friendly entry point tests already rely on.
+    del plugin_generation
     analyzer_specs = tuple(get_default_analyzers())
 
     analyzers = tuple(
         AnalyzerMetadata(
             spec=spec,
-            rule_ids=(),
-            delivery=build_delivery_metadata(spec, ()),
+            delivery=build_delivery_metadata(spec),
         )
         for spec in analyzer_specs
     )
@@ -175,7 +173,7 @@ def _build_default_analyzer_catalog() -> AnalyzerCatalog:
 
 
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
-    return _build_default_analyzer_catalog()
+    return _build_default_analyzer_catalog(get_plugin_registry_generation())
 
 
 def get_enabled_analyzers() -> list[AnalyzerSpec]:
@@ -212,7 +210,6 @@ def get_correctness_analyzer_keys() -> tuple[str, ...]:
 
 __all__ = [
     "DEFAULT_CLI_ANALYZER_KEYS",
-    "DEFAULT_CORPUS_MANIFEST_DIR",
     "LEGACY_ANALYZER_KEY_ALIASES",
     "REPO_ROOT",
     "AnalyzerCatalog",
@@ -225,6 +222,7 @@ __all__ = [
     "analyze_dataflow",
     "analyze_datatype_fields",
     "analyze_icf_configuration",
+    "analyze_moduletype_usage",
     "analyze_picture_display_paths",
     "analyze_same_cycle",
     "analyze_sfc",

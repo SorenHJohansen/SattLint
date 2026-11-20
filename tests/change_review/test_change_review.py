@@ -9,13 +9,22 @@ from pathlib import Path
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeComment,
+    CodeItem,
+    Equation,
     ModuleCode,
     ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
+    Sequence,
+    SFCBodyItem,
+    SFCCodeBlocks,
+    SFCStep,
+    SFCTransition,
     Variable,
 )
+from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.change_review import (
     ChangeReviewResult,
@@ -25,11 +34,14 @@ from sattlint.change_review import (
     generate_change_review,
     load_version_snapshot,
 )
+from sattlint.change_review._code_model import _iter_code_statements
 from sattlint.change_review.serialization.json_serializer import review_to_json
 from sattlint.change_review.source import SourceTextProvider
 from sattlint.core.semantic import build_snapshot_from_loaded_project
 from sattlint.models.project_graph import ProjectGraph
 from tests.helpers.change_review_support import (
+    CONNECTION_PROGRAM,
+    CONNECTION_PROGRAM_ALT_SOURCE,
     DRAFT_PROGRAM,
     FUNCTION_BLOCK_DRAFT,
     FUNCTION_BLOCK_OFFICIAL,
@@ -207,9 +219,9 @@ def _moduletype(name: str, *, origin_file: str, origin_lib: str) -> ModuleTypeDe
     return ModuleTypeDef(
         name=name,
         moduleparameters=[],
-        localvariables=[Variable(name=f"{name}Value", datatype=Simple_DataType.INTEGER)],
-        moduledefs=[ModuleDef()],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        localvariables=[Variable(name=f"{name}Value", datatype=ScalarDatatype.INTEGER)],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
         origin_file=origin_file,
         origin_lib=origin_lib,
     )
@@ -222,7 +234,7 @@ def test_change_review_snapshot_can_exclude_dependency_moduletypes(tmp_path: Pat
         header=ModuleHeader(name="Demo", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Demo",
         moduletype_defs=[root_type, dependency_type],
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         origin_file="Demo.s",
         origin_lib="DemoLib",
     )
@@ -238,3 +250,65 @@ def test_change_review_snapshot_can_exclude_dependency_moduletypes(tmp_path: Pat
     paths = {definition.canonical_path for definition in snapshot.definitions}
     assert any(path.startswith("RootType") for path in paths)
     assert not any(path.startswith("DependencyType") for path in paths)
+
+
+def test_comment_only_edit_keeps_statement_keys_stable() -> None:
+    def _module_code(*, with_comments: bool) -> ModuleCode:
+        sequence_nodes: list[SFCBodyItem] = []
+        if with_comments:
+            sequence_nodes.append(CodeComment(text="a note"))
+        sequence_nodes.append(SFCStep(kind="step", name="Start", code=SFCCodeBlocks()))
+        if with_comments:
+            sequence_nodes.append(CodeComment(text="another note"))
+        sequence_nodes.append(SFCTransition(name="Go", condition=True))
+        equation_code: list[CodeItem] = []
+        if with_comments:
+            equation_code.append(CodeComment(text="equation note"))
+        equation_code.append(Assignment(target=VarRef(name="X"), value=1))
+        return ModuleCode(
+            sequences=[
+                Sequence(
+                    name="Main",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=sequence_nodes,
+                )
+            ],
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=equation_code,
+                )
+            ],
+        )
+
+    without_keys = [key for key, _statement, _kind, _span in _iter_code_statements(_module_code(with_comments=False))]
+    with_keys = [key for key, _statement, _kind, _span in _iter_code_statements(_module_code(with_comments=True))]
+
+    assert with_keys == without_keys
+
+
+def test_artifacts_include_module_connection_changes(tmp_path: Path):
+    program_dir = tmp_path / "programs"
+    write_project(
+        program_dir,
+        name="Demo",
+        official_text=CONNECTION_PROGRAM,
+        draft_text=CONNECTION_PROGRAM_ALT_SOURCE,
+    )
+    cfg = build_cfg(tmp_path, program_dir=program_dir)
+    result = generate_change_review(cfg, "Demo", output_dir=tmp_path / "out")
+
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    connection_changes = [change for change in payload["changes"] if change["kind"] == "connection_changed"]
+    assert len(connection_changes) == 1
+    assert connection_changes[0]["official"] == "Open => StartCmd"
+    assert connection_changes[0]["draft"] == "Open => AltCmd"
+
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "Connection 'Open' changed" in markdown
+    assert "Open => StartCmd" in markdown
+    assert "Open => AltCmd" in markdown

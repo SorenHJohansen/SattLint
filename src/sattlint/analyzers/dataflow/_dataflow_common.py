@@ -48,6 +48,7 @@ class PendingWrite:
     root_key: tuple[str, ...]
     display_name: str
     sites: tuple[str, ...]
+    is_enter_reset: bool = False
 
 
 @dataclass(frozen=True)

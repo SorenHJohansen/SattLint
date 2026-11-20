@@ -1,10 +1,15 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportAttributeAccessIssue=false
+"""Focused tests for run-history persistence."""
+
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from sattlint.application.findings import AnalysisFinding
 from sattlint.runs import (
     RunAnalyzerRecord,
+    RunModuleRecord,
     RunRecord,
     RunSummary,
     RunTargetRecord,
@@ -28,6 +33,11 @@ def _sample_record() -> RunRecord:
             RunTargetRecord(
                 target_name="RootProgram",
                 is_library=False,
+                module=RunModuleRecord(
+                    name="RootProgram:BasePicture",
+                    kind="SingleModule",
+                    children=(RunModuleRecord(name="Idle", kind="FrameModule"),),
+                ),
                 analyzers=(
                     RunAnalyzerRecord(
                         key="variables",
@@ -61,6 +71,7 @@ def test_run_record_round_trips_through_dict() -> None:
     assert restored.analyzer_count == 1
     assert restored.issue_count == 1
     assert restored.targets[0].analyzers[0].findings[0].message == "declared but never read"
+    assert restored.targets[0].module == record.targets[0].module
 
 
 def test_save_and_load_run(tmp_path: Path) -> None:
@@ -73,6 +84,7 @@ def test_save_and_load_run(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.finished_at == "2026-09-06T10:05:00Z"
     assert loaded.targets[0].analyzers[0].key == "variables"
+    assert loaded.targets[0].module == record.targets[0].module
 
 
 def test_list_runs_orders_newest_first(tmp_path: Path) -> None:
@@ -189,3 +201,102 @@ def test_load_run_returns_none_for_missing_or_unsupported_version(tmp_path: Path
 
     path.write_text("not json", encoding="utf-8")
     assert load_run("bad", runs_dir=tmp_path) is None
+
+
+def test_run_record_and_summary_round_trip_project_path() -> None:
+    record = RunRecord(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="RootProgram",
+        project_path="/work/demo.slproj",
+    )
+
+    restored = RunRecord.from_dict(record.to_dict())
+    assert restored.project_path == "/work/demo.slproj"
+
+    summary = RunSummary.from_record(restored)
+    assert summary.project_path == "/work/demo.slproj"
+    assert RunSummary.from_dict(summary.to_dict()) == summary
+
+
+def test_legacy_run_records_default_project_path_to_empty() -> None:
+    record_payload = _sample_record().to_dict()
+    record_payload.pop("project_path")
+
+    assert RunRecord.from_dict(record_payload).project_path == ""
+
+    summary_payload = RunSummary(
+        run_id="r1",
+        started_at="s",
+        finished_at="f",
+        project_tag="t",
+        target_count=0,
+        analyzer_count=0,
+        issue_count=0,
+        cancelled=False,
+    ).to_dict()
+    summary_payload.pop("project_path")
+
+    assert RunSummary.from_dict(summary_payload).project_path == ""
+
+
+def test_save_and_load_run_persists_project_path(tmp_path: Path) -> None:
+    project_path = str(tmp_path / "demo.slproj")
+    record = save_run(
+        RunRecord(
+            run_id="",
+            started_at="2026-09-06T10:00:00Z",
+            finished_at="2026-09-06T10:05:00Z",
+            project_tag="RootProgram",
+            project_path=project_path,
+        ),
+        runs_dir=tmp_path,
+    )
+
+    loaded = load_run(record.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert loaded.project_path == project_path
+
+    summaries = list_runs(runs_dir=tmp_path)
+    assert summaries[0].project_path == project_path
+
+
+def test_importing_runs_first_does_not_hit_a_circular_import() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+
+    completed = subprocess.run(
+        [sys.executable, "-c", "import sattlint.runs"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_save_run_generates_distinct_ids_and_leaves_no_temp_files(tmp_path: Path) -> None:
+    first = save_run(_sample_record(), runs_dir=tmp_path)
+    second = save_run(_sample_record(), runs_dir=tmp_path)
+
+    assert first.run_id != second.run_id
+    assert len(list(tmp_path.glob("*.json"))) == 2
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_save_run_never_overwrites_a_supplied_existing_id(tmp_path: Path) -> None:
+    first = save_run(_sample_record(), runs_dir=tmp_path)
+    second = save_run(
+        RunRecord(
+            run_id=first.run_id,
+            started_at="2026-09-06T10:00:00Z",
+            finished_at="2026-09-06T10:06:00Z",
+            project_tag="RootProgram",
+        ),
+        runs_dir=tmp_path,
+    )
+
+    assert second.run_id != first.run_id
+    assert load_run(first.run_id, runs_dir=tmp_path) is not None
+    assert load_run(second.run_id, runs_dir=tmp_path) is not None

@@ -1,6 +1,6 @@
 {
     "case_id": "semantic-power-up",
-    "target_file": "../semantic/analyzer/TestStringsInPictureDisplay.s",
+    "target_file": "../semantic/analyzer/TestStringsDisplay.s",
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [

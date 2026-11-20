@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from sattlint.parser_api import Simple_DataType, Variable
+from sattlint.parser_api import ScalarDatatype, Variable
 
 from .paths import CanonicalPath, CanonicalPathKey
 from .type_graph import TypeGraph
@@ -24,16 +24,25 @@ class SymbolKind(Enum):
 class SymbolDef:
     kind: SymbolKind
     canonical_path: CanonicalPath
-    datatype: Simple_DataType | str | None
+    datatype: ScalarDatatype | str | None
 
 
 @dataclass
 class CanonicalSymbolTable:
-    """Global-ish index of addressable symbols (case-insensitive canonical paths)."""
+    """Global-ish index of addressable symbols (case-insensitive canonical paths).
+
+    ``collect`` exists because the analyzer stack resolves references through
+    ``ScopeContext`` env/mappings and never reads this table; populating it
+    there would materialize a canonical path for every record leaf field. The
+    semantic-snapshot builders are the consumers and keep the default.
+    """
 
     symbols_by_key: dict[CanonicalPathKey, SymbolDef] = field(default_factory=_symbols_by_key_factory)
+    collect: bool = True
 
     def add(self, sym: SymbolDef) -> None:
+        if not self.collect:
+            return
         self.symbols_by_key[sym.canonical_path.key()] = sym
 
     def add_variable_root(
@@ -43,6 +52,8 @@ class CanonicalSymbolTable:
         kind: SymbolKind,
         type_graph: TypeGraph,
     ) -> None:
+        if not self.collect:
+            return
         root = CanonicalPath((*module_path, var.name))
         self.add(SymbolDef(kind=kind, canonical_path=root, datatype=var.datatype))
 

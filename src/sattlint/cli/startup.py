@@ -35,7 +35,7 @@ from ..core.interaction import (
 from ..core.interaction import (
     prompt as core_prompt,
 )
-from ..core.logging import apply_debug
+from ..core.logging import apply_debug, configure_logging
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
@@ -181,24 +181,41 @@ def main(
     save_config_fn: Callable[[Path, ConfigDict], None] = config_module.save_config,
     quit_app_error: type[BaseException] = QuitAppError,
 ) -> int:
-    if config_path is None:
-        config_path = config_module.get_config_path()
-    if run_main_loop_fn is None:
-        run_main_loop_fn = run_interactive_session
-
     cli_args = [] if argv is None else argv
     if cli_args:
         return run_cli_fn(cli_args)
 
+    # The interactive shell owns diagnostics; headless commands keep stderr
+    # reserved for their machine-readable channel. Without this the module
+    # loggers stay unconfigured and debug output is never visible.
+    configure_logging()
+
+    if run_main_loop_fn is None:
+        run_main_loop_fn = run_interactive_session
+    if config_path is None:
+        try:
+            config_path = config_module.get_config_path()
+        except OSError as exc:
+            emit_output_fn(f"Failed to resolve the configuration directory: {exc}")
+            return 2
+
     try:
         # The Textual shell always opens with no project loaded. Projects are
         # opened or created from within the shell via Open Project / New Project.
-        cfg, default_used = load_config_fn(config_path)
+        try:
+            cfg, default_used = load_config_fn(config_path)
+        except (OSError, ValueError) as exc:
+            emit_output_fn(f"Failed to load configuration from {config_path}: {exc}")
+            return 1
 
         apply_debug_fn(cfg)
         resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
-            resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+            try:
+                resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+            except (RuntimeError, ValueError) as exc:
+                emit_output_fn(f"Interactive startup failed: {exc}")
+                return 1
         if default_used:
             emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
             pause_fn()

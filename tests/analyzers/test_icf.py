@@ -5,7 +5,7 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -66,11 +66,11 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -93,7 +93,7 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
 def test_icf_validation_skips_placeholder_h_dot_value() -> None:
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
     entries = [
         _entry(

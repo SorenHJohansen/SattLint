@@ -46,7 +46,7 @@ def test_sequence_step_prefix_is_reported():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[ModuleCode(sequences=[_sequence(step, transition)])],
+                modulecode=ModuleCode(sequences=[_sequence(step, transition)]),
             )
         ],
     )
@@ -64,7 +64,7 @@ def test_transition_name_is_required():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[ModuleCode(sequences=[_sequence(step, transition)])],
+                modulecode=ModuleCode(sequences=[_sequence(step, transition)]),
             )
         ],
     )
@@ -82,7 +82,7 @@ def test_transition_prefix_is_reported():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[ModuleCode(sequences=[_sequence(step, transition)])],
+                modulecode=ModuleCode(sequences=[_sequence(step, transition)]),
             )
         ],
     )
@@ -97,16 +97,14 @@ def test_external_moduletype_sequence_rules_are_skipped_for_program_target():
         name="ExternalType",
         origin_lib="SomeLib",
         origin_file="OtherLib.s",
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    _sequence(
-                        SFCStep(kind="init", name="Start", code=SFCCodeBlocks()),
-                        SFCTransition(name="TR_Next", condition=True),
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    SFCStep(kind="init", name="Start", code=SFCCodeBlocks()),
+                    SFCTransition(name="TR_Next", condition=True),
+                )
+            ]
+        ),
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -131,30 +129,26 @@ def test_single_module_sequences_cover_nested_branch_nodes():
         submodules=[
             SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[
-                    ModuleCode(
-                        sequences=[
-                            _sequence(
-                                SFCAlternative(
-                                    branches=[[SFCStep(kind="init", name="AltStart", code=SFCCodeBlocks())]]
-                                ),
-                                SFCParallel(branches=[[SFCTransition(name="ParallelGate", condition=True)]]),
-                                SFCSubsequence(
-                                    name="NestedSeq",
-                                    body=[SFCStep(kind="step", name="NestedStep", code=SFCCodeBlocks())],
-                                ),
-                                SFCTransitionSub(
-                                    name="NestedGate",
-                                    body=[SFCTransition(name=None, condition=True)],
-                                ),
-                            )
-                        ]
-                    )
-                ],
+                modulecode=ModuleCode(
+                    sequences=[
+                        _sequence(
+                            SFCAlternative(branches=[[SFCStep(kind="init", name="AltStart", code=SFCCodeBlocks())]]),
+                            SFCParallel(branches=[[SFCTransition(name="ParallelGate", condition=True)]]),
+                            SFCSubsequence(
+                                name="NestedSeq",
+                                body=[SFCStep(kind="step", name="NestedStep", code=SFCCodeBlocks())],
+                            ),
+                            SFCTransitionSub(
+                                name="NestedGate",
+                                body=[SFCTransition(name=None, condition=True)],
+                            ),
+                        )
+                    ]
+                ),
             )
         ],
     )
@@ -188,7 +182,7 @@ def test_step_prefix_is_configurable():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[ModuleCode(sequences=[_sequence(step)])],
+                modulecode=ModuleCode(sequences=[_sequence(step)]),
             )
         ],
     )
@@ -206,7 +200,7 @@ def test_transition_prefix_is_configurable():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[ModuleCode(sequences=[_sequence(step, transition)])],
+                modulecode=ModuleCode(sequences=[_sequence(step, transition)]),
             )
         ],
     )
@@ -226,7 +220,7 @@ def test_sequence_name_prefix_check_is_opt_in():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        submodules=[FrameModule(header=_hdr("Logic"), modulecodes=[ModuleCode(sequences=[sequence])])],
+        submodules=[FrameModule(header=_hdr("Logic"), modulecode=ModuleCode(sequences=[sequence]))],
     )
 
     default_report = analyze_spec_compliance(bp)
@@ -247,18 +241,16 @@ def test_equation_block_name_prefix_check_is_opt_in():
         submodules=[
             FrameModule(
                 header=_hdr("Logic"),
-                modulecodes=[
-                    ModuleCode(
-                        equationblocks=[
-                            Equation(
-                                name="MainEq",
-                                position=(0.0, 0.0),
-                                size=(1.0, 1.0),
-                                code=[Assignment(target=VarRef(name="Out"), value=True)],
-                            )
-                        ]
-                    )
-                ],
+                modulecode=ModuleCode(
+                    equationblocks=[
+                        Equation(
+                            name="MainEq",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=VarRef(name="Out"), value=True)],
+                        )
+                    ]
+                ),
             )
         ],
     )

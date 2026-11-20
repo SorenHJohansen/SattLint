@@ -39,6 +39,33 @@ def test_startup_main_routes_cli_argv_to_run_cli() -> None:
     assert seen == {"argv": ["analyze", "--check", "variables"]}
 
 
+def test_startup_main_configures_logging_for_the_interactive_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured: list[str] = []
+    monkeypatch.setattr(startup_application, "configure_logging", lambda: configured.append("configured"))
+
+    exit_code = startup_application.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for plain interactive startup"),
+        load_config_fn=lambda _path: ({"debug": False}, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
+        set_interactive_ui_mode_fn=lambda _mode: None,
+        reset_interactive_ui_mode_fn=lambda: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: None,
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert configured == ["configured"]
+
+
 def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}
@@ -151,6 +178,54 @@ def test_startup_main_handles_quit_app_error() -> None:
     assert exit_code == 0
 
 
+def test_startup_main_reports_unreadable_config_without_traceback() -> None:
+    messages: list[str] = []
+
+    def fail_load(_path: Path) -> tuple[dict[str, object], bool]:
+        raise ValueError("config is malformed")
+
+    exit_code = startup_application.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive startup"),
+        load_config_fn=cast(Any, fail_load),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda message: messages.append(str(message)),
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("the interactive loop must not start"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 1
+    assert messages == ["Failed to load configuration from config.toml: config is malformed"]
+
+
+def test_startup_main_reports_unavailable_ui_mode_without_traceback() -> None:
+    messages: list[str] = []
+
+    exit_code = startup_application.main(
+        None,
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run for interactive startup"),
+        load_config_fn=lambda _path: ({"debug": False}, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        resolve_interactive_ui_mode_fn=lambda _cfg, _override: (_ for _ in ()).throw(
+            RuntimeError("Textual is unavailable")
+        ),
+        emit_output_fn=lambda message: messages.append(str(message)),
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("the interactive loop must not start"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 1
+    assert messages == ["Interactive startup failed: Textual is unavailable"]
+
+
 def test_startup_menu_helpers_reach_owner_functions(monkeypatch) -> None:
     seen: dict[str, object] = {}
     cfg = {"debug": False}
@@ -183,3 +258,50 @@ def test_module_entrypoint_exits_with_cli_status(monkeypatch):
         runpy.run_module("sattlint.__main__", run_name="__main__")
 
     assert exc_info.value.code == 7
+
+
+def test_startup_headless_argv_never_resolves_the_config_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        startup_application.config_module,
+        "get_config_path",
+        lambda: (_ for _ in ()).throw(OSError("unwritable")),
+    )
+
+    exit_code = startup_application.main(
+        ["version"],
+        run_cli_fn=lambda _argv: 0,
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run for CLI argv"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+
+
+def test_startup_reports_an_unresolvable_config_directory_as_a_user_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        startup_application.config_module,
+        "get_config_path",
+        lambda: (_ for _ in ()).throw(OSError("unwritable")),
+    )
+    messages: list[str] = []
+
+    exit_code = startup_application.main(
+        [],
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *args: messages.append(str(args[0])),
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run"),
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 2
+    assert messages == ["Failed to resolve the configuration directory: unwritable"]

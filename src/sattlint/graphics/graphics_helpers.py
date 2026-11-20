@@ -11,8 +11,8 @@ from sattlint.parser_api import BasePicture, GraphicsModel
 from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, ProjectGraph
 from ..project.loading_support import record_project_warning
 from ..validation.shared import ValidationNotice
-from .graphics_context_helpers import picture_display_path_warnings
-from .picture_display_paths import correlate_picture_display_records
+from .graphics_context_helpers import picture_display_path_diagnostics, picture_display_path_notices
+from .picture_display_paths import PictureDisplayPathDiagnostic, correlate_picture_display_records
 from .picture_display_runtime import correlate_composite_records
 from .validation import validate_graphics_model
 
@@ -59,6 +59,21 @@ def attach_graphics_companion(
     )
     _record_timing("correlate-picture-display", picture_display_started_at)
 
+    picture_display_diagnostics: tuple[PictureDisplayPathDiagnostic, ...] = ()
+    diagnostics_computed = False
+    if code_path.suffix.lower() not in {".x", ".z"}:
+        if status_callback:
+            status_callback("computing picture display path warnings")
+        warnings_started_at = perf_counter()
+        picture_display_diagnostics = picture_display_path_diagnostics(
+            bp,
+            picture_display_occurrences,
+            graph=graph,
+            status_callback=status_callback,
+        )
+        diagnostics_computed = True
+        _record_timing("picture-display-warnings", warnings_started_at)
+
     attachments = GraphicsAttachments(
         file_name=companion_path.name,
         bindings=result.bindings,
@@ -67,22 +82,11 @@ def attach_graphics_companion(
         composite_occurrences=composite_occurrences,
         picture_display_records=result.picture_display_records,
         picture_display_occurrences=picture_display_occurrences,
+        picture_display_diagnostics=picture_display_diagnostics,
+        picture_display_diagnostics_computed=diagnostics_computed,
     )
 
-    warnings_precomputed: tuple[ValidationNotice, ...] = ()
-    if code_path.suffix.lower() not in {".x", ".z"}:
-        if status_callback:
-            status_callback("computing picture display path warnings")
-        warnings_started_at = perf_counter()
-        warnings_precomputed = picture_display_path_warnings(
-            bp,
-            picture_display_occurrences,
-            graph=graph,
-            status_callback=status_callback,
-        )
-        _record_timing("picture-display-warnings", warnings_started_at)
-
-    for warning in warnings_precomputed:
+    for warning in picture_display_path_notices(picture_display_diagnostics):
         record_project_warning(graph, owner_name, warning)
 
     for message in result.messages:

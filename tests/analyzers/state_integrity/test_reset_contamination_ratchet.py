@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false, reportPrivateUsage=false
 """Focused coverage tests for reset contamination ratchet repayment."""
 
 from __future__ import annotations
@@ -13,19 +13,19 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ScalarDatatype,
     Sequence,
     SFCAlternative,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
 from sattlint.reporting.variables_report import VariableIssue
-from tests.helpers.reset_contamination_api import reset_contamination_module
+from tests.helpers.reset_contamination_api import reset_analyzer, reset_contamination_module
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -75,32 +75,30 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
         name=name,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="LatchEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=cast(
-                            list[CodeItem],
-                            [
-                                IfStmt(
-                                    branches=(
-                                        (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
-                                    ),
-                                    else_block=(),
-                                )
-                            ],
-                        ),
-                    )
-                ]
-            )
-        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="LatchEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
+                )
+            ]
+        ),
     )
 
 
@@ -109,13 +107,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="ResetType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_reset.origin_file = "root.s"
 
@@ -123,13 +121,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="SkippedType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_skipped.origin_file = "other.s"
 
@@ -141,33 +139,31 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         datatype_defs=[],
         moduletype_defs=[typedef_reset, typedef_skipped, typedef_latch],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="RootLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="RootLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="RootEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=cast(
-                            list[CodeItem],
-                            [
-                                IfStmt(
-                                    branches=(
-                                        (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
-                                    ),
-                                    else_block=(),
-                                )
-                            ],
-                        ),
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="RootEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
+                )
+            ]
+        ),
+        moduledef=None,
     )
     bp.origin_file = "root.s"
 
@@ -214,12 +210,12 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
 def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:  # noqa: PLR0915
     env = reset_contamination_module._build_local_env(
         object(),
-        [Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+        [Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
         [
-            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
     )
     assert sorted(env) == ["counter", "flag", "param", "resetvalue", "seqresetold"]
@@ -240,51 +236,52 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     reset_contamination_module._check_for_single(
         SingleModule(
             header=_hdr("NoCode"),
-            moduledefs=[],
+            moduledef=None,
             moduleparameters=[],
             localvariables=[],
             submodules=[],
-            modulecodes=[],
+            modulecode=None,
             parametermappings=[],
         ),
         ["Root", "NoCode"],
         [],
         check_fn=lambda *_args: calls.append("single"),
     )
-    reset_contamination_module._check_for_typedef(
+    reset_analyzer(cast(Any, None))._check_for_typedef(
         ModuleTypeDef(
             name="NoCodeType",
             moduleparameters=[],
             localvariables=[],
-            moduledefs=[],
-            modulecodes=[],
+            moduledef=None,
+            modulecode=None,
         ),
         ["Root", "TypeDef:NoCodeType"],
         [],
+        None,
         check_fn=lambda *_args: calls.append("typedef"),
     )
     assert calls == []
 
     child_module = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="ChildFlag", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="ChildFlag", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
         parametermappings=[],
     )
     parent_module = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[child_module],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     traversed_paths: list[list[str]] = []
-    reset_contamination_module._collect_from_module(
+    reset_analyzer(cast(Any, None))._collect_from_module(
         parent_module,
         ["Root"],
         [],
@@ -394,10 +391,10 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
 
 
 def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog) -> None:
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    destination = Variable(name="Destination", datatype=Simple_DataType.INTEGER)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    destination = Variable(name="Destination", datatype=ScalarDatatype.INTEGER)
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
     env = {
         "counter": counter,
         "source": source,
@@ -516,7 +513,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
 
 
 def test_reset_contamination_helpers_conservatively_merge_overflowed_path_frontiers(caplog) -> None:
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
     overflow_states: list[reset_contamination_module._PathState] = []
     for index in range(70):
         state = reset_contamination_module._PathState(reset_state="run")

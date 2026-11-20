@@ -4,7 +4,7 @@ from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -25,8 +25,8 @@ def _unsafe_only_report(bp: BasePicture):
 def test_unsafe_defaults_reports_true_boolean_enable_default() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="EnablePump", datatype=Simple_DataType.BOOLEAN, init_value=True)],
-        modulecodes=[],
+        localvariables=[Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
+        modulecode=None,
     )
 
     report = _unsafe_only_report(bp)
@@ -43,18 +43,17 @@ def test_unsafe_defaults_reports_true_boolean_bypass_default_in_root_typedef() -
         moduletype_defs=[
             ModuleTypeDef(
                 name="ValveType",
-                moduleparameters=[Variable(name="SafetyBypass", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+                moduleparameters=[Variable(name="SafetyBypass", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
                 localvariables=[],
                 submodules=[],
-                moduledefs=[],
-                modulecodes=[],
-                parametermappings=[],
+                moduledef=None,
+                modulecode=None,
                 origin_file="Root.s",
             )
         ],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         origin_file="Root.s",
     )
 
@@ -72,21 +71,20 @@ def test_unsafe_defaults_ignores_false_and_external_typedef_defaults() -> None:
         moduletype_defs=[
             ModuleTypeDef(
                 name="ExternalValveType",
-                moduleparameters=[Variable(name="EnablePump", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+                moduleparameters=[Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
                 localvariables=[],
                 submodules=[],
-                moduledefs=[],
-                modulecodes=[],
-                parametermappings=[],
+                moduledef=None,
+                modulecode=None,
                 origin_file="ExternalType.s",
             )
         ],
         localvariables=[
-            Variable(name="EnablePump", datatype=Simple_DataType.BOOLEAN, init_value=False),
-            Variable(name="AlarmTrip", datatype=Simple_DataType.BOOLEAN, init_value=True),
+            Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=False),
+            Variable(name="AlarmTrip", datatype=ScalarDatatype.BOOLEAN, init_value=True),
         ],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         origin_file="Root.s",
     )
 
@@ -102,20 +100,20 @@ def test_unsafe_boolean_default_is_default_variable_analysis_kind() -> None:
 def test_unsafe_defaults_traverses_single_modules_and_nested_frames() -> None:
     nested_child = SingleModule(
         header=_hdr("NestedChild"),
-        moduleparameters=[Variable(name="EnableValve", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+        moduleparameters=[Variable(name="EnableValve", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
         parametermappings=[],
     )
     child = SingleModule(
         header=_hdr("Child"),
         moduleparameters=[],
-        localvariables=[Variable(name="SafetyBypass", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+        localvariables=[Variable(name="SafetyBypass", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
         parametermappings=[],
     )
     frame = FrameModule(header=_hdr("Frame"), submodules=[nested_child])
@@ -123,7 +121,7 @@ def test_unsafe_defaults_traverses_single_modules_and_nested_frames() -> None:
         header=_hdr("Root"),
         localvariables=[],
         submodules=[child, frame],
-        modulecodes=[],
+        modulecode=None,
     )
 
     report = _unsafe_only_report(bp)
@@ -137,9 +135,9 @@ def test_unsafe_defaults_summary_reports_unsafe_boolean_default_section() -> Non
     report = _unsafe_only_report(
         BasePicture(
             header=_hdr("Root"),
-            localvariables=[Variable(name="EnablePump", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+            localvariables=[Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
             submodules=[],
-            modulecodes=[],
+            modulecode=None,
         )
     )
 
@@ -153,18 +151,17 @@ def test_unsafe_defaults_ignores_typedefs_when_root_origin_is_unknown() -> None:
         moduletype_defs=[
             ModuleTypeDef(
                 name="ValveType",
-                moduleparameters=[Variable(name="EnablePump", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+                moduleparameters=[Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
                 localvariables=[],
                 submodules=[],
-                moduledefs=[],
-                modulecodes=[],
-                parametermappings=[],
+                moduledef=None,
+                modulecode=None,
                 origin_file="Root.s",
             )
         ],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
     )
 
     report = _unsafe_only_report(bp)
@@ -180,8 +177,8 @@ def test_unsafe_defaults_identifier_tokenization() -> None:
 def test_unsafe_defaults_token_set_is_configurable() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="OverrideStart", datatype=Simple_DataType.BOOLEAN, init_value=True)],
-        modulecodes=[],
+        localvariables=[Variable(name="OverrideStart", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
+        modulecode=None,
     )
 
     default_report = _unsafe_only_report(bp)

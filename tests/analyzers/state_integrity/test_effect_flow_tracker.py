@@ -26,10 +26,10 @@ def test_variables_report_coerces_mutable_visible_kinds_to_frozenset():
 
 
 def test_variables_report_summary_formats_string_mapping_and_minmax_tables():
-    string_source = Variable(name="SourceText", datatype=Simple_DataType.STRING)
-    string_target = Variable(name="TargetText", datatype=Simple_DataType.TAGSTRING)
-    min_source = Variable(name="SourceMin", datatype=Simple_DataType.REAL)
-    min_target = Variable(name="TargetMax", datatype=Simple_DataType.REAL)
+    string_source = Variable(name="SourceText", datatype=ScalarDatatype.STRING)
+    string_target = Variable(name="TargetText", datatype=ScalarDatatype.TAGSTRING)
+    min_source = Variable(name="SourceMin", datatype=ScalarDatatype.REAL)
+    min_target = Variable(name="TargetMax", datatype=ScalarDatatype.REAL)
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
@@ -69,9 +69,9 @@ def test_variables_report_summary_formats_string_mapping_and_minmax_tables():
 
 
 def test_variables_report_summary_splits_minmax_moduletype_and_singlemodule_groups():
-    min_source = Variable(name="SourceMin", datatype=Simple_DataType.REAL)
-    typedef_target = Variable(name="TypeMax", datatype=Simple_DataType.REAL)
-    singlemodule_target = Variable(name="InstanceMax", datatype=Simple_DataType.REAL)
+    min_source = Variable(name="SourceMin", datatype=ScalarDatatype.REAL)
+    typedef_target = Variable(name="TypeMax", datatype=ScalarDatatype.REAL)
+    singlemodule_target = Variable(name="InstanceMax", datatype=ScalarDatatype.REAL)
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
@@ -101,9 +101,9 @@ def test_variables_report_summary_splits_minmax_moduletype_and_singlemodule_grou
 
 
 def test_variables_report_summary_splits_string_mapping_moduletype_and_singlemodule_groups():
-    string_source = Variable(name="SourceText", datatype=Simple_DataType.STRING)
-    typedef_target = Variable(name="TypeTarget", datatype=Simple_DataType.IDENTSTRING)
-    singlemodule_target = Variable(name="InstanceTarget", datatype=Simple_DataType.TAGSTRING)
+    string_source = Variable(name="SourceText", datatype=ScalarDatatype.STRING)
+    typedef_target = Variable(name="TypeTarget", datatype=ScalarDatatype.IDENTSTRING)
+    singlemodule_target = Variable(name="InstanceTarget", datatype=ScalarDatatype.TAGSTRING)
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
@@ -139,12 +139,12 @@ def test_variables_report_summary_splits_string_mapping_moduletype_and_singlemod
 
 
 def test_variables_report_summary_dedupes_string_mapping_rows_by_source_variable_owner():
-    shared_source = Variable(name="Name", datatype=Simple_DataType.STRING)
+    shared_source = Variable(name="Name", datatype=ScalarDatatype.STRING)
     issues = [
         VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
             module_path=["BasePicture", "TypeDef:EtOH_Conc", "L1", "L2", "TrendLog"],
-            variable=Variable(name="TagSuffix", datatype=Simple_DataType.IDENTSTRING),
+            variable=Variable(name="TagSuffix", datatype=ScalarDatatype.IDENTSTRING),
             source_variable=shared_source,
             source_decl_module_path=["BasePicture", "TypeDef:EtOH_Conc"],
             source_role="localvariable",
@@ -152,7 +152,7 @@ def test_variables_report_summary_dedupes_string_mapping_rows_by_source_variable
         VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
             module_path=["BasePicture", "TypeDef:EtOH_Conc", "L1", "L2", "CMP_AlarmPar"],
-            variable=Variable(name="TagSuffix", datatype=Simple_DataType.IDENTSTRING),
+            variable=Variable(name="TagSuffix", datatype=ScalarDatatype.IDENTSTRING),
             source_variable=shared_source,
             source_decl_module_path=["BasePicture", "TypeDef:EtOH_Conc"],
             source_role="localvariable",
@@ -175,16 +175,16 @@ def test_variables_report_summary_splits_string_mismatch_severity_by_declaration
     declaration_match = VariableIssue(
         kind=IssueKind.STRING_MAPPING_MISMATCH,
         module_path=["BasePicture", "TypeDef:RelayType", "Leaf"],
-        variable=Variable(name="FinalValue", datatype=Simple_DataType.IDENTSTRING),
-        source_variable=Variable(name="OriginalValue", datatype=Simple_DataType.IDENTSTRING),
+        variable=Variable(name="FinalValue", datatype=ScalarDatatype.IDENTSTRING),
+        source_variable=Variable(name="OriginalValue", datatype=ScalarDatatype.IDENTSTRING),
         source_decl_module_path=["BasePicture", "TypeDef:RelayType"],
         source_role="moduleparameter",
     )
     declaration_mismatch = VariableIssue(
         kind=IssueKind.STRING_MAPPING_MISMATCH,
         module_path=["BasePicture", "TypeDef:RelayType", "Alarm"],
-        variable=Variable(name="EventTagPrefix", datatype=Simple_DataType.TAGSTRING),
-        source_variable=Variable(name="OriginalValue", datatype=Simple_DataType.LINESTRING),
+        variable=Variable(name="EventTagPrefix", datatype=ScalarDatatype.TAGSTRING),
+        source_variable=Variable(name="OriginalValue", datatype=ScalarDatatype.LINESTRING),
         source_decl_module_path=["BasePicture", "TypeDef:RelayType"],
         source_role="moduleparameter",
     )
@@ -204,8 +204,8 @@ def test_variables_report_summary_renders_literal_string_mismatch_rows():
     literal_issue = VariableIssue(
         kind=IssueKind.STRING_MAPPING_MISMATCH,
         module_path=["BasePicture", "Child"],
-        variable=Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING),
-        source_variable=Variable(name="'LiteralText'", datatype=Simple_DataType.STRING),
+        variable=Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING),
+        source_variable=Variable(name="'LiteralText'", datatype=ScalarDatatype.STRING),
         source_decl_module_path=["BasePicture", "Child"],
         source_role="literal",
     )
@@ -223,7 +223,7 @@ def test_variables_report_summary_renders_literal_string_mismatch_rows():
 def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence_context():
     duplicated = Variable(name="ValueA", datatype="SharedRecord")
     duplicated_typedef = Variable(name="ValueType", datatype="SharedRecord")
-    implicit = Variable(name="Stage1", datatype=Simple_DataType.BOOLEAN)
+    implicit = Variable(name="Stage1", datatype=ScalarDatatype.BOOLEAN)
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
@@ -291,7 +291,7 @@ def test_variables_report_summary_includes_shadowing_section():
             VariableIssue(
                 kind=IssueKind.SHADOWING,
                 module_path=["BasePicture", "TypeDef:Column", "ChildC"],
-                variable=Variable(name="Mode", datatype=Simple_DataType.INTEGER),
+                variable=Variable(name="Mode", datatype=ScalarDatatype.INTEGER),
                 role="local shadows moduleparameter",
             ),
         ],
@@ -376,8 +376,8 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
             module_path=["BasePicture", "Strings"],
-            variable=Variable("TargetText", Simple_DataType.TAGSTRING),
-            source_variable=Variable("SourceText", Simple_DataType.STRING),
+            variable=Variable("TargetText", ScalarDatatype.TAGSTRING),
+            source_variable=Variable("SourceText", ScalarDatatype.STRING),
         ),
         VariableIssue(
             kind=IssueKind.DATATYPE_DUPLICATION,
@@ -390,8 +390,8 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         VariableIssue(
             kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
             module_path=["BasePicture", "MinMax"],
-            variable=Variable("TargetMax", Simple_DataType.REAL),
-            source_variable=Variable("SourceMin", Simple_DataType.REAL),
+            variable=Variable("TargetMax", ScalarDatatype.REAL),
+            source_variable=Variable("SourceMin", ScalarDatatype.REAL),
         ),
         VariableIssue(
             kind=IssueKind.MAGIC_NUMBER,
@@ -409,7 +409,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
         VariableIssue(
             kind=IssueKind.IMPLICIT_LATCH,
             module_path=["BasePicture", "Latch"],
-            variable=Variable("State", Simple_DataType.BOOLEAN),
+            variable=Variable("State", ScalarDatatype.BOOLEAN),
             role="localvariable",
             sequence_name="SeqA",
             reset_variable=VariableId("ResetCmd"),
@@ -480,7 +480,7 @@ def test_variables_report_summary_includes_metadata_and_init_values():
             VariableIssue(
                 kind=IssueKind.UNUSED,
                 module_path=["BasePicture"],
-                variable=Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
+                variable=Variable(name="Timeout", datatype=ScalarDatatype.INTEGER, init_value=10),
                 role="moduleparameter",
             )
         ],
@@ -519,8 +519,8 @@ def test_effect_flow_tracker_computes_effective_outputs_via_reverse_edges():
 
 
 def test_effect_flow_tracker_copyvariable_inputs_only_include_source():
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     context = ScopeContext(
         env={"source": source, "target": target},
         param_mappings={},
@@ -549,7 +549,7 @@ def test_effect_flow_tracker_copyvariable_inputs_only_include_source():
 
 
 def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():
-    resolved_global = Variable(name="ResolvedGlobal", datatype=Simple_DataType.INTEGER)
+    resolved_global = Variable(name="ResolvedGlobal", datatype=ScalarDatatype.INTEGER)
     tracker = EffectFlowTracker(
         effect_flow_edges={},
         effect_flow_display_names={},
@@ -581,8 +581,8 @@ def test_effect_flow_tracker_records_copyvariable_output_edge():
     from collections import defaultdict  # noqa: PLC0415
 
     edges = defaultdict(set)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     context = ScopeContext(
         env={"source": source, "target": target},
         param_mappings={},

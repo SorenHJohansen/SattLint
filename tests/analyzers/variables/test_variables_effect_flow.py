@@ -10,7 +10,7 @@ from sattline_parser.ast import BinOp, FuncCall, MappingSource
 from sattline_parser.models.ast_model import (
     ModuleHeader,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
     VarRef,
 )
@@ -144,9 +144,9 @@ class _ResolveContext(ScopeContext):
 
 
 def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
-    mapped = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, _external, _usage, _access = _build_tracker()
     context = _context(
         env={"source": source, "target": target},
@@ -198,7 +198,7 @@ def test_effect_source_helpers_cover_fallback_and_signature_paths(monkeypatch) -
 
 
 def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkeypatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     context = _context(env={"source": source})
 
     monkeypatch.setattr(effect_sources_module, "get_function_signature", lambda _name: None)
@@ -241,8 +241,8 @@ def test_effect_source_helpers_cover_guard_returns_and_missing_resolution(monkey
 
 
 def test_effect_flow_tracker_initvariable_inputs_include_source_only() -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     context = _context(env={"source": source, "target": target})
     tracker = EffectFlowTracker(
         effect_flow_edges={},
@@ -271,9 +271,9 @@ def test_effect_flow_tracker_initvariable_inputs_include_source_only() -> None:
 
 
 def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_and_missing() -> None:
-    local = Variable(name="Local", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
-    mapped = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
+    local = Variable(name="Local", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, _usage, _access = _build_tracker(
         lookup_global=lambda name: local if name == "fallback" else None
     )
@@ -281,7 +281,7 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
         env={"local": local, "target": target},
         param_mappings={"mapped": (mapped, "inner", ["Decl"], ["Decl"])},
     )
-    resolved = Variable(name="Resolved", datatype=Simple_DataType.INTEGER)
+    resolved = Variable(name="Resolved", datatype=ScalarDatatype.INTEGER)
     resolved_context = _ResolveContext((resolved, "deep", ["Decl"], ["Decl"]))
     missing_context = _ResolveContext((None, "", ["Root"], ["Root"]))
 
@@ -333,8 +333,8 @@ def test_effect_flow_tracker_resolve_and_assignment_helpers_cover_local_mapped_a
 
 
 def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_missing_cases() -> None:
-    parent_local = Variable(name="ParentLocal", datatype=Simple_DataType.INTEGER)
-    parent_global = Variable(name="ParentGlobal", datatype=Simple_DataType.INTEGER)
+    parent_local = Variable(name="ParentLocal", datatype=ScalarDatatype.INTEGER)
+    parent_global = Variable(name="ParentGlobal", datatype=ScalarDatatype.INTEGER)
     tracker, _edges, _external, _usage, _access = _build_tracker()
     parent_context = _context(
         env={"parentlocal": parent_local, "parentglobal": parent_global},
@@ -410,9 +410,9 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
 
 
 def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and_signature_paths(monkeypatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
-    mapped = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    mapped = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, _usage, _access = _build_tracker()
     context = _context(
         env={"source": source, "target": target},
@@ -454,7 +454,7 @@ def test_effect_flow_tracker_record_function_call_effect_flow_covers_special_and
 
 
 def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved_outputs(monkeypatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, _usage, _access = _build_tracker()
     context = _context(env={"source": source})
 
@@ -486,8 +486,8 @@ def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved
 
 
 def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(monkeypatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, _usage, _access = _build_tracker()
     context = _context(env={"source": source, "target": target})
 
@@ -509,8 +509,8 @@ def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(m
 
 def test_effect_flow_tracker_records_dynamic_array_edges() -> None:
     array_var = Variable(name="Arr", datatype="ArrayObject")
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     tracker, edges, _external, _usage, _access = _build_tracker()
     context = _context(env={"arr": array_var, "source": source, "target": target})
 

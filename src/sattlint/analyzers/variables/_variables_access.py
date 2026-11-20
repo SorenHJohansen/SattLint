@@ -5,7 +5,7 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any
 
-from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
 from ...resolution import AccessKind, CanonicalPath
 from ...resolution.common import varname_full
@@ -72,6 +72,8 @@ def _mark_ref_access(
     if variable is None:
         return
 
+    if kind is AccessKind.WRITE:
+        self.effect_flow_tracker.record_controlled_write(full_ref, context)
     self.usage_tracker.mark_ref_access(
         variable=variable,
         field_path=field_path,
@@ -183,6 +185,12 @@ def _collect_effect_sink_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
 
 def _compute_effective_output_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
     sink_keys = _collect_effect_sink_keys(self)
+    for context in self.contexts_by_module_path.values():
+        for variable in context.env.values():
+            if self.get_usage(variable).ui_read:
+                key = self.effect_flow_tracker.resolve_local_effect_key(variable.name, context)
+                if key is not None:
+                    sink_keys.add(key)
     return self.effect_flow_tracker.compute_effective_output_keys(sink_keys)
 
 
@@ -208,19 +216,19 @@ def _pop_site(self: VariablesAnalyzer) -> None:
 
 def _strict_datatype_at_field_prefix(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_prefix: str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
     use_path: list[str],
-) -> Simple_DataType | str:
+) -> ScalarDatatype | str:
     segments = [segment for segment in (field_prefix or "").split(".") if segment]
-    current: Simple_DataType | str = root_type
+    current: ScalarDatatype | str = root_type
 
     for segment in segments:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             site = _site_str(self)
             if self.fail_loudly:
                 raise ValueError(
@@ -283,13 +291,13 @@ def _strict_datatype_at_field_prefix(
 
 def _iter_leaf_field_paths_strict(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
 ) -> list[tuple[str, ...]]:
-    if isinstance(root_type, Simple_DataType):
+    if isinstance(root_type, ScalarDatatype):
         return [()]
     if is_anytype_name(root_type):
         return [()]
@@ -342,7 +350,7 @@ def _iter_leaf_field_paths_strict(
         next_chain = (*chain, type_name)
         for field in record_type.fields_by_key.values():
             new_prefix = (*prefix, field.name)
-            if isinstance(field.datatype, Simple_DataType):
+            if isinstance(field.datatype, ScalarDatatype):
                 results.append(new_prefix)
             else:
                 stack.append((str(field.datatype), new_prefix, next_chain))
@@ -572,14 +580,14 @@ class VariablesAccessMixin:
 
     def _strict_datatype_at_field_prefix(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_prefix: str,
         *,
         fn_name: str,
         syntactic_ref: str,
         resolved_var_name: str,
         use_path: list[str],
-    ) -> Simple_DataType | str:
+    ) -> ScalarDatatype | str:
         return _strict_datatype_at_field_prefix(
             self,
             root_type,
@@ -592,7 +600,7 @@ class VariablesAccessMixin:
 
     def _iter_leaf_field_paths_strict(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         *,
         fn_name: str,
         syntactic_ref: str,

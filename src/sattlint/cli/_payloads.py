@@ -90,6 +90,7 @@ class RunPayload(TypedDict):
     started_at: str
     finished_at: str
     project_tag: str
+    project_path: str
     selected_analyzers: list[str]
     cancelled: bool
 

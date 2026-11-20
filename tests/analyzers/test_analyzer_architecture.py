@@ -259,8 +259,8 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     context = AnalysisContext(
         base_picture=base_picture,
@@ -336,8 +336,8 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     config = {"mode": "workspace"}
@@ -375,8 +375,8 @@ def _make_foundation():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     return _build_foundation(base_picture)
 
@@ -491,6 +491,32 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
     assert specs[0].run is run2
 
 
+def test_register_analyzer_rejects_a_builtin_key() -> None:
+    with pytest.raises(ValueError, match="reserved by a built-in analyzer"):
+
+        @register_analyzer(key="variables")
+        def run(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="shadow")
+
+    assert get_registered_plugin_analyzers() == ()
+    keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
+    assert keys.count("variables") == 1
+
+
+def test_plugin_registered_after_catalog_build_reaches_the_catalog() -> None:
+    before = registry_module.get_default_analyzer_catalog()
+
+    @register_analyzer(key="late-plugin")
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="late")
+
+    after = registry_module.get_default_analyzer_catalog()
+
+    assert after is not before
+    assert "late-plugin" in {item.spec.key for item in after.analyzers}
+    assert "late-plugin" not in {item.spec.key for item in before.analyzers}
+
+
 def test_clear_registered_plugin_analyzers_resets_registry() -> None:
     @register_analyzer(key="tmp-plugin")
     def run(context: AnalysisContext) -> SimpleReport:
@@ -525,8 +551,8 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     shared = AnalysisSharedArtifacts()
     shared.variable_analysis = _make_foundation()

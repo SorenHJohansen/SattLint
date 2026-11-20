@@ -1,5 +1,9 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
+from sattline_parser.project import ProjectLoadError
+
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading_support as loading_support_module
+from sattlint.project.parser_adapter import CircularDependencyError
 from tests.helpers import AnalysisGraphStub
 from tests.helpers.app_analysis_support import *
 
@@ -85,6 +89,8 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         "mode": "draft",
     }
 
+    # Draft prefers ``.l`` and falls back to ``.z`` when a program has no
+    # ``.l`` sidecar, so every program keeps its dependency list.
     assert list(loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(cfg)) == [
         ("consumer", program_dir / "consumer.l"),
         ("selected", program_dir / "selected.l"),
@@ -120,16 +126,16 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
             del graph, syntax_only, syntax_check
             visits.append((target_name, requester_dir))
 
-        def find_dependency_path(self, target_name, requester_dir=None):
-            return self._find_deps_with_context(target_name, requester_dir=requester_dir)
+        def find_dependency_path(self, target_name):
+            return self._find_deps_with_context(target_name)
 
         def read_dependency_names(self, deps_path):
             return self._read_deps(deps_path)
 
     loader = FakeLoader()
 
-    def find_dependency_path_fn(target_name, requester_dir):
-        return loader.find_dependency_path(target_name, requester_dir=requester_dir)
+    def find_dependency_path_fn(target_name):
+        return loader.find_dependency_path(target_name)
 
     def read_dependency_names_fn(deps_path):
         return loader.read_dependency_names(deps_path)
@@ -138,23 +144,8 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         for target_name, requester_dir in targets:
             loader.visit_target(target_name, "graph", False, requester_dir, False)
 
-    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: False)
-    analysis_loading_module._include_reverse_library_consumers(
-        cfg,
-        selected_target="Selected",
-        root_bp=cast(Any, SimpleNamespace(header=SimpleNamespace(name="BasePicture"))),
-        graph=cast(Any, "graph"),
-        find_dependency_path_fn=find_dependency_path_fn,
-        read_dependency_names_fn=read_dependency_names_fn,
-        visit_targets_fn=visit_targets_fn,
-        require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        is_within_directory_fn=lambda *_args: False,
-        target_is_library_fn=lambda *_a, **_kw: False,
-        source_paths_for_current_target_fn=lambda _bp, _graph: set(),
-    )
-    assert visits == []
-
-    monkeypatch.setattr(analysis_loading_module, "target_is_library", lambda *args, **kwargs: True)
+    # The target's program/library classification takes no part in consumer
+    # discovery: any dependant that references the selected target loads.
     monkeypatch.setattr(
         loading_support_module,
         "_iter_workspace_reverse_library_consumer_dependency_files",
@@ -178,9 +169,6 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(monke
         read_dependency_names_fn=read_dependency_names_fn,
         visit_targets_fn=visit_targets_fn,
         require_analyzed_targets_fn=lambda _cfg: ["Selected", "CandidateA", "NoDeps", "NoPath", "DupLocal"],
-        is_within_directory_fn=lambda *_args: False,
-        target_is_library_fn=lambda *_a, **_kw: True,
-        source_paths_for_current_target_fn=lambda _bp, _graph: set(),
     )
 
     assert visits == [
@@ -204,12 +192,10 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
     manifest_files = analysis_loading_module.cache_manifest_files(
         cfg,
         graph,
-        find_dependency_path_fn=lambda target_name, requester_dir: (
-            None if requester_dir is None else requester_dir / f"{target_name}.z"
+        find_dependency_path_fn=lambda target_name: (
+            Path("libraries" if target_name == "TargetB" else "programs") / f"{target_name}.z"
         ),
         resolve_graphics_companion_path_fn=lambda source_path, **_kwargs: source_path.with_suffix(".g"),
-        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
-        casefold_key_fn=lambda value: value.casefold(),
     )
 
     assert manifest_files == {
@@ -218,3 +204,131 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
         Path("programs/TargetA.z"),
         Path("libraries/TargetB.z"),
     }
+
+
+def test_visit_targets_into_graph_falls_back_per_consumer_after_batch_failure(monkeypatch):
+    converted: list[tuple[str, tuple[str, ...]]] = []
+    failures: list[str] = []
+
+    def fake_load_parser_project(_binding, targets, **_kwargs):
+        if len(targets) > 1:
+            raise ProjectLoadError(targets[0], "missing code file")
+        if targets[0] == "ConsumerB":
+            raise ProjectLoadError(targets[0], "missing code file")
+        return SimpleNamespace(names=tuple(targets))
+
+    def fake_convert_project_into_graph(_project, _graph, *, binding, root_name, strict, lib_names, extra_roots=()):
+        del binding, strict, lib_names
+        converted.append((root_name, tuple(extra_roots)))
+
+    def fake_record_project_load_failure(_graph, name, _exception):
+        failures.append(name)
+
+    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "record_project_load_failure", fake_record_project_load_failure)
+
+    analysis_loading_module._visit_targets_into_graph(
+        cast(Any, object()),
+        ProjectGraph(),
+        [("ConsumerA", None), ("ConsumerB", None)],
+        lib_names={},
+    )
+
+    assert failures == ["ConsumerB"]
+    assert converted == [("ConsumerA", ())]
+
+
+def test_visit_targets_into_graph_isolates_a_consumer_cycle_from_the_library(monkeypatch):
+    converted: list[str] = []
+
+    def fake_load_parser_project(_binding, targets, **_kwargs):
+        if len(targets) > 1 or targets[0] == "ConsumerB":
+            raise CircularDependencyError(targets[0], [targets[0], "Shared"])
+        return SimpleNamespace(names=tuple(targets))
+
+    def fake_convert_project_into_graph(_project, _graph, *, binding, root_name, strict, lib_names, extra_roots=()):
+        del binding, strict, lib_names, extra_roots
+        converted.append(root_name)
+
+    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+
+    graph = ProjectGraph()
+    analysis_loading_module._visit_targets_into_graph(
+        cast(Any, object()),
+        graph,
+        [("ConsumerA", None), ("ConsumerB", None)],
+        lib_names={},
+    )
+
+    # The healthy consumer still loads, and the cyclic one is recorded as a
+    # load failure instead of escaping and failing the selected library.
+    assert converted == ["ConsumerA"]
+    assert set(graph.failures) == {"consumerb"}
+    failure = graph.failures["consumerb"]
+    assert failure.line is None
+    assert failure.column is None
+    assert "Circular dependency detected" in failure.message
+    assert graph.missing == [failure.message]
+
+
+def test_record_project_load_failure_names_the_program_message_and_dependency():
+    graph = ProjectGraph()
+
+    loading_support_module.record_project_load_failure(
+        graph,
+        "Consumer",
+        ProjectLoadError("Dep", "missing code file", dependency="Dep"),
+    )
+
+    failure = graph.failures["consumer"]
+    assert failure.name == "Consumer"
+    assert failure.line is None
+    assert failure.column is None
+    assert "missing code file" in failure.message
+    assert "dependency 'Dep'" in failure.message
+    assert graph.missing == [failure.message]
+
+
+def test_analysis_loading_cache_manifest_files_adds_distribution_companions(tmp_path):
+    draft_body = tmp_path / "Draft.s"
+    official_body = tmp_path / "Official.x"
+    for path in (draft_body, official_body):
+        path.write_text("", encoding="utf-8")
+    draft_companion = draft_body.with_suffix(".p")
+    official_companion = official_body.with_suffix(".q")
+    for path in (draft_companion, official_companion):
+        path.write_text("", encoding="utf-8")
+
+    graph = ProjectGraph(source_files={draft_body, official_body})
+
+    manifest_files = analysis_loading_module.cache_manifest_files(
+        {"program_dir": str(tmp_path), "mode": "draft"},
+        graph,
+        find_dependency_path_fn=lambda _target_name: None,
+        resolve_graphics_companion_path_fn=lambda _source_path, **_kwargs: None,
+    )
+
+    assert manifest_files == {draft_body, draft_companion, official_body, official_companion}
+
+
+def test_reverse_consumer_scan_prefers_the_mode_sidecar_and_falls_back(tmp_path):
+    program_dir = tmp_path / "programs"
+    program_dir.mkdir()
+    (program_dir / "Both.l").write_text("", encoding="utf-8")
+    (program_dir / "Both.z").write_text("", encoding="utf-8")
+    (program_dir / "OfficialOnly.z").write_text("", encoding="utf-8")
+
+    draft = loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(
+        {"program_dir": str(program_dir), "other_lib_dirs": [], "mode": "draft"}
+    )
+    assert list(draft) == [
+        ("Both", program_dir / "Both.l"),
+        ("OfficialOnly", program_dir / "OfficialOnly.z"),
+    ]
+
+    official = loading_support_module._iter_workspace_reverse_library_consumer_dependency_files(
+        {"program_dir": str(program_dir), "other_lib_dirs": [], "mode": "official"}
+    )
+    assert list(official) == [("Both", program_dir / "Both.z"), ("OfficialOnly", program_dir / "OfficialOnly.z")]

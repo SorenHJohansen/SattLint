@@ -9,11 +9,11 @@ from sattline_parser.models.ast_model import (
     Equation,
     IntLiteral,
     ModuleCode,
+    ScalarDatatype,
     Sequence,
     SFCCodeBlocks,
     SFCStep,
     SFCTransition,
-    Simple_DataType,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, IfStmt
@@ -34,19 +34,17 @@ def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="MainEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Output"), value=IntLiteral(1))],
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
     report = analyze_cyclomatic_complexity(bp)
@@ -72,24 +70,22 @@ def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
         header=_hdr("Program"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name=f"Cond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
+        localvariables=[Variable(name=f"Cond{index}", datatype=ScalarDatatype.BOOLEAN) for index in range(10)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="MainEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=decision_statements,
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
-    report = analyze_cyclomatic_complexity(bp)
+    report = analyze_cyclomatic_complexity(bp, module_threshold=10)
 
     issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
     assert len(issues) == 1
@@ -110,43 +106,41 @@ def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    Sequence(
-                        name="MainSeq",
-                        type="SEQUENCE",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            SFCStep(
-                                kind="step",
-                                name="HeatUp",
-                                code=SFCCodeBlocks(
-                                    active=[
-                                        IfStmt(
-                                            branches=(
-                                                (
-                                                    _varref(f"StepCond{index}"),
-                                                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
-                                                ),
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSeq",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="step",
+                            name="HeatUp",
+                            code=SFCCodeBlocks(
+                                active=[
+                                    IfStmt(
+                                        branches=(
+                                            (
+                                                _varref(f"StepCond{index}"),
+                                                (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
                                             ),
-                                            else_block=None,
-                                        )
-                                        for index in range(6)
-                                    ]
-                                ),
+                                        ),
+                                        else_block=None,
+                                    )
+                                    for index in range(6)
+                                ]
                             ),
-                            SFCTransition(name="Continue", condition=_varref("Proceed")),
-                        ],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+                        ),
+                        SFCTransition(name="Continue", condition=_varref("Proceed")),
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
     )
 
-    report = analyze_cyclomatic_complexity(bp)
+    report = analyze_cyclomatic_complexity(bp, step_threshold=6)
 
     issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
     assert len(issues) == 1

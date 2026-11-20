@@ -227,7 +227,7 @@ def test_load_config_applies_default_run_history_without_rewriting_existing_file
     assert 'path = ""' not in persisted_text
 
 
-def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
+def test_load_config_warns_and_strips_unknown_run_history_key_without_rewriting_file(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
     config_path.write_text('[run_history]\nenabled = true\nlimit = 10\npath = "legacy.jsonl"\n', encoding="utf-8")
 
@@ -237,7 +237,7 @@ def test_load_config_strips_unknown_run_history_key_without_rewriting_file(tmp_p
     persisted_text = config_path.read_text(encoding="utf-8")
     assert created is False
     assert loaded["run_history"] == {"enabled": True, "limit": 10}
-    assert "run_history.path" not in out
+    assert "run_history.path" in out
     assert "enabled = true" in persisted_text
     assert 'path = "legacy.jsonl"' in persisted_text
 
@@ -296,8 +296,10 @@ def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guard
     assert loaded_legacy["run_history"] == {"enabled": True, "limit": 10}
     assert "path" not in loaded_legacy["run_history"]
 
-    with pytest.raises(ValueError, match=r"Config validation failed: \[program_dir\]"):
-        config_module.save_config(tmp_path / "invalid-path-config.toml", {"program_dir": str(tmp_path / "missing")})
+    # Saving settings does not require the configured directories to exist.
+    missing_dir_config = tmp_path / "missing-dir-config.toml"
+    config_module.save_config(missing_dir_config, {"program_dir": str(tmp_path / "missing")})
+    assert missing_dir_config.exists()
 
     with pytest.raises(ValueError, match=r"Config validation failed: \[mode\] mode must not be null/None"):
         config_module.save_config(tmp_path / "invalid-config.toml", {"mode": None})
@@ -430,3 +432,18 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
 
     assert exit_code == 0
     assert calls == ["session"]
+
+
+def test_target_exists_is_case_insensitive(tmp_path):
+    (tmp_path / "demo.x").write_text("x", encoding="utf-8")
+    cfg = {"program_dir": str(tmp_path), "mode": "official"}
+
+    assert config_module.target_exists("Demo", cfg) is True
+
+
+def test_load_config_rejects_wrong_value_types(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('debug = "false"\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"Config validation failed.*debug"):
+        config_module.load_config(config_path)

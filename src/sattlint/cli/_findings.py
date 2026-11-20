@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
@@ -11,6 +13,8 @@ from ..application.findings import AnalysisFinding
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
+
+_PROJECT_ANALYZER_TARGET = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +52,24 @@ def _finding_context(finding: AnalysisFinding) -> str | None:
     return text or None
 
 
+def _stable_repr(value: object) -> str:
+    """A repr that never includes a memory address."""
+    return f"<{type(value).__name__}>"
+
+
+def _finding_data_key(finding: AnalysisFinding) -> str:
+    """A stable fingerprint of the finding payload.
+
+    Two findings can share a message and site but carry different detail (for
+    example different previous writes). Collapsing them would keep only the
+    first payload, so the data payload is part of finding identity.
+    """
+    try:
+        return json.dumps(finding.data, sort_keys=True, default=_stable_repr, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(finding.data)
+
+
 def _finding_id(
     *,
     target: str,
@@ -65,6 +87,7 @@ def _finding_id(
         site or "",
         context or "",
         finding.message,
+        _finding_data_key(finding),
     )
     digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
     return f"f_{digest[:12]}"
@@ -77,45 +100,50 @@ def flat_findings(record: RunRecord) -> list[FlatFinding]:
     site, context, and message) collapse into one entry with an occurrence
     count.
     """
-    counts: dict[tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str], int] = {}
+    counts: dict[tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str, str], int] = {}
     representatives: dict[
-        tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str],
+        tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str, str],
         FlatFinding,
     ] = {}
-    for target in record.targets:
-        for analyzer in target.analyzers:
-            for finding in analyzer.findings:
-                site = _finding_site(finding)
-                context = _finding_context(finding)
-                key = (
-                    target.target_name,
-                    analyzer.key,
-                    finding.kind,
-                    finding.rule_id,
-                    finding.module_path,
-                    site,
-                    context,
-                    finding.message,
-                )
-                counts[key] = counts.get(key, 0) + 1
-                if key not in representatives:
-                    representatives[key] = FlatFinding(
-                        id=_finding_id(
-                            target=target.target_name,
-                            analyzer_key=analyzer.key,
-                            finding=finding,
-                            site=site,
-                            context=context,
-                        ),
-                        target=target.target_name,
+    project_analyzers = getattr(record, "project_analyzers", ())
+    targets_with_analyzers = [
+        *((target.target_name, analyzer) for target in record.targets for analyzer in target.analyzers),
+        *((_PROJECT_ANALYZER_TARGET, analyzer) for analyzer in project_analyzers),
+    ]
+    for target_name, analyzer in targets_with_analyzers:
+        for finding in analyzer.findings:
+            site = _finding_site(finding)
+            context = _finding_context(finding)
+            key = (
+                target_name,
+                analyzer.key,
+                finding.kind,
+                finding.rule_id,
+                finding.module_path,
+                site,
+                context,
+                finding.message,
+                _finding_data_key(finding),
+            )
+            counts[key] = counts.get(key, 0) + 1
+            if key not in representatives:
+                representatives[key] = FlatFinding(
+                    id=_finding_id(
+                        target=target_name,
                         analyzer_key=analyzer.key,
-                        analyzer_name=analyzer.name,
                         finding=finding,
-                        module_path=finding.module_path,
                         site=site,
                         context=context,
-                        occurrence_count=0,
-                    )
+                    ),
+                    target=target_name,
+                    analyzer_key=analyzer.key,
+                    analyzer_name=analyzer.name,
+                    finding=finding,
+                    module_path=finding.module_path,
+                    site=site,
+                    context=context,
+                    occurrence_count=0,
+                )
     flattened = [replace(entry, occurrence_count=counts[key]) for key, entry in representatives.items()]
     flattened.sort(
         key=lambda item: (
@@ -194,7 +222,7 @@ def filter_findings(findings: Iterable[FlatFinding], filters: FindingFilters) ->
             continue
         if kinds and finding.finding.kind.casefold() not in kinds:
             continue
-        if rules and (finding.finding.rule_id or "").casefold() not in rules:
+        if rules and (finding.finding.rule_id or finding.finding.kind).casefold() not in rules:
             continue
         if not _matches_module(finding.module, filters.modules, exact=filters.exact_module):
             continue
@@ -222,8 +250,18 @@ def group_findings(findings: Iterable[FlatFinding], group_by: GroupBy) -> list[F
     ]
 
 
-def resolve_run(run_id: str | None) -> RunRecord:
-    selector = (run_id or "latest").strip() or "latest"
+def _same_project_path(left: str, right: str) -> bool:
+    return os.path.normcase(left) == os.path.normcase(right)
+
+
+def resolve_run(run_id: str | None, *, project_path: str | None = None) -> RunRecord:
+    selector = "latest" if run_id is None else run_id.strip()
+    if not selector:
+        raise CliError(
+            "Run selector is empty. Use 'latest', a run id, or a unique run-id prefix.",
+            code="run_invalid",
+            exit_code=2,
+        )
     summaries = list_runs()
     if not summaries:
         raise CliError(
@@ -232,12 +270,40 @@ def resolve_run(run_id: str | None) -> RunRecord:
             exit_code=2,
         )
     if selector == "latest":
-        selected = summaries[0].run_id
-    elif any(summary.run_id == selector for summary in summaries):
+        # `latest` means the newest run for the project being inspected, not
+        # the newest run on the machine.
+        if project_path:
+            matching = [
+                summary
+                for summary in summaries
+                if summary.project_path and _same_project_path(summary.project_path, project_path)
+            ]
+            if matching:
+                summaries = matching
+        # The newest record can be unreadable (truncated by a crash, written by
+        # an older schema). Fall back to the newest record that loads.
+        for summary in summaries:
+            record = load_run(summary.run_id)
+            if record is not None:
+                return record
+        raise CliError(
+            "No stored analysis run could be loaded.",
+            code="run_not_found",
+            exit_code=2,
+            details={"available": [summary.run_id for summary in summaries[:5]]},
+        )
+    if any(summary.run_id == selector for summary in summaries):
         selected = selector
     else:
         matches = [summary.run_id for summary in summaries if summary.run_id.startswith(selector)]
-        if len(matches) != 1:
+        if len(matches) > 1:
+            raise CliError(
+                f"Run prefix {selector!r} is ambiguous.",
+                code="run_ambiguous",
+                exit_code=2,
+                details={"matches": matches[:5]},
+            )
+        if not matches:
             raise CliError(
                 f"Run {selector!r} was not found.",
                 code="run_not_found",
@@ -261,6 +327,7 @@ def run_payload(record: RunRecord) -> RunPayload:
         "started_at": record.started_at,
         "finished_at": record.finished_at,
         "project_tag": record.project_tag,
+        "project_path": record.project_path,
         "selected_analyzers": list(record.selected_analyzers),
         "cancelled": record.cancelled,
     }

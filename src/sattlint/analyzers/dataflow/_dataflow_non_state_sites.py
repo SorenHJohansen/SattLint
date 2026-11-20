@@ -225,9 +225,16 @@ def _walk_moduletype_instance(
         getattr(moduletype, "origin_lib", None),
     ):
         return
-    context = self._build_typedef_context(moduletype, instance, parent_context, child_path)
-    _walk_module_code(self, moduletype.modulecode, context, child_path, accesses)
-    _walk_modules(self, moduletype.submodules or [], context, child_path, accesses)
+    typedef_key = moduletype.name.casefold()
+    if typedef_key in self._active_typedefs:
+        return
+    self._active_typedefs.add(typedef_key)
+    try:
+        context = self._build_typedef_context(moduletype, instance, parent_context, child_path)
+        _walk_module_code(self, moduletype.modulecode, context, child_path, accesses)
+        _walk_modules(self, moduletype.submodules or [], context, child_path, accesses)
+    finally:
+        self._active_typedefs.discard(typedef_key)
 
 
 def _walk_module_code(
@@ -333,6 +340,8 @@ def _step_has_direct_self_loop(nodes: SequenceABC[object], index: int) -> bool:
         return False
     next_node = nodes[index + 1]
     if not isinstance(next_node, SFCTransition):
+        return False
+    if next_node.condition is False:
         return False
     if isinstance(next_node.fork, SFCFork):
         return any(target.casefold() == step_key for target in next_node.fork.targets)
@@ -452,7 +461,7 @@ def _record_ref(
     accesses.append(
         _SiteAccess(
             module_path=tuple(module_path),
-            symbol_key=resolved.symbol_root_key,
+            symbol_key=resolved.symbol_key,
             symbol_display=display_path,
             decl_module_path=decl_module_path,
             is_state_variable=bool(resolved.is_state_variable),

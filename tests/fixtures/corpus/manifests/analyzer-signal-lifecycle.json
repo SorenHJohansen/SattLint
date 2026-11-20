@@ -4,6 +4,7 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
+            "never_read",
             "read_before_write"
         ],
         "artifact_fragments": {
@@ -14,8 +15,9 @@
             },
             "summary.json": {
                 "analyzer_key": "variables",
-                "finding_count": 1,
+                "finding_count": 2,
                 "rule_counts": {
+                    "never_read": 1,
                     "read_before_write": 1
                 }
             }

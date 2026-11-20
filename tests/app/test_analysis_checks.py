@@ -1,13 +1,63 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
 import json
 import os
 from types import SimpleNamespace
 
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    FrameModule,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+)
+
 from sattlint.analyzers.framework import Issue, SimpleReport
 from sattlint.config import DEFAULT_CONFIG
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting import target_report as analysis_reporting_module
+from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
 from tests.helpers.app_analysis_support import *
+
+
+def test_snapshot_module_tree_includes_empty_modules_and_instance_children() -> None:
+    def header(name: str) -> ModuleHeader:
+        return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+
+    template = ModuleTypeDef(
+        name="InlineLager",
+        submodules=[
+            FrameModule(header=header("L1")),
+            ModuleTypeInstance(header=header("UnitHeader1"), moduletype_name="UnitHeader"),
+        ],
+    )
+    root = BasePicture(
+        header=header("BasePicture"),
+        origin_lib="HC",
+        origin_file="KaHCBInlineLib.s",
+        moduletype_defs=[template],
+        submodules=[
+            FrameModule(header=header("StartMaster"), submodules=[SingleModule(header=header("ChangeLog"))]),
+            ModuleTypeInstance(header=header("InlineLager"), moduletype_name="InlineLager"),
+        ],
+    )
+
+    graph = ProjectGraph()
+    graph.moduletype_defs[("hc", "unitheader", "nnestruct.x")] = ModuleTypeDef(
+        name="UnitHeader", origin_lib="HC", origin_file="nnestruct.x"
+    )
+    snapshot = checks_application._snapshot_module_tree(root, graph, "KaHCBInlineLib")
+
+    assert snapshot.name == "KaHCBInlineLib:BasePicture"
+    assert snapshot.kind == "SingleModule"
+    assert [(child.name, child.kind, child.moduletype_name) for child in snapshot.children] == [
+        ("StartMaster", "FrameModule", None),
+        ("InlineLager", "", "InlineLager"),
+    ]
+    assert snapshot.children[0].children[0].name == "ChangeLog"
+    assert [child.name for child in snapshot.children[1].children] == ["L1", "UnitHeader1"]
+    assert snapshot.children[1].children[1].moduletype_name == "nnestruct:UnitHeader"
 
 
 def test_select_report_source_path_propagates_callback_type_error() -> None:
@@ -514,7 +564,7 @@ def test_run_checks_uses_cached_report_when_available(monkeypatch):
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
     monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
-    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(checks_application, "get_cache_dir_or_none", lambda: Path("report-cache-dir"))
     monkeypatch.setattr(
         checks_application,
         "compute_analysis_report_cache_key",
@@ -590,7 +640,7 @@ def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypat
 
     monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
     monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
-    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(checks_application, "get_cache_dir_or_none", lambda: Path("report-cache-dir"))
     monkeypatch.setattr(
         checks_application,
         "compute_analysis_report_cache_key",
@@ -662,7 +712,7 @@ def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch
         return f"{project_key}:{analyzer_key}"
 
     monkeypatch.setattr(checks_application, "AnalysisReportCache", FakeReportCache)
-    monkeypatch.setattr(checks_application, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(checks_application, "get_cache_dir_or_none", lambda: Path("report-cache-dir"))
     monkeypatch.setattr(checks_application, "compute_analysis_report_cache_key", key_fn)
 
     checks_application.collect_run_checks_result(
@@ -757,7 +807,7 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
     def fail_save(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(checks_application, "get_runs_dir", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path / "runs")
     monkeypatch.setattr(checks_application, "save_run", fail_save)
     monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: pytest.fail("must not prune"))
 
@@ -773,6 +823,69 @@ def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch, t
     )
 
     assert result.run_id is None
+
+
+def test_collect_run_checks_result_exposes_failed_per_run_analyzer() -> None:
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["icf"],
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="icf",
+                name="ICF configuration",
+                scope="per-run",
+                run=lambda _context: (_ for _ in ()).throw(RuntimeError("boom")),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.targets[0].is_pseudo is True
+    assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
+        ("ICF configuration", "ICF configuration")
+    ]
+
+
+def test_collect_run_checks_result_keeps_running_when_report_cache_is_unusable(monkeypatch, tmp_path):
+    blocked_cache = tmp_path / "blocked-cache"
+    blocked_cache.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setattr(checks_application, "get_cache_dir_or_none", lambda: blocked_cache)
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        use_cache=True,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        named_object("TargetA"),
+                        AnalysisGraphStub(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert len(result.targets) == 1
+    assert result.targets[0].analyzers[0].status == "completed"
 
 
 def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
@@ -933,7 +1046,7 @@ def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch):
 def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, monkeypatch) -> None:
     emitted: list[str] = []
     monkeypatch.setattr(output_module, "emit_output", lambda message: emitted.append(str(message)))
-    monkeypatch.setattr(checks_application, "get_runs_dir", lambda: tmp_path)
+    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path)
 
     report = SimpleNamespace(
         summary=lambda: "state inference summary",
@@ -967,3 +1080,82 @@ def test_run_checks_result_returns_structured_result_and_persists_run(tmp_path, 
     assert result.targets[0].analyzers[0].findings[0].module_path == ("TargetA",)
     assert any("state inference summary" in line for line in emitted)
     assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
+    def _explode(_context):
+        raise RuntimeError("boom")
+
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        use_cache=False,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), SimpleNamespace())]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.targets[0].analyzers[0].status == "failed"
+    assert "boom" in (result.targets[0].analyzers[0].summary or "")
+    assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
+        ("State inference", "TargetA")
+    ]
+
+
+def test_failed_analyzer_still_saves_the_run(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(checks_application, "get_runs_dir_or_none", lambda: tmp_path / "runs")
+    monkeypatch.setattr(checks_application, "prune_runs", lambda *_args, **_kwargs: None)
+
+    def _explode(_context):
+        raise RuntimeError("boom")
+
+    loaded = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["TargetA"]},
+        ["state-inference"],
+        use_cache=False,
+        persist_run=True,
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", loaded, SimpleNamespace())])),
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="state-inference", name="State inference", run=_explode)],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.run_id is not None
+    stored = load_run(result.run_id, runs_dir=tmp_path / "runs")
+    assert stored is not None
+    analyzer = stored.targets[0].analyzers[0]
+    assert analyzer.status == "failed"
+    assert "boom" in (analyzer.summary or "")
+    assert [(failure.analyzer_name, failure.target_name) for failure in result.analyzer_failures] == [
+        ("State inference", "TargetA")
+    ]
+
+
+def test_pseudo_target_is_not_persisted_in_the_run_record() -> None:
+    result = checks_application.collect_run_checks_result(
+        DEFAULT_CONFIG.copy(),
+        ["state-inference"],
+        use_cache=False,
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                scope="per-run",
+                run=lambda _context: SimpleNamespace(summary=lambda: "ok", issues=[]),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    record = checks_application.build_run_record(result, DEFAULT_CONFIG.copy())
+
+    assert [(target.target_name, target.is_library) for target in record.targets] == []

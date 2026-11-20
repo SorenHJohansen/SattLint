@@ -10,9 +10,12 @@ analyzers run and no diagnostics are collected.
 
 from __future__ import annotations
 
+import gc
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
+
+from sattlint.parser_api import BasePicture, ModuleHeader
 
 from ..config.types import ConfigDict
 from ..core._semantic_snapshot import SemanticSnapshot
@@ -20,7 +23,9 @@ from ..core.semantic import build_snapshot_from_loaded_project
 from ..core.syntax import CodeMode, code_ext, normalize_code_mode
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
 from ..project import loading as project_loading
+from ..resolution import CanonicalSymbolTable, TypeGraph
 from ._code_model import CodeModel, build_code_model
+from .source import SourceKey, source_key
 
 
 @dataclass(frozen=True)
@@ -32,7 +37,7 @@ class VersionSnapshot:
     code_model: CodeModel
     entry_file: Path
     workspace_root: Path
-    source_files: dict[str, Path]
+    source_files: dict[SourceKey, Path]
     total_source_size: int
 
 
@@ -47,6 +52,31 @@ def _resolve_entry_path(
         return root_origin.source_path
     program_dir = Path(str(cfg["program_dir"]))
     return program_dir / f"{program_name}{code_ext(mode)}"
+
+
+def _release_ast(snapshot: SemanticSnapshot) -> SemanticSnapshot:
+    """Drop the parsed tree and indexes the review no longer needs.
+
+    The semantic diff works from definitions, call signatures and the code
+    model, never from the AST. Holding both project trees while the second
+    version is parsed doubles review memory for no benefit.
+    """
+    empty_header = ModuleHeader(
+        name=snapshot.base_picture.header.name,
+        invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
+    )
+    empty_picture = BasePicture(header=empty_header)
+    return SemanticSnapshot(
+        workspace_root=snapshot.workspace_root,
+        entry_file=snapshot.entry_file,
+        discovery=snapshot.discovery,
+        base_picture=empty_picture,
+        project_graph=ProjectGraph(),
+        symbol_table=CanonicalSymbolTable(),
+        type_graph=TypeGraph.from_basepicture(empty_picture),
+        definitions=snapshot.definitions,
+        call_signatures=snapshot.call_signatures,
+    )
 
 
 def load_version_snapshot(
@@ -72,13 +102,17 @@ def load_version_snapshot(
         entry_file=entry_path,
         workspace_root=workspace_root,
         include_dependency_modules=False,
+        build_reference_index=False,
     )
     code_model = build_code_model(snapshot, include_dependency_modules=False)
+    snapshot = _release_ast(snapshot)
+    gc.collect()
 
-    source_files: dict[str, Path] = {}
+    source_files: dict[SourceKey, Path] = {}
     total_size = 0
     for path in graph.source_files:
-        source_files[path.name.casefold()] = path
+        library = graph.source_file_libraries.get(path)
+        source_files[source_key(path.name, library)] = path
         if path.exists():
             try:
                 total_size += path.stat().st_size

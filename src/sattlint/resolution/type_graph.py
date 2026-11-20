@@ -5,48 +5,34 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import cast
 
-from sattlint.parser_api import BUILTIN_RECORD_SPECS, BasePicture, Simple_DataType, Variable
+from sattlint.parser_api import BUILTIN_RECORD_SPECS, BasePicture, DataType, ScalarDatatype, Variable
 
 
 def _cf(s: str) -> str:
     return s.casefold()
 
 
-def _datatype_name(record: object) -> str | None:
-    name = getattr(record, "name", None)
-    return name if isinstance(name, str) else None
+def _require_datatype(value: object) -> DataType:
+    if not isinstance(value, DataType):
+        raise TypeError(f"Expected a DataType definition, got {type(value).__name__}")
+    return value
 
 
-def _datatype_fields(record: object) -> Iterable[object]:
-    raw_fields = getattr(record, "var_list", None)
-    if isinstance(raw_fields, list | tuple):
-        return cast(Iterable[object], raw_fields)
-    return ()
+def _datatype_fields(record: DataType) -> Iterable[Variable]:
+    return record.var_list or []
 
 
-def _field_definition(field: object) -> FieldDef | None:
-    field_name = getattr(field, "name", None)
-    if not isinstance(field_name, str):
-        return None
-
-    datatype = getattr(field, "datatype", None)
-    if not isinstance(datatype, str | Simple_DataType):
-        return None
-
-    state = getattr(field, "state", None)
-    if state is not None and not isinstance(state, bool):
-        return None
-
-    return FieldDef(name=field_name, datatype=datatype, state=state)
+def _field_definition(field: Variable) -> FieldDef:
+    return FieldDef(name=field.name, datatype=field.datatype, state=field.state, const=bool(field.const))
 
 
 @dataclass(frozen=True, slots=True)
 class FieldDef:
     name: str
-    datatype: Simple_DataType | str
+    datatype: ScalarDatatype | str
     state: bool | None = False
+    const: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +50,7 @@ class TypeGraph:
 
     def __init__(self, records_by_key: dict[str, RecordDef]):
         self._records_by_key = records_by_key
+        self._leaf_paths_by_key: dict[str, tuple[tuple[str, ...], ...]] = {}
 
     @staticmethod
     @cache
@@ -77,19 +64,15 @@ class TypeGraph:
         return records
 
     @classmethod
-    def from_datatypes(cls, datatypes: Iterable[object]) -> TypeGraph:
+    def from_datatypes(cls, datatypes: Iterable[DataType]) -> TypeGraph:
         records = dict(cls._builtin_records())
-        for dt in datatypes or []:
-            datatype_name = _datatype_name(dt)
-            if datatype_name is None:
-                continue
+        for dt in datatypes:
+            datatype = _require_datatype(dt)
             fields: dict[str, FieldDef] = {}
-            for field in _datatype_fields(dt):
+            for field in _datatype_fields(datatype):
                 definition = _field_definition(field)
-                if definition is None:
-                    continue
                 fields[_cf(definition.name)] = definition
-            records[_cf(datatype_name)] = RecordDef(name=datatype_name, fields_by_key=fields)
+            records[_cf(datatype.name)] = RecordDef(name=datatype.name, fields_by_key=fields)
         return cls(records)
 
     @classmethod
@@ -108,22 +91,34 @@ class TypeGraph:
             return None
         return rec.fields_by_key.get(_cf(field_name))
 
-    def field_type(self, record_type: str, field_name: str) -> Simple_DataType | str | None:
+    def field_type(self, record_type: str, field_name: str) -> ScalarDatatype | str | None:
         f = self.field(record_type, field_name)
         return f.datatype if f else None
 
-    def iter_leaf_field_paths(self, root_type: Simple_DataType | str) -> Iterable[tuple[str, ...]]:
+    def iter_leaf_field_paths(self, root_type: ScalarDatatype | str) -> Iterable[tuple[str, ...]]:
         """Yield field paths from a type down to leaf (simple) datatypes.
 
         For a simple datatype, yields empty path (no further fields).
         For a record datatype, yields tuples like ("I", "WT001", "value").
         """
-        if isinstance(root_type, Simple_DataType):
+        if isinstance(root_type, ScalarDatatype):
             yield ()
             return
 
-        start = root_type
-        stack: list[tuple[str, tuple[str, ...], frozenset[str]]] = [(start, (), frozenset())]
+        yield from self._leaf_paths_for(_cf(root_type))
+
+    def _leaf_paths_for(self, type_key: str) -> tuple[tuple[str, ...], ...]:
+        """Expand one datatype's leaf paths once and reuse them for later variables."""
+        cached = self._leaf_paths_by_key.get(type_key)
+        if cached is not None:
+            return cached
+
+        paths = tuple(self._expand_leaf_paths(type_key))
+        self._leaf_paths_by_key[type_key] = paths
+        return paths
+
+    def _expand_leaf_paths(self, root_key: str) -> Iterable[tuple[str, ...]]:
+        stack: list[tuple[str, tuple[str, ...], frozenset[str]]] = [(root_key, (), frozenset())]
 
         while stack:
             tname, prefix, ancestors = stack.pop()
@@ -146,7 +141,7 @@ class TypeGraph:
             next_ancestors = ancestors | {tkey}
             for field in rec.fields_by_key.values():
                 new_prefix = (*prefix, field.name)
-                if isinstance(field.datatype, Simple_DataType):
+                if isinstance(field.datatype, ScalarDatatype):
                     yield new_prefix
                 else:
                     stack.append((str(field.datatype), new_prefix, next_ancestors))

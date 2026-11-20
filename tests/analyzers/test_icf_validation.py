@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -75,12 +75,12 @@ def test_icf_validation_reports_valid_and_invalid_entries():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -120,7 +120,7 @@ def test_icf_validation_reports_valid_and_invalid_entries():
 def test_icf_validation_skips_placeholder_h_dot_value():
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
 
     entries = [
@@ -148,7 +148,7 @@ def test_icf_validation_skips_placeholder_h_dot_value():
 def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
     bp = BasePicture(
         header=_header("Program"),
-        submodules=[SingleModule(header=_header("Unit"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit"), moduledef=None)],
     )
 
     entries = [
@@ -181,8 +181,8 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Tid_Start", datatype=Simple_DataType.TIME),
-            Variable(name="Fyld_TidTotal", datatype=Simple_DataType.REAL),
+            Variable(name="Tid_Start", datatype=ScalarDatatype.TIME),
+            Variable(name="Fyld_TidTotal", datatype=ScalarDatatype.REAL),
         ],
     )
     dv = DataType(
@@ -193,7 +193,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -231,11 +231,11 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -263,13 +263,13 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
 def test_icf_validation_marks_unresolved_module_segment_in_detail():
     display = SingleModule(
         header=_header("Display"),
-        moduledefs=[],
+        moduledef=None,
     )
     level2 = FrameModule(header=_header("L2"), submodules=[display])
     level1 = FrameModule(header=_header("L1"), submodules=[level2])
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         submodules=[level1],
     )
     start_master = FrameModule(header=_header("StartMaster"), submodules=[unit])
@@ -306,7 +306,7 @@ def test_icf_validation_prefers_draft_moduletype_locals_after_instance_path_reso
         name="DiluteLogType",
         description=None,
         datecode=None,
-        var_list=[Variable(name="RunNumber", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="RunNumber", datatype=ScalarDatatype.INTEGER)],
     )
 
     transfer_fallback = ModuleTypeDef(
@@ -362,14 +362,14 @@ def test_icf_validation_requires_simple_leaf_datatype():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[
-            Variable(name="Simple", datatype=Simple_DataType.REAL),
+            Variable(name="Simple", datatype=ScalarDatatype.REAL),
             Variable(name="Complex", datatype="Rec"),
         ],
     )
@@ -421,12 +421,12 @@ def test_icf_validation_exposes_resolved_entries_for_reuse():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -457,7 +457,7 @@ def test_icf_validation_exposes_resolved_entries_for_reuse():
     assert report.resolved_entries[0].module_path == ["Program", "Unit"]
     assert report.resolved_entries[0].field_path == "FieldA"
     assert report.resolved_entries[0].leaf_name == "FieldA"
-    assert report.resolved_entries[0].datatype is Simple_DataType.INTEGER
+    assert report.resolved_entries[0].datatype is ScalarDatatype.INTEGER
 
 
 def test_icf_validation_flags_unit_and_group_mismatches():
@@ -465,7 +465,7 @@ def test_icf_validation_flags_unit_and_group_mismatches():
         name="Channel",
         description=None,
         datecode=None,
-        var_list=[Variable(name="OPR_ID", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER)],
     )
     journal = DataType(
         name="JournalRecord",
@@ -474,12 +474,12 @@ def test_icf_validation_flags_unit_and_group_mismatches():
         var_list=[
             Variable(name="T", datatype="Channel"),
             Variable(name="S", datatype="Channel"),
-            Variable(name="J", datatype=Simple_DataType.INTEGER),
+            Variable(name="J", datatype=ScalarDatatype.INTEGER),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="HygienicStatus", datatype="JournalRecord")],
     )
     bp = BasePicture(
@@ -527,14 +527,14 @@ def test_icf_validation_flags_missing_journal_parameter_record_fields():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="RunNumber", datatype=Simple_DataType.INTEGER),
-            Variable(name="Duration", datatype=Simple_DataType.INTEGER),
-            Variable(name="PWVolume", datatype=Simple_DataType.REAL),
+            Variable(name="RunNumber", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Duration", datatype=ScalarDatatype.INTEGER),
+            Variable(name="PWVolume", datatype=ScalarDatatype.REAL),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221X"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="Dilute", datatype="DiluteRecord")],
     )
     bp = BasePicture(
@@ -576,8 +576,8 @@ def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_cov
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="UserID", datatype=Simple_DataType.STRING),
-            Variable(name="UserName", datatype=Simple_DataType.STRING),
+            Variable(name="UserID", datatype=ScalarDatatype.STRING),
+            Variable(name="UserName", datatype=ScalarDatatype.STRING),
         ],
     )
     log_value = DataType(
@@ -585,14 +585,14 @@ def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_cov
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="status", datatype=Simple_DataType.INTEGER),
-            Variable(name="meaning", datatype=Simple_DataType.STRING),
+            Variable(name="status", datatype=ScalarDatatype.INTEGER),
+            Variable(name="meaning", datatype=ScalarDatatype.STRING),
             Variable(name="User", datatype="UserRecord"),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="LogValue", datatype="LogValueRecord")],
     )
     bp = BasePicture(
@@ -647,8 +647,8 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Tid_Start", datatype=Simple_DataType.TIME),
-            Variable(name="Tid_Stop", datatype=Simple_DataType.TIME),
+            Variable(name="Tid_Start", datatype=ScalarDatatype.TIME),
+            Variable(name="Tid_Stop", datatype=ScalarDatatype.TIME),
         ],
     )
     dv = DataType(
@@ -656,14 +656,14 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="AIT001AlarmEnable", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AITT001EnableAlarm", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="AIT001AlarmEnable", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="AITT001EnableAlarm", datatype=ScalarDatatype.BOOLEAN),
             Variable(name="CRY_Fyld1", datatype="CryFillRecord"),
         ],
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -697,17 +697,17 @@ def test_icf_validation_accepts_flattened_statechange_channel_names():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="RESULT_CODE", datatype=Simple_DataType.INTEGER),
-            Variable(name="RESULT_TEXT", datatype=Simple_DataType.STRING),
-            Variable(name="RET_VAL", datatype=Simple_DataType.INTEGER),
-            Variable(name="RET_TEXT", datatype=Simple_DataType.STRING),
+            Variable(name="RESULT_CODE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RESULT_TEXT", datatype=ScalarDatatype.STRING),
+            Variable(name="RET_VAL", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RET_TEXT", datatype=ScalarDatatype.STRING),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221B"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[
-            Variable(name="PUC_Stop_STATE_NO", datatype=Simple_DataType.INTEGER),
+            Variable(name="PUC_Stop_STATE_NO", datatype=ScalarDatatype.INTEGER),
             Variable(name="PUC_Stop_S", datatype="ResponseRecord"),
         ],
     )
@@ -765,8 +765,8 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="OPR_ID", datatype=Simple_DataType.INTEGER),
-            Variable(name="CR_ID", datatype=Simple_DataType.INTEGER),
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
         ],
     )
     journal = DataType(
@@ -860,7 +860,7 @@ def test_icf_validation_ignores_case_only_key_differences_for_unit_structure():
         name="RecipeRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="tid_henstandMax", datatype=Simple_DataType.REAL)],
+        var_list=[Variable(name="tid_henstandMax", datatype=ScalarDatatype.REAL)],
     )
     appl_tank = ModuleTypeDef(
         name="ApplTank",
@@ -908,8 +908,8 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="UserID", datatype=Simple_DataType.STRING),
-            Variable(name="UserName", datatype=Simple_DataType.STRING),
+            Variable(name="UserID", datatype=ScalarDatatype.STRING),
+            Variable(name="UserName", datatype=ScalarDatatype.STRING),
         ],
     )
     signoff = DataType(
@@ -917,11 +917,11 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Time", datatype=Simple_DataType.TIME),
+            Variable(name="Time", datatype=ScalarDatatype.TIME),
             Variable(name="User", datatype="ACSUserType"),
-            Variable(name="Privilege", datatype=Simple_DataType.STRING),
-            Variable(name="SignOffResult", datatype=Simple_DataType.STRING),
-            Variable(name="Meaning", datatype=Simple_DataType.STRING),
+            Variable(name="Privilege", datatype=ScalarDatatype.STRING),
+            Variable(name="SignOffResult", datatype=ScalarDatatype.STRING),
+            Variable(name="Meaning", datatype=ScalarDatatype.STRING),
         ],
     )
     signoff_log = DataType(
@@ -930,14 +930,14 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
         datecode=None,
         var_list=[
             Variable(name="SignOffResult", datatype="ACSSignOffType"),
-            Variable(name="Description", datatype=Simple_DataType.STRING),
-            Variable(name="Answer", datatype=Simple_DataType.STRING),
-            Variable(name="LogTag", datatype=Simple_DataType.STRING),
+            Variable(name="Description", datatype=ScalarDatatype.STRING),
+            Variable(name="Answer", datatype=ScalarDatatype.STRING),
+            Variable(name="LogTag", datatype=ScalarDatatype.STRING),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
     )
     bp = BasePicture(

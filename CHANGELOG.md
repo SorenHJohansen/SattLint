@@ -10,6 +10,122 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- `findings` text grouping prints analyzer and finding labels instead of
+  machine identifiers, and NDJSON output starts with an envelope record that
+  carries the run, filters, summary, and groups.
+- Change Review reports module parameter connection changes, such as a
+  submodule parameter remapped to another source, with the connection text on
+  both sides.
+
+### Changed
+
+- Root origins are keyed by program name, so a project with several programs
+  reports each target's own source file and library. A graph with unavailable
+  libraries or target failures is no longer cached, and an unusable cache
+  directory degrades to running without a cache at every entry point.
+- `.slproj` values are validated against the project defaults: missing keys take
+  their defaults, wrong types raise a project error at exit 2, and unknown keys
+  are reported and ignored.
+- `--rule` matches a finding's rule ID and falls back to its kind. The analyzer
+  catalogue no longer publishes the always-empty `rule_ids` field.
+- The CLI writes UTF-8 with backslash escapes when stdout or stderr cannot
+  encode a character, reports an output-file failure at exit 2, treats a closed
+  pipe as exit 141, and reports an invalid `--ui` value without a traceback.
+- Config and project saves are atomic, and saving settings no longer requires
+  the configured directories to exist.
+- Run records are written atomically with collision-free ids; per-run analyzer
+  findings are stored in a separate project-level bucket instead of a phantom
+  target. The run-record schema is version 2.
+- Reverse consumers are discovered for every analyzed target, not only for
+  targets the loader classifies as libraries by their location. The scan
+  prefers the mode's dependency sidecar (`.l` in draft, `.z` in official) and
+  falls back to the other one when a program has no preferred sidecar, so a
+  program that exists in only one body family still contributes its uses.
+- Module-type usage treats a type as unused when it has no invocation at all,
+  or exactly one invocation and that invocation is its declaring file. Two or
+  more invocations count as use, wherever they occur, and the analyzed target's
+  program/library label no longer changes the result.
+- The reset-contamination and implicit-latch scans now cover module-type
+  instances and their nested modules exactly once, with a recursion guard.
+  Read-before-write findings name the variable in text reports, and
+  spec-compliance typedef findings use the `TypeDef:` path tag.
+- A plugin analyzer cannot claim a built-in analyzer key, and the cached
+  analyzer catalogue rebuilds whenever the plugin registry changes.
+- The interactive shell configures logging before it starts, and only a
+  boolean `debug` value enables debug output.
+- Boolean latch path merging deduplicates and caps its frontier like the
+  non-boolean reset scan, so a wide parallel fan-out cannot grow without
+  bound. Mapped string literals take their capacity from the target datatype
+  instead of always assuming `MAXSTRING`.
+- The semantic index records single-module parameters and locals with their
+  own symbol kinds, and module-type instance parameters and locals likewise,
+  matching the typedef path.
+
+### Fixed
+
+- The UI treats view text as plain text, so a message with brackets cannot lose
+  text or abort the error dialog.
+- File-open, new-configuration, and quit actions respect the busy and modal
+  guards, and an analysis run snapshots its configuration and project path.
+- Configured targets are matched case-insensitively for the self-check, and a
+  wrong-typed config value is rejected at load instead of failing later.
+- A newly added ICF file invalidates the cached report, and clearing all caches
+  also clears the analysis foundation.
+- A failed program index no longer leaves root origins, record or module-type
+  definitions, dependency edges, or a source file behind for a program that is
+  reported as failed.
+- ICF validation recognises an already-loaded program by its program name
+  instead of the literal `BasePicture` keyword, so the in-memory program is
+  reused.
+- The parser dependency moves to 2026.11.7: a `SUBSEQUENCE`, `SUBSEQSTEP`, or
+  `SUBSEQTRANSITION` wrapper may reuse the name of an element inside its own
+  body without a false duplicate-name finding. Sibling steps and transitions
+  must still be unique.
+- Change Review continues with the remaining targets when one target fails and
+  names every failure; it reports an error only when every target fails.
+- An analyzer filter hides entries without clearing their selection, so the
+  selection survives filtering and returns when the filter is cleared.
+- A second interaction request waits for the active one instead of being
+  completed as a denial, and cancelling a prompt or confirmation no longer runs
+  the submission handler. Escape no longer re-saves a value or reports an empty
+  name.
+- Change Review source snippets are decoded with the parser's source reader, so
+  compressed and byte-coded files keep exact character offsets.
+- The AST refresh modal renders a bounded status tail and can always be closed,
+  including while a rebuild is still running.
+- A run with a failed analyzer is saved to run history with that analyzer marked
+  failed, instead of being discarded, so the other analyzers' findings stay
+  reviewable.
+- Module-type resolution prefers the definition declared in the same source
+  file, hides `PRIVATE_` types from other units, and follows the unit's
+  dependency sidecar before the shared library folder. Duplicate type names in
+  one library folder therefore resolve instead of failing the analyzer.
+- Datatype-field findings stay inside the analyzed target. Dependency and
+  reverse-consumer typedef bodies still contribute usage evidence, but no longer
+  produce findings, and a `TypeDef:` path is only rewritten to an invocation
+  inside the target rather than into another loaded unit.
+- A rebuilt target or project list keeps its highlight, so Open and Remove stay
+  enabled and act on the visible selection.
+- Change Review compares datatypes, block, step and sequence names, and module
+  paths case-insensitively, like the language does.
+- Change Review reports steps with no code and steps nested in alternative,
+  parallel or subsequence bodies as membership changes.
+- Change Review snippet lookup is keyed by library and file, so same-named
+  files in different libraries no longer read the wrong source.
+- Change Review pairs reordered and shifted statements by position and target,
+  so a changed `IF` block is one change instead of an add plus a remove, and an
+  inserted statement does not misalign the statements after it.
+- Change Review keeps a transition's own span (including a literal condition)
+  and derives block spans from their statements.
+- Record-field declarations retain their initializer and modifiers in Change
+  Review.
+- Frame-module code is indexed in the frame's own variable scope, so its
+  references and call signatures are visible to Change Review.
+
+## [2026.11.5] - 2026-11-15
+
+### Added
+
 - `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
   document the security intake, the stable and preview surfaces, community
   expectations, and the headless command reference.
@@ -17,6 +133,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   that does not exist.
 - A question issue template, and a dependency audit job in CI.
 - `uv.lock` pins the development environment that CI installs.
+- A module type usage analyzer reports module types the analyzed target defines
+  but no loaded consumer invokes, following source-level dependencies across
+  programs.
+- The Results view groups findings by the persisted module hierarchy and shows
+  the selected module's findings as plain text with expandable detail.
+- The SFC checks report a sequence that does not begin with an initial step.
 
 ### Changed
 
@@ -27,6 +149,98 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The pull request template, issue templates, and release notes in
   `CONTRIBUTING.md` match the shipped commands.
 - The pinned Ruff version matches the pre-commit hook revision.
+- Upgraded `sattline-parser` to `2026.11.6` and pinned it exactly, with
+  `uv.lock` regenerated. The parser renames `Simple_DataType` to
+  `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
+  `modulecode` fields, and removes the interim graphics payload classes. The
+  2026.11.6 delta is additive for this codebase: no imported name or signature
+  changed except for new keyword fields and new project helpers.
+- Project loading is all or nothing. A missing or unparseable body, sidecar, or
+  companion now fails the target with a message that names the artifact,
+  instead of dropping the program silently. SattLint catches the parser load
+  errors at every load seam, reports the failure, and continues with the next
+  analyzed target.
+- Every cache version is bumped, so an entry written before the parser upgrade
+  is rejected rather than decoded into the new model.
+- A declared dependency that is not present is no longer recorded as a missing
+  library, because the parser refuses to return a partial project.
+- A module type definition no longer carries parameter mappings, so the
+  variables analyzer checks mappings only on submodules and module-type
+  instances, which is where the grammar allows them.
+- Dependency sidecar lookup is requester independent and pairs a sidecar with
+  the selected body's own prefix, matching the parser's ordered roots.
+- The unknown parameter mapping target rule stays with SattLint's variables
+  analyzer, so a root that carries that finding is still indexed.
+- The Analyze view no longer offers a Cancel control that could not stop a
+  running analysis, since the analysis pipeline has no cancellation checkpoint.
+- A companion is paired only with the artifact family of its body, and companion
+  stems match case-insensitively, following the parser rules.
+- PictureDisplay path diagnosis is computed once per target and reused by the
+  analyzer instead of being repeated.
+- The unused SFC parallel-write collector and contract-index subsystem are
+  removed.
+- The same-cycle shared access rule is removed; its findings repeated the
+  parallel-branch rules and fired on ordinary module interaction. The
+  parallel read/write and parallel write rules stay.
+- Cyclomatic complexity defaults, parameter mapping checks, read-before-write,
+  state-reset, and parallel-branch analysis were tightened to drop false
+  positives.
+
+### Fixed
+
+- Read-only findings no longer include constant fields, and a parameter mapping
+  that targets a name outside the declared list is no longer reported.
+- The Results view hides empty module branches and keeps a finding's site,
+  duplicate count, and previous writes visible.
+- A reverse-library consumer that cannot load no longer discards the selected
+  library's analysis. The batch falls back to one load per consumer, records the
+  failing consumer, and keeps the library findings.
+- ICF analysis reports a load-failure issue when a referenced program cannot be
+  loaded instead of raising out of the analyzer.
+- An AST refresh reports a target that cannot load and continues with the rest
+  of the analyzed targets.
+- An unknown parameter mapping target is reported for a mapping from a global
+  source as well, matching the parser rule.
+- An analyzer that raises now fails the command instead of producing an empty
+  finding set with a zero exit code, and the failed run is not persisted.
+- An unusable cache directory degrades to running without a cache instead of
+  aborting analysis, and a cache write error no longer fails a target.
+- An empty target list is reported as a configuration error instead of an
+  internal error.
+- `import sattlint.runs` works on its own; the application package no longer
+  imports run persistence eagerly.
+- A misspelled configuration key warns instead of being silently discarded.
+- Interactive startup reports a malformed configuration cleanly instead of
+  printing a traceback.
+- Repeated modules with parameter mappings no longer report false drift caused
+  by differing source positions, and datatype names compare case-insensitively.
+- A module type instance resolves its body against the type's own library
+  instead of the caller's library.
+- A same-named datatype declared in different case no longer produces two
+  entries with load-order dependent field resolution.
+- An unknown PictureDisplay asset path can no longer resolve outside the
+  program directory, and very large asset paths are rejected.
+- The analysis summary counts loaded targets rather than the per-run analyzer
+  pseudo-target.
+- Run history records the project file, so adding or removing a target no
+  longer hides earlier runs, and two projects with the same target names no
+  longer share entries.
+- The output log trims in batches instead of rebuilding the whole widget for
+  every line once retention is reached.
+- A failed setup save marks the project dirty instead of reporting the values as
+  saved, and the file-browser add path no longer mutates the config before the
+  duplicate-target check.
+- Deleting a stored analysis run asks for confirmation.
+- The Results view no longer presents an older stored run as the result of a run
+  that was not saved.
+- Moving through stored runs no longer reads and rebuilds on every highlight.
+- The AST refresh status fallback no longer touches widgets from a worker
+  thread.
+- Text reports use section labels instead of internal kind identifiers.
+- The corpus harness fails on a missing target instead of skipping, counts every
+  emitted finding, and every manifest family is schema checked.
+- The release smoke, the Markdown gate, and the contributor documentation now
+  describe what the workflows actually run.
 
 ## [2026.11.4] - 2026-11-12
 
@@ -426,6 +640,7 @@ parser AST migration.
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.11.5]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.5
 [2026.11.4]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.4
 [2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2
