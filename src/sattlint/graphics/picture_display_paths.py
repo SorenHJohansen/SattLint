@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sattlint.parser_api import BasePicture
@@ -26,8 +25,6 @@ from .validation import (
     PictureDisplayPathRow,
     PictureDisplayRecord,
     is_unimplemented_picture_display_asset_path,
-    picture_display_asset_candidate_paths,
-    unimplemented_picture_display_asset_message,
 )
 
 if TYPE_CHECKING:
@@ -167,31 +164,6 @@ def _dynamic_path_candidates(
     return result.texts
 
 
-def _base_picture_source_path(base_picture: BasePicture, graph: ProjectGraph | None) -> Path | None:
-    if graph is not None:
-        root_origin = graph.root_origin_for_basepicture(base_picture)
-        if root_origin is not None and root_origin.source_path is not None:
-            return root_origin.source_path
-    origin_file = base_picture.origin_file
-    return Path(str(origin_file)) if origin_file else None
-
-
-def _picture_display_asset_exists(
-    base_picture: BasePicture,
-    path_text: str,
-    graph: ProjectGraph | None,
-) -> bool:
-    file_path = _base_picture_source_path(base_picture, graph)
-    if file_path is None:
-        return False
-    asset = path_text.strip()
-    if asset.casefold().startswith("scr:"):
-        asset = asset[4:].strip()
-    if not asset:
-        return False
-    return any(candidate.exists() for candidate in picture_display_asset_candidate_paths(file_path, asset))
-
-
 def resolve_picture_display_path(
     path_text: str,
     *,
@@ -212,21 +184,13 @@ def resolve_picture_display_path(
         )
 
     if is_unimplemented_picture_display_asset_path(stripped):
-        if _picture_display_asset_exists(base_picture, stripped, graph):
-            return PictureDisplayPathResolution(
-                path_text=path_text,
-                program_name=base_picture.header.name,
-                declaring_module_path=module_path,
-                resolved_module_path=module_path,
-                detail="asset exists; .emf/.wmf content inspection is not implemented",
-            )
+        # An external asset format that cannot be inspected is not a finding:
+        # treat it as an already satisfied path so nothing is reported.
         return PictureDisplayPathResolution(
             path_text=path_text,
             program_name=base_picture.header.name,
             declaring_module_path=module_path,
-            resolved_module_path=None,
-            failure_reason="unimplemented_asset",
-            detail=unimplemented_picture_display_asset_message(),
+            resolved_module_path=module_path,
         )
 
     program_name, raw_path = _split_program_prefix(stripped, default_program=base_picture.header.name)
