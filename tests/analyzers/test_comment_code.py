@@ -1,9 +1,12 @@
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
+
+import pytest
 
 from sattlint.analyzers import comment_code as comment_code_module
 from sattlint.analyzers.comment_code import _comment_module_paths, analyze_comment_code_files
+from sattlint.analyzers.framework import AnalysisContext
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.parser_api import (
     BasePicture,
@@ -18,6 +21,8 @@ from sattlint.parser_api import (
 )
 from sattlint.utils import text_processing
 from sattlint.utils.text_processing import find_comments_with_code
+
+# pyright: reportPrivateUsage=false
 
 
 def test_find_comments_with_code_detects_assignments_and_calls():
@@ -163,9 +168,12 @@ def test_source_base_picture_prefers_unmerged_target_ast() -> None:
         moduletype_defs=[ModuleTypeDef(name="Dependency")],
         submodules=[],
     )
-    context = SimpleNamespace(
-        base_picture=merged,
-        graph=ProjectGraph(ast_by_name={"Program": target}),
+    context = cast(
+        AnalysisContext,
+        SimpleNamespace(
+            base_picture=merged,
+            graph=ProjectGraph(ast_by_name={"Program": target}),
+        ),
     )
 
     assert comment_code_module._source_base_picture(context) is target
@@ -208,12 +216,18 @@ def test_comment_code_analysis_skips_missing_and_unsupported_paths(tmp_path: Pat
     assert report.issues == []
 
 
-def test_comment_code_read_source_text_preprocesses_compressed(monkeypatch, tmp_path: Path) -> None:
+def test_comment_code_read_source_text_preprocesses_compressed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = tmp_path / "Compressed.s"
     path.write_text("compressed", encoding="utf-8")
 
-    monkeypatch.setattr(comment_code_module, "is_compressed", lambda text: text == "compressed")
-    monkeypatch.setattr(comment_code_module, "preprocess_sl_text", lambda text: ("expanded", {"meta": text}))
+    def _is_compressed(text: str) -> bool:
+        return text == "compressed"
+
+    def _preprocess(text: str) -> tuple[str, dict[str, str]]:
+        return "expanded", {"meta": text}
+
+    monkeypatch.setattr(comment_code_module, "is_compressed", _is_compressed)
+    monkeypatch.setattr(comment_code_module, "preprocess_sl_text", _preprocess)
 
     assert comment_code_module._read_source_text(path) == "expanded"
 
@@ -232,14 +246,17 @@ def test_comment_code_format_line_range_handles_single_line_and_range() -> None:
 
 
 def test_analyze_comment_code_marks_a_missing_graph_as_not_computed() -> None:
-    context = SimpleNamespace(
-        base_picture=SimpleNamespace(
-            header=SimpleNamespace(name="Program"),
-            moduletype_defs=[],
-            submodules=[],
-            modulecode=None,
+    context = cast(
+        AnalysisContext,
+        SimpleNamespace(
+            base_picture=SimpleNamespace(
+                header=SimpleNamespace(name="Program"),
+                moduletype_defs=[],
+                submodules=[],
+                modulecode=None,
+            ),
+            graph=None,
         ),
-        graph=None,
     )
 
     report = comment_code_module.analyze_comment_code(context)
@@ -582,7 +599,7 @@ ENDDEF (*BasePicture*);
     assert len(hits) == 0
 
 
-def test_find_comments_with_code_handles_nested_comments_inside_modulecode(monkeypatch):
+def test_find_comments_with_code_handles_nested_comments_inside_modulecode(monkeypatch: pytest.MonkeyPatch):
     text = """
 "SyntaxVersion"
 "OriginalFileDate"

@@ -1,12 +1,14 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportIndexIssue=false, reportAttributeAccessIssue=false
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import (
     Any,
     cast,
 )
 
+import pytest
+
 from sattlint.analyzers import registry as registry_module
-from sattlint.analyzers.framework import AnalyzerSpec
+from sattlint.analyzers.framework import AnalysisContext, AnalyzerSpec, Report
 
 
 def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
@@ -28,7 +30,7 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
         key="custom-analyzer",
         name="Custom analyzer",
         description="Synthetic analyzer for fallback coverage.",
-        run=lambda context: cast(Any, "custom-analyzer"),
+        run=lambda context: cast(Report, "custom-analyzer"),
     )
 
     delivery = registry_module.build_delivery_metadata(spec)
@@ -38,11 +40,11 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
 
 
-def test_default_runner_closures_cover_remaining_paths(monkeypatch):
+def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
 
-    def _record(name: str):
-        def _runner(*args, **kwargs):
+    def _record(name: str) -> Callable[..., str]:
+        def _runner(*_args: object, **_kwargs: object) -> str:
             calls.append(name)
             return name
 
@@ -60,14 +62,17 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch):
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
 
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
-    context: Any = SimpleNamespace(
-        base_picture="bp",
-        graph=None,
-        debug=True,
-        unavailable_libraries={"MissingLib"},
-        target_is_library=True,
-        config={"profile": "test"},
-        include_dependency_moduletype_usage=None,
+    context = cast(
+        AnalysisContext,
+        SimpleNamespace(
+            base_picture="bp",
+            graph=None,
+            debug=True,
+            unavailable_libraries={"MissingLib"},
+            target_is_library=True,
+            config={"profile": "test"},
+            include_dependency_moduletype_usage=None,
+        ),
     )
     expected_keys = {
         "variables",
@@ -94,11 +99,11 @@ def test_run_registry_analyzer_falls_back_to_spec_runner_without_registry_attr()
     report = SimpleNamespace(issues=[])
     seen: dict[str, object] = {}
 
-    def _run(context: object) -> object:
+    def _run(context: AnalysisContext) -> Report:
         seen["context"] = context
-        return report
+        return cast(Report, report)
 
-    context = SimpleNamespace(base_picture="bp", shared_artifacts=None)
+    context = cast(AnalysisContext, SimpleNamespace(base_picture="bp", shared_artifacts=None))
     spec = SimpleNamespace(key="custom-analyzer", run=_run)
 
     assert run_registry_analyzer(spec, context) is report
@@ -113,9 +118,9 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow():
     seen: dict[str, object] = {}
     shared_artifacts = object()
 
-    def _run(context: object) -> object:
+    def _run(context: AnalysisContext) -> Report:
         seen["context"] = context
-        return report
+        return cast(Report, report)
 
     spec = AnalyzerSpec(
         key="dataflow",
@@ -123,15 +128,18 @@ def test_run_registry_analyzer_passes_shared_artifacts_to_dataflow():
         description="",
         run=_run,
     )
-    context: Any = SimpleNamespace(
-        base_picture="bp",
-        graph=None,
-        debug=False,
-        target_is_library=True,
-        config={"profile": "test"},
-        shared_artifacts=shared_artifacts,
-        unavailable_libraries={"MissingLib"},
-        include_dependency_moduletype_usage=None,
+    context = cast(
+        AnalysisContext,
+        SimpleNamespace(
+            base_picture="bp",
+            graph=None,
+            debug=False,
+            target_is_library=True,
+            config={"profile": "test"},
+            shared_artifacts=shared_artifacts,
+            unavailable_libraries={"MissingLib"},
+            include_dependency_moduletype_usage=None,
+        ),
     )
 
     assert run_registry_analyzer(spec, context) is report
