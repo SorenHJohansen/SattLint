@@ -1184,6 +1184,35 @@ def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_i
     assert any("first summary" in line for line in result.output_lines)
 
 
+def test_collect_run_checks_result_keeps_completed_per_run_results_when_cancelled() -> None:
+    result = checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["first-run", "second-run"],
+        use_cache=False,
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="first-run",
+                name="First run",
+                scope="per-run",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "first run summary"),
+            ),
+            SimpleNamespace(
+                key="second-run",
+                name="Second run",
+                scope="per-run",
+                run=lambda _context: (_ for _ in ()).throw(KeyboardInterrupt()),
+            ),
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert result.cancelled is True
+    assert [target.target_name for target in result.targets] == ["First run"]
+    assert [(analyzer.key, analyzer.status) for analyzer in result.targets[0].analyzers] == [("first-run", "completed")]
+    assert any("first run summary" in line for line in result.output_lines)
+
+
 def test_per_target_analyzer_raise_is_reported_as_analyzer_failure() -> None:
     def _explode(_context: AnalysisContext):
         raise RuntimeError("boom")
