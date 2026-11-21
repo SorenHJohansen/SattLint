@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
+from .string_capacities import standard_string_capacities_dict
 from .types import ConfigDict, ConfigOverrideDict
 
 
@@ -33,6 +34,14 @@ TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     "other_lib_dirs": TopLevelConfigField(
         [],
         "Additional dependency library directories searched after the primary program and ABB roots.",
+        affects_project_cache=True,
+    ),
+    "string_capacities": TopLevelConfigField(
+        standard_string_capacities_dict(),
+        (
+            "Required capacity of each SattLine string datatype. Every project file states the table "
+            "explicitly; it feeds string inference, validation, and the analysis cache key."
+        ),
         affects_project_cache=True,
     ),
     "run_history": TopLevelConfigField(

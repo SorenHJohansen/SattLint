@@ -13,6 +13,10 @@ from ..types import TargetName
 from .defaults import (
     VALID_TOP_LEVEL_CONFIG_KEYS,
 )
+from .string_capacities import (
+    STRING_CAPACITY_KEYS,
+    string_capacity_problems,
+)
 from .types import (
     ConfigDict,
     ConfigObjectMap,
@@ -33,6 +37,7 @@ VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
+VALID_STRING_CAPACITY_KEYS = frozenset(STRING_CAPACITY_KEYS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +112,10 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
     if run_history is not None:
         _strip_section_keys(run_history, VALID_RUN_HISTORY_KEYS)
 
+    string_capacities = _config_dict(cfg_map.get("string_capacities"))
+    if string_capacities is not None:
+        _strip_section_keys(string_capacities, VALID_STRING_CAPACITY_KEYS)
+
     output = _config_dict(cfg_map.get("output"))
     if output is not None:
         _strip_section_keys(output, VALID_OUTPUT_KEYS)
@@ -136,6 +145,7 @@ def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidatio
     report_unknown(cfg_map, valid_keys=VALID_TOP_LEVEL_CONFIG_KEYS)
     for section_name, valid_keys in (
         ("analysis", VALID_ANALYSIS_KEYS),
+        ("string_capacities", VALID_STRING_CAPACITY_KEYS),
         ("run_history", VALID_RUN_HISTORY_KEYS),
         ("output", VALID_OUTPUT_KEYS),
         ("review", VALID_REVIEW_KEYS),
@@ -248,6 +258,17 @@ def _top_level_type_errors(cfg: ConfigDict | ConfigOverrideDict) -> list[ConfigV
     return errors
 
 
+def _string_capacity_validation_errors(cfg: ConfigDict | ConfigOverrideDict) -> list[ConfigValidationError]:
+    table = cfg.get("string_capacities")
+    if table is None:
+        return []
+    errors: list[ConfigValidationError] = []
+    for problem in string_capacity_problems(table, location="the configuration"):
+        key_path = "string_capacities" if not problem.key else f"string_capacities.{problem.key}"
+        errors.append(ConfigValidationError(key_path=key_path, message=problem.message))
+    return errors
+
+
 def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
@@ -308,6 +329,8 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                     message="run_history.limit must be a positive integer",
                 )
             )
+
+    errors.extend(_string_capacity_validation_errors(cfg))
 
     output_value = cfg.get("output")
     output = _config_dict(output_value)
