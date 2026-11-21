@@ -190,6 +190,55 @@ def test_validate_config_accepts_valid_analysis_knobs():
     assert result.errors == ()
 
 
+def test_validate_config_accepts_a_complete_string_capacities_table():
+    result = config_module.validate_config(
+        {
+            "string_capacities": {
+                "identstring": 15,
+                "tagstring": 30,
+                "string": 40,
+                "linestring": 80,
+                "maxstring": 140,
+            }
+        }
+    )
+
+    assert result.passed is True
+    assert result.errors == ()
+
+
+def test_validate_config_reports_every_string_capacity_problem():
+    result = config_module.validate_config(
+        cast(
+            ConfigDict,
+            {
+                "string_capacities": {
+                    "identstring": "15",
+                    "tagstring": 30,
+                    "linestring": 0,
+                    "bytes": 3,
+                }
+            },
+        )
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "string_capacities.bytes",
+        "string_capacities.identstring",
+        "string_capacities.linestring",
+        "string_capacities.string",
+        "string_capacities.maxstring",
+    }
+
+
+def test_validate_config_reports_a_non_table_string_capacities_value():
+    result = config_module.validate_config(cast(ConfigDict, {"string_capacities": "standard"}))
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {"string_capacities"}
+
+
 def test_validate_config_passes_valid_config_and_serializes_result():
     valid = config_module.validate_config(
         {

@@ -9,6 +9,11 @@ from typing import Any, Literal, Protocol, cast
 
 from sattlint.parser_api import BasePicture
 
+from ...config.string_capacities import (
+    STANDARD_STRING_CAPACITIES,
+    StringCapacities,
+    resolve_string_capacities,
+)
 from ...config.types import ConfigDict
 from ...core.timings import PhaseTiming
 from ...models.project_graph import ProjectGraph
@@ -179,6 +184,7 @@ class AnalysisContext:
     shared_artifacts: AnalysisSharedArtifacts | None = None
     include_dependency_moduletype_usage: bool | None = None
     program_ast_loader: ProgramAstLoader | None = None
+    string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
 
     @property
     def unavailable_libraries(self) -> set[str]:
@@ -223,6 +229,7 @@ def build_analysis_context(
         shared_artifacts=resolved_shared_artifacts,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
         program_ast_loader=program_ast_loader,
+        string_capacities=resolve_string_capacities(config),
     )
 
 

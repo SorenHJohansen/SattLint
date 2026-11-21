@@ -423,7 +423,8 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 # One schema tag for every cache key. The parser version is read from the installed
 # parser rather than embedded by hand, so a parser upgrade invalidates the key on its
 # own; bump this tag only when the key's inputs or their encoding change.
-CACHE_KEY_SCHEMA_VERSION = 1
+# Version 2 adds the project's [string_capacities] table to the key.
+CACHE_KEY_SCHEMA_VERSION = 2
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-20-explicit-selection",
     "cyclomatic-complexity": "2026-11-21-worst-scope",

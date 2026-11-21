@@ -6,6 +6,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from .string_capacities import StringCapacitiesDict
+
 type ConfigMode = Literal["official", "draft"]
 type ConfigPathValue = str | PathLike[str] | Path
 type ConfigObjectMap = dict[str, object]
@@ -61,6 +63,7 @@ class ConfigDict(TypedDict):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
+    string_capacities: StringCapacitiesDict
     run_history: RunHistoryConfig
     output: OutputConfig
     review: ReviewConfig
@@ -75,6 +78,7 @@ class ConfigOverrideDict(TypedDict, total=False):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
+    string_capacities: StringCapacitiesDict
     run_history: RunHistoryConfigOverride
     output: OutputConfigOverride
     review: ReviewConfigOverride
@@ -95,4 +99,5 @@ __all__ = [
     "ReviewConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
+    "StringCapacitiesDict",
 ]
