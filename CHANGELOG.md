@@ -22,6 +22,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Project files are version 2 and must declare a top-level
+  `[string_capacities]` table with `identstring`, `tagstring`, `string`,
+  `linestring`, and `maxstring` as positive integers. A missing table, a
+  missing or unknown key, and a non-positive value are load errors that name
+  the problem, and a version 1 project is rejected with a message naming the
+  table and the standard values (15, 30, 40, 80, 140). The values feed string
+  inference and validation, PictureDisplay path resolution, and the project
+  cache key, so changing a capacity invalidates cached results.
 - Analyzer selection is always explicit. A run names its analyzers with
   `--analyzer` or the project's `analyzers` list; a run that names none fails
   with an error that lists every selectable analyzer, in both the CLI and the
