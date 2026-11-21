@@ -6,6 +6,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ScalarDatatype,
     Sequence,
+    SFCAlternative,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
@@ -225,14 +226,22 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            SFCTransition(
-                name="OpenPrimary",
-                condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
-            ),
-            SFCTransition(
-                name="OpenBackup",
-                condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
-            ),
+            SFCAlternative(
+                branches=[
+                    [
+                        SFCTransition(
+                            name="OpenPrimary",
+                            condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
+                        )
+                    ],
+                    [
+                        SFCTransition(
+                            name="OpenBackup",
+                            condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
+                        )
+                    ],
+                ]
+            )
         ],
     )
     bp = BasePicture(
@@ -250,3 +259,28 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["transition_names"] == ["OpenPrimary", "OpenBackup"]
+    assert issues[0].data["branch_indices"] == [1, 2]
+
+
+def test_sfc_transition_logic_ignores_equivalent_guards_in_linear_steps():
+    sequence = Sequence(
+        name="SeqMain",
+        type="sequence",
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=[
+            SFCTransition(name="Tr2", condition=_varref("Permit")),
+            SFCStep(kind="step", name="OpenValve", code=SFCCodeBlocks()),
+            SFCTransition(name="Tr5", condition=_varref("Permit")),
+            SFCStep(kind="step", name="CloseValve", code=SFCCodeBlocks()),
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
+    )
+
+    report = analyze_sfc(bp)
+
+    assert not [issue for issue in report.issues if issue.kind == "sfc_duplicate_transition_guard"]
