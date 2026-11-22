@@ -1,0 +1,15 @@
+slproj_version = 2
+analyzed_programs_and_libraries = ["Demo"]
+analyzers = ["variables"]
+mode = "official"
+program_dir = "programs"
+ABB_lib_dir = "libs"
+icf_dir = "icf"
+other_lib_dirs = []
+
+[string_capacities]
+identstring = 15
+tagstring = 30
+string = 40
+linestring = 80
+maxstring = 140
