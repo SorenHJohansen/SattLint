@@ -19,6 +19,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - Change Review reports module parameter connection changes, such as a
   submodule parameter remapped to another source, with the connection text on
   both sides.
+- The Results view marks modules that own findings, separates module-parameter
+  findings from local-variable findings, and lets a finding be acknowledged for
+  the selected run with a checkmark and dimmed text. Clicking a module now shows
+  its findings without collapsing the tree.
 
 ### Changed
 

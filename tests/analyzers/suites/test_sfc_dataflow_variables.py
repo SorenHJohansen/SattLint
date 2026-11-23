@@ -22,6 +22,7 @@ from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.variables import (
     VariablesAnalyzer,
 )
+from sattlint.models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from sattlint.reporting.variables_report import (
     NeverReadIssue,
     ProcedureStatusIssue,
@@ -152,6 +153,7 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
     status_issues = [issue for issue in issues if isinstance(issue, ProcedureStatusIssue)]
     assert len(status_issues) == 1
     assert status_issues[0].variable.name == "Status"
+    assert status_issues[0].declaration_role == DECLARATION_ROLE_LOCAL_VARIABLE
     assert "ignored" in (status_issues[0].role or "")
     assert not any(
         isinstance(issue, NeverReadIssue | WriteWithoutEffectIssue) and issue.variable.name == "Status"

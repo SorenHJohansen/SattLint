@@ -9,8 +9,10 @@ from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.models._variable_issues import IssueKind, variable_issue_metadata
 from sattlint.reporting.variables_report import (
     MagicNumberIssue,
+    ProcedureStatusIssue,
     UnknownParameterTargetIssue,
     UnusedDatatypeFieldIssue,
+    UnusedIssue,
     VariablesReport,
 )
 
@@ -138,6 +140,34 @@ def test_string_mapping_finding_shows_both_capacities() -> None:
     assert isinstance(context, str)
     assert "Name (identstring, 15 characters)" in context
     assert "SourceName (string, 40 characters)" in context
+
+
+def test_extract_report_findings_records_the_variable_declaration_role() -> None:
+    variable = Variable(name="Value", datatype=ScalarDatatype.INTEGER)
+    report = SimpleNamespace(
+        issues=[
+            UnusedIssue(
+                module_path=["Root"],
+                variable=variable,
+                role="moduleparameter",
+                declaration_role="moduleparameter",
+            ),
+            ProcedureStatusIssue(
+                module_path=["Root"],
+                variable=variable,
+                role="procedure status output is ignored",
+                field_path=None,
+                declaration_role="localvariable",
+            ),
+            MagicNumberIssue(module_path=["Root"], literal_value=1, role="literal"),
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].data["declaration_role"] == "moduleparameter"
+    assert findings[1].data["declaration_role"] == "localvariable"
+    assert "declaration_role" not in findings[2].data
 
 
 def test_analysis_finding_round_trips_through_dict() -> None:

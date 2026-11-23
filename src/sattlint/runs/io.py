@@ -19,6 +19,7 @@ DEFAULT_RUN_HISTORY_LIMIT = 50
 
 _RUN_JSON_SUFFIX = ".json"
 _SUMMARY_SUFFIX = ".summary"
+_ACKNOWLEDGED_SUFFIX = ".acknowledged"
 # A run id names a file inside the runs directory, so it is a single path
 # segment: no separators, no leading dot, no traversal.
 _RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -49,6 +50,10 @@ def _run_path(runs_dir: Path, run_id: str) -> Path:
 
 def _summary_path(runs_dir: Path, run_id: str) -> Path:
     return runs_dir / f"{run_id}{_SUMMARY_SUFFIX}"
+
+
+def _acknowledged_path(runs_dir: Path, run_id: str) -> Path:
+    return runs_dir / f"{run_id}{_ACKNOWLEDGED_SUFFIX}"
 
 
 def _generate_run_id() -> str:
@@ -91,7 +96,7 @@ def prune_runs(runs_dir: Path | None, *, limit: int) -> int:
     """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     removed = _prune_runs_beyond_limit(resolved_runs_dir, limit=limit)
-    _remove_orphan_summaries(resolved_runs_dir)
+    _remove_orphan_sidecars(resolved_runs_dir)
     return removed
 
 
@@ -108,18 +113,20 @@ def _prune_runs_beyond_limit(runs_dir: Path, *, limit: int) -> int:
         except OSError:
             continue
         _remove_summary(runs_dir, summary.run_id)
+        _remove_acknowledgements(runs_dir, summary.run_id)
         removed += 1
     return removed
 
 
-def _remove_orphan_summaries(runs_dir: Path) -> None:
+def _remove_orphan_sidecars(runs_dir: Path) -> None:
     if not runs_dir.exists():
         return
-    for summary_path in runs_dir.glob(f"*{_SUMMARY_SUFFIX}"):
-        run_id = summary_path.name[: -len(_SUMMARY_SUFFIX)]
-        if _run_path(runs_dir, run_id).exists():
-            continue
-        _remove_file(summary_path)
+    for suffix in (_SUMMARY_SUFFIX, _ACKNOWLEDGED_SUFFIX):
+        for sidecar_path in runs_dir.glob(f"*{suffix}"):
+            run_id = sidecar_path.name[: -len(suffix)]
+            if _run_path(runs_dir, run_id).exists():
+                continue
+            _remove_file(sidecar_path)
 
 
 def _remove_file(path: Path) -> bool:
@@ -175,7 +182,63 @@ def delete_run(run_id: str, *, runs_dir: Path | None = None) -> bool:
     except OSError:
         return False
     _remove_summary(resolved_runs_dir, run_id)
+    _remove_acknowledgements(resolved_runs_dir, run_id)
     return True
+
+
+def load_run_acknowledgements(run_id: str, *, runs_dir: Path | None = None) -> frozenset[str]:
+    """The finding keys acknowledged for a stored run.
+
+    A missing or unreadable sidecar means the run has no acknowledgements; it
+    never blocks opening the run.
+    """
+    if not _is_valid_run_id(run_id):
+        return frozenset()
+    resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
+    return _load_acknowledged_file(_acknowledged_path(resolved_runs_dir, run_id))
+
+
+def save_run_acknowledgements(
+    run_id: str,
+    keys: frozenset[str] | set[str],
+    *,
+    runs_dir: Path | None = None,
+) -> bool:
+    """Persist the acknowledged finding keys for a stored run.
+
+    Returns ``False`` when the run id is invalid or the cache cannot be
+    written; acknowledgement then stays a session-only convenience.
+    """
+    if not _is_valid_run_id(run_id):
+        return False
+    resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
+    path = _acknowledged_path(resolved_runs_dir, run_id)
+    if not keys:
+        _remove_file(path)
+        return True
+    try:
+        resolved_runs_dir.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(path, sorted(keys))
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _load_acknowledged_file(path: Path) -> frozenset[str]:
+    if not path.exists():
+        return frozenset()
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+    if not isinstance(payload, list):
+        return frozenset()
+    return frozenset(item for item in cast(list[object], payload) if isinstance(item, str))
+
+
+def _remove_acknowledgements(runs_dir: Path, run_id: str) -> None:
+    _remove_file(_acknowledged_path(runs_dir, run_id))
 
 
 def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
@@ -256,7 +319,9 @@ __all__ = [
     "get_runs_dir_or_none",
     "list_runs",
     "load_run",
+    "load_run_acknowledgements",
     "prune_runs",
     "runs_dir_location",
     "save_run",
+    "save_run_acknowledgements",
 ]

@@ -228,9 +228,21 @@ def _field_names(record_type: type[VariableIssueBase]) -> set[str]:
 
 
 def test_a_record_exposes_only_payload_fields_owned_by_its_kind() -> None:
-    assert _field_names(UnusedIssue) == {"module_path", "role", "variable"}
-    assert _field_names(FieldReadOnlyIssue) == {"module_path", "role", "variable", "field_path"}
-    assert _field_names(UnusedDatatypeFieldIssue) == {"module_path", "role", "datatype_name", "field_path"}
+    assert _field_names(UnusedIssue) == {"module_path", "role", "declaration_role", "variable"}
+    assert _field_names(FieldReadOnlyIssue) == {
+        "module_path",
+        "role",
+        "declaration_role",
+        "variable",
+        "field_path",
+    }
+    assert _field_names(UnusedDatatypeFieldIssue) == {
+        "module_path",
+        "role",
+        "declaration_role",
+        "datatype_name",
+        "field_path",
+    }
     assert "literal_value" in _field_names(MagicNumberIssue)
     assert "literal_value" not in _field_names(UnusedIssue)
     assert "reset_variable" not in _field_names(ImplicitLatchIssue)

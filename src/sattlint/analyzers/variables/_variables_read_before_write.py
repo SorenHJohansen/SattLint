@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from ...reporting.variables_report import ReadBeforeWriteIssue
 from ...resolution import AccessKind
 from ..shared._dependency_usage_facts import BlockKind, FactRef, StatementFact, collect_statement_facts
@@ -125,6 +126,7 @@ def _report_issue(
     issue = ReadBeforeWriteIssue(
         module_path=list(module_path),
         role=f"{display_name} is read before any write in {', '.join(sorted_sites)}",
+        declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
         site=sorted_sites[0],
         context=display_name,
     )

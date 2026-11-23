@@ -19,6 +19,10 @@ from sattlint.parser_api import (
 )
 
 from ...core.timings import PhaseTiming
+from ...models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
+)
 from ...reporting.variables_report import (
     IssueKind,
     NeverReadIssue,
@@ -405,13 +409,15 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
 
     for variable in self.bp.localvariables or []:
-        role = "localvariable"
+        role = DECLARATION_ROLE_LOCAL_VARIABLE
         usage = self._get_usage(variable)
         # A contract outside the analyzed origin proves the variable is consumed even
         # though the read is invisible, so absence of use is not evidence of dead code.
         consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
         if collect_unused and usage.is_unused and not consumed_out_of_origin:
-            self._append_issue(UnusedIssue(module_path=bp_path.copy(), variable=variable, role=role))
+            self._append_issue(
+                UnusedIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
             continue
         procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
         if collect_procedure_status and procedure_status is not None:
@@ -422,6 +428,7 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
                     variable=variable,
                     role=status_role,
                     field_path=field_path,
+                    declaration_role=role,
                 )
             )
             continue
@@ -431,7 +438,9 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             and not bool(variable.const)
             and self._is_const_candidate(variable)
         ):
-            self._append_issue(ReadOnlyNonConstIssue(module_path=bp_path.copy(), variable=variable, role=role))
+            self._append_issue(
+                ReadOnlyNonConstIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
         elif (
             collect_never_read
             and usage.written
@@ -439,14 +448,18 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             and not consumed_out_of_origin
             and not self._has_ignorable_output_binding(variable)
         ):
-            self._append_issue(NeverReadIssue(module_path=bp_path.copy(), variable=variable, role=role))
+            self._append_issue(
+                NeverReadIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
         elif collect_write_without_effect and (
             usage.read
             and usage.written
             and not self._has_output_effect(variable, bp_path)
             and not self._has_procedure_status_binding(variable)
         ):
-            self._append_issue(WriteWithoutEffectIssue(module_path=bp_path.copy(), variable=variable, role=role))
+            self._append_issue(
+                WriteWithoutEffectIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
 
     if (
         collect_unused
@@ -505,10 +518,12 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             continue
 
         for variable in moduletype.moduleparameters or []:
-            role = "moduleparameter"
+            role = DECLARATION_ROLE_MODULE_PARAMETER
             usage = self._get_usage(variable)
             if collect_unused and usage.is_unused and not _has_out_of_origin_consumer(self, variable):
-                self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
+                self._append_issue(
+                    UnusedIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
@@ -519,6 +534,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                         variable=variable,
                         role=status_role,
                         field_path=field_path,
+                        declaration_role=role,
                     )
                 )
                 continue
@@ -526,11 +542,13 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             self._collect_issues_from_module(module, path=td_path, current_library=current_library)
 
         for variable in moduletype.localvariables or []:
-            role = "localvariable"
+            role = DECLARATION_ROLE_LOCAL_VARIABLE
             usage = self._get_usage(variable)
             consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
             if collect_unused and usage.is_unused and not consumed_out_of_origin:
-                self._append_issue(UnusedIssue(module_path=td_path.copy(), variable=variable, role=role))
+                self._append_issue(
+                    UnusedIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
@@ -541,6 +559,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                         variable=variable,
                         role=status_role,
                         field_path=field_path,
+                        declaration_role=role,
                     )
                 )
                 continue
@@ -550,7 +569,11 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 and not bool(variable.const)
                 and self._is_const_candidate(variable)
             ):
-                self._append_issue(ReadOnlyNonConstIssue(module_path=td_path.copy(), variable=variable, role=role))
+                self._append_issue(
+                    ReadOnlyNonConstIssue(
+                        module_path=td_path.copy(), variable=variable, role=role, declaration_role=role
+                    )
+                )
             elif (
                 collect_never_read
                 and usage.written
@@ -558,14 +581,20 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 and not consumed_out_of_origin
                 and not self._has_ignorable_output_binding(variable)
             ):
-                self._append_issue(NeverReadIssue(module_path=td_path.copy(), variable=variable, role=role))
+                self._append_issue(
+                    NeverReadIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
             elif collect_write_without_effect and (
                 usage.read
                 and usage.written
                 and not self._has_output_effect(variable, td_path)
                 and not self._has_procedure_status_binding(variable)
             ):
-                self._append_issue(WriteWithoutEffectIssue(module_path=td_path.copy(), variable=variable, role=role))
+                self._append_issue(
+                    WriteWithoutEffectIssue(
+                        module_path=td_path.copy(), variable=variable, role=role, declaration_role=role
+                    )
+                )
 
 
 def run(  # noqa: PLR0915

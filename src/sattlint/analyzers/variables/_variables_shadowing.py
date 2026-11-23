@@ -16,6 +16,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from ...reporting.variables_report import ShadowingIssue
 from ...resolution.common import resolve_moduletype_def_strict
 from ...utils.casefolding import casefold_key
@@ -159,6 +160,7 @@ def _check_shadowing(
             module_path=module_path.copy(),
             variable=var,
             role=f"shadows {parent.variable.name!r} from {parent_path}",
+            declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
             source_variable=parent.variable,
         )
         if callable(append_issue):

@@ -19,6 +19,7 @@ from sattlint.parser_api import (
 )
 
 from ...config.analysis import fan_in_out_threshold
+from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from ...models.usage import VariableUsage
 from ...reporting.variables_report import (
     FieldNeverReadIssue,
@@ -406,6 +407,7 @@ def _emit_field_issues(
                     module_path=list(instance.path),
                     variable=instance.variable,
                     role=instance.role,
+                    declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
                     field_path=leaf_path,
                 )
             )
@@ -415,6 +417,7 @@ def _emit_field_issues(
                     module_path=list(instance.path),
                     variable=instance.variable,
                     role=instance.role,
+                    declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
                     field_path=leaf_path,
                 )
             )

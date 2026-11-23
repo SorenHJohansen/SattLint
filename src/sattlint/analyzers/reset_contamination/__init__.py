@@ -24,6 +24,7 @@ from sattlint.parser_api import (
     walk,
 )
 
+from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from ...reporting.variables_report import ResetContaminationIssue, VariableIssue
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.paths import path_startswith_casefold
@@ -289,7 +290,8 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                     ResetContaminationIssue(
                         module_path=path.copy(),
                         variable=var,
-                        role="localvariable",
+                        role=DECLARATION_ROLE_LOCAL_VARIABLE,
+                        declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
                         field_path=field_path or None,
                         sequence_name=seq_name,
                         reset_variable=VariableId(reset_ref),

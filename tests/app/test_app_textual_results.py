@@ -7,7 +7,13 @@ from typing import Any
 import pytest
 
 from sattlint.application.findings import AnalysisFinding
-from sattlint.runs import RunAnalyzerRecord, RunModuleRecord, RunRecord, RunTargetRecord
+from sattlint.runs import (
+    RunAnalyzerRecord,
+    RunModuleRecord,
+    RunRecord,
+    RunTargetRecord,
+    finding_acknowledgement_key,
+)
 from sattlint.ui import _app_textual_results as results_module
 from sattlint.ui import _app_textual_settings as settings_module
 from sattlint.ui import _app_textual_setup_targets as app_textual_setup_targets_module
@@ -173,7 +179,7 @@ def test_datatype_field_findings_show_each_field_and_omit_completed_status() -> 
     assert report.startswith("Variable issues\nUnused datatype field (3)")
     assert "  DeliveryFail\n" in report
     assert "  NotEmpty\n" in report
-    assert report.endswith("  PrepareMix")
+    assert "  PrepareMix\n  Acknowledge" in report
     assert "datatype 'MixStepTextType'" not in report
 
 
@@ -234,7 +240,7 @@ def test_module_navigation_shows_only_invoked_type_and_keeps_its_findings() -> N
     inline = start_master
     report = results_module._module_findings_report(inline.data, show_empty_analyzers=False)
     assert "  a\n" in report
-    assert report.plain.endswith("  b")
+    assert "  b\n" in report
 
     legacy = replace(record, targets=(replace(target, module=None),))
     results_module._populate_module_navigation(tree, legacy)
@@ -452,6 +458,7 @@ def test_results_tree_announces_shown_results_only_when_the_run_changes(
         populated.append(record.run_id)
 
     monkeypatch.setattr(results_module, "_populate_module_navigation", record_populated)
+    monkeypatch.setattr(results_module, "load_run_acknowledgements", lambda _run_id: frozenset())
     announcement = "Select a module to inspect its findings."
 
     results_module._render_results_tree(app_instance, _run_record("r1"))
@@ -639,3 +646,133 @@ def test_results_tree_label_width_is_cached_per_label() -> None:
 
     assert first == second
     assert first >= len("A module label")
+
+
+def test_results_tree_does_not_toggle_expansion_when_selecting_a_node() -> None:
+    tree = results_module._new_results_tree()
+    parent = tree.root.add("parent")
+    parent.add("child")
+    parent.expand()
+
+    assert tree.auto_expand is False
+    tree._expand_node_on_select(SimpleNamespace(node=parent))  # pyright: ignore[reportPrivateUsage]
+    assert parent.is_expanded is True
+
+
+def test_results_tree_accents_nodes_that_own_findings() -> None:
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(tree, _record())
+
+    root = tree.root.children[0]
+    intermediate = root.children[0]
+
+    assert root.label.style == ""
+    assert intermediate.label.style == "bold #674600"
+
+
+def test_finding_groups_split_local_variables_and_module_parameters() -> None:
+    findings = tuple(
+        AnalysisFinding(
+            kind="unused",
+            message="declaration",
+            module_path=("Root",),
+            data={"context": context, "declaration_role": role} if role is not None else {"context": context},
+        )
+        for context, role in (
+            ("Param", "moduleparameter"),
+            ("Local", "localvariable"),
+            ("Unknown", None),
+        )
+    )
+    target = RunTargetRecord(
+        target_name="Root",
+        analyzers=(RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=findings),),
+    )
+    selection = results_module._ModuleSelection(target, ("Root",), {})
+
+    report = results_module._module_findings_report(selection, show_empty_analyzers=False).plain
+
+    assert "Unused module parameter (1)\n  Param" in report
+    assert "Unused local variable (1)\n  Local" in report
+    assert "Unused variable (1)\n  Unknown" in report
+
+
+def test_finding_role_falls_back_to_legacy_issue_message() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="[Root] localvariable  'Legacy' (integer)",
+        module_path=("Root",),
+        data={"context": "Legacy"},
+    )
+
+    assert results_module._finding_declaration_role(finding) == "localvariable"
+
+
+def test_acknowledged_finding_is_marked_without_changing_counts() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="declaration",
+        module_path=("Root",),
+        data={"context": "Param", "declaration_role": "moduleparameter"},
+    )
+    target = RunTargetRecord(
+        target_name="Root",
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    selection = results_module._ModuleSelection(target, ("Root",), {})
+    key = finding_acknowledgement_key(
+        target_name="Root",
+        analyzer_key="variables",
+        finding=finding,
+        declaration_role="moduleparameter",
+    )
+
+    report, keys = results_module._build_module_findings_report(
+        selection,
+        show_empty_analyzers=False,
+        acknowledged=frozenset({key}),
+    )
+
+    assert keys == (key,)
+    assert "Unused module parameter (1)" in report.plain
+    assert "\u2713 Param" in report.plain
+    assert any(span.style == "dim bold" for span in report.spans)
+
+
+def test_toggle_results_acknowledgement_updates_state_and_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+    saved: list[tuple[str, frozenset[str]]] = []
+    selections: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        results_module,
+        "save_run_acknowledgements",
+        lambda run_id, keys: saved.append((run_id, keys)) or True,
+    )
+    app_instance = SimpleNamespace(
+        _results_tree_run_id="r1",
+        _results_acknowledged=frozenset(),
+        _selected_results_module=SimpleNamespace(),
+        _results_findings_widget=SimpleNamespace(
+            set_acknowledged=lambda acknowledged, *, run_id: selections.append(
+                {"acknowledged": acknowledged, "run_id": run_id}
+            )
+        ),
+    )
+    app_instance._write_output = lambda text: messages.append(str(text))
+
+    results_module._toggle_results_acknowledgement(app_instance, "r1", "key")
+
+    assert app_instance._results_acknowledged == frozenset({"key"})
+    assert saved == [("r1", frozenset({"key"}))]
+    assert selections[-1]["acknowledged"] == frozenset({"key"})
+    assert messages == ["Acknowledged finding."]
+
+    results_module._toggle_results_acknowledgement(app_instance, "r1", "key")
+
+    assert app_instance._results_acknowledged == frozenset()
+    assert saved[-1] == ("r1", frozenset())
+    assert messages[-1] == "Acknowledgement cleared."

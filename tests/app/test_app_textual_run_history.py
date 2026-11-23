@@ -187,12 +187,14 @@ def test_textual_results_module_selection_updates_findings_pane(
             assert "Pattern checks\nMagic number (1)" in findings_report.renderable
             assert findings_report.renderable.spans
             assert "declared but never read" not in findings_report.renderable.plain
-            detail_line = findings_report.renderable.plain.splitlines().index("  Details")
-            assert await pilot.click(findings_report, offset=(4, detail_line))
+            control_lines = findings_report.renderable.plain.splitlines()
+            detail_line = next(index for index, line in enumerate(control_lines) if "Details" in line)
+            detail_column = control_lines[detail_line].index("Details")
+            assert await pilot.click(findings_report, offset=(detail_column + 1, detail_line))
             await pilot.pause()
             assert "declared but never read" in findings_report.renderable.plain
             assert "Previous write: Run \u203a Start \u203a Enter" in findings_report.renderable.plain
-            await pilot.click(findings_report, offset=(4, detail_line))
+            await pilot.click(findings_report, offset=(detail_column + 1, detail_line))
             await pilot.pause()
             assert "declared but never read" not in findings_report.renderable.plain
 

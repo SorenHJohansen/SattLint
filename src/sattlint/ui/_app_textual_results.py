@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -9,6 +10,11 @@ from rich.style import Style
 from rich.text import Text
 
 from ..application.findings import AnalysisFinding, kind_human_label
+from ..models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
+    IssueKind,
+)
 from ..runs import (
     RunAnalyzerRecord,
     RunModuleRecord,
@@ -16,8 +22,11 @@ from ..runs import (
     RunSummary,
     RunTargetRecord,
     delete_run,
+    finding_acknowledgement_key,
     list_runs,
     load_run,
+    load_run_acknowledgements,
+    save_run_acknowledgements,
 )
 from ._app_textual_shared import (
     _TEXTUAL_LIST_ITEM,
@@ -63,8 +72,23 @@ else:  # pragma: no cover - optional dependency path
     _ResultsTree: Any = None
 
 
+_DECLARATION_ROLE_LABELS: dict[str, str] = {
+    DECLARATION_ROLE_MODULE_PARAMETER: "module parameter",
+    DECLARATION_ROLE_LOCAL_VARIABLE: "local variable",
+}
+_DECLARATION_ROLE_ORDER: tuple[str, ...] = (
+    DECLARATION_ROLE_MODULE_PARAMETER,
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+)
+_LEGACY_DECLARATION_ROLE_RE = re.compile(r"^\[[^\]]+\]\s+(localvariable|moduleparameter)\s+'")
+
+
 def _new_results_tree() -> Any:
-    return _ResultsTree("", id="results-tree")
+    tree = _ResultsTree("", id="results-tree")
+    # Selecting a node reveals its findings; only the expand affordance (or
+    # space) changes the tree shape. Textual's default also toggles on select.
+    tree.auto_expand = False
+    return tree
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +150,38 @@ def _site_label(finding: AnalysisFinding) -> str | None:
     return None
 
 
+def _finding_declaration_role(finding: AnalysisFinding) -> str | None:
+    """The declaration kind a finding belongs to, when the run recorded it.
+
+    Runs stored before the field existed carry the role only in the message
+    produced by the variable issue text helper, so fall back to that shape.
+    """
+    role = finding.data.get("declaration_role")
+    if isinstance(role, str) and role in _DECLARATION_ROLE_LABELS:
+        return role
+    match = _LEGACY_DECLARATION_ROLE_RE.match(finding.message)
+    return match.group(1) if match is not None else None
+
+
+def _declaration_role_sort_key(role: str | None) -> int:
+    if role in _DECLARATION_ROLE_ORDER:
+        return _DECLARATION_ROLE_ORDER.index(role)
+    return len(_DECLARATION_ROLE_ORDER)
+
+
+def _finding_group_label(kind: str, role: str | None) -> str:
+    if role is None:
+        return kind_human_label(kind)
+    role_label = _DECLARATION_ROLE_LABELS[role]
+    if kind == IssueKind.UNUSED.value:
+        return f"Unused {role_label}"
+    return f"{kind_human_label(kind)} — {role_label}"
+
+
+def _module_node_label(label: str, *, has_findings: bool) -> str | Text:
+    return Text(label, style="bold #674600") if has_findings else label
+
+
 def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
     label = _context_label(finding)
     if label.casefold() == kind_human_label(finding.kind).casefold():
@@ -172,30 +228,41 @@ def _finding_details(finding: AnalysisFinding) -> list[str]:
 
 def _finding_groups(
     analyzer: RunAnalyzerRecord,
-) -> list[tuple[str, list[tuple[AnalysisFinding, int]]]]:
-    """Group findings by issue kind, message, and site.
+) -> list[tuple[str, str | None, list[tuple[AnalysisFinding, int]]]]:
+    """Group findings by issue kind, declaration role, message, and site.
 
     Identical findings repeated at the same site across instance paths are
-    represented once with an occurrence count.
+    represented once with an occurrence count. Kinds keep their first-seen
+    order; within a kind, module parameters come before local variables, and
+    findings with no declaration kind come last.
     """
-    counts: dict[tuple[str, str, str | None], int] = {}
-    representatives: dict[tuple[str, str, str | None], AnalysisFinding] = {}
-    order: list[tuple[str, str, str | None]] = []
+    counts: dict[tuple[str, str | None, str, str | None], int] = {}
+    representatives: dict[tuple[str, str | None, str, str | None], AnalysisFinding] = {}
+    order: list[tuple[str, str | None, str, str | None]] = []
     for finding in analyzer.findings:
-        key = (finding.kind, finding.message, _site_label(finding))
+        key = (finding.kind, _finding_declaration_role(finding), finding.message, _site_label(finding))
         if key not in representatives:
             representatives[key] = finding
             counts[key] = 0
             order.append(key)
         counts[key] += 1
-    groups: list[tuple[str, list[tuple[AnalysisFinding, int]]]] = []
-    kind_index: dict[str, int] = {}
-    for key in order:
-        kind, _message, _site = key
-        if kind not in kind_index:
-            kind_index[kind] = len(groups)
-            groups.append((kind, []))
-        groups[kind_index[kind]][1].append((representatives[key], counts[key]))
+
+    kind_order: list[str] = []
+    role_order: dict[str, list[str | None]] = {}
+    for kind, role, _message, _site in order:
+        if kind not in role_order:
+            kind_order.append(kind)
+            role_order[kind] = []
+        if role not in role_order[kind]:
+            role_order[kind].append(role)
+
+    groups: list[tuple[str, str | None, list[tuple[AnalysisFinding, int]]]] = []
+    for kind in kind_order:
+        roles = sorted(role_order[kind], key=_declaration_role_sort_key)
+        for role in roles:
+            items = [(representatives[key], counts[key]) for key in order if key[0] == kind and key[1] == role]
+            if items:
+                groups.append((kind, role, items))
     return groups
 
 
@@ -312,7 +379,11 @@ def _add_module_children(
         label = _module_label(final)
         if len(merged_paths) > 1:
             label = f"{'.'.join(segment[-1] for segment in merged_paths)}{label.removeprefix(final.name)}"
-        child_node = parent.add(label, data=_ModuleSelection(target, child_path, aliases))
+        child_key = tuple(part.casefold() for part in child_path)
+        child_node = parent.add(
+            _module_node_label(label, has_findings=child_key in finding_paths),
+            data=_ModuleSelection(target, child_path, aliases),
+        )
         for merged_path in merged_paths:
             branches[tuple(part.casefold() for part in merged_path)] = child_node
         _add_module_children(
@@ -362,14 +433,17 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
             if root_name.casefold() != target.target_name.casefold()
             else target.target_name
         )
-        root_node = tree.root.add(root_label, data=selection)
-        branches = {(root_name.casefold(),): root_node}
         finding_paths = {
             tuple(part.casefold() for part in _normalized_finding_path(target, root_name, finding, analyzer, aliases))
             for analyzer in target.analyzers
             for finding in analyzer.findings
         }
         finding_prefixes = {path[:length] for path in finding_paths for length in range(1, len(path) + 1)}
+        root_node = tree.root.add(
+            _module_node_label(root_label, has_findings=(root_name.casefold(),) in finding_paths),
+            data=selection,
+        )
+        branches = {(root_name.casefold(),): root_node}
 
         if module is not None:
             _add_module_children(
@@ -403,23 +477,26 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                     if key not in branches:
                         parent_key = tuple(part.casefold() for part in prefix[:-1])
                         branches[key] = branches[parent_key].add(
-                            prefix[-1], data=_ModuleSelection(target, prefix, aliases)
+                            _module_node_label(prefix[-1], has_findings=key in finding_paths),
+                            data=_ModuleSelection(target, prefix, aliases),
                         )
     _auto_expand_single_child_chains(tree.root)
     tree.root.expand()
     return first_selection
 
 
-def _module_findings_report(
+def _build_module_findings_report(
     selection: _ModuleSelection,
     *,
     show_empty_analyzers: bool,
     expanded_details: frozenset[int] = frozenset(),
-) -> Text:
+    acknowledged: frozenset[str] = frozenset(),
+) -> tuple[Text, tuple[str, ...]]:
     target = selection.target
     path = tuple(part.casefold() for part in selection.path)
     lines: list[Text] = []
     detail_index = 0
+    acknowledgement_keys: list[str] = []
     for analyzer in target.analyzers:
         matching = tuple(
             finding
@@ -438,46 +515,124 @@ def _module_findings_report(
         if not matching:
             lines.append(Text("  No findings", style="dim"))
             continue
-        for kind, items in _finding_groups(
+        for kind, declaration_role, items in _finding_groups(
             RunAnalyzerRecord(key=analyzer.key, name=analyzer.name, status=analyzer.status, findings=matching)
         ):
-            lines.append(Text(f"{kind_human_label(kind)} ({sum(count for _, count in items)})", style="bold #674600"))
+            lines.append(
+                Text(
+                    f"{_finding_group_label(kind, declaration_role)} ({sum(count for _, count in items)})",
+                    style="bold #674600",
+                )
+            )
             for finding_index, (finding, occurrence_count) in enumerate(items):
                 if finding_index:
                     lines.append(Text(""))
-                lines.append(Text(f"  {_finding_label(finding, occurrence_count=occurrence_count)}", style="bold"))
+                key = finding_acknowledgement_key(
+                    target_name=target.target_name,
+                    analyzer_key=analyzer.key,
+                    finding=finding,
+                    declaration_role=declaration_role,
+                )
+                acknowledgement_keys.append(key)
+                is_acknowledged = key in acknowledged
+                marker = "\u2713 " if is_acknowledged else ""
+                label_style = "dim bold" if is_acknowledged else "bold"
+                lines.append(
+                    Text(
+                        f"  {marker}{_finding_label(finding, occurrence_count=occurrence_count)}",
+                        style=label_style,
+                    )
+                )
                 site = _site_label(finding)
                 if site:
                     lines.append(Text(f"  {_readable_site(site)}", style="#38545a"))
+                controls = Text("  ")
+                acknowledge_control = Text(
+                    "Unacknowledge" if is_acknowledged else "Acknowledge",
+                    style="dim underline #58787e" if is_acknowledged else "underline #001ba3",
+                )
+                acknowledge_control.stylize(Style(meta={"@click": f"toggle_ack({len(acknowledgement_keys) - 1})"}))
+                controls.append_text(acknowledge_control)
                 details = _finding_details(finding)
                 if details:
+                    controls.append_text(Text("  \u00b7  ", style="dim"))
                     expanded = detail_index in expanded_details
-                    control = Text("  Hide details" if expanded else "  Details", style="underline #001ba3")
-                    control.stylize(Style(meta={"@click": f"toggle_details({detail_index})"}))
-                    lines.append(control)
-                    if expanded:
-                        lines.extend(Text(f"  {detail}") for detail in details)
+                    details_control = Text(
+                        "Hide details" if expanded else "Details",
+                        style="underline #001ba3",
+                    )
+                    details_control.stylize(Style(meta={"@click": f"toggle_details({detail_index})"}))
+                    controls.append_text(details_control)
+                lines.append(controls)
+                if details and detail_index in expanded_details:
+                    lines.extend(Text(f"  {detail}") for detail in details)
                 detail_index += 1
-    return Text("\n").join(lines) if lines else Text("No findings for this module", style="dim")
+    report = Text("\n").join(lines) if lines else Text("No findings for this module", style="dim")
+    return report, tuple(acknowledgement_keys)
+
+
+def _module_findings_report(
+    selection: _ModuleSelection,
+    *,
+    show_empty_analyzers: bool,
+    expanded_details: frozenset[int] = frozenset(),
+    acknowledged: frozenset[str] = frozenset(),
+) -> Text:
+    report, _acknowledgement_keys = _build_module_findings_report(
+        selection,
+        show_empty_analyzers=show_empty_analyzers,
+        expanded_details=expanded_details,
+        acknowledged=acknowledged,
+    )
+    return report
 
 
 if _TEXTUAL_STATIC is not None:
 
     class _FindingsReport(_TEXTUAL_STATIC):
-        def set_selection(self, selection: _ModuleSelection, *, show_empty_analyzers: bool) -> None:
+        def __init__(
+            self,
+            content: str = "",
+            *,
+            on_toggle_ack: Callable[[str, str], None],
+            id: str | None = None,
+            markup: bool = True,
+        ) -> None:
+            super().__init__(content, id=id, markup=markup)
+            self._on_toggle_ack = on_toggle_ack
+            self._run_id = ""
+            self._acknowledged: frozenset[str] = frozenset()
+            self._acknowledgement_keys: tuple[str, ...] = ()
+
+        def set_selection(
+            self,
+            selection: _ModuleSelection,
+            *,
+            show_empty_analyzers: bool,
+            run_id: str,
+            acknowledged: frozenset[str],
+        ) -> None:
             self._selection = selection
             self._show_empty = show_empty_analyzers
+            self._run_id = run_id
+            self._acknowledged = acknowledged
             self._expanded_details: set[int] = set()
             self._refresh_report()
 
+        def set_acknowledged(self, acknowledged: frozenset[str], *, run_id: str) -> None:
+            self._run_id = run_id
+            self._acknowledged = acknowledged
+            self._refresh_report()
+
         def _refresh_report(self) -> None:
-            self.update(
-                _module_findings_report(
-                    self._selection,
-                    show_empty_analyzers=self._show_empty,
-                    expanded_details=frozenset(self._expanded_details),
-                )
+            report, acknowledgement_keys = _build_module_findings_report(
+                self._selection,
+                show_empty_analyzers=self._show_empty,
+                expanded_details=frozenset(self._expanded_details),
+                acknowledged=self._acknowledged,
             )
+            self._acknowledgement_keys = acknowledgement_keys
+            self.update(report)
 
         def action_toggle_details(self, index: int) -> None:
             if index in self._expanded_details:
@@ -485,6 +640,10 @@ if _TEXTUAL_STATIC is not None:
             else:
                 self._expanded_details.add(index)
             self._refresh_report()
+
+        def action_toggle_ack(self, index: int) -> None:
+            if 0 <= index < len(self._acknowledgement_keys):
+                self._on_toggle_ack(self._run_id, self._acknowledgement_keys[index])
 
 else:
     _FindingsReport = None
@@ -510,7 +669,12 @@ def _select_results_module(self: Any, selection: _ModuleSelection) -> None:
     self._selected_results_module = selection
     findings_report = getattr(self, "_results_findings_widget", None)
     if findings_report is not None:
-        findings_report.set_selection(selection, show_empty_analyzers=self._results_show_empty_analyzers())
+        findings_report.set_selection(
+            selection,
+            show_empty_analyzers=self._results_show_empty_analyzers(),
+            run_id=getattr(self, "_results_tree_run_id", "") or "",
+            acknowledged=getattr(self, "_results_acknowledged", frozenset()),
+        )
 
 
 def _current_project_path(self: Any) -> str:
@@ -616,7 +780,12 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         self._results_tree_run_id = None
     findings_report = getattr(self, "_results_findings_widget", None)
     if findings_report is None:
-        findings_report = _FindingsReport("", id="results-findings-report", markup=False)
+        findings_report = _FindingsReport(
+            "",
+            id="results-findings-report",
+            markup=False,
+            on_toggle_ack=self._toggle_results_acknowledgement,
+        )
         _query_required(self, "#results-findings-host", _TEXTUAL_VERTICAL).mount(findings_report)
         self._results_findings_widget = findings_report
     render_key = record.run_id
@@ -624,6 +793,7 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         selection = _populate_module_navigation(tree, record)
         self._results_tree_render_key = render_key
         self._results_tree_run_id = record.run_id
+        self._results_acknowledged = load_run_acknowledgements(record.run_id)
         self._selected_results_module = None
         if selection is not None:
             _select_results_module(self, selection)
@@ -631,11 +801,35 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
             findings_report.update("No findings")
     elif self._selected_results_module is not None:
         findings_report.set_selection(
-            self._selected_results_module, show_empty_analyzers=self._results_show_empty_analyzers()
+            self._selected_results_module,
+            show_empty_analyzers=self._results_show_empty_analyzers(),
+            run_id=record.run_id,
+            acknowledged=getattr(self, "_results_acknowledged", frozenset()),
         )
     self._refresh_shell_state()
     if record.run_id != previous_run_id:
         self._write_output("Select a module to inspect its findings.")
+
+
+def _toggle_results_acknowledgement(self: Any, run_id: str, key: str) -> None:
+    """Toggle one acknowledged finding on the selected run and persist it."""
+    if not run_id or run_id != getattr(self, "_results_tree_run_id", None):
+        return
+    acknowledged = set(getattr(self, "_results_acknowledged", frozenset()))
+    if key in acknowledged:
+        acknowledged.remove(key)
+        message = "Acknowledgement cleared."
+    else:
+        acknowledged.add(key)
+        message = "Acknowledged finding."
+    updated = frozenset(acknowledged)
+    self._results_acknowledged = updated
+    if not save_run_acknowledgements(run_id, updated):
+        message = f"{message} It could not be saved to the cache."
+    findings_report = getattr(self, "_results_findings_widget", None)
+    if findings_report is not None:
+        findings_report.set_acknowledged(updated, run_id=run_id)
+    self._write_output(message)
 
 
 def _request_results_run_selection(self: Any, run_id: str) -> None:
@@ -718,6 +912,7 @@ def _refresh_results_view(self: Any) -> None:
         self._selected_results_module = None
         self._results_tree_run_id = None
         self._results_tree_render_key = None
+        self._results_acknowledged = frozenset()
         tree = getattr(self, "_results_tree_widget", None)
         if tree is not None:
             tree.reset("No matching runs", data=None)
@@ -782,6 +977,7 @@ if TYPE_CHECKING:
         def _refresh_results_runs_list(self) -> None: ...
         def _render_results_tree(self, record: RunRecord) -> None: ...
         def _render_selected_run(self) -> None: ...
+        def _toggle_results_acknowledgement(self, run_id: str, key: str) -> None: ...
         def _request_results_run_selection(self, run_id: str) -> None: ...
         def _apply_pending_results_run_selection(self) -> None: ...
         def _expand_all_results(self) -> None: ...
@@ -801,6 +997,7 @@ else:
         _refresh_results_runs_list = _refresh_results_runs_list
         _render_results_tree = _render_results_tree
         _render_selected_run = _render_selected_run
+        _toggle_results_acknowledgement = _toggle_results_acknowledgement
         _request_results_run_selection = _request_results_run_selection
         _apply_pending_results_run_selection = _apply_pending_results_run_selection
         _expand_all_results = _expand_all_results

@@ -15,10 +15,13 @@ from sattlint.runs import (
     RunSummary,
     RunTargetRecord,
     delete_run,
+    finding_acknowledgement_key,
     list_runs,
     load_run,
+    load_run_acknowledgements,
     prune_runs,
     save_run,
+    save_run_acknowledgements,
 )
 
 
@@ -225,6 +228,98 @@ def test_delete_run_removes_summary_sidecar(tmp_path: Path) -> None:
 
     assert not (tmp_path / f"{record.run_id}.json").exists()
     assert not (tmp_path / f"{record.run_id}.summary").exists()
+
+
+def test_acknowledgement_sidecar_round_trips_and_is_removed_with_the_run(tmp_path: Path) -> None:
+    record = save_run(_sample_record(), runs_dir=tmp_path)
+    keys = frozenset({"a", "b"})
+
+    assert save_run_acknowledgements(record.run_id, keys, runs_dir=tmp_path) is True
+    assert load_run_acknowledgements(record.run_id, runs_dir=tmp_path) == keys
+    assert (tmp_path / f"{record.run_id}.acknowledged").exists()
+
+    assert delete_run(record.run_id, runs_dir=tmp_path) is True
+    assert not (tmp_path / f"{record.run_id}.acknowledged").exists()
+    assert load_run_acknowledgements(record.run_id, runs_dir=tmp_path) == frozenset()
+
+
+def test_empty_acknowledgements_remove_the_sidecar(tmp_path: Path) -> None:
+    record = save_run(_sample_record(), runs_dir=tmp_path)
+    save_run_acknowledgements(record.run_id, frozenset({"a"}), runs_dir=tmp_path)
+
+    assert save_run_acknowledgements(record.run_id, frozenset(), runs_dir=tmp_path) is True
+
+    assert not (tmp_path / f"{record.run_id}.acknowledged").exists()
+
+
+def test_acknowledgement_sidecar_ignores_unreadable_payloads(tmp_path: Path) -> None:
+    record = save_run(_sample_record(), runs_dir=tmp_path)
+    path = tmp_path / f"{record.run_id}.acknowledged"
+    path.write_text("not json", encoding="utf-8")
+
+    assert load_run_acknowledgements(record.run_id, runs_dir=tmp_path) == frozenset()
+
+    path.write_text(json.dumps(["keep", 4, None]), encoding="utf-8")
+    assert load_run_acknowledgements(record.run_id, runs_dir=tmp_path) == frozenset({"keep"})
+
+
+def test_prune_runs_removes_acknowledgement_sidecars(tmp_path: Path) -> None:
+    records = [
+        save_run(
+            RunRecord(
+                run_id="",
+                started_at=f"2026-09-0{index}T10:00:00Z",
+                finished_at=f"2026-09-0{index}T10:05:00Z",
+                project_tag="RootProgram",
+            ),
+            runs_dir=tmp_path,
+        )
+        for index in range(5)
+    ]
+    for record in records:
+        save_run_acknowledgements(record.run_id, frozenset({"a"}), runs_dir=tmp_path)
+
+    prune_runs(tmp_path, limit=2)
+
+    remaining = {summary.run_id for summary in list_runs(runs_dir=tmp_path)}
+    sidecars = {path.name[: -len(".acknowledged")] for path in tmp_path.glob("*.acknowledged")}
+    assert sidecars == remaining
+
+
+def test_prune_runs_collects_orphan_acknowledgement_sidecars(tmp_path: Path) -> None:
+    orphan_id = "20260101T000000000000Z"
+    (tmp_path / f"{orphan_id}.acknowledged").write_text(json.dumps(["a"]), encoding="utf-8")
+
+    prune_runs(tmp_path, limit=5)
+
+    assert not (tmp_path / f"{orphan_id}.acknowledged").exists()
+
+
+def test_finding_acknowledgement_key_is_stable_and_scoped() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="declared but never read",
+        module_path=("RootProgram", "Idle"),
+        data={"site": "SQ:Run"},
+    )
+    same = AnalysisFinding(
+        kind="unused",
+        message="declared but never read",
+        module_path=("RootProgram", "Idle"),
+        data={"site": "SQ:Run"},
+    )
+
+    key = finding_acknowledgement_key(target_name="RootProgram", analyzer_key="variables", finding=finding)
+
+    assert key == finding_acknowledgement_key(target_name="RootProgram", analyzer_key="variables", finding=same)
+    assert key != finding_acknowledgement_key(target_name="Other", analyzer_key="variables", finding=finding)
+    assert key != finding_acknowledgement_key(target_name="RootProgram", analyzer_key="sfc", finding=finding)
+    assert key != finding_acknowledgement_key(
+        target_name="RootProgram",
+        analyzer_key="variables",
+        finding=finding,
+        declaration_role="localvariable",
+    )
 
 
 def test_prune_runs_removes_summary_sidecars(tmp_path: Path) -> None:

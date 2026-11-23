@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from ..models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
     FieldPathVariableIssue,
     IssueKind,
     UnusedDatatypeFieldIssue,
@@ -128,6 +130,25 @@ def _sanitize_data_value(value: object) -> FindingDataValue:
     return str(value)
 
 
+_DECLARATION_ROLES = frozenset({DECLARATION_ROLE_LOCAL_VARIABLE, DECLARATION_ROLE_MODULE_PARAMETER})
+
+
+def _declaration_role_value(item: object) -> str | None:
+    """The declaration kind an issue is about, when the issue knows it.
+
+    ``role`` is overloaded: it holds the declaration kind for the plain
+    variable issues but descriptive text for procedure status, shadowing,
+    read-before-write, and the unsafe-default check. ``declaration_role`` is
+    the unambiguous field; fall back to ``role`` only when it already holds a
+    declaration kind.
+    """
+    explicit = getattr(item, "declaration_role", None)
+    if explicit in _DECLARATION_ROLES:
+        return str(explicit)
+    role = getattr(item, "role", None)
+    return str(role) if role in _DECLARATION_ROLES else None
+
+
 def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
     raw_data = getattr(item, "data", None)
     data: dict[str, FindingDataValue] = {}
@@ -139,6 +160,9 @@ def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
         data.setdefault("field_path", item.field_path)
         if isinstance(item, VariableTargetIssue):
             data.setdefault("variable_name", item.variable.name)
+    declaration_role = _declaration_role_value(item)
+    if declaration_role is not None:
+        data.setdefault("declaration_role", declaration_role)
     _merge_synthesized_context(item, data)
     return data
 

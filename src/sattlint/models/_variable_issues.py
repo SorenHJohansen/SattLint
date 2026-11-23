@@ -10,9 +10,17 @@ from sattlint.parser_api import ScalarDatatype, SourceSpan, Variable
 
 from ..types import VariableId
 
+type DeclarationRole = Literal["localvariable", "moduleparameter"]
+
+DECLARATION_ROLE_LOCAL_VARIABLE: DeclarationRole = "localvariable"
+DECLARATION_ROLE_MODULE_PARAMETER: DeclarationRole = "moduleparameter"
+
 __all__ = [
+    "DECLARATION_ROLE_LOCAL_VARIABLE",
+    "DECLARATION_ROLE_MODULE_PARAMETER",
     "DatatypeDuplicationIssue",
     "DatatypeIssue",
+    "DeclarationRole",
     "DuplicateLocation",
     "FieldNeverReadIssue",
     "FieldPathVariableIssue",
@@ -237,6 +245,7 @@ class VariableIssueBase:
 
     module_path: list[str]
     role: str | None = None
+    declaration_role: DeclarationRole | None = None
     kind: ClassVar[IssueKind]
 
     def __str__(self) -> str:
