@@ -4,6 +4,7 @@ import asyncio
 import re
 import time
 from collections import deque
+from collections.abc import Mapping
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -16,6 +17,12 @@ except ImportError:  # pragma: no cover - optional dependency path
     _RichText = None
 
 from .. import config as config_module
+from ..config.string_capacities import (
+    STRING_CAPACITY_KEYS,
+    StringCapacitiesDict,
+    standard_string_capacities_dict,
+    validate_string_capacities,
+)
 from ..project import load_project as _load_project_fn
 from ..project.io import (
     SLPROJ_FILENAME as _SLPROJ_FILENAME,
@@ -716,6 +723,9 @@ def _show_setup_no_project(self: Any) -> None:
     ):
         with suppress(*_TEXTUAL_QUERY_ERRORS):
             self.query_one(f"#{label_id}", _TEXTUAL_STATIC).update("")
+    for capacity_key in STRING_CAPACITY_KEYS:
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#setup-label-capacity-{capacity_key}", _TEXTUAL_STATIC).update("")
 
 
 def _show_results_no_project(self: Any) -> None:
@@ -797,6 +807,7 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
         else:
             self._refresh_setup_target_list()
             self._refresh_setup_settings_labels()
+            self._ensure_string_capacity_editor()
 
     if settings_view:
         self._refresh_settings_labels()
@@ -954,6 +965,23 @@ def _new_project(self: Any) -> None:
     self.present_request(request, on_response_fn=_apply_response)
 
 
+def _project_string_capacities(cfg_raw: Mapping[str, object], project: object) -> StringCapacitiesDict:
+    """The capacities to write, falling back to the project file and standards.
+
+    A UI-only cfg built from a bare dictionary may not carry the table yet, but
+    the loaded project still does. Validating the resolved table is what keeps a
+    missing or non-positive value out of the saved file.
+    """
+    table = cfg_raw.get("string_capacities")
+    if not isinstance(table, Mapping):
+        project_data = getattr(project, "data", None)
+        if isinstance(project_data, Mapping):
+            table = cast(Mapping[str, object], project_data).get("string_capacities")
+    if table is None:
+        table = standard_string_capacities_dict()
+    return validate_string_capacities(table, location="the configuration").as_dict()
+
+
 def _persist_project(self: Any) -> bool:
     """Save the in-memory configuration to its project file.
 
@@ -966,9 +994,16 @@ def _persist_project(self: Any) -> bool:
         return False
     cfg_raw: dict[str, object] = self._cfg
     root = project.root
-    project_data: dict[str, object] = {
+    try:
+        capacities = _project_string_capacities(cfg_raw, project)
+    except ValueError as exc:
+        self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
+        return False
+    project_data: ProjectDict = {
         "slproj_version": _SLPROJ_VERSION,
         "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
+        "analyzers": list(getattr(project, "analyzers", ())),
+        "string_capacities": capacities,
         "mode": str(cfg_raw.get("mode", "official")),
         "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
         "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
@@ -979,7 +1014,7 @@ def _persist_project(self: Any) -> bool:
         "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
     }
     try:
-        _save_slproj(project.path, cast(ProjectDict, project_data))
+        _save_slproj(project.path, project_data)
     except (ValueError, OSError) as exc:
         self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
         return False
@@ -1087,6 +1122,11 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         "settings-edit-review-output-dir",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not settings_view
+    for capacity_key in STRING_CAPACITY_KEYS:
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#setup-edit-capacity-{capacity_key}", _TEXTUAL_BUTTON).disabled = (
+                toolbar_disabled or not setup_view or interaction_locked
+            )
     if setup_view and self._project_loaded():
         self._refresh_setup_settings_labels()
     if settings_view:
@@ -1113,6 +1153,8 @@ def _on_nav_tab_click(self: Any, event: Any) -> None:
 
 def on_button_pressed(self: Any, event: Any) -> None:
     button_id = event.button.id or ""
+    if self._handle_string_capacity_button(button_id):
+        return
     button_actions: dict[str, Any] = {
         "setup-target-remove": lambda: self._remove_selected_setup_target(self._selected_configured_target),
         "setup-target-browse": self._open_file_browser,

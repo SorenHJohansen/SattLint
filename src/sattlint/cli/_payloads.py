@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Literal, TypedDict
 
 from ..analyzers.catalog import AnalyzerMetadataDict
+from ..config.string_capacities import StringCapacitiesDict
 
 type GroupBy = Literal["none", "module", "analyzer", "kind"]
 
@@ -44,6 +45,7 @@ class ProjectInfo(TypedDict):
     mode: str
     targets: list[str]
     analyzers: list[str]
+    string_capacities: StringCapacitiesDict
     analysis: dict[str, object]
     paths: ProjectPaths
     config: ConfigInfo
