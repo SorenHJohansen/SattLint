@@ -20,6 +20,7 @@ from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
@@ -213,7 +214,9 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -252,6 +255,7 @@ def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -287,6 +291,7 @@ def test_picture_display_path_analyzer_library_target_reports_intra_library_fail
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -332,6 +337,7 @@ def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -368,7 +374,9 @@ def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert report.issues == []
@@ -445,7 +453,9 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -480,7 +490,9 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -516,7 +528,9 @@ def test_picture_display_path_analyzer_reports_above_base_as_distinct_kind() -> 
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     above_base = [issue for issue in report.issues if issue.kind == "picture_display_paths.above_base"]
@@ -556,7 +570,7 @@ def test_resolve_picture_display_path_stepping_above_base_supports_wildcard() ->
 def test_exact_string_inference_tracks_provenance_segments_across_mapped_module_writes() -> None:
     base_picture = _build_operation_path_base_picture()
 
-    result = ExactStringInferenceEngine(base_picture).infer(
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
         "Paths.OperationPath",
         module_path=("Root", "UnitControl"),
     )
@@ -615,7 +629,9 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
         ),
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
+        "Tag", module_path=("Root",)
+    )
 
     assert result.texts == ("AD",)
     assert result.cursor_positions == (2,)
@@ -1120,7 +1136,7 @@ def test_analyzer_reuses_precomputed_picture_display_diagnostics(monkeypatch: py
         fake_diagnose,
     )
 
-    report = analyze_picture_display_paths(base_picture, graph=graph)
+    report = analyze_picture_display_paths(base_picture, string_capacities=STANDARD_STRING_CAPACITIES, graph=graph)
 
     assert report.issues == []
     assert recomputed == []

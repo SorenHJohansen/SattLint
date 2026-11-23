@@ -198,7 +198,7 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "cannot be inspected, so they are never reported as unresolved."
             ),
             analyzer_attr="analyze_picture_display_paths",
-            context_kwargs=("graph", "analyzed_target_is_library"),
+            context_kwargs=("graph", "analyzed_target_is_library", "string_capacities"),
         ),
         AnalyzerSpecTemplate(
             key="icf",

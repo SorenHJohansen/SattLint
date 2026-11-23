@@ -21,6 +21,7 @@ from sattlint.parser_api import create_parser as parser_core_create_parser
 from sattlint.parser_api import parse_source_file as parser_core_parse_source_file
 from sattlint.parser_api import parse_source_text as parser_core_parse_source_text
 
+from ..config.string_capacities import STANDARD_STRING_CAPACITIES
 from ..graphics.graphics_context_helpers import (
     graphics_source_context_path,
     load_picture_display_source_context,
@@ -215,7 +216,11 @@ def validate_single_file_syntax(
                 occurrences = correlate_picture_display_records_fn(
                     basepic, tuple(getattr(result, "picture_display_records", ()))
                 )
-                warnings = picture_display_path_warnings_fn(basepic, occurrences)
+                warnings = picture_display_path_warnings_fn(
+                    basepic,
+                    occurrences,
+                    capacities=STANDARD_STRING_CAPACITIES,
+                )
         return graphics_validation_to_syntax_result_fn(target_path, result, warnings=warnings)
 
     parse_src = ""
@@ -291,6 +296,7 @@ def validate_single_file_syntax(
                     correlate_picture_display_records_fn(
                         basepic, tuple(getattr(graphics_result, "picture_display_records", ()))
                     ),
+                    capacities=STANDARD_STRING_CAPACITIES,
                 )
             )
         return graphics_validation_to_syntax_result_fn(

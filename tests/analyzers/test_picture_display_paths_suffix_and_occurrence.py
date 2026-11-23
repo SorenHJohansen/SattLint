@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
 )
 
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     correlate_picture_display_records,
@@ -187,7 +188,7 @@ def test_correlate_picture_display_records_maps_local_moduletype_record_to_templ
             resolution_parent_step_adjustment=-1,
         ),
     )
-    assert diagnose_picture_display_paths(base_picture, occurrences) == ()
+    assert diagnose_picture_display_paths(base_picture, occurrences, capacities=STANDARD_STRING_CAPACITIES) == ()
 
 
 def test_correlate_picture_display_records_treats_same_library_typedef_as_local() -> None:
@@ -252,7 +253,7 @@ def test_correlate_picture_display_records_treats_same_library_typedef_as_local(
             resolution_parent_step_adjustment=-1,
         ),
     )
-    assert diagnose_picture_display_paths(base_picture, occurrences) == ()
+    assert diagnose_picture_display_paths(base_picture, occurrences, capacities=STANDARD_STRING_CAPACITIES) == ()
 
 
 def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete_order() -> None:

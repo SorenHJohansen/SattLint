@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from sattlint.parser_api import BasePicture
 
 from ..analyzers.string_inference import ExactStringInferenceEngine
+from ..config.string_capacities import StringCapacities
 from .picture_display_runtime import (
     RuntimeModuleNode,
     RuntimeTree,
@@ -104,6 +105,7 @@ def diagnose_picture_display_paths(
     base_picture: BasePicture,
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
+    capacities: StringCapacities,
     graph: ProjectGraph | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
@@ -124,7 +126,10 @@ def diagnose_picture_display_paths(
             else:
                 if string_engine is None:
                     string_engine = ExactStringInferenceEngine(
-                        base_picture, graph=graph, progress_callback=progress_callback
+                        base_picture,
+                        capacities=capacities,
+                        graph=graph,
+                        progress_callback=progress_callback,
                     )
                 candidate_paths = _dynamic_path_candidates(
                     path_row,
