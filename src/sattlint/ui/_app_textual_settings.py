@@ -1,25 +1,37 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from .. import config as config_module
 from ..change_review.settings import resolve_review_output_dir
+from ..config.string_capacities import (
+    STRING_CAPACITY_KEYS,
+    standard_string_capacities_dict,
+)
 from ._app_textual_setup_display import (
     _setup_toggle_text,
     _setup_value_text,
 )
 from ._app_textual_shared import (
+    _TEXTUAL_BUTTON,
     _TEXTUAL_DIRECTORY_TREE,
+    _TEXTUAL_HORIZONTAL,
     _TEXTUAL_QUERY_ERRORS,
     _TEXTUAL_STATIC,
+    _TEXTUAL_VERTICAL,
     InteractionRequest,
 )
 from ._app_textual_widgets import _FileBrowserScreen
 
 _DEFAULT_RUN_HISTORY_LIMIT = 50
 _DEFAULT_OUTPUT_RETENTION_LINES = 4000
+
+_CAPACITY_GROUP_ID = "setup-group-capacities"
+_CAPACITY_BUTTON_PREFIX = "setup-edit-capacity-"
+_CAPACITY_LABEL_PREFIX = "setup-label-capacity-"
 
 
 def _section_value(self: Any, key: str, subkey: str, default: object) -> object:
@@ -28,6 +40,110 @@ def _section_value(self: Any, key: str, subkey: str, default: object) -> object:
         mapping = cast(dict[str, object], section)
         return mapping.get(subkey, default)
     return default
+
+
+def _string_capacity_table(self: Any) -> dict[str, object]:
+    """The project's capacities as a mutable table, standard values when unset."""
+    table = self._cfg.get("string_capacities")
+    if isinstance(table, Mapping):
+        return dict(cast(Mapping[str, object], table))
+    return dict(standard_string_capacities_dict())
+
+
+def _refresh_string_capacity_labels(self: Any) -> None:
+    table = _string_capacity_table(self)
+
+    def _safe_update(widget_id: str, text: object) -> None:
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#{widget_id}", _TEXTUAL_STATIC).update(text)
+
+    for key in STRING_CAPACITY_KEYS:
+        _safe_update(f"{_CAPACITY_LABEL_PREFIX}{key}", str(table.get(key, "")))
+
+
+def _ensure_string_capacity_editor(self: Any) -> None:
+    """Mount the String Capacities card into Configuration Settings once."""
+    try:
+        self.query_one(f"#{_CAPACITY_GROUP_ID}")
+    except _TEXTUAL_QUERY_ERRORS:
+        pass
+    else:
+        self._refresh_string_capacity_labels()
+        return
+    try:
+        settings_col = self.query_one("#setup-settings-col", _TEXTUAL_VERTICAL)
+    except _TEXTUAL_QUERY_ERRORS:
+        return
+
+    table = _string_capacity_table(self)
+    rows = [
+        _TEXTUAL_HORIZONTAL(
+            _TEXTUAL_BUTTON(
+                f"Set {key}",
+                id=f"{_CAPACITY_BUTTON_PREFIX}{key}",
+                classes="raised-button setup-row-button",
+            ),
+            _TEXTUAL_STATIC(
+                str(table.get(key, "")),
+                id=f"{_CAPACITY_LABEL_PREFIX}{key}",
+                classes="setup-row-label",
+            ),
+            classes="setup-row",
+        )
+        for key in STRING_CAPACITY_KEYS
+    ]
+    settings_col.mount(
+        _TEXTUAL_VERTICAL(
+            _TEXTUAL_STATIC("String Capacities", classes="settings-card-title"),
+            *rows,
+            id=_CAPACITY_GROUP_ID,
+            classes="settings-group-box",
+        )
+    )
+    self.call_after_refresh(self._refresh_string_capacity_labels)
+
+
+def _prompt_string_capacity(self: Any, key: str, *, label: str) -> None:
+    """Ask for one capacity and store it only when it is a positive integer."""
+    if self._active_request is not None:
+        return
+    current = _string_capacity_table(self).get(key, "")
+    request = InteractionRequest(
+        kind="prompt",
+        title=f"Set {label}",
+        message=f"Enter a positive integer for {label}.",
+        default="" if current is None else str(current),
+    )
+
+    def _apply_response(response: object) -> None:
+        raw_value = str(response or "").strip()
+        try:
+            value = int(raw_value)
+        except ValueError:
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
+            return
+        if value <= 0:
+            self._report_error("Invalid value", f"{label} must be a positive integer.")
+            return
+        table = _string_capacity_table(self)
+        table[key] = value
+        self._cfg["string_capacities"] = table
+        self._mark_setup_changed(f"Updated {label} to {value}.")
+
+    self.present_request(request, on_response_fn=_apply_response)
+
+
+def _handle_string_capacity_button(self: Any, button_id: str) -> bool:
+    """Route a capacity button press; report whether the id belonged to one."""
+    if not button_id.startswith(_CAPACITY_BUTTON_PREFIX):
+        return False
+    key = button_id[len(_CAPACITY_BUTTON_PREFIX) :]
+    if key not in STRING_CAPACITY_KEYS:
+        return False
+    if not self._project_loaded() or self._interaction_locked():
+        return True
+    self._prompt_string_capacity(key, label=f"{key} capacity")
+    return True
 
 
 def _refresh_settings_labels(self: Any) -> None:
@@ -284,6 +400,10 @@ if TYPE_CHECKING:
     class _TextualSettingsMixin:
         def _refresh_settings_labels(self) -> None: ...
         def _settings_note_text(self) -> str: ...
+        def _refresh_string_capacity_labels(self) -> None: ...
+        def _ensure_string_capacity_editor(self) -> None: ...
+        def _prompt_string_capacity(self, key: str, *, label: str) -> None: ...
+        def _handle_string_capacity_button(self, button_id: str) -> bool: ...
         def _mark_settings_changed(self, message: str) -> None: ...
         def _apply_output_retention(self) -> None: ...
         def _open_review_output_dir_picker(self) -> None: ...
@@ -302,6 +422,10 @@ else:
 
         _refresh_settings_labels = _refresh_settings_labels
         _settings_note_text = _settings_note_text
+        _refresh_string_capacity_labels = _refresh_string_capacity_labels
+        _ensure_string_capacity_editor = _ensure_string_capacity_editor
+        _prompt_string_capacity = _prompt_string_capacity
+        _handle_string_capacity_button = _handle_string_capacity_button
         _mark_settings_changed = _mark_settings_changed
         _apply_output_retention = _apply_output_retention
         _open_review_output_dir_picker = _open_review_output_dir_picker

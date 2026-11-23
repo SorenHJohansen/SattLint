@@ -61,14 +61,22 @@ def _write_project(
     program_dir: str = "programs",
     targets: list[str] | None = None,
     analyzers: list[str] | None = None,
+    capacities: dict[str, int] | None = None,
 ) -> Path:
     project = tmp_path / "demo.slproj"
     resolved_targets = [target] if targets is None else targets
     resolved_analyzers = ["variables"] if analyzers is None else analyzers
+    resolved_capacities = capacities or {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     project.write_text(
         "\n".join(
             [
-                "slproj_version = 1",
+                "slproj_version = 2",
                 f"analyzed_programs_and_libraries = {json.dumps(resolved_targets)}",
                 f"analyzers = {json.dumps(resolved_analyzers)}",
                 'mode = "official"',
@@ -76,6 +84,9 @@ def _write_project(
                 'ABB_lib_dir = ""',
                 'icf_dir = ""',
                 "other_lib_dirs = []",
+                "",
+                "[string_capacities]",
+                *(f"{key} = {value}" for key, value in resolved_capacities.items()),
                 "",
             ]
         ),
@@ -205,8 +216,38 @@ def test_project_show_resolves_paths(capsys: pytest.CaptureFixture[str], tmp_pat
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["project"]["path"] == str(project.resolve())
+    assert payload["project"]["slproj_version"] == 2
     assert payload["project"]["targets"] == ["Demo"]
+    assert payload["project"]["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     assert payload["project"]["paths"]["program_dir"] == str((tmp_path / "programs").resolve())
+
+
+def test_project_show_reports_the_projects_own_capacity_values(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(
+        tmp_path,
+        capacities={"identstring": 10, "tagstring": 20, "string": 25, "linestring": 60, "maxstring": 100},
+    )
+
+    code = run_cli(["project", "show", "--project", str(project), "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project"]["string_capacities"] == {
+        "identstring": 10,
+        "tagstring": 20,
+        "string": 25,
+        "linestring": 60,
+        "maxstring": 100,
+    }
 
 
 def test_project_validate_subcommand_is_gone(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -468,9 +509,18 @@ def test_project_show_text_and_discovery(
     assert code == 0
     out = capsys.readouterr().out
     assert "Project:" in out
-    assert "Version:   1" in out
+    assert "Version:   2" in out
     assert "Targets:   Demo" in out
     assert "Analyzers: variables" in out
+    assert "String capacities:" in out
+    for line in (
+        "  identstring: 15",
+        "  tagstring: 30",
+        "  string: 40",
+        "  linestring: 80",
+        "  maxstring: 140",
+    ):
+        assert line in out
     assert "Analysis: (defaults)" in out
     assert "Config:  " in out
 
@@ -1099,6 +1149,7 @@ def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, mon
     assert payload["runs_dir"] == str(blocked_cache / "sattlint" / "runs")
     assert payload["review_output_dir"] == str(blocked_config / "sattlint" / "change-review")
     assert payload["config"]["exists"] is False
+    assert payload["string_capacities"]["string"] == 40
 
 
 def test_analyze_all_targets_failed_is_a_load_failure_not_a_preflight_failure(

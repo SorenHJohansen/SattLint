@@ -25,6 +25,12 @@ __all__ = [
     "isolate_textual_projects",
 ]
 
+_V2_SLPROJ = (
+    "slproj_version = 2\n\n"
+    "[string_capacities]\n"
+    "identstring = 15\ntagstring = 30\nstring = 40\nlinestring = 80\nmaxstring = 140\n"
+)
+
 
 def test_textual_file_browser_selection_raises_when_required_widgets_are_missing(
     monkeypatch: pytest.MonkeyPatch,
@@ -79,7 +85,7 @@ def test_textual_file_browser_select_navigates_into_folder_when_filtering_files(
 
     folder = tmp_path / "OG-batchrapporter"
     folder.mkdir()
-    (folder / ".slproj").write_text("slproj_version = 1\n")
+    (folder / ".slproj").write_text(_V2_SLPROJ)
 
     browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[tmp_path], file_suffix=".slproj")
     dismissed: list[object] = []
@@ -111,7 +117,7 @@ def test_textual_file_browser_select_dismisses_file_when_filtering_files(
         pytest.skip("Textual not installed")
 
     project_file = tmp_path / "demo.slproj"
-    project_file.write_text("slproj_version = 1\n")
+    project_file.write_text(_V2_SLPROJ)
 
     browser = app_textual_widgets_module._FileBrowserScreen(start_paths=[tmp_path], file_suffix=".slproj")
     dismissed: list[object] = []

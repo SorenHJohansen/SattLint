@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from sattlint import ui as app_textual
+from sattlint.config.string_capacities import STRING_CAPACITY_KEYS
 from sattlint.project.io import init_project, load_project
 from sattlint.ui import _app_textual_actions as app_textual_actions_module
 from sattlint.ui import _app_textual_shared as app_textual_shared_module
@@ -432,6 +433,15 @@ def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest
     project_file = projects_dir / "My Demo Project.slproj"
     assert project_file.is_file()
     assert not (projects_dir / "My-Demo-Project").exists()
+    scaffolded = load_project(project_file)
+    assert scaffolded.data["slproj_version"] == 2
+    assert scaffolded.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     assert app_instance._project is not None
     assert app_instance._project_loaded() is True
     assert app_instance._project_path == project_file
@@ -460,7 +470,135 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     assert app_instance._dirty is False
     saved = load_project(project_path)
     assert saved.data["program_dir"] == "/some/program/dir"
-    assert "slproj_version" in saved.data
+    assert saved.data["slproj_version"] == 2
+    assert saved.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
+    assert saved.data["analyzers"] == []
+
+
+def test_textual_setup_shows_the_five_string_capacities() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = make_textual_app()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+3")
+            await pilot.pause()
+
+            assert app_instance.query_one("#setup-group-capacities") is not None
+            labels = {
+                key: str(app_instance.query_one(f"#setup-label-capacity-{key}").renderable)
+                for key in STRING_CAPACITY_KEYS
+            }
+            assert labels == {
+                "identstring": "15",
+                "tagstring": "30",
+                "string": "40",
+                "linestring": "80",
+                "maxstring": "140",
+            }
+            assert app_instance.query_one("#setup-edit-capacity-string").disabled is False
+
+    asyncio.run(_run())
+
+
+def test_textual_setup_string_capacity_button_opens_a_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        app_instance,
+        "present_request",
+        lambda request, on_response_fn=None: captured.update(request=request, callback=on_response_fn),
+    )
+
+    app_instance.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="setup-edit-capacity-linestring")))
+
+    request = captured["request"]
+    assert isinstance(request, app_textual_shared_module.InteractionRequest)
+    assert request.kind == "prompt"
+    assert request.default == "80"
+    assert request.message is not None
+    assert "positive integer" in request.message
+
+
+def test_textual_setup_string_capacity_edit_saves_the_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    project_path = app_instance._project.path
+    captured: dict[str, Any] = {}
+    errors: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app_instance,
+        "present_request",
+        lambda request, on_response_fn=None: captured.update(request=request, callback=on_response_fn),
+    )
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: errors.append((title, message)))
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_set_active_action", lambda _action_id: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+    monkeypatch.setattr(app_instance, "_write_output", lambda _text: None)
+
+    app_instance._prompt_string_capacity("string", label="string capacity")
+    captured["callback"]("25")
+
+    assert errors == []
+    saved = load_project(project_path)
+    assert saved.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 25,
+        "linestring": 80,
+        "maxstring": 140,
+    }
+
+
+def test_textual_setup_string_capacity_edit_rejects_non_positive_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_instance = make_textual_app()
+    project_path = app_instance._project.path
+    captured: dict[str, Any] = {}
+    errors: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app_instance,
+        "present_request",
+        lambda request, on_response_fn=None: captured.update(request=request, callback=on_response_fn),
+    )
+    monkeypatch.setattr(app_instance, "_report_error", lambda title, message: errors.append((title, message)))
+
+    app_instance._prompt_string_capacity("string", label="string capacity")
+    for raw_value in ("0", "-4", "not a number", ""):
+        captured["callback"](raw_value)
+
+    assert errors == [("Invalid value", "string capacity must be a positive integer.")] * 4
+    saved = load_project(project_path)
+    assert saved.data["string_capacities"]["string"] == 40
+
+
+def test_textual_persist_project_keeps_capacities_and_analyzers() -> None:
+    app_instance = make_textual_app(cfg={"analyzed_programs_and_libraries": ["TargetA"]})
+    assert "string_capacities" not in app_instance._cfg
+    app_instance._project.data["analyzers"] = ["variables", "sfc"]
+
+    assert app_instance._persist_project() is True
+
+    saved = load_project(app_instance._project.path)
+    assert saved.data["slproj_version"] == 2
+    assert saved.data["analyzers"] == ["variables", "sfc"]
+    assert saved.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
 
 
 def test_textual_setup_save_failure_keeps_the_dirty_flag(monkeypatch: pytest.MonkeyPatch) -> None:

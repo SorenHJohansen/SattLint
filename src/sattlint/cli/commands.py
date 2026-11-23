@@ -19,6 +19,7 @@ from ..analyzers.catalog import (
 from ..application.analyze import collect_checks_result, no_analyzer_selection_message
 from ..application.checks import ChecksRunResult, build_run_record
 from ..application.findings import kind_human_label
+from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
 from ..project.io import discover_project
 from ..project.support import TargetLoadError
@@ -160,6 +161,8 @@ def _project_text(project: ProjectInfo) -> list[str]:
         f"Mode:      {project['mode']}",
         f"Targets:   {', '.join(project['targets']) or '(none)'}",
         f"Analyzers: {', '.join(project['analyzers']) or '(none)'}",
+        "String capacities:",
+        *(f"  {key}: {project['string_capacities'][key]}" for key in STRING_CAPACITY_KEYS),
     ]
     lines.extend(_analysis_text(project["analysis"]))
     lines.extend(
