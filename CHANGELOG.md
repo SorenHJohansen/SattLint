@@ -10,6 +10,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- A project file can select its analyzers with a top-level `analyzers = [...]`
+  list, so a checked-in project reproduces a run. `--analyzer` still wins over
+  the project list, and `sattlint project show` reports the selection.
 - `findings` text grouping prints analyzer and finding labels instead of
   machine identifiers, and NDJSON output starts with an envelope record that
   carries the run, filters, summary, and groups.
@@ -19,6 +22,19 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Project files are version 2 and must declare a top-level
+  `[string_capacities]` table with `identstring`, `tagstring`, `string`,
+  `linestring`, and `maxstring` as positive integers. A missing table, a
+  missing or unknown key, and a non-positive value are load errors that name
+  the problem, and a version 1 project is rejected with a message naming the
+  table and the standard values (15, 30, 40, 80, 140). The values feed string
+  inference and validation, PictureDisplay path resolution, and the project
+  cache key, so changing a capacity invalidates cached results.
+- Analyzer selection is always explicit. A run names its analyzers with
+  `--analyzer` or the project's `analyzers` list; a run that names none fails
+  with an error that lists every selectable analyzer, in both the CLI and the
+  Textual Analyze view. The Analyze view preselects the project's list when a
+  configuration is opened.
 - Record layouts resolve per library, so two libraries that define the same
   record name keep their own fields and leaf paths. When a name is declared
   by more than one library and the caller cannot decide, the analyzer warns
@@ -140,6 +156,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Removed
 
+- The engineering-spec compliance analyzer and its `analysis.spec_compliance`
+  prefix settings, and the module version-drift analyzer with its comparison
+  helpers. Stored runs still render their findings. Analyzer report caches are
+  invalidated for the remaining analyzers.
+- The default analyzer set (`--analyzer` is now always required or comes from
+  the project file).
 - The unused tracing module, the unreachable foundation-cache store, the unused
   workspace-discovery subsystem, the duplicate comment-hit model, and the
   test-only second loader. Corpus and crash-sweep tests now exercise the
@@ -147,6 +169,36 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- PictureDisplay paths to external `.wmf` and `.emf` assets are skipped
+  silently instead of being reported as unresolved, and they no longer emit a
+  graphics validation warning.
+- Value-widget bindings (`TextBox_`, `CheckBox_`, `OptBut_`, `ComBut_`) count as
+  reads as well as writes, so a variable displayed only by a widget is no
+  longer reported as never read.
+- A variable wired into an out-of-origin or unresolved submodule is treated as
+  consumed and is no longer reported as unused or never read. This applies to
+  locals and module parameters.
+- Reads in cyclic equation blocks are no longer reported as read-before-write;
+  equation-block writes still initialize later step reads.
+- Non-state multi-site findings require two write sites that can run in the
+  same scan, use canonical module paths, and no longer treat a terminal step as
+  a self-loop. Same-cycle reports an invoked parallel node once.
+- Datatype-field findings are reported only for datatypes and fields with no
+  consumer in the scanned workspace; a module that leaves some fields untouched
+  no longer produces per-instance read-only or never-read findings.
+- ICF programs are derived from each file's entries instead of the filename, so
+  a multi-program file validates each referenced program. The journal-parameter
+  record-completeness rule is removed; the identity rule covers the
+  DCStoMES/MEStoMES groups only.
+- Module-type usage is decided by the reverse consumer closure, including
+  transitive consumers and the ABB root. One consumer suppresses the finding,
+  and `PRIVATE_` definitions are never reported.
+- Module cyclomatic complexity is the worst nested scope, not the sum of every
+  equation block and step.
+- SFC branch checks ignore the empty terminal step that closes a parallel
+  branch and compare transition guards only between sibling alternative
+  branches. An alarm is considered cleared when a submodule writes its bound
+  parameter to `False`.
 - A datatype that nothing declares or uses is reported once as an unused
   datatype; once a field is touched, the report names the unused fields.
 - A failed analyzer names only the exception type in run history, CI output,

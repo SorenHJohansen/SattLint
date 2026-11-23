@@ -208,6 +208,58 @@ def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_coll
     assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]
 
 
+def test_parallel_branch_terminal_empty_step_after_fork_is_not_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [])],
+                    [_step("Work", [])],
+                ]
+            )
+        ]
+    )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
+
+    assert sfc_module.collect_sfc_reachability_findings(bp) == []
+
+
+def test_parallel_branch_terminal_step_with_code_after_fork_is_still_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [_assign("Output", 1)])],
+                ]
+            )
+        ]
+    )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
+
+    findings = sfc_module.collect_sfc_reachability_findings(bp)
+
+    assert [finding.node_label for finding in findings] == ["SFCStep:Stop"]
+    assert findings[0].branch_path == (0,)
+
+
+def test_alternative_branch_terminal_empty_step_after_fork_is_still_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCAlternative(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [])],
+                ]
+            )
+        ]
+    )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
+
+    findings = sfc_module.collect_sfc_reachability_findings(bp)
+
+    assert [finding.node_label for finding in findings] == ["SFCStep:Stop"]
+    assert findings[0].branch_path == (0,)
+
+
 def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     nested_frame = FrameModule(
         header=_hdr("FrameChild"),

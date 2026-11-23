@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any, cast
 
@@ -27,6 +28,8 @@ from ._variables_contracts import typedef_usage_key
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+type ResolveVariableFn = Callable[[str], tuple[Variable | None, str, list[str], list[str]]]
 
 
 def _maybe_update_status(self: object, detail: str) -> None:
@@ -283,6 +286,8 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
     for mapping in child.parametermappings or []:
         full_source_name = _mapping_source_full_ref(mapping)
         target_name = mapping_target_name(mapping)
+        if external or dependency_owned_moduletype:
+            _record_out_of_origin_consumer_actual(self, mapping, parent_context, parent_context.env)
         mapping_reads = reads
         mapping_writes = writes
         known_external_usage = external_mapping_usage(child.moduletype_name, target_name) if external else None
@@ -401,6 +406,47 @@ def _propagate_mapping_to_parent(
         parent_context,
         child_context,
     )
+
+
+def _record_out_of_origin_consumer_actual(
+    self: VariablesAnalyzer,
+    mapping: ParameterMapping,
+    parent_context: ScopeContext,
+    parent_env: dict[str, Variable],
+) -> None:
+    """Record the variable a child outside the analyzed origin consumes.
+
+    A mapping declares that the child's contract uses the value. When that contract
+    is unresolved or belongs to another origin, the analyzer cannot see the read,
+    so the absence of a read is not evidence that the variable is dead. Resolving
+    through the scope context finds ancestors, which a frame's own scope cannot.
+    """
+    full_source = _mapping_source_full_ref(mapping)
+    if full_source is None:
+        return
+
+    source_var: Variable | None = None
+    resolve_variable = cast(
+        "ResolveVariableFn | None",
+        getattr(parent_context, "resolve_variable", None),
+    )
+    if resolve_variable is not None:
+        source_var, _field_path, _decl_path, _decl_display_path = resolve_variable(full_source)
+
+    if source_var is None:
+        source_base = varname_base(full_source)
+        if source_base is not None:
+            source_var = parent_env.get(source_base)
+            if source_var is None:
+                lookup_global = cast(
+                    "Callable[[str], Variable | None] | None",
+                    getattr(self, "lookup_global_variable", None),
+                )
+                if lookup_global is not None:
+                    source_var = lookup_global(source_base)
+
+    if source_var is not None:
+        self.out_of_origin_consumer_variable_ids.add(id(source_var))
 
 
 def _lookup_env_var_from_varname_dict(

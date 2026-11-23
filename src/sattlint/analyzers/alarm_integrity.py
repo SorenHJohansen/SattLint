@@ -64,6 +64,7 @@ _ALARM_SOURCE_MODULETYPE_NAMES: frozenset[str] = frozenset(
 _AlarmBooleanWriteSummary = _alarm_path_traversal_module.AlarmBooleanWriteSummary
 _as_bool_literal = _alarm_path_traversal_module.as_bool_literal
 _collect_alarm_boolean_writes = _alarm_path_traversal_module.collect_alarm_boolean_writes
+_collect_boolean_literal_writes = _alarm_path_traversal_module.collect_boolean_literal_writes
 _collect_boolean_writes = _alarm_path_traversal_module.collect_boolean_writes
 _iter_modulecode_statements = _alarm_path_traversal_module.iter_modulecode_statements
 _iter_sequence_node_statements = _alarm_path_traversal_module.iter_sequence_node_statements
@@ -155,7 +156,13 @@ class AlarmIntegrityAnalyzer:
         root_path = [self.bp.header.name]
         base_env = self._merge_env({}, self.bp.localvariables)
 
-        self._check_module_code(self.bp.modulecode, root_path, base_env)
+        self._check_module_code(
+            self.bp.modulecode,
+            root_path,
+            base_env,
+            self.bp.submodules or [],
+            self.bp.origin_lib,
+        )
         self._walk_modules(
             self.bp.submodules or [],
             parent_path=root_path,
@@ -200,7 +207,13 @@ class AlarmIntegrityAnalyzer:
         path = [*root_path, f"TypeDef:{moduletype.name}"]
         env = self._merge_env(base_env, moduletype.moduleparameters)
         env = self._merge_env(env, moduletype.localvariables)
-        self._check_module_code(moduletype.modulecode, path, env)
+        self._check_module_code(
+            moduletype.modulecode,
+            path,
+            env,
+            moduletype.submodules or [],
+            moduletype.origin_lib or self.bp.origin_lib,
+        )
         self._walk_modules(
             moduletype.submodules or [],
             parent_path=path,
@@ -229,14 +242,26 @@ class AlarmIntegrityAnalyzer:
             child_path: list[str],
             state: tuple[dict[str, Variable], str | None],
         ) -> None:
-            self._check_module_code(child.modulecode, child_path, state[0])
+            self._check_module_code(
+                child.modulecode,
+                child_path,
+                state[0],
+                child.submodules or [],
+                state[1],
+            )
 
         def _visit_frame(
             child: FrameModule,
             child_path: list[str],
             state: tuple[dict[str, Variable], str | None],
         ) -> None:
-            self._check_module_code(child.modulecode, child_path, state[0])
+            self._check_module_code(
+                child.modulecode,
+                child_path,
+                state[0],
+                child.submodules or [],
+                state[1],
+            )
 
         def _visit_instance(
             child: ModuleTypeInstance,
@@ -545,11 +570,14 @@ class AlarmIntegrityAnalyzer:
         modulecode: ModuleCode | None,
         module_path: list[str],
         env: dict[str, Variable],
+        submodules: list[SingleModule | FrameModule | ModuleTypeInstance] | None = None,
+        current_library: str | None = None,
     ) -> None:
         if modulecode is None:
             return
 
         writes = _collect_alarm_boolean_writes(modulecode, env)
+        self._record_submodule_clears(writes, submodules or [], env, current_library)
         for entry in writes.values():
             values = entry.values
             if True not in values or False in values:
@@ -568,6 +596,51 @@ class AlarmIntegrityAnalyzer:
                     },
                 )
             )
+
+    def _record_submodule_clears(
+        self,
+        writes: dict[str, _AlarmBooleanWriteSummary],
+        submodules: list[SingleModule | FrameModule | ModuleTypeInstance],
+        env: dict[str, Variable],
+        current_library: str | None,
+    ) -> None:
+        """Count a boundary variable as cleared when a child writes its parameter to False."""
+        for child in submodules:
+            if not isinstance(child, ModuleTypeInstance):
+                continue
+            mt_def = self._resolve_moduletype(child, current_library)
+            if mt_def is None:
+                continue
+            false_parameters = self._parameters_written_false(mt_def)
+            if not false_parameters:
+                continue
+            for mapping in child.parametermappings or []:
+                target_name = varname_base(mapping.target)
+                if target_name is None or target_name not in false_parameters:
+                    continue
+                if mapping.source_type == MappingSource.VALUE or mapping.is_source_global:
+                    continue
+                source_ref = varname_full(mapping.source)
+                if not source_ref or not _looks_like_alarm_reference(source_ref, env):
+                    continue
+                entry = writes.setdefault(
+                    source_ref.casefold(),
+                    _AlarmBooleanWriteSummary(display=source_ref),
+                )
+                entry.values.add(False)
+
+    def _parameters_written_false(self, mt_def: ModuleTypeDef) -> set[str]:
+        boolean_parameters = {
+            casefold_key(variable.name)
+            for variable in mt_def.moduleparameters or []
+            if casefold_key(variable.datatype_text) == "boolean"
+        }
+        if not boolean_parameters:
+            return set()
+        mt_env = self._merge_env({}, mt_def.moduleparameters)
+        mt_env = self._merge_env(mt_env, mt_def.localvariables)
+        false_writes = _collect_boolean_literal_writes(mt_def.modulecode, mt_env)
+        return {name for name in boolean_parameters if name in false_writes and False in false_writes[name].values}
 
     def _location_list(self, candidates: list[_AlarmCandidate]) -> list[str]:
         return sorted({".".join(candidate.module_path) for candidate in candidates})

@@ -14,7 +14,6 @@ class AnalyzerDeliveryMetadata:
     delivery_scope: str
     implementation_bucket: str
     output_artifacts: tuple[str, ...] = ()
-    cli_exposed: bool = False
     acceptance_tests: tuple[str, ...] = ()
     depends_on_artifacts: tuple[str, ...] = ()
     supports_baselines: bool = True
@@ -33,7 +32,6 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
         template.key: AnalyzerDeliveryMetadata(
             delivery_scope=template.delivery_scope,
             implementation_bucket=template.implementation_bucket,
-            cli_exposed=template.cli_exposed,
             acceptance_tests=template.acceptance_tests,
             depends_on_artifacts=template.depends_on_artifacts,
             supports_baselines=template.supports_baselines,
@@ -57,7 +55,6 @@ def build_delivery_metadata(spec: AnalyzerSpec) -> AnalyzerDeliveryMetadata:
         delivery_scope=base.delivery_scope,
         implementation_bucket=base.implementation_bucket,
         output_artifacts=(summary_output_for_analyzer(spec.key),),
-        cli_exposed=base.cli_exposed,
         acceptance_tests=base.acceptance_tests,
         depends_on_artifacts=base.depends_on_artifacts,
         supports_baselines=base.supports_baselines,

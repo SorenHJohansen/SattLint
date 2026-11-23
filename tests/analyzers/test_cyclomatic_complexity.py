@@ -228,6 +228,84 @@ def test_cyclomatic_complexity_flags_high_equation_block_complexity() -> None:
     }
 
 
+def _decision_statements(prefix: str, decisions: int) -> list[CodeItem]:
+    return [
+        IfStmt(
+            branches=(
+                (
+                    _varref(f"{prefix}{index}"),
+                    (Assignment(target=_varref("Output"), value=IntLiteral(index)),),
+                ),
+            ),
+            else_block=(),
+        )
+        for index in range(decisions)
+    ]
+
+
+def _equation(name: str, decisions: int) -> Equation:
+    return Equation(
+        name=name,
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=_decision_statements(f"{name}Cond", decisions),
+    )
+
+
+def test_module_complexity_takes_the_worst_equation_block_not_the_sum() -> None:
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[_equation("First", 15), _equation("Second", 15)]),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    equation_issues = [issue for issue in report.issues if issue.kind == "equation.cyclomatic_complexity"]
+    assert len(equation_issues) == 2
+    assert [issue.data["complexity"] for issue in equation_issues if issue.data] == [16, 16]
+    assert not any(issue.kind == "module.cyclomatic_complexity" for issue in report.issues)
+
+
+def test_module_complexity_takes_the_worst_step_not_the_sum() -> None:
+    def _sequence(name: str, decisions: int) -> Sequence:
+        return Sequence(
+            name=name,
+            type="SEQUENCE",
+            position=(0.0, 0.0),
+            size=(1.0, 1.0),
+            code=[
+                SFCStep(
+                    kind="step",
+                    name=f"{name}Step",
+                    code=SFCCodeBlocks(active=_decision_statements(f"{name}Cond", decisions)),
+                ),
+                SFCTransition(name=f"{name}Continue", condition=_varref("Proceed")),
+            ],
+        )
+
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(sequences=[_sequence("First", 11), _sequence("Second", 11)]),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    step_issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
+    assert len(step_issues) == 2
+    assert [issue.data["complexity"] for issue in step_issues if issue.data] == [12, 12]
+    assert not any(issue.kind == "module.cyclomatic_complexity" for issue in report.issues)
+
+
 def test_cyclomatic_complexity_honors_configured_thresholds() -> None:
     decision_statements: list[CodeItem] = [
         IfStmt(

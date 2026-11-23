@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -104,10 +105,18 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
 ) -> Iterator[tuple[str, Path]]:
     raw_program_dir = cfg.get("program_dir")
     raw_other_lib_dirs = cfg.get("other_lib_dirs")
+    raw_abb_lib_dir = cfg.get("ABB_lib_dir")
     if not raw_program_dir:
         return
     other_lib_dirs = raw_other_lib_dirs or []
-    base_dirs = [Path(str(raw_program_dir)), *(Path(str(path)) for path in other_lib_dirs)]
+    base_dirs = [
+        Path(str(raw_program_dir)),
+        *(Path(str(path)) for path in other_lib_dirs),
+        # A library can sit in the vendor root and still import the analyzed
+        # target; the workspace-wide scan sees those consumers only when that
+        # root is part of the search.
+        *([Path(str(raw_abb_lib_dir))] if raw_abb_lib_dir else []),
+    ]
     suffixes = _workspace_dependency_suffixes(cfg.get("mode", "official"))
 
     # One sidecar per program: the most preferred suffix wins, and a program
@@ -154,43 +163,56 @@ def _include_reverse_library_consumers(
     # beside its programs had no consumers loaded and its types looked unused.
     del root_bp
     selected_key = selected_target.casefold()
-    queued_targets: set[tuple[str, str]] = set()
-    pending_targets: list[tuple[str, Path | None]] = []
+    # unit key -> (directory that holds its sidecar, configured spelling, dependencies)
+    candidates: dict[str, tuple[Path, str, set[str]]] = {}
 
-    def _queue_reverse_consumer(target_name: str, deps_path: Path | None) -> None:
-        if deps_path is None or target_name.casefold() == selected_key:
+    def _remember(target_name: str, deps_path: Path | None, dependencies: list[str]) -> None:
+        if deps_path is None:
             return
-
-        queue_key = (target_name.casefold(), str(deps_path.parent).casefold())
-        if queue_key in queued_targets:
+        key = target_name.casefold()
+        if key == selected_key:
             return
-        queued_targets.add(queue_key)
-        pending_targets.append((target_name, deps_path.parent))
+        entry: tuple[Path, str, set[str]] | None = candidates.get(key)
+        if entry is None:
+            entry = (deps_path.parent, target_name, set())
+            candidates[key] = entry
+        entry[2].update(dependency.casefold() for dependency in dependencies if dependency)
 
     for candidate in require_analyzed_targets_fn(cfg):
-        if candidate.casefold() == selected_key:
-            continue
-
         deps_path = find_dependency_path_fn(candidate)
-        candidate_dependencies = read_dependency_names_fn(deps_path)
-        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
-            continue
-
-        _queue_reverse_consumer(candidate, deps_path)
+        _remember(candidate, deps_path, read_dependency_names_fn(deps_path))
 
     for candidate, deps_path in _iter_workspace_reverse_library_consumer_dependency_files(cfg):
-        if candidate.casefold() == selected_key:
-            continue
+        _remember(candidate, deps_path, read_dependency_names_fn(deps_path))
 
-        candidate_dependencies = read_dependency_names_fn(deps_path)
-        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
-            continue
+    consumers_of: dict[str, set[str]] = defaultdict(set)
+    for unit_key, (_directory, _name, dependencies) in candidates.items():
+        for dependency in dependencies:
+            if dependency != unit_key:
+                consumers_of[dependency].add(unit_key)
 
-        _queue_reverse_consumer(candidate, deps_path)
+    # A consumer is anything that imports the selected target, directly or
+    # through another unit. Transitivity matters because a module type used
+    # inside a module type that a consumer imports is still a use, and that
+    # imported unit only enters the graph through the consumer's own consumers.
+    ordered_consumers: list[str] = []
+    seen = {selected_key}
+    pending_keys = [selected_key]
+    while pending_keys:
+        current = pending_keys.pop(0)
+        for consumer in sorted(consumers_of.get(current, ())):
+            if consumer in seen:
+                continue
+            seen.add(consumer)
+            ordered_consumers.append(consumer)
+            pending_keys.append(consumer)
 
     # Load and convert every reverse consumer in one batched parser load so
     # their shared dependency closure is parsed once instead of once per
     # consumer; each consumer is still validated as its own root target.
+    pending_targets: list[tuple[str, Path | None]] = [
+        (candidates[key][1], candidates[key][0]) for key in ordered_consumers
+    ]
     if pending_targets:
         visit_targets_fn(pending_targets)
 

@@ -22,12 +22,6 @@ from tests.helpers.variable_test_support import (
 )
 
 
-def test_opt_in_analyzer_is_not_in_default_cli_keys():
-    from sattlint.analyzers.registry import get_actual_cli_analyzer_keys  # noqa: PLC0415
-
-    assert "version-drift" not in get_actual_cli_analyzer_keys()
-
-
 def test_variable_usage_datatype_report_returns_not_found_message():
     bp = BasePicture(
         header=_hdr("Root"),

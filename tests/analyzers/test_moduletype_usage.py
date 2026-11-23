@@ -17,10 +17,9 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from sattlint.analyzers.catalog import get_selectable_analyzers
+from sattlint.analyzers.catalog import get_selectable_analyzer_keys, get_selectable_analyzers
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.moduletype_usage import analyze_moduletype_usage
-from sattlint.analyzers.registry import DEFAULT_CLI_ANALYZER_KEYS
 from sattlint.application.findings import extract_report_findings, kind_human_label
 from sattlint.config import DEFAULT_CONFIG, ConfigDict
 from sattlint.models.project_graph import ProjectGraph
@@ -123,31 +122,46 @@ def test_same_library_duplicate_type_names_resolve_by_declaring_file() -> None:
     assert "Stop_Drain" in report.issues[0].message
 
 
-@pytest.mark.parametrize("has_consumer_invocation", [False, True])
 @pytest.mark.parametrize("analyzed_target_is_library", [False, True])
-def test_module_type_usage_requires_an_invocation_outside_the_declaring_file(
-    has_consumer_invocation: bool, analyzed_target_is_library: bool
+def test_module_type_usage_suppresses_an_in_file_only_type_with_a_consumer(
+    analyzed_target_is_library: bool,
 ) -> None:
-    # The library instantiates its own type; that is not external use.
+    # The library instantiates its own type; that is not external use. Its
+    # exporting contract is what matters, and the importing consumer supplies it.
     library = _picture()
-    consumer = _picture(
-        "Consumer",
-        definitions=[],
-        instances=[_instance("ProgramInstance")] if has_consumer_invocation else [],
+    consumer = _picture("Consumer", definitions=[], instances=[])
+    graph = ProjectGraph(
+        ast_by_name={"EquipmentLib": library, "Consumer": consumer},
+        source_dependencies={"consumer": {"equipmentlib"}},
     )
-    graph = ProjectGraph(ast_by_name={"EquipmentLib": library, "Consumer": consumer})
 
     report = analyze_moduletype_usage(
         library,
         AnalysisContext(library, graph, target_is_library=analyzed_target_is_library),
     )
 
-    # Program/library classification is irrelevant: only the invocation
-    # location decides.
-    assert len(report.issues) == (0 if has_consumer_invocation else 1)
-    if not has_consumer_invocation:
-        assert report.issues[0].module_path == ["EquipmentLib", "LibraryInstance"]
-        assert "Equipment" in report.issues[0].message
+    # Program/library classification is irrelevant: the consumer decides.
+    assert report.issues == []
+
+
+def test_module_type_usage_reports_an_in_file_only_type_without_a_consumer() -> None:
+    library = _picture()
+    graph = ProjectGraph(ast_by_name={"EquipmentLib": library})
+
+    report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
+
+    assert len(report.issues) == 1
+    assert report.issues[0].module_path == ["EquipmentLib", "LibraryInstance"]
+    assert "Equipment" in report.issues[0].message
+    assert "declaring unit 'EquipmentLib.s'" in report.issues[0].message
+
+
+def test_module_type_usage_external_invocation_is_a_use() -> None:
+    library = _picture()
+    consumer = _picture("Consumer", definitions=[], instances=[_instance("ProgramInstance")])
+    graph = ProjectGraph(ast_by_name={"EquipmentLib": library, "Consumer": consumer})
+
+    assert analyze_moduletype_usage(library, AnalysisContext(library, graph)).issues == []
 
 
 def test_module_type_usage_counts_consumer_graph_invocations() -> None:
@@ -199,20 +213,65 @@ def test_module_type_usage_counts_case_insensitive_nested_invocations() -> None:
     assert analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True)).issues == []
 
 
-def test_module_type_usage_counts_invocations_in_other_type_bodies() -> None:
+def test_module_type_usage_counts_invocations_in_another_units_type_body() -> None:
+    # A consumer imports a library whose module type instantiates Equipment.
+    # The invocation lives one hop away from the consuming program, so the
+    # search has to look inside the module types that consumer imports.
+    wrapper = ModuleTypeDef(
+        name="Wrapper",
+        datecode=1,
+        submodules=[_instance("NestedEquipment")],
+        origin_file="ConsumerLib.s",
+        origin_lib="ConsumerLib",
+    )
+    library = _picture()
+    consumer_library = _picture("ConsumerLib", definitions=[wrapper], instances=[])
+    graph = ProjectGraph(
+        ast_by_name={"EquipmentLib": library, "ConsumerLib": consumer_library},
+        source_dependencies={"consumerlib": {"equipmentlib"}},
+    )
+
+    report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
+
+    assert report.issues == []
+    assert "No unused module types found." in report.summary()
+
+
+def test_module_type_usage_ignores_in_file_uses_in_another_type_body() -> None:
+    # A type used only by a sibling type in the same file is still reachable
+    # only from within its declaring unit, so it has no audience of its own.
     wrapper = replace(_definition(), name="Wrapper", submodules=[_instance("NestedEquipment")])
     library = _picture(definitions=[_definition(), wrapper])
 
     report = analyze_moduletype_usage(library, analyzed_target_is_library=True)
 
-    # Wrapper has no invocation at all. Equipment has two in-file uses (the
-    # picture's own instance plus the wrapper), so it counts as used.
     messages = sorted(issue.message for issue in report.issues)
-    assert len(messages) == 1
-    assert "Wrapper" in messages[0] and "no invocations" in messages[0]
+    assert len(messages) == 2
+    assert "Equipment" in messages[0] and "no consumer in the scanned workspace" in messages[0]
+    assert "Wrapper" in messages[1] and "no invocations" in messages[1]
 
 
-def test_module_type_usage_reports_single_in_file_invocation_regardless_of_target_kind() -> None:
+def test_module_type_usage_never_reports_a_private_definition() -> None:
+    # PRIVATE_ states the contract: file scope only, so no consumer exists and
+    # none is required.
+    private_definition = ModuleTypeDef(
+        name="PRIVATE_Helper",
+        datecode=1,
+        is_private=True,
+        submodules=[],
+        origin_file="EquipmentLib.s",
+        origin_lib="EquipmentLib",
+    )
+    library = _picture(definitions=[_definition(), private_definition], instances=[])
+
+    report = analyze_moduletype_usage(library, analyzed_target_is_library=True)
+
+    assert len(report.issues) == 1
+    assert "Equipment" in report.issues[0].message
+    assert all("PRIVATE_Helper" not in issue.message for issue in report.issues)
+
+
+def test_module_type_usage_reports_in_file_use_regardless_of_target_kind() -> None:
     # The only invocation is the declaring file instantiating its own type.
     assert len(analyze_moduletype_usage(_picture()).issues) == 1
     assert len(analyze_moduletype_usage(_picture(), analyzed_target_is_library=True).issues) == 1
@@ -275,7 +334,7 @@ def test_module_type_usage_is_selectable_and_produces_readable_findings() -> Non
     library = _picture()
     spec = next(spec for spec in get_selectable_analyzers() if spec.key == "moduletype-usage")
 
-    assert spec.key not in DEFAULT_CLI_ANALYZER_KEYS
+    assert spec.key in get_selectable_analyzer_keys()
     report = spec.run(AnalysisContext(library, target_is_library=True))
     findings = extract_report_findings(report, default_name="EquipmentLib")
 
@@ -284,21 +343,24 @@ def test_module_type_usage_is_selectable_and_produces_readable_findings() -> Non
     assert findings[0].module_path == ("EquipmentLib", "LibraryInstance")
 
 
-@pytest.mark.parametrize("has_consumer_invocation", [False, True])
 @pytest.mark.parametrize("mode,suffix", [("draft", ".l"), ("official", ".z")])
-def test_module_type_usage_scans_all_unselected_dependent_programs(
-    tmp_path: Path, has_consumer_invocation: bool, mode: Literal["draft", "official"], suffix: str
+def test_module_type_usage_loads_transitive_consumers_including_the_abb_root(
+    tmp_path: Path, mode: Literal["draft", "official"], suffix: str
 ) -> None:
     programs = tmp_path / "programs"
+    abb_lib = tmp_path / "abb"
     programs.mkdir()
-    for name in ("ConsumerA", "ConsumerB"):
-        (programs / f"{name}{suffix}").write_text("equipmentlib\n", encoding="utf-8")
+    abb_lib.mkdir()
+    (programs / f"ConsumerA{suffix}").write_text("equipmentlib\n", encoding="utf-8")
+    (programs / f"ConsumerB{suffix}").write_text("ConsumerA\n", encoding="utf-8")
     (programs / f"Unrelated{suffix}").write_text("OtherLib\n", encoding="utf-8")
+    (abb_lib / f"AbbConsumer{suffix}").write_text("equipmentlib\n", encoding="utf-8")
     library = _picture()
     graph = ProjectGraph(ast_by_name={"EquipmentLib": library})
-    visits: list[str] = []
+    visits: list[tuple[str, Path]] = []
     cfg = cast(ConfigDict, deepcopy(DEFAULT_CONFIG))
     cfg["program_dir"] = str(programs)
+    cfg["ABB_lib_dir"] = str(abb_lib)
     cfg["other_lib_dirs"] = []
     cfg["mode"] = mode
     cfg["analyzed_programs_and_libraries"] = ["EquipmentLib"]
@@ -308,10 +370,13 @@ def test_module_type_usage_scans_all_unselected_dependent_programs(
 
     def visit_consumers(targets: list[tuple[str, Path | None]]) -> None:
         for name, directory in targets:
-            assert directory == programs
-            visits.append(name)
-            instances = [_instance("UsedEquipment")] if name == "ConsumerB" and has_consumer_invocation else []
-            graph.ast_by_name[name] = _picture(name, definitions=[], instances=instances)
+            assert directory is not None
+            visits.append((name, directory))
+            deps_path = directory / f"{name}{suffix}"
+            graph.source_dependencies[name.casefold()] = {
+                line.strip().casefold() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()
+            }
+            graph.ast_by_name[name] = _picture(name, definitions=[], instances=[])
 
     _include_reverse_library_consumers(
         cfg,
@@ -326,22 +391,28 @@ def test_module_type_usage_scans_all_unselected_dependent_programs(
     spec = next(spec for spec in get_selectable_analyzers() if spec.key == "moduletype-usage")
     report = spec.run(AnalysisContext(library, graph, target_is_library=True))
 
-    assert visits == ["ConsumerA", "ConsumerB"]
-    assert len(report.issues) == (0 if has_consumer_invocation else 1)
+    # ConsumerA and AbbConsumer import the target directly; ConsumerB reaches it
+    # through ConsumerA, so the closure pulls it in too. Unrelated is ignored.
+    assert sorted(visits) == [
+        ("AbbConsumer", abb_lib),
+        ("ConsumerA", programs),
+        ("ConsumerB", programs),
+    ]
+    # The declaring unit has consumers, so its in-file-only type is exported API.
+    assert report.issues == []
 
 
-@pytest.mark.parametrize(("invocations", "expected"), [(1, 1), (2, 0)])
-def test_only_a_single_declaring_file_invocation_counts_as_unused(invocations: int, expected: int) -> None:
+@pytest.mark.parametrize("invocations", [0, 1, 2])
+def test_in_file_invocations_never_count_as_a_consumer(invocations: int) -> None:
     library = _picture(
         instances=[_instance(f"LibraryInstance{index}") for index in range(invocations)],
     )
 
     report = analyze_moduletype_usage(library)
 
-    assert len(report.issues) == expected
-    if expected:
-        assert report.issues[0].data is not None
-        assert report.issues[0].data["invocation_count"] == 1
+    assert len(report.issues) == 1
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["invocation_count"] == invocations
 
 
 def test_a_single_invocation_from_another_file_means_the_type_is_used() -> None:

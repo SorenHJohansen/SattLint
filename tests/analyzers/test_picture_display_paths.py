@@ -20,6 +20,7 @@ from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
@@ -39,7 +40,7 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path) -> None:
+def test_wmf_asset_that_exists_on_disk_is_a_silent_skip(tmp_path: Path) -> None:
     (tmp_path / "nne_blue_web.wmf").write_bytes(b"asset")
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -56,10 +57,11 @@ def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path
 
     assert resolution.ok
     assert resolution.failure_reason is None
+    assert resolution.detail is None
     assert resolution.resolved_module_path == ("Root",)
 
 
-def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) -> None:
+def test_wmf_asset_that_is_missing_is_a_silent_skip(tmp_path: Path) -> None:
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
@@ -73,8 +75,10 @@ def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) ->
         declaring_module_path=["Root"],
     )
 
-    assert not resolution.ok
-    assert resolution.failure_reason == "unimplemented_asset"
+    assert resolution.ok
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def _string_length_call(name: str) -> FuncCall:
@@ -210,7 +214,9 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -249,6 +255,7 @@ def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -284,6 +291,7 @@ def test_picture_display_path_analyzer_library_target_reports_intra_library_fail
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -329,6 +337,7 @@ def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -365,7 +374,9 @@ def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert report.issues == []
@@ -442,7 +453,9 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -477,7 +490,9 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -513,7 +528,9 @@ def test_picture_display_path_analyzer_reports_above_base_as_distinct_kind() -> 
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     above_base = [issue for issue in report.issues if issue.kind == "picture_display_paths.above_base"]
@@ -553,7 +570,7 @@ def test_resolve_picture_display_path_stepping_above_base_supports_wildcard() ->
 def test_exact_string_inference_tracks_provenance_segments_across_mapped_module_writes() -> None:
     base_picture = _build_operation_path_base_picture()
 
-    result = ExactStringInferenceEngine(base_picture).infer(
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
         "Paths.OperationPath",
         module_path=("Root", "UnitControl"),
     )
@@ -612,7 +629,9 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
         ),
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
+        "Tag", module_path=("Root",)
+    )
 
     assert result.texts == ("AD",)
     assert result.cursor_positions == (2,)
@@ -671,7 +690,7 @@ def test_resolve_picture_display_path_uses_extra_plus_for_implicit_descent() -> 
     assert resolution.resolved_module_path == ("Root", "L1", "Panel")
 
 
-def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -680,12 +699,13 @@ def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_env_var_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -694,12 +714,13 @@ def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() 
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
+def test_resolve_picture_display_path_skips_emf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -708,9 +729,10 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has_dependencies() -> None:
@@ -1114,7 +1136,7 @@ def test_analyzer_reuses_precomputed_picture_display_diagnostics(monkeypatch: py
         fake_diagnose,
     )
 
-    report = analyze_picture_display_paths(base_picture, graph=graph)
+    report = analyze_picture_display_paths(base_picture, string_capacities=STANDARD_STRING_CAPACITIES, graph=graph)
 
     assert report.issues == []
     assert recomputed == []

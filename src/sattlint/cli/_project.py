@@ -10,8 +10,9 @@ from ..cache import cache_dir_location
 from ..change_review.settings import review_output_dir_location
 from ..config import config_path_location, load_config
 from ..config.defaults import DEFAULT_CONFIG
+from ..config.string_capacities import resolve_string_capacities
 from ..config.types import ConfigDict
-from ..project import SLPROJ_FILENAME, discover_project, load_project
+from ..project import SLPROJ_FILENAME, SLPROJ_VERSION, discover_project, load_project
 from ..project.models import SattLintProjectFile
 from ..runs import runs_dir_location
 from ._output import CliError
@@ -113,9 +114,11 @@ def project_payload(project: SattLintProjectFile, *, quiet: bool = False) -> Pro
     return {
         "path": str(project.path),
         "root": str(project.root),
-        "slproj_version": int(raw.get("slproj_version", 1)),
+        "slproj_version": int(raw.get("slproj_version", SLPROJ_VERSION)),
         "mode": str(raw.get("mode", "official")),
         "targets": list(raw.get("analyzed_programs_and_libraries", [])),
+        "analyzers": list(raw.get("analyzers", [])),
+        "string_capacities": resolve_string_capacities(cfg).as_dict(),
         "analysis": dict(cfg.get("analysis") or {}),
         "paths": project_paths(cfg),
         "config": config,

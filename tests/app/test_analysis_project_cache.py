@@ -755,9 +755,13 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(
 
     programs_dir = tmp_path / "programs"
     project_lib_dir = tmp_path / "ProjectLib"
+    abb_dir = tmp_path / "abb"
     programs_dir.mkdir()
     project_lib_dir.mkdir()
+    abb_dir.mkdir()
     (programs_dir / "ProgramConsumer.l").write_text("LibraryTarget\n", encoding="utf-8")
+    (programs_dir / "DeepConsumer.l").write_text("ProgramConsumer\n", encoding="utf-8")
+    (abb_dir / "AbbConsumer.l").write_text("LibraryTarget\n", encoding="utf-8")
 
     class FakeCache:
         def __init__(self, cache_dir: Path) -> None:
@@ -845,7 +849,7 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(
             {
                 "program_dir": str(programs_dir),
                 "other_lib_dirs": [str(project_lib_dir)],
-                "ABB_lib_dir": str(tmp_path / "abb"),
+                "ABB_lib_dir": str(abb_dir),
                 "mode": "draft",
                 "debug": False,
                 "analyzed_programs_and_libraries": ["LibraryTarget"],
@@ -855,9 +859,19 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",
     )
 
-    assert project_bp == ("LibraryTarget", ("LibraryTarget", "ProgramConsumer"))
-    assert sorted(graph.ast_by_name) == ["LibraryTarget", "ProgramConsumer"]
-    assert visit_calls == [("ProgramConsumer", programs_dir, False)]
+    # A consumer in the vendor root counts, and a consumer of that consumer
+    # joins the closure one hop later: its imported module types can use the
+    # target's types too.
+    assert project_bp == (
+        "LibraryTarget",
+        ("AbbConsumer", "DeepConsumer", "LibraryTarget", "ProgramConsumer"),
+    )
+    assert sorted(graph.ast_by_name) == ["AbbConsumer", "DeepConsumer", "LibraryTarget", "ProgramConsumer"]
+    assert visit_calls == [
+        ("AbbConsumer", abb_dir, False),
+        ("ProgramConsumer", programs_dir, False),
+        ("DeepConsumer", programs_dir, False),
+    ]
     assert save_calls[0][0] == "cache-key"
 
 

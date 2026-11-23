@@ -423,18 +423,20 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 # One schema tag for every cache key. The parser version is read from the installed
 # parser rather than embedded by hand, so a parser upgrade invalidates the key on its
 # own; bump this tag only when the key's inputs or their encoding change.
-CACHE_KEY_SCHEMA_VERSION = 1
+# Version 2 adds the project's [string_capacities] table to the key.
+CACHE_KEY_SCHEMA_VERSION = 2
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
-    "comment-code": "2026-11-18-file-scoped-ast-paths",
-    "cyclomatic-complexity": "2026-11-18-typedef-paths",
-    "sfc": "2026-11-06-sequence-start",
-    "variables": "2026-11-20-library-record-layouts",
-    "spec-compliance": "2026-11-16-typedef-path",
-    "datatype-fields": "2026-11-20-library-record-layouts",
-    "moduletype-usage": "2026-11-18-private-visibility",
-    "picture-display-paths": "2026-11-18-private-visibility",
-    "icf": "2026-11-20-library-record-layouts",
-    "dataflow": "2026-11-20-library-record-layouts",
+    "comment-code": "2026-11-20-explicit-selection",
+    "cyclomatic-complexity": "2026-11-21-worst-scope",
+    "sfc": "2026-11-21-branch-scope",
+    "variables": "2026-11-21-usage-cyclic-consumers",
+    "datatype-fields": "2026-11-21-global-unused",
+    "moduletype-usage": "2026-11-21-consumer-closure",
+    "picture-display-paths": "2026-11-21-wmf-emf-skip",
+    "icf": "2026-11-21-entry-programs",
+    "dataflow": "2026-11-21-write-conflicts",
+    "same-cycle": "2026-11-21-instance-dedupe",
+    "alarm-integrity": "2026-11-21-parameter-writeback",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol

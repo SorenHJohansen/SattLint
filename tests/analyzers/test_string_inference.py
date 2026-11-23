@@ -14,6 +14,14 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, SLExpression, VarRef
 
 from sattlint.analyzers.string_inference import ExactStringInferenceEngine
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES, StringCapacities
+
+
+def _engine(
+    base_picture: BasePicture,
+    capacities: StringCapacities = STANDARD_STRING_CAPACITIES,
+) -> ExactStringInferenceEngine:
+    return ExactStringInferenceEngine(base_picture, capacities=capacities)
 
 
 def _varref(name: str) -> VarRef:
@@ -73,7 +81,7 @@ def test_mapped_literal_uses_the_target_datatype_capacity() -> None:
         moduledef=ModuleDef(),
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root", "Child"))
+    result = _engine(base_picture).infer("Tag", module_path=("Root", "Child"))
 
     assert result.max_length == 40
 
@@ -91,7 +99,7 @@ def test_exact_string_inference_putblanks_inserts_blanks_and_fills_gap() -> None
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = _engine(base_picture).infer("Tag", module_path=("Root",))
 
     assert result.texts == ("    ",)
     assert result.cursor_positions == (5,)
@@ -109,7 +117,7 @@ def test_exact_string_inference_maxstringlength_drives_result_capacity() -> None
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = _engine(base_picture).infer("Tag", module_path=("Root",))
 
     assert result.texts == (" " * 40,)
     assert result.cursor_positions == (41,)
@@ -129,7 +137,7 @@ def test_exact_string_inference_extractstring_uses_source_cursor_and_resets_dest
         ],
     )
 
-    engine = ExactStringInferenceEngine(base_picture)
+    engine = _engine(base_picture)
     dest_result = engine.infer("Dest", module_path=("Root",))
     source_result = engine.infer("Source", module_path=("Root",))
 
@@ -155,7 +163,7 @@ def test_exact_string_inference_concatenate_reads_from_source_and_result_positio
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Result", module_path=("Root",))
+    result = _engine(base_picture).infer("Result", module_path=("Root",))
 
     assert result.texts == ("  Hello there ",)
     assert result.cursor_positions == (15,)
@@ -173,7 +181,7 @@ def test_exact_string_inference_overflow_leaves_target_unchanged() -> None:
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = _engine(base_picture).infer("Tag", module_path=("Root",))
 
     assert result.texts == ("OK",)
     assert result.cursor_positions == (2,)
@@ -195,7 +203,7 @@ def test_exact_string_inference_records_concatenate_overflow_attempt() -> None:
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Result", module_path=("Root",))
+    result = _engine(base_picture).infer("Result", module_path=("Root",))
 
     assert result.texts == ("",)
     assert result.cursor_positions == (1,)
@@ -216,7 +224,7 @@ def test_exact_string_inference_records_insertstring_overflow_attempt() -> None:
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Result", module_path=("Root",))
+    result = _engine(base_picture).infer("Result", module_path=("Root",))
 
     assert result.texts == ("Test",)
     assert result.cursor_positions == (5,)
@@ -243,7 +251,7 @@ def test_exact_string_inference_nationaluppercase_transforms_destination() -> No
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Dest", module_path=("Root",))
+    result = _engine(base_picture).infer("Dest", module_path=("Root",))
 
     assert result.texts == ("ABZ",)
     assert result.cursor_positions == (4,)
@@ -261,7 +269,7 @@ def test_exact_string_inference_invalid_setstringpos_leaves_state_unchanged() ->
         ],
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = _engine(base_picture).infer("Tag", module_path=("Root",))
 
     assert result.texts == ("",)
     assert result.cursor_positions == (1,)
@@ -321,7 +329,7 @@ ENDDEF (*BasePicture*);
 def test_inference_reads_string_assignments_inside_sequence_steps() -> None:
     base_picture = parser_core_parse_source_text(SFC_STEP_STRING_SOURCE)
 
-    result = ExactStringInferenceEngine(base_picture).infer("PictureName", module_path=("BasePicture",))
+    result = _engine(base_picture).infer("PictureName", module_path=("BasePicture",))
 
     assert result.texts == ("InitView",)
 
@@ -329,6 +337,34 @@ def test_inference_reads_string_assignments_inside_sequence_steps() -> None:
 def test_inference_resolves_frame_module_locals() -> None:
     base_picture = parser_core_parse_source_text(FRAME_MODULE_STRING_SOURCE)
 
-    result = ExactStringInferenceEngine(base_picture).infer("FrameText", module_path=("BasePicture", "FrameRoot"))
+    result = _engine(base_picture).infer("FrameText", module_path=("BasePicture", "FrameRoot"))
 
     assert result.texts == ("FrameView",)
+
+
+def test_configured_string_capacity_decides_copy_overflow() -> None:
+    """A 25-character copy fits a 40-character string but not a 20-character one."""
+    text = "x" * 25
+
+    def overflow_operations(string_capacity: int) -> tuple[str, ...]:
+        base_picture = _base_picture(
+            variables=[
+                Variable(name="Source", datatype=ScalarDatatype.STRING, init_value=text),
+                Variable(name="Target", datatype=ScalarDatatype.STRING),
+            ],
+            code=[
+                _func("CopyString", _varref("Source"), _varref("Target")),
+            ],
+        )
+        capacities = StringCapacities(
+            identstring=15,
+            tagstring=30,
+            string=string_capacity,
+            linestring=80,
+            maxstring=140,
+        )
+        result = _engine(base_picture, capacities).infer("Target", module_path=("Root",))
+        return result.overflow_operations
+
+    assert overflow_operations(STANDARD_STRING_CAPACITIES.string) == ()
+    assert overflow_operations(20) == ("CopyString",)

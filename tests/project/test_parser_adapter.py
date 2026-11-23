@@ -87,8 +87,8 @@ def test_convert_populates_graph_from_registry() -> None:
     )
 
     assert set(graph.ast_by_name) == {"A", "B"}
-    assert graph.ast_by_name["A"] is a.code
-    assert graph.ast_by_name["B"] is b.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
+    assert graph.ast_by_name["B"] is project.programs()["b"].code
     assert graph.source_files == {lib / "A.s", prg / "B.s"}
     assert graph.library_dependencies["prg"] == {"lib"}
     assert graph.source_dependencies == {"a": set(), "b": {"a"}}
@@ -206,7 +206,7 @@ def test_convert_skips_already_present_programs() -> None:
     other = SattLineProject.from_programs({"A": lib, "C": _program("C", dependencies=("A",), source_path=prg / "C.s")})
     convert_project_into_graph(other, graph, binding=_binding(prg), root_name="C", strict=False)
 
-    assert graph.ast_by_name["A"] is lib.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
     assert len(graph.moduletype_defs) == indexed_before
     assert set(graph.ast_by_name) == {"A", "B", "C"}
 
@@ -340,8 +340,9 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
     a = _program("A", source_path=prg / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
     graph = ProjectGraph()
+    project = SattLineProject.from_programs({"A": a, "B": b})
     convert_project_into_graph(
-        SattLineProject.from_programs({"A": a, "B": b}),
+        project,
         graph,
         binding=binding,
         root_name="B",
@@ -358,7 +359,7 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
         strict=False,
     )
 
-    assert graph.ast_by_name["A"] is a.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
     assert len(graph.moduletype_defs) == indexed_before
     assert set(graph.ast_by_name) == {"A", "B", "C"}
 
@@ -400,8 +401,8 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
     )
 
     assert set(graph.ast_by_name) == {"A", "R1", "R2"}
-    assert graph.ast_by_name["R1"] is r1.code
-    assert graph.ast_by_name["R2"] is r2.code
+    assert graph.ast_by_name["R1"] is project.programs()["r1"].code
+    assert graph.ast_by_name["R2"] is project.programs()["r2"].code
     assert graph.library_dependencies["prg"] == {"prg"}
 
 

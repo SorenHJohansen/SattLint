@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from sattlint import ui as app_textual
+from sattlint.project.io import init_project, load_project, save_project
 from sattlint.ui import _app_textual_analyze as app_textual_analyze_module
 from tests.helpers.app_textual_support import (
     isolate_app_config_path,
@@ -557,3 +559,60 @@ def test_textual_unchanged_analyzer_options_keep_the_list_scroll() -> None:
     app_instance._update_analyze_selection_list(stub, items)
 
     assert stub.clear_count == 1
+
+
+def test_textual_run_without_a_selection_shows_the_selection_guidance() -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = make_textual_app(
+            cfg={"analyzed_programs_and_libraries": ["TargetA"]},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="comment-code", name="Commented out code", description="", category="style"),
+                SimpleNamespace(key="timing", name="Timing", description="", category="correctness"),
+            ],
+        )
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._analyze_selected_entry_ids.clear()
+            app_instance._run_selected_analyzers()
+            await pilot.pause()
+
+            output_text = getattr(app_instance.query_one("#output"), "text", "")
+            assert "No analyzers selected" in output_text
+            assert "comment-code" in output_text
+            assert "timing" in output_text
+
+    asyncio.run(_run())
+
+
+def test_textual_project_load_preselects_the_project_analyzers(tmp_path: Path) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    async def _run() -> None:
+        app_instance = make_textual_app(
+            cfg={"analyzed_programs_and_libraries": []},
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(key="comment-code", name="Commented out code", description="", category="style"),
+                SimpleNamespace(key="timing", name="Timing", description="", category="correctness"),
+            ],
+        )
+        project_dir = tmp_path / "seeded"
+        project = init_project(project_dir / ".slproj")
+        data = project.data
+        data["analyzers"] = ["timing", "not-a-real-analyzer"]
+        save_project(project.path, data)
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+
+            app_instance._load_project_object(load_project(project.path))
+            await pilot.pause()
+
+            assert app_instance._analyze_selected_entry_ids == {"timing"}
+
+    asyncio.run(_run())

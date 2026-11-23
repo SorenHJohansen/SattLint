@@ -9,6 +9,7 @@ import pytest
 
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.framework import AnalysisContext, AnalyzerSpec, Report
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 
 
 def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
@@ -18,11 +19,19 @@ def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
 
     assert catalog.enabled_specs()
     assert report["generated_by"] == "test-suite"
-    assert report["analyzers"]
-    declared = {item.spec.key for item in catalog.analyzers if item.delivery.cli_exposed}
-    configured = set(registry_module.DEFAULT_CLI_ANALYZER_KEYS)
-    actual = set(registry_module.get_actual_cli_analyzer_keys())
-    assert declared == configured == actual
+    assert {entry["key"] for entry in report["analyzers"]} == set(registry_module.get_selectable_analyzer_keys())
+    # Selection is per run, so the catalogue publishes no default or CLI flag.
+    assert "cli_exposed" not in report["analyzers"][0]
+
+
+def test_removed_analyzers_are_neither_selectable_nor_catalogued():
+    keys = set(registry_module.get_selectable_analyzer_keys())
+    catalogued = {analyzer.spec.key for analyzer in registry_module.get_default_analyzer_catalog().analyzers}
+
+    assert "spec-compliance" not in keys
+    assert "version-drift" not in keys
+    assert "spec-compliance" not in catalogued
+    assert "version-drift" not in catalogued
 
 
 def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
@@ -52,13 +61,14 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(registry_module, "analyze_variables", _record("variables"))
     monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
-    monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
     monkeypatch.setattr(registry_module, "analyze_picture_display_paths", _record("picture-display-paths"))
     monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
-    monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
+    monkeypatch.setattr(registry_module, "analyze_datatype_fields", _record("datatype-fields"))
+    monkeypatch.setattr(registry_module, "analyze_moduletype_usage", _record("moduletype-usage"))
+    monkeypatch.setattr(registry_module, "analyze_icf_configuration", _record("icf"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
 
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
@@ -71,20 +81,23 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
             unavailable_libraries={"MissingLib"},
             target_is_library=True,
             config={"profile": "test"},
+            string_capacities=STANDARD_STRING_CAPACITIES,
             include_dependency_moduletype_usage=None,
+            program_ast_loader=None,
         ),
     )
     expected_keys = {
         "variables",
         "picture-display-paths",
         "sfc",
-        "spec-compliance",
         "alarm-integrity",
         "cyclomatic-complexity",
         "same-cycle",
-        "version-drift",
         "dataflow",
         "comment-code",
+        "datatype-fields",
+        "moduletype-usage",
+        "icf",
     }
 
     for key in expected_keys:

@@ -27,6 +27,7 @@ from ..resolution.paths import CanonicalPath
 from ..resolution.scope import ScopeContext
 from .framework import AnalysisContext, Issue, empty_issues, format_report_header
 from .sfc._sfc_guard_logic import conflict_rep, paths_conflict
+from .shared.instance_paths import collect_instance_paths
 from .shared.variable_utils import mapping_target_name
 from .variables import VariablesAnalyzer
 from .variables._variables_contracts import typedef_usage_key
@@ -121,11 +122,18 @@ class SameCycleAnalyzer(VariablesAnalyzer):
         self._walk_module_code(self.bp.modulecode, root_context, root_path)
         self._walk_modules(self.bp.submodules or [], root_context, root_path)
 
+        # A moduletype the picture invokes was already walked where it runs, so
+        # its own parallel nodes are recorded once. Walking the root definition
+        # again would report the same node a second time under a ``TypeDef:``
+        # path, which path rewriting then maps onto the same invocation.
+        invoked_typedefs = set(collect_instance_paths(self.bp))
         for moduletype in self.bp.moduletype_defs or []:
             if not self._is_from_root_origin(
                 getattr(moduletype, "origin_file", None),
                 getattr(moduletype, "origin_lib", None),
             ):
+                continue
+            if moduletype.name.casefold() in invoked_typedefs:
                 continue
             path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
             context = build_typedef_root_context(self, moduletype, path)

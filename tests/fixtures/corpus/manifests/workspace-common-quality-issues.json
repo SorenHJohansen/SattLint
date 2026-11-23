@@ -5,7 +5,6 @@
   "expectation": {
     "expected_finding_ids": [
       "never_read",
-      "read_before_write",
       "field_read_only",
       "read_only_non_const",
       "unused"
@@ -18,7 +17,6 @@
       "summary.json": {
         "rule_counts": {
           "never_read": 1,
-          "read_before_write": 2,
           "field_read_only": 1,
           "read_only_non_const": 1,
           "unused": 1
@@ -26,6 +24,7 @@
       }
     },
     "forbidden_finding_ids": [
+      "read_before_write",
       "corpus.execution-error",
       "syntax.parse"
     ]

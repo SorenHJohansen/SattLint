@@ -139,16 +139,19 @@ def test_validate_config_reports_unknown_analysis_namespace_keys():
     }
 
 
+def test_validate_config_rejects_the_retired_spec_compliance_section():
+    result = config_module.validate_config(cast(ConfigDict, {"analysis": {"spec_compliance": {"step_prefix": "ST_"}}}))
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {"analysis.spec_compliance"}
+
+
 def test_validate_config_reports_invalid_analysis_knob_shapes():
     result = config_module.validate_config(
         cast(
             ConfigDict,
             {
                 "analysis": {
-                    "spec_compliance": {
-                        "extra_prefix": "X_",
-                        "step_prefix": 42,
-                    },
                     "unsafe_default_tokens": ["bypass", 7, ""],
                     "cyclomatic_module_threshold": -1,
                     "cyclomatic_step_threshold": "high",
@@ -161,8 +164,6 @@ def test_validate_config_reports_invalid_analysis_knob_shapes():
 
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {
-        "analysis.spec_compliance.extra_prefix",
-        "analysis.spec_compliance.step_prefix",
         "analysis.unsafe_default_tokens[1]",
         "analysis.unsafe_default_tokens[2]",
         "analysis.cyclomatic_module_threshold",
@@ -176,12 +177,6 @@ def test_validate_config_accepts_valid_analysis_knobs():
     result = config_module.validate_config(
         {
             "analysis": {
-                "spec_compliance": {
-                    "step_prefix": "ST_",
-                    "transition_prefix": "TR_",
-                    "sequence_prefix": "SEQ_",
-                    "equation_prefix": "EQ_",
-                },
                 "unsafe_default_tokens": ["bypass", "enable", "override"],
                 "cyclomatic_module_threshold": 12,
                 "cyclomatic_step_threshold": 8,
@@ -193,6 +188,55 @@ def test_validate_config_accepts_valid_analysis_knobs():
 
     assert result.passed is True
     assert result.errors == ()
+
+
+def test_validate_config_accepts_a_complete_string_capacities_table():
+    result = config_module.validate_config(
+        {
+            "string_capacities": {
+                "identstring": 15,
+                "tagstring": 30,
+                "string": 40,
+                "linestring": 80,
+                "maxstring": 140,
+            }
+        }
+    )
+
+    assert result.passed is True
+    assert result.errors == ()
+
+
+def test_validate_config_reports_every_string_capacity_problem():
+    result = config_module.validate_config(
+        cast(
+            ConfigDict,
+            {
+                "string_capacities": {
+                    "identstring": "15",
+                    "tagstring": 30,
+                    "linestring": 0,
+                    "bytes": 3,
+                }
+            },
+        )
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "string_capacities.bytes",
+        "string_capacities.identstring",
+        "string_capacities.linestring",
+        "string_capacities.string",
+        "string_capacities.maxstring",
+    }
+
+
+def test_validate_config_reports_a_non_table_string_capacities_value():
+    result = config_module.validate_config(cast(ConfigDict, {"string_capacities": "standard"}))
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {"string_capacities"}
 
 
 def test_validate_config_passes_valid_config_and_serializes_result():

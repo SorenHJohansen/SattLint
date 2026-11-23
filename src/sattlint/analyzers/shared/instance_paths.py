@@ -186,6 +186,9 @@ def _replace_typedef_tokens(value: Any, index: Mapping[str, list[list[str]]]) ->
     if isinstance(value, list):
         sequence = cast(list[object], value)
         return [_replace_typedef_tokens(item, index) for item in sequence]
+    if isinstance(value, tuple):
+        sequence = cast(tuple[object, ...], value)
+        return tuple(_replace_typedef_tokens(item, index) for item in sequence)
     if isinstance(value, dict):
         mapping = cast(dict[str, object], value)
         return {str(key): _replace_typedef_tokens(item, index) for key, item in mapping.items()}

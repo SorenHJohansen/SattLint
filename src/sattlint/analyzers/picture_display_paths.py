@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sattlint.parser_api import BasePicture
 
+from ..config.string_capacities import StringCapacities
 from ..graphics.picture_display_paths import diagnose_picture_display_paths, format_picture_display_path_diagnostic
 from ..models.project_graph import ProjectGraph
 from .framework import Issue, SimpleReport
@@ -18,6 +19,7 @@ def _is_library_suppressed(diagnostic: object, *, analyzed_target_is_library: bo
 def analyze_picture_display_paths(
     base_picture: BasePicture,
     *,
+    string_capacities: StringCapacities,
     graph: ProjectGraph | None = None,
     analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
@@ -28,7 +30,12 @@ def analyze_picture_display_paths(
         diagnostics = attachments.picture_display_diagnostics
     else:
         occurrences = attachments.picture_display_occurrences if attachments is not None else ()
-        diagnostics = diagnose_picture_display_paths(base_picture, occurrences, graph=graph)
+        diagnostics = diagnose_picture_display_paths(
+            base_picture,
+            occurrences,
+            capacities=string_capacities,
+            graph=graph,
+        )
     issues: list[Issue] = []
     for diagnostic in diagnostics:
         if _is_library_suppressed(diagnostic, analyzed_target_is_library=analyzed_target_is_library):

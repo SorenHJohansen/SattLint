@@ -3,21 +3,18 @@
     "target_file": "../semantic/workspace/SignalLifecycle.s",
     "mode": "workspace",
     "expectation": {
-        "expected_finding_ids": [
-            "semantic.read-before-write"
-        ],
+        "expected_finding_ids": [],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "rule_counts": {
-                    "semantic.read-before-write": 1
-                }
+                "rule_counts": {}
             }
         },
         "forbidden_finding_ids": [
+            "semantic.read-before-write",
             "corpus.execution-error",
             "syntax.parse"
         ]

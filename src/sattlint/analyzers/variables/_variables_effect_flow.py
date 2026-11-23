@@ -384,7 +384,7 @@ class EffectFlowTracker:
         src_var: Variable,
         full_source: str,
         source_field_path: str,
-        parent_path: list[str],
+        decl_path: list[str],
         parent_context: ScopeContext | None,
         parent_env: dict[str, Variable],
     ) -> None:
@@ -395,26 +395,26 @@ class EffectFlowTracker:
                 self._external_effect_sinks.add(source_key)
 
         display_path: list[str] = []
-        if parent_path:
-            display_path.append(decorate_segment(parent_path[0], "BP"))
-            display_path.extend(parent_path[1:])
+        if decl_path:
+            display_path.append(decorate_segment(decl_path[0], "BP"))
+            display_path.extend(decl_path[1:])
         use_context = ScopeContext(
             env=parent_env,
             param_mappings={},
-            module_path=parent_path.copy(),
+            module_path=decl_path.copy(),
             display_module_path=display_path,
             parent_context=None,
         )
 
         usage = self._get_usage(src_var)
         if source_field_path:
-            usage.mark_field_read(source_field_path, parent_path)
-            usage.mark_field_written(source_field_path, parent_path)
-            canonical_path = self._canonical_path(parent_path, src_var, source_field_path)
+            usage.mark_field_read(source_field_path, decl_path)
+            usage.mark_field_written(source_field_path, decl_path)
+            canonical_path = self._canonical_path(decl_path, src_var, source_field_path)
         else:
-            usage.mark_read(parent_path)
-            usage.mark_written(parent_path)
-            canonical_path = self._canonical_path(parent_path, src_var, "")
+            usage.mark_read(decl_path)
+            usage.mark_written(decl_path)
+            canonical_path = self._canonical_path(decl_path, src_var, "")
         self._record_access(AccessKind.READ, canonical_path, use_context, full_source)
         self._record_access(AccessKind.WRITE, canonical_path, use_context, full_source)
 
@@ -475,7 +475,7 @@ class EffectFlowTracker:
                     src_var=src_var,
                     full_source=full_source,
                     source_field_path=source_field_path,
-                    parent_path=parent_path,
+                    decl_path=parent_path,
                     parent_context=parent_context,
                     parent_env=parent_env,
                 )
@@ -511,8 +511,21 @@ class EffectFlowTracker:
         source_base = source_parts[0].casefold()
         source_field_path = source_parts[1] if len(source_parts) > 1 else ""
 
-        # Resolve the actual source variable
-        src_var = parent_env.get(source_base)
+        # Resolve the actual. The immediate parent environment holds the scope's
+        # declarations, so it keeps the seam semantics when the actual is local.
+        # A frame's environment holds only its own declarations, so fall back to the
+        # scope chain, which finds an actual declared in an ancestor; the global index
+        # is the last resort for a reference the scope chain cannot resolve.
+        src_var: Variable | None = parent_env.get(source_base)
+        decl_path = parent_path
+        if src_var is None and parent_context is not None:
+            src_var, resolved_field_path, resolved_decl_path, _resolved_display_path = parent_context.resolve_variable(
+                full_source
+            )
+            if src_var is not None:
+                source_field_path = resolved_field_path
+                decl_path = resolved_decl_path
+
         if src_var is None:
             src_var = self._lookup_global_variable(source_base)
 
@@ -525,7 +538,7 @@ class EffectFlowTracker:
                 src_var=src_var,
                 full_source=full_source,
                 source_field_path=source_field_path,
-                parent_path=parent_path,
+                decl_path=decl_path,
                 parent_context=parent_context,
                 parent_env=parent_env,
             )
@@ -535,19 +548,19 @@ class EffectFlowTracker:
         if target_name is not None:
             if child_ui_reads is not None and target_name in child_ui_reads:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path, ui=True)
+                    self._get_usage(src_var).mark_field_read(source_field_path, decl_path, ui=True)
                 else:
-                    self._get_usage(src_var).mark_ui_read(parent_path)
+                    self._get_usage(src_var).mark_ui_read(decl_path)
 
             if child_non_ui_reads is not None and target_name in child_non_ui_reads:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
+                    self._get_usage(src_var).mark_field_read(source_field_path, decl_path)
                 else:
-                    self._get_usage(src_var).mark_read(parent_path)
+                    self._get_usage(src_var).mark_read(decl_path)
 
             # If the child used the parameter for writing
             if child_used_writes is not None and target_name in child_used_writes:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
+                    self._get_usage(src_var).mark_field_written(source_field_path, decl_path)
                 else:
-                    self._get_usage(src_var).mark_written(parent_path)
+                    self._get_usage(src_var).mark_written(decl_path)

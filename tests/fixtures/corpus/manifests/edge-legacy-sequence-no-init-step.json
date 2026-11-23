@@ -5,10 +5,7 @@
     "expectation": {
         "expected_finding_ids": [
             "semantic.condition-always-false",
-            "semantic.read-only-non-const",
-            "semantic.non-state-multi-site",
-            "spec.sequence_step_prefix",
-            "spec.transition_prefix"
+            "semantic.read-only-non-const"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -16,13 +13,10 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 8,
+                "finding_count": 3,
                 "rule_counts": {
                     "semantic.condition-always-false": 2,
-                    "semantic.read-only-non-const": 1,
-                    "semantic.non-state-multi-site": 1,
-                    "spec.sequence_step_prefix": 2,
-                    "spec.transition_prefix": 2
+                    "semantic.read-only-non-const": 1
                 }
             }
         },

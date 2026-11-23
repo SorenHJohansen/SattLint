@@ -4,7 +4,7 @@ The parser owns companion scanning: bindings, composite records, picture
 display records, and the structural messages those scans produce. This module
 turns the parser's ``GraphicsModel`` into the record shapes the analyzers
 consume and adds the checks that need the local workspace: literal
-PictureDisplay asset verification and the not-implemented asset warnings.
+PictureDisplay asset verification.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ __all__ = [
     "PictureDisplayRecord",
     "is_unimplemented_picture_display_asset_path",
     "picture_display_asset_candidate_paths",
-    "unimplemented_picture_display_asset_message",
     "validate_graphics_file",
     "validate_graphics_model",
     "validate_graphics_text",
@@ -143,10 +142,6 @@ def is_unimplemented_picture_display_asset_path(path_text: str) -> bool:
     return lowered.endswith(".wmf") or lowered.endswith(".emf")
 
 
-def unimplemented_picture_display_asset_message() -> str:
-    return ".emf and .wmf resolution is not implemented"
-
-
 def _validate_literal_path(
     file_path: Path,
     path_text: str,
@@ -174,27 +169,12 @@ def _validate_literal_path(
                 length=len(stripped),
             )
         if is_unimplemented_picture_display_asset_path(stripped):
-            return GraphicsMessage(
-                severity="warning",
-                message=unimplemented_picture_display_asset_message(),
-                line=line,
-                column=column,
-                length=len(stripped),
-            )
+            return None
         if any(candidate.exists() for candidate in picture_display_asset_candidate_paths(file_path, asset_name)):
             return None
         return GraphicsMessage(
             severity="warning",
             message=f"PictureDisplay asset {stripped!r} could not be verified from this workspace",
-            line=line,
-            column=column,
-            length=len(stripped),
-        )
-
-    if is_unimplemented_picture_display_asset_path(stripped):
-        return GraphicsMessage(
-            severity="warning",
-            message=unimplemented_picture_display_asset_message(),
             line=line,
             column=column,
             length=len(stripped),

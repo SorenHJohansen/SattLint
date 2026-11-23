@@ -12,6 +12,7 @@ from sattlint.parser_api import BasePicture, LoadMode, source_text_for_parse
 from sattlint.parser_api import parse_source_text as parser_core_parse_source_text
 from sattlint.parser_api import resolve_graphics_companion_path as parser_resolve_graphics_companion_path
 
+from ..config.string_capacities import StringCapacities
 from ..models.project_graph import ProjectGraph
 from ..validation.policy import validate_basepicture_strict
 from ..validation.shared import ValidationNotice
@@ -61,11 +62,18 @@ def picture_display_path_diagnostics(
     base_picture: BasePicture,
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
+    capacities: StringCapacities,
     graph: ProjectGraph | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
     """Diagnose PictureDisplay paths once for both the notices and the analyzer."""
-    return diagnose_picture_display_paths(base_picture, occurrences, graph=graph, progress_callback=status_callback)
+    return diagnose_picture_display_paths(
+        base_picture,
+        occurrences,
+        capacities=capacities,
+        graph=graph,
+        progress_callback=status_callback,
+    )
 
 
 def picture_display_path_notices(
@@ -86,11 +94,18 @@ def picture_display_path_warnings(
     base_picture: BasePicture,
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
+    capacities: StringCapacities,
     graph: ProjectGraph | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> tuple[ValidationNotice, ...]:
     return picture_display_path_notices(
-        picture_display_path_diagnostics(base_picture, occurrences, graph=graph, status_callback=status_callback)
+        picture_display_path_diagnostics(
+            base_picture,
+            occurrences,
+            capacities=capacities,
+            graph=graph,
+            status_callback=status_callback,
+        )
     )
 
 

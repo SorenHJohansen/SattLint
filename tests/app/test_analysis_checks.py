@@ -892,7 +892,7 @@ def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeyp
 
 
 def test_collect_run_checks_result_does_not_prune_when_save_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    spec = analysis_catalog_module.get_default_cli_analyzers()[0]
+    spec = analysis_catalog_module.get_selectable_analyzers()[0]
 
     def fail_save(*_args: object, **_kwargs: object):
         raise OSError("disk full")

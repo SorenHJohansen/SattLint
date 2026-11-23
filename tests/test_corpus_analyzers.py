@@ -125,8 +125,8 @@ def _finding_id(issue: Any) -> str | None:
 
 def test_finding_id_prefers_the_rule_over_a_coarse_kind() -> None:
     """A rule-backed finding is matched by its rule id, never by its kind."""
-    rule = SimpleNamespace(id="module.version_drift")
-    assert _finding_id(SimpleNamespace(rule=rule, kind="module")) == "module.version_drift"
+    rule = SimpleNamespace(id="alarm.duplicate_tag")
+    assert _finding_id(SimpleNamespace(rule=rule, kind="alarm")) == "alarm.duplicate_tag"
     assert _finding_id(SimpleNamespace(rule_id="read_before_write", kind="variables")) == "read_before_write"
     assert _finding_id(SimpleNamespace(kind="comment_code")) == "comment_code"
 

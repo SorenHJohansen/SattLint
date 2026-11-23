@@ -13,6 +13,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.models.project_graph import ProjectGraph
@@ -47,7 +48,7 @@ def test_picture_display_path_analyzer_uses_real_string_fixture() -> None:
     base_picture, graph = _load_fixture_base_picture("TestStringsDisplay")
     attachments = graph.graphics_attachments_for(base_picture)
 
-    report = analyze_picture_display_paths(base_picture, graph=graph)
+    report = analyze_picture_display_paths(base_picture, string_capacities=STANDARD_STRING_CAPACITIES, graph=graph)
 
     assert len(attachments.picture_display_records) == 1
     assert len(attachments.picture_display_occurrences) == 1

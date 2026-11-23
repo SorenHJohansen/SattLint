@@ -108,7 +108,7 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
         action="append",
         default=[],
         metavar="KEY",
-        help="Analyzer key to run; repeatable. Defaults to all.",
+        help="Analyzer key to run; repeatable. Overrides the project's analyzers list.",
     )
     parser.add_argument(
         "--target", action="append", default=[], metavar="NAME", help="Analyze only this target; repeatable."

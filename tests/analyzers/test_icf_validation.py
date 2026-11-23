@@ -179,9 +179,7 @@ def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
     assert "unparseable SattLine reference (expected Program:Path value)" in summary
 
 
-def test_icf_validation_placeholder_counts_as_covered_for_completeness():
-    # Record has two fields; one resolves normally, one is bound to H::. placeholder.
-    # The completeness check must not report the placeholder field as missing.
+def test_icf_validation_placeholder_is_skipped_not_treated_as_a_missing_field():
     fill_record = DataType(
         name="FillRecord",
         description=None,
@@ -527,7 +525,20 @@ def test_icf_validation_flags_unit_and_group_mismatches():
     assert "group tag mismatch" in reasons
 
 
-def test_icf_validation_flags_missing_journal_parameter_record_fields():
+def test_icf_validation_accepts_a_partial_journal_parameter_group():
+    channel = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SEQ", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TRY", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TIME", datatype=ScalarDatatype.TIME),
+        ],
+    )
     dilute = DataType(
         name="DiluteRecord",
         description=None,
@@ -541,113 +552,48 @@ def test_icf_validation_flags_missing_journal_parameter_record_fields():
     unit = SingleModule(
         header=_header("Unit221X"),
         moduledef=None,
-        localvariables=[Variable(name="Dilute", datatype="DiluteRecord")],
+        localvariables=[
+            Variable(name="T", datatype="Channel"),
+            Variable(name="Dilute", datatype="DiluteRecord"),
+        ],
     )
     bp = BasePicture(
         header=_header("Program"),
-        datatype_defs=[dilute],
+        datatype_defs=[channel, dilute],
         submodules=[unit],
     )
 
+    identity_keys = ("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME")
     entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(identity_keys, start=1)
+    ]
+    entries.append(
         _entry(
             "RunNumber",
             "Program:Unit221X.Dilute.RunNumber",
+            line_no=7,
             unit="Unit221X",
             journal="Transfer",
             group="JournalData_Parameters",
-        ),
-        _entry(
-            "Duration",
-            "Program:Unit221X.Dilute.Duration",
-            line_no=2,
-            unit="Unit221X",
-            journal="Transfer",
-            group="JournalData_Parameters",
-        ),
-    ]
-
-    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
-    summary = report.summary()
-
-    assert any(issue.reason == "missing journal parameter fields" for issue in report.issues)
-    assert any("PWVolume" in (issue.detail or "") for issue in report.issues)
-    assert "record Dilute missing 1 fields: PWVolume" in summary
-    assert "RunNumber =>" not in summary
-
-
-def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_coverage():
-    user = DataType(
-        name="UserRecord",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="UserID", datatype=ScalarDatatype.STRING),
-            Variable(name="UserName", datatype=ScalarDatatype.STRING),
-        ],
+        )
     )
-    log_value = DataType(
-        name="LogValueRecord",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="status", datatype=ScalarDatatype.INTEGER),
-            Variable(name="meaning", datatype=ScalarDatatype.STRING),
-            Variable(name="User", datatype="UserRecord"),
-        ],
-    )
-    unit = SingleModule(
-        header=_header("Unit221A"),
-        moduledef=None,
-        localvariables=[Variable(name="LogValue", datatype="LogValueRecord")],
-    )
-    bp = BasePicture(
-        header=_header("Program"),
-        datatype_defs=[user, log_value],
-        submodules=[unit],
-    )
-
-    entries = [
-        _entry(
-            "status",
-            "Program:Unit221A.LogValue.status",
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "meaning",
-            "Program:Unit221A.LogValue.meaning",
-            line_no=2,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserID",
-            "Program:Unit221A.LogValue.User.UserID",
-            line_no=3,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserName",
-            "Program:Unit221A.LogValue.User.UserName",
-            line_no=4,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-    ]
 
     report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
 
-    assert report.valid_entries == 4
+    assert report.valid_entries == len(entries)
+    assert report.issues == []
     assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
 
 
-def test_icf_validation_checks_nested_journal_parameter_record_only():
+def test_icf_validation_accepts_a_partial_nested_journal_parameter_group():
     cry_fill = DataType(
         name="CryFillRecord",
         description=None,
@@ -663,7 +609,6 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
         datecode=None,
         var_list=[
             Variable(name="AIT001AlarmEnable", datatype=ScalarDatatype.BOOLEAN),
-            Variable(name="AITT001EnableAlarm", datatype=ScalarDatatype.BOOLEAN),
             Variable(name="CRY_Fyld1", datatype="CryFillRecord"),
         ],
     )
@@ -690,11 +635,145 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
 
     report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
-    issue = next(issue for issue in report.issues if issue.reason == "missing journal parameter fields")
-    assert "Dv.CRY_Fyld1" in (issue.detail or "")
-    assert "Tid_Stop" in (issue.detail or "")
-    assert "AIT001AlarmEnable" not in (issue.detail or "")
-    assert "AITT001EnableAlarm" not in (issue.detail or "")
+    assert report.valid_entries == 1
+    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
+
+
+def test_icf_validation_accepts_a_complete_journal_identity_group_without_journal_type():
+    record = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SEQ", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TRY", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TIME", datatype=ScalarDatatype.TIME),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221X"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Channel")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME"), start=1)
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    assert report.valid_entries == 6
+    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
+
+
+def test_icf_validation_flags_an_incomplete_journal_identity_group():
+    record = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221X"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Channel")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(("OPR_ID", "CR_ID", "CYCLE"), start=1)
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    missing_field_issues = [issue for issue in report.issues if issue.reason == "missing journal parameter fields"]
+    assert len(missing_field_issues) == 1
+    assert missing_field_issues[0].detail is not None
+    assert missing_field_issues[0].detail.endswith("missing identity keys: SEQ, TRY, TIME")
+    summary = report.summary()
+    assert "missing journal parameter fields" in summary
+    assert "missing identity keys: SEQ, TRY, TIME" in summary
+
+
+def test_icf_validation_flags_an_incomplete_mes_response_group():
+    response = DataType(
+        name="ResponseRecord",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="RESULT_CODE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RESULT_TEXT", datatype=ScalarDatatype.STRING),
+            Variable(name="RET_VAL", datatype=ScalarDatatype.INTEGER),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221B"),
+        moduledef=None,
+        localvariables=[Variable(name="S", datatype="ResponseRecord")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[response],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221B.S.{path}",
+            line_no=line_no,
+            unit="Unit221B",
+            journal="HygienicStatus",
+            group="JournalData_MEStoDCS",
+        )
+        for line_no, (key, path) in enumerate(
+            (
+                ("RESULT_CODE", "RESULT_CODE"),
+                ("RESULT_TEXT", "RESULT_TEXT"),
+                ("LMES_RET_VAL", "RET_VAL"),
+            ),
+            start=1,
+        )
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    missing_field_issues = [issue for issue in report.issues if issue.reason == "missing journal parameter fields"]
+    assert len(missing_field_issues) == 1
+    assert missing_field_issues[0].detail is not None
+    assert missing_field_issues[0].detail.endswith("missing identity keys: LMES_RET_TEXT")
 
 
 def test_icf_validation_accepts_flattened_statechange_channel_names():
@@ -910,122 +989,6 @@ def test_icf_validation_ignores_case_only_key_differences_for_unit_structure():
     report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
 
     assert not any(issue.reason == "unit structure drift" for issue in report.issues)
-
-
-def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
-    user = DataType(
-        name="ACSUserType",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="UserID", datatype=ScalarDatatype.STRING),
-            Variable(name="UserName", datatype=ScalarDatatype.STRING),
-        ],
-    )
-    signoff = DataType(
-        name="ACSSignOffType",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="Time", datatype=ScalarDatatype.TIME),
-            Variable(name="User", datatype="ACSUserType"),
-            Variable(name="Privilege", datatype=ScalarDatatype.STRING),
-            Variable(name="SignOffResult", datatype=ScalarDatatype.STRING),
-            Variable(name="Meaning", datatype=ScalarDatatype.STRING),
-        ],
-    )
-    signoff_log = DataType(
-        name="ACSSignOffLOGData",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="SignOffResult", datatype="ACSSignOffType"),
-            Variable(name="Description", datatype=ScalarDatatype.STRING),
-            Variable(name="Answer", datatype=ScalarDatatype.STRING),
-            Variable(name="LogTag", datatype=ScalarDatatype.STRING),
-        ],
-    )
-    unit = SingleModule(
-        header=_header("Unit221A"),
-        moduledef=None,
-        localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
-    )
-    bp = BasePicture(
-        header=_header("Program"),
-        datatype_defs=[user, signoff, signoff_log],
-        submodules=[unit],
-    )
-
-    entries = [
-        _entry(
-            "UserID",
-            "Program:Unit221A.HSSetLogData.SignOffResult.User.UserID",
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserName",
-            "Program:Unit221A.HSSetLogData.SignOffResult.User.UserName",
-            line_no=2,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Time",
-            "Program:Unit221A.HSSetLogData.SignOffResult.Time",
-            line_no=3,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Privilege",
-            "Program:Unit221A.HSSetLogData.SignOffResult.Privilege",
-            line_no=4,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "SignOffResult",
-            "Program:Unit221A.HSSetLogData.SignOffResult.SignOffResult",
-            line_no=5,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Description",
-            "Program:Unit221A.HSSetLogData.Description",
-            line_no=6,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Answer",
-            "Program:Unit221A.HSSetLogData.Answer",
-            line_no=7,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "LogTag",
-            "Program:Unit221A.HSSetLogData.LogTag",
-            line_no=8,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-    ]
-
-    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
-
-    assert report.valid_entries == 8
-    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
 
 
 def test_icf_report_formats_extra_entries_and_ordering_guidance():

@@ -24,6 +24,11 @@ class SattLintProjectFile:
     def root(self) -> Path:
         return self.path.parent.resolve()
 
+    @property
+    def analyzers(self) -> tuple[str, ...]:
+        """The analyzer keys this project selects, in declaration order."""
+        return tuple(self.data.get("analyzers", ()))
+
     def _resolve(self, raw: str) -> Path:
         if not raw:
             return Path()
@@ -48,6 +53,7 @@ class SattLintProjectFile:
                 "ABB_lib_dir": self._maybe_resolve(d["ABB_lib_dir"]),
                 "icf_dir": self._maybe_resolve(d["icf_dir"]),
                 "other_lib_dirs": [self._resolve(p) for p in d["other_lib_dirs"] if p.strip()],
+                "string_capacities": dict(d["string_capacities"]),
                 "analysis": deepcopy(d.get("analysis", {})),
             },
         )

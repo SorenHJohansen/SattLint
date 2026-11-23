@@ -6,6 +6,7 @@ from collections.abc import Callable
 import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     Equation,
     FrameModule,
@@ -197,6 +198,75 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
     never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
     assert len(never_cleared_issues) == 1
     assert "AlarmTrip" in never_cleared_issues[0].message
+
+
+def _submodule_write_back_bp(*, submodule_writes_false: bool) -> BasePicture:
+    write_value = not submodule_writes_false
+    alarm_check = ModuleTypeDef(
+        name="AlarmCheckType",
+        moduleparameters=[Variable(name="Start", datatype=ScalarDatatype.BOOLEAN)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Output",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Start"), value=write_value)],
+                )
+            ]
+        ),
+        origin_file="Root.s",
+    )
+    return BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="AlarmManStart", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[alarm_check],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("AlarmManStart"), value=True)],
+                )
+            ]
+        ),
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmManualCheck"),
+                moduletype_name="AlarmCheckType",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Start"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmManStart"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        origin_file="Root.s",
+    )
+
+
+def test_alarm_integrity_clears_alarm_through_submodule_parameter_write_back() -> None:
+    report = analyze_alarm_integrity(_submodule_write_back_bp(submodule_writes_false=True))
+
+    never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
+    assert never_cleared_issues == []
+
+
+def test_alarm_integrity_keeps_finding_when_submodule_never_writes_parameter_false() -> None:
+    report = analyze_alarm_integrity(_submodule_write_back_bp(submodule_writes_false=False))
+
+    never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
+    assert len(never_cleared_issues) == 1
+    assert "AlarmManStart" in never_cleared_issues[0].message
 
 
 def test_alarm_integrity_analyzer_is_enabled_by_default() -> None:
@@ -795,7 +865,13 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
     visited_paths: list[tuple[str, ...]] = []
 
-    def _record_module_code(_modulecode: ModuleCode, module_path: list[str], _env: dict[str, Variable]) -> None:
+    def _record_module_code(
+        _modulecode: ModuleCode,
+        module_path: list[str],
+        _env: dict[str, Variable],
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
         visited_paths.append(tuple(module_path))
 
     monkeypatch.setattr(analyzer, "_check_module_code", _record_module_code)

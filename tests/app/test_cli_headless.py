@@ -15,7 +15,7 @@ import pytest
 from sattline_parser.models.ast_model import BasePicture
 
 from sattlint import cache as cache_module
-from sattlint.analyzers.catalog import get_default_cli_analyzers
+from sattlint.analyzers.catalog import get_selectable_analyzers
 from sattlint.application import checks as checks_module
 from sattlint.application import checks_records
 from sattlint.application.checks import (
@@ -55,20 +55,38 @@ def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 
 
 def _write_project(
-    tmp_path: Path, *, target: str = "Demo", program_dir: str = "programs", targets: list[str] | None = None
+    tmp_path: Path,
+    *,
+    target: str = "Demo",
+    program_dir: str = "programs",
+    targets: list[str] | None = None,
+    analyzers: list[str] | None = None,
+    capacities: dict[str, int] | None = None,
 ) -> Path:
     project = tmp_path / "demo.slproj"
     resolved_targets = [target] if targets is None else targets
+    resolved_analyzers = ["variables"] if analyzers is None else analyzers
+    resolved_capacities = capacities or {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     project.write_text(
         "\n".join(
             [
-                "slproj_version = 1",
+                "slproj_version = 2",
                 f"analyzed_programs_and_libraries = {json.dumps(resolved_targets)}",
+                f"analyzers = {json.dumps(resolved_analyzers)}",
                 'mode = "official"',
                 f'program_dir = "{program_dir}"',
                 'ABB_lib_dir = ""',
                 'icf_dir = ""',
                 "other_lib_dirs = []",
+                "",
+                "[string_capacities]",
+                *(f"{key} = {value}" for key, value in resolved_capacities.items()),
                 "",
             ]
         ),
@@ -188,7 +206,7 @@ def test_analyzers_list_json(capsys: pytest.CaptureFixture[str], tmp_path: Path)
     keys = {entry["key"] for entry in payload["analyzers"]}
     assert payload["schema_version"] == 1
     assert {"variables", "dataflow", "icf"} <= keys
-    assert all("default" in entry for entry in payload["analyzers"])
+    assert all("cli_exposed" not in entry for entry in payload["analyzers"])
 
 
 def test_project_show_resolves_paths(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -198,8 +216,38 @@ def test_project_show_resolves_paths(capsys: pytest.CaptureFixture[str], tmp_pat
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["project"]["path"] == str(project.resolve())
+    assert payload["project"]["slproj_version"] == 2
     assert payload["project"]["targets"] == ["Demo"]
+    assert payload["project"]["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     assert payload["project"]["paths"]["program_dir"] == str((tmp_path / "programs").resolve())
+
+
+def test_project_show_reports_the_projects_own_capacity_values(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(
+        tmp_path,
+        capacities={"identstring": 10, "tagstring": 20, "string": 25, "linestring": 60, "maxstring": 100},
+    )
+
+    code = run_cli(["project", "show", "--project", str(project), "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project"]["string_capacities"] == {
+        "identstring": 10,
+        "tagstring": 20,
+        "string": 25,
+        "linestring": 60,
+        "maxstring": 100,
+    }
 
 
 def test_project_validate_subcommand_is_gone(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -371,6 +419,76 @@ def test_analyze_unknown_analyzer_returns_json_error(
     assert payload["error"]["code"] == "unknown_analyzer"
 
 
+def test_analyze_requires_an_analyzer_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path, analyzers=[])
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(result))
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "no_analyzers"
+    message = payload["error"]["message"]
+    assert "No analyzers selected" in message
+    assert "variables" in message
+    assert "sfc" in message
+    assert "variables" in payload["error"]["details"]["available"]
+
+
+def test_analyze_uses_the_project_analyzer_list(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path, analyzers=["variables", "sfc"])
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    seen: dict[str, object] = {}
+
+    def _collect(_cfg: object, keys: object, **_kwargs: object) -> ChecksRunResult:
+        seen["keys"] = keys
+        return result
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _collect)
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "none"])
+
+    assert code == 0
+    assert seen["keys"] == ["variables", "sfc"]
+    capsys.readouterr()
+
+
+def test_analyze_cli_analyzer_overrides_the_project_list(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path, analyzers=["variables", "sfc"])
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    seen: dict[str, object] = {}
+
+    def _collect(_cfg: object, keys: object, **_kwargs: object) -> ChecksRunResult:
+        seen["keys"] = keys
+        return result
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _collect)
+
+    code = run_cli(
+        ["analyze", "--project", str(project), "--analyzer", "dataflow", "--format", "json", "--fail-on", "none"]
+    )
+
+    assert code == 0
+    assert seen["keys"] == ["dataflow"]
+    capsys.readouterr()
+
+
 def test_parser_rejects_review_subcommand() -> None:
     with pytest.raises(CliError):
         build_cli_parser().parse_args(["review"])
@@ -391,8 +509,18 @@ def test_project_show_text_and_discovery(
     assert code == 0
     out = capsys.readouterr().out
     assert "Project:" in out
-    assert "Version: 1" in out
-    assert "Targets: Demo" in out
+    assert "Version:   2" in out
+    assert "Targets:   Demo" in out
+    assert "Analyzers: variables" in out
+    assert "String capacities:" in out
+    for line in (
+        "  identstring: 15",
+        "  tagstring: 30",
+        "  string: 40",
+        "  linestring: 80",
+        "  maxstring: 140",
+    ):
+        assert line in out
     assert "Analysis: (defaults)" in out
     assert "Config:  " in out
 
@@ -455,9 +583,9 @@ def test_analyzers_list_text(capsys: pytest.CaptureFixture[str], tmp_path: Path)
     code = run_cli(["analyzers", "list"])
     assert code == 0
     out = capsys.readouterr().out
-    assert out.startswith("Analyzers (* = enabled by default):\n")
+    assert out.startswith("Analyzers (select with --analyzer KEY):\n")
     assert "Key" in out and "Category" in out and "Name" in out
-    assert "* variables" in out
+    assert "  variables " in out
     assert "correctness" in out
 
 
@@ -760,7 +888,7 @@ def test_collect_run_checks_result_records_saved_run_id(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    spec = get_default_cli_analyzers()[0]
+    spec = get_selectable_analyzers()[0]
     monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: tmp_path / "runs")
     result = checks_module.collect_run_checks_result(
         cast(ConfigDict, {"analyzed_programs_and_libraries": ["Demo"]}),
@@ -1021,6 +1149,7 @@ def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, mon
     assert payload["runs_dir"] == str(blocked_cache / "sattlint" / "runs")
     assert payload["review_output_dir"] == str(blocked_config / "sattlint" / "change-review")
     assert payload["config"]["exists"] is False
+    assert payload["string_capacities"]["string"] == 40
 
 
 def test_analyze_all_targets_failed_is_a_load_failure_not_a_preflight_failure(

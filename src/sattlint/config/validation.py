@@ -13,6 +13,10 @@ from ..types import TargetName
 from .defaults import (
     VALID_TOP_LEVEL_CONFIG_KEYS,
 )
+from .string_capacities import (
+    STRING_CAPACITY_KEYS,
+    string_capacity_problems,
+)
 from .types import (
     ConfigDict,
     ConfigObjectMap,
@@ -23,7 +27,6 @@ VALID_TOP_LEVEL_KEYS = VALID_TOP_LEVEL_CONFIG_KEYS
 
 VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
     {
-        "spec_compliance",
         "unsafe_default_tokens",
         "cyclomatic_module_threshold",
         "cyclomatic_step_threshold",
@@ -31,10 +34,10 @@ VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
         "fan_in_out_threshold",
     }
 )
-VALID_SPEC_COMPLIANCE_KEYS = frozenset({"step_prefix", "transition_prefix", "sequence_prefix", "equation_prefix"})
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
 VALID_OUTPUT_KEYS = frozenset({"retention_lines"})
 VALID_REVIEW_KEYS = frozenset({"output_dir"})
+VALID_STRING_CAPACITY_KEYS = frozenset(STRING_CAPACITY_KEYS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,9 +97,6 @@ def _strip_section_keys(cfg: ConfigObjectMap, valid_keys: frozenset[str]) -> Non
 
 def _strip_analysis_keys(analysis: ConfigObjectMap) -> None:
     _strip_section_keys(analysis, VALID_ANALYSIS_KEYS)
-    spec_compliance = _config_dict(analysis.get("spec_compliance"))
-    if spec_compliance is not None:
-        _strip_section_keys(spec_compliance, VALID_SPEC_COMPLIANCE_KEYS)
 
 
 def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
@@ -111,6 +111,10 @@ def _strip_unknown_keys(cfg: ConfigOverrideDict) -> None:
     run_history = _config_dict(cfg_map.get("run_history"))
     if run_history is not None:
         _strip_section_keys(run_history, VALID_RUN_HISTORY_KEYS)
+
+    string_capacities = _config_dict(cfg_map.get("string_capacities"))
+    if string_capacities is not None:
+        _strip_section_keys(string_capacities, VALID_STRING_CAPACITY_KEYS)
 
     output = _config_dict(cfg_map.get("output"))
     if output is not None:
@@ -141,6 +145,7 @@ def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidatio
     report_unknown(cfg_map, valid_keys=VALID_TOP_LEVEL_CONFIG_KEYS)
     for section_name, valid_keys in (
         ("analysis", VALID_ANALYSIS_KEYS),
+        ("string_capacities", VALID_STRING_CAPACITY_KEYS),
         ("run_history", VALID_RUN_HISTORY_KEYS),
         ("output", VALID_OUTPUT_KEYS),
         ("review", VALID_REVIEW_KEYS),
@@ -148,11 +153,6 @@ def _load_time_config_warnings(cfg: ConfigOverrideDict) -> tuple[ConfigValidatio
         section = _config_dict(cfg_map.get(section_name))
         if section is not None:
             report_unknown(section, valid_keys=valid_keys, prefix=section_name)
-
-    analysis = _config_dict(cfg_map.get("analysis"))
-    spec_compliance = _config_dict(analysis.get("spec_compliance")) if analysis is not None else None
-    if spec_compliance is not None:
-        report_unknown(spec_compliance, valid_keys=VALID_SPEC_COMPLIANCE_KEYS, prefix="analysis.spec_compliance")
 
     return tuple(warnings)
 
@@ -258,6 +258,17 @@ def _top_level_type_errors(cfg: ConfigDict | ConfigOverrideDict) -> list[ConfigV
     return errors
 
 
+def _string_capacity_validation_errors(cfg: ConfigDict | ConfigOverrideDict) -> list[ConfigValidationError]:
+    table = cfg.get("string_capacities")
+    if table is None:
+        return []
+    errors: list[ConfigValidationError] = []
+    for problem in string_capacity_problems(table, location="the configuration"):
+        key_path = "string_capacities" if not problem.key else f"string_capacities.{problem.key}"
+        errors.append(ConfigValidationError(key_path=key_path, message=problem.message))
+    return errors
+
+
 def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
@@ -318,6 +329,8 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
                     message="run_history.limit must be a positive integer",
                 )
             )
+
+    errors.extend(_string_capacity_validation_errors(cfg))
 
     output_value = cfg.get("output")
     output = _config_dict(output_value)
@@ -401,36 +414,6 @@ def validate_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigValidationRes
 def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidationError]:
     errors: list[ConfigValidationError] = []
 
-    spec_compliance_value = analysis.get("spec_compliance")
-    spec_compliance = _config_dict(spec_compliance_value)
-    if spec_compliance_value is not None and spec_compliance is None:
-        errors.append(
-            ConfigValidationError(
-                key_path="analysis.spec_compliance",
-                message="analysis.spec_compliance must be a table/object.",
-            )
-        )
-    elif spec_compliance is not None:
-        for key in spec_compliance:
-            if key not in VALID_SPEC_COMPLIANCE_KEYS:
-                errors.append(
-                    ConfigValidationError(
-                        key_path=f"analysis.spec_compliance.{key}",
-                        message=(
-                            f"Unknown analysis.spec_compliance key '{key}'. "
-                            f"Expected one of: {', '.join(sorted(VALID_SPEC_COMPLIANCE_KEYS))}"
-                        ),
-                    )
-                )
-        for key, value in spec_compliance.items():
-            if not isinstance(value, str):
-                errors.append(
-                    ConfigValidationError(
-                        key_path=f"analysis.spec_compliance.{key}",
-                        message=f"analysis.spec_compliance.{key} must be a string prefix",
-                    )
-                )
-
     unsafe_default_tokens = analysis.get("unsafe_default_tokens")
     if unsafe_default_tokens is not None:
         if not isinstance(unsafe_default_tokens, list):
@@ -487,18 +470,31 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
         if str(raw_path).strip()
     ]
 
-    # The parser owns code discovery: the mode, the candidate extensions, and the
-    # case-insensitive companion match all come from the same surface the loader
-    # uses, so validation cannot drift from what a load would find.
+    # The parser owns the mode and the candidate extensions. Code discovery is
+    # case-insensitive under the language name table, but the parser's companion
+    # index covers sidecars and graphics, not code bodies, so probe the exact
+    # names first and fall back to a language-identity directory scan.
     mode = str(cfg.get("mode", "official")).strip().casefold()
     load_mode = parser_api.LoadMode.DRAFT if mode == "draft" else parser_api.LoadMode.OFFICIAL
     extensions = parser_api.code_ext_candidates(load_mode)
+    wanted = {extension.lower() for extension in extensions}
+    target_key = parser_api.UnitIdentity.of(target).key
 
     for directory in dirs:
         if not directory.is_dir():
             continue
-        if parser_api.find_companion_beside(directory / f"{target}{extensions[0]}", extensions) is not None:
-            return True
+        for extension in extensions:
+            if (directory / f"{target}{extension}").is_file():
+                return True
+        try:
+            entries = sorted(directory.iterdir(), key=lambda entry: entry.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.suffix.lower() not in wanted or not entry.is_file():
+                continue
+            if parser_api.UnitIdentity.of(entry.stem).key == target_key:
+                return True
 
     return False
 

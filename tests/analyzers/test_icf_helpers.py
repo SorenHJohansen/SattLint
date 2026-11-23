@@ -22,7 +22,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
-from sattlint.reporting.icf_report import ICFEntry, ICFResolvedEntry, summarize_icf_unit_drift
+from sattlint.reporting.icf_report import ICFEntry, summarize_icf_unit_drift
 from sattlint.resolution.common import ResolvedModulePath
 
 
@@ -356,57 +356,7 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch: pytes
     assert {issue.reason for issue in mixed_report.issues} == {"program mismatch", "invalid field path"}
 
 
-def test_icf_helper_parameter_completeness_and_unit_structure_edges():
-    nested = DataType(
-        name="NestedRecord",
-        description=None,
-        datecode=None,
-        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.STRING)],
-    )
-    root = DataType(
-        name="RootRecord",
-        description=None,
-        datecode=None,
-        var_list=[Variable(name="Nested", datatype="NestedRecord")],
-    )
-    bp = BasePicture(header=_header("Program"), datatype_defs=[nested, root], submodules=[])
-    type_graph = icf_module.TypeGraph.from_basepicture(bp)
-    entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
-
-    direct_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype="RootRecord",
-        field_path="Nested.Leaf",
-        leaf_name="Leaf",
-        datatype=ScalarDatatype.STRING,
-    )
-    placeholder_mismatch = _entry("Leaf", "H::.", unit="Other", journal="Other", group="JournalData_Parameters")
-
-    issues = icf_module._validate_parameter_record_completeness(type_graph, [direct_entry], [placeholder_mismatch])
-    assert issues == []
-
-    pathless_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype="RootRecord",
-        field_path=None,
-        leaf_name="Record",
-        datatype=ScalarDatatype.STRING,
-    )
-    simple_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype=ScalarDatatype.INTEGER,
-        field_path="Leaf",
-        leaf_name="Leaf",
-        datatype=ScalarDatatype.INTEGER,
-    )
-    assert icf_module._validate_parameter_record_completeness(type_graph, [pathless_entry, simple_entry]) == []
-
+def test_icf_helper_unit_structure_edges():
     structure_entries = [
         _entry("Key", "not-a-ref", unit="Unit221A", group="JournalData_Parameters"),
         _entry("Other", "Program:Unit221B.Path", line_no=2, unit="Unit221B", group="JournalData_Parameters"),
@@ -474,6 +424,41 @@ def test_icf_helper_additional_summary_and_parse_branches(tmp_path: Path, monkey
     assert fallback == ("family:unit221", "family Unit221")
 
 
+def test_icf_helper_field_path_ambiguity_and_canonical_leaf_edges():
+    alpha = DataType(
+        name="DuplicateRecord",
+        description=None,
+        datecode=None,
+        origin_lib="LibA",
+        var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
+    )
+    beta = DataType(
+        name="DuplicateRecord",
+        description=None,
+        datecode=None,
+        origin_lib="LibB",
+        var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
+    )
+    bp = BasePicture(header=_header("Program"), datatype_defs=[alpha, beta])
+    type_graph = icf_module.TypeGraph.from_basepicture(bp)
+
+    ambiguous_ok, ambiguous_detail = icf_module._validate_field_path(
+        type_graph,
+        Variable(name="Rec", datatype="DuplicateRecord"),
+        ["Field"],
+    )
+    assert ambiguous_ok is False
+    assert ambiguous_detail is not None
+    assert "more than one library" in ambiguous_detail
+
+    scalar_var = Variable(name="Count", datatype=ScalarDatatype.INTEGER)
+    assert icf_module._resolve_canonical_leaf_name(type_graph, scalar_var, ["Field"]) is None
+    assert (
+        icf_module._resolve_canonical_leaf_name(type_graph, Variable(name="Rec", datatype="UnknownRecord"), ["Field"])
+        is None
+    )
+
+
 def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch: pytest.MonkeyPatch):
     record = DataType(
         name="NestedRecord",
@@ -512,6 +497,7 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch: p
     assert icf_datatype_module.resolve_record_datatype(type_graph, unknown_var.datatype, ["Field"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Missing"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner", "Value"]) is None
+    assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner"]) == "LeafRecord"
 
     resolved = ResolvedModulePath(
         node=SingleModule(header=_header("Unit"), moduledef=None, localvariables=[record_var]),

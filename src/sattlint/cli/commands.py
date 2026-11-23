@@ -13,12 +13,13 @@ from typing import cast
 
 from ..analyzers.catalog import (
     canonicalize_analyzer_keys,
-    get_actual_cli_analyzer_keys,
     get_default_analyzer_catalog,
+    get_selectable_analyzer_keys,
 )
-from ..application.analyze import collect_checks_result
+from ..application.analyze import collect_checks_result, no_analyzer_selection_message
 from ..application.checks import ChecksRunResult, build_run_record
 from ..application.findings import kind_human_label
+from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
 from ..project.io import discover_project
 from ..project.support import TargetLoadError
@@ -154,11 +155,14 @@ def _project_text(project: ProjectInfo) -> list[str]:
     paths = project["paths"]
     config_state = "" if project["config"]["exists"] else " (missing)"
     lines = [
-        f"Project: {project['path']}",
-        f"Root:    {project['root']}",
-        f"Version: {project['slproj_version']}",
-        f"Mode:    {project['mode']}",
-        f"Targets: {', '.join(project['targets']) or '(none)'}",
+        f"Project:   {project['path']}",
+        f"Root:      {project['root']}",
+        f"Version:   {project['slproj_version']}",
+        f"Mode:      {project['mode']}",
+        f"Targets:   {', '.join(project['targets']) or '(none)'}",
+        f"Analyzers: {', '.join(project['analyzers']) or '(none)'}",
+        "String capacities:",
+        *(f"  {key}: {project['string_capacities'][key]}" for key in STRING_CAPACITY_KEYS),
     ]
     lines.extend(_analysis_text(project["analysis"]))
     lines.extend(
@@ -192,14 +196,7 @@ def _display_value(value: object) -> str:
 
 def command_analyzers_list(args: argparse.Namespace) -> int:
     catalog = get_default_analyzer_catalog()
-    default_keys = set(get_actual_cli_analyzer_keys())
-    analyzers: list[AnalyzerInfo] = []
-    for metadata in catalog.analyzers:
-        entry: AnalyzerInfo = {
-            **metadata.to_dict(),
-            "default": metadata.spec.key in default_keys,
-        }
-        analyzers.append(entry)
+    analyzers: list[AnalyzerInfo] = [metadata.to_dict() for metadata in catalog.analyzers]
     options = _output_options(args)
     payload: AnalyzersListPayload = {
         "schema_version": SCHEMA_VERSION,
@@ -212,20 +209,29 @@ def command_analyzers_list(args: argparse.Namespace) -> int:
 
 def _analyzers_text(analyzers: list[AnalyzerInfo]) -> list[str]:
     lines = [
-        "Analyzers (* = enabled by default):",
+        "Analyzers (select with --analyzer KEY):",
         f"  {'Key':<24} {'Category':<12} Name",
     ]
     for entry in analyzers:
-        marker = "*" if entry["default"] else " "
-        lines.append(f"{marker} {entry['key']:<24} {entry['category']:<12} {entry['name']}")
+        lines.append(f"  {entry['key']:<24} {entry['category']:<12} {entry['name']}")
     return lines
 
 
-def _resolve_analyzer_keys(requested: tuple[str, ...]) -> list[str] | None:
+def _resolve_analyzer_keys(requested: tuple[str, ...]) -> list[str]:
+    """Validate and canonicalize the analyzer keys a run will use.
+
+    The command line wins; the project's ``analyzers`` list is the fallback. A
+    run with neither is an error that names every selectable analyzer.
+    """
     if not requested:
-        return None
+        raise CliError(
+            no_analyzer_selection_message(),
+            code="no_analyzers",
+            exit_code=2,
+            details={"available": list(get_selectable_analyzer_keys())},
+        )
     canonical = list(canonicalize_analyzer_keys(list(requested)))
-    known = {metadata.spec.key for metadata in get_default_analyzer_catalog().analyzers if metadata.spec.enabled}
+    known = set(get_selectable_analyzer_keys())
     unknown = [key for key in canonical if key not in known]
     if unknown:
         raise CliError(
@@ -303,9 +309,9 @@ def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = resolve_project_file(options.project)
     cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
+    keys = _resolve_analyzer_keys(options.analyzers or project.analyzers)
     _require_configured_targets(cfg)
     project_path = str(project.path)
-    keys = _resolve_analyzer_keys(options.analyzers)
     result = _capture_run(
         cfg,
         keys,
@@ -320,10 +326,10 @@ def command_analyze(args: argparse.Namespace) -> int:
     if not result.selected_analyzers:
         _discard_output_file(options.output)
         raise CliError(
-            "No analyzers matched the request.",
+            f"No analyzers matched the request: {', '.join(keys)}.",
             code="no_analyzers",
             exit_code=2,
-            details={"requested": list(keys or ())},
+            details={"requested": list(keys)},
         )
     if result.failures:
         _discard_output_file(options.output)
@@ -422,7 +428,7 @@ def command_findings(args: argparse.Namespace) -> int:
     options = _output_options(args)
     requested_analyzers = tuple(str(value) for value in args.analyzer)
     if requested_analyzers:
-        requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers) or ())
+        requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers))
     record = resolve_run(args.run, project_path=_discovered_project_path())
     filters = FindingFilters(
         targets=tuple(str(value) for value in args.target),

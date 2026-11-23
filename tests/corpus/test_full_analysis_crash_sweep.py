@@ -13,7 +13,7 @@ import pytest
 
 from sattlint.analyzers.dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
 from sattlint.analyzers.framework import build_analysis_context
-from sattlint.analyzers.registry import get_enabled_analyzers
+from sattlint.analyzers.registry import get_selectable_analyzer_keys, get_selectable_analyzers
 from tests.helpers.project_loading import load_target_project
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "sample_sattline_files"
@@ -34,8 +34,11 @@ def _load_base_picture(stem: str):
 def test_full_analysis_pipeline_does_not_crash_on_real_fixture(stem: str) -> None:
     base_picture, graph = _load_base_picture(stem)
     context = build_analysis_context(base_picture, graph=graph, debug=False, create_shared_artifacts=True)
-    analyzers = get_cli_dispatch_analyzers(selected_keys=None, get_enabled_analyzers_fn=get_enabled_analyzers)
-    assert analyzers, "expected at least one enabled analyzer"
+    analyzers = get_cli_dispatch_analyzers(
+        selected_keys=get_selectable_analyzer_keys(),
+        get_enabled_analyzers_fn=get_selectable_analyzers,
+    )
+    assert analyzers, "expected at least one selectable analyzer"
     assert context.shared_artifacts is not None, "shared artifacts should be created"
 
     for spec in analyzers:

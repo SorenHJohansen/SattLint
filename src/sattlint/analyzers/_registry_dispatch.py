@@ -26,12 +26,14 @@ def resolve_selected_analyzers(
 ) -> tuple[Any, ...]:
     """Return exactly the selected analyzers, in their declared order.
 
-    With no selection the enabled set is returned unchanged. Selection is exact:
-    no analyzer is added, dropped, reordered, or collapsed.
+    Selection is exact: no analyzer is added, dropped, reordered, or collapsed,
+    and there is no default set. An empty selection is an error, so a caller
+    cannot silently run every analyzer.
     """
-    enabled = get_enabled_analyzers_fn()
     if not selected_keys:
-        return tuple(enabled)
+        available = ", ".join(_registry_module().get_selectable_analyzer_keys())
+        raise ValueError(f"No analyzers selected. Selectable analyzers: {available}.")
+    enabled = get_enabled_analyzers_fn()
     selected = {_canonical_key(key) for key in selected_keys}
     return tuple(spec for spec in enabled if _canonical_key(getattr(spec, "key", "")) in selected)
 

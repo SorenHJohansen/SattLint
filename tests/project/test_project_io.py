@@ -24,10 +24,19 @@ from sattlint.project.loading import cache_manifest_files
 from sattlint.project.models import SattLintProjectFile
 from sattlint.project.types import DEFAULT_PROJECT_DICT, ProjectDict
 
+STANDARD_STRING_CAPACITIES_TOML = (
+    "[string_capacities]\nidentstring = 15\ntagstring = 30\nstring = 40\nlinestring = 80\nmaxstring = 140\n"
+)
+
+
+def _write_project(path: Path, body: str = "") -> None:
+    """Write a valid version 2 project: top-level values, then the required table."""
+    path.write_text(f"slproj_version = {SLPROJ_VERSION}\n{body}{STANDARD_STRING_CAPACITIES_TOML}", encoding="utf-8")
+
 
 def test_discover_project_walks_upwards(tmp_path: Path) -> None:
     assert discover_project(tmp_path) is None
-    (tmp_path / SLPROJ_FILENAME).write_text("slproj_version = 1\n")
+    (tmp_path / SLPROJ_FILENAME).write_text(f"slproj_version = {SLPROJ_VERSION}\n")
     assert discover_project(tmp_path) == (tmp_path / SLPROJ_FILENAME)
     nested = tmp_path / "a" / "b"
     nested.mkdir(parents=True)
@@ -39,7 +48,7 @@ def test_discover_project_walks_upwards(tmp_path: Path) -> None:
 def test_load_project_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "sub" / SLPROJ_FILENAME
     path.parent.mkdir()
-    path.write_text("slproj_version = 1\nmode = 'official'\n")
+    _write_project(path, "mode = 'official'\n")
     project = load_project(path)
     assert isinstance(project, SattLintProjectFile)
     assert project.data["mode"] == "official"
@@ -50,8 +59,8 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         load_project(tmp_path / "missing" / SLPROJ_FILENAME)
     path = tmp_path / SLPROJ_FILENAME
-    path.write_text("slproj_version = 2\n")
-    with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
+    path.write_text("slproj_version = 1\n")
+    with pytest.raises(ValueError, match=r"Unsupported .slproj version 1.*\[string_capacities\]"):
         load_project(path)
     path.write_text("slproj_version = 0\n")
     with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
@@ -59,6 +68,8 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
     path.write_text("slproj_version = false\n")
     with pytest.raises(ValueError, match=r"slproj_version"):
         load_project(path)
+    _write_project(path)
+    assert load_project(path).data["slproj_version"] == SLPROJ_VERSION
 
 
 def test_load_project_rejects_directory(tmp_path: Path) -> None:
@@ -68,31 +79,43 @@ def test_load_project_rejects_directory(tmp_path: Path) -> None:
 
 def test_load_project_fills_defaults_for_missing_keys(tmp_path: Path) -> None:
     path = tmp_path / SLPROJ_FILENAME
-    path.write_text("slproj_version = 1\n")
+    _write_project(path)
 
     project = load_project(path)
 
     assert project.data["analyzed_programs_and_libraries"] == []
+    assert project.data["analyzers"] == []
+    assert project.analyzers == ()
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+    assert project.data["string_capacities"] == DEFAULT_PROJECT_DICT["string_capacities"]
 
     cfg = project.to_config_dict()
     assert cfg["analyzed_programs_and_libraries"] == []
     assert cfg["other_lib_dirs"] == []
+    assert cfg["string_capacities"] == DEFAULT_PROJECT_DICT["string_capacities"]
 
 
 def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
     path = tmp_path / SLPROJ_FILENAME
 
-    path.write_text("slproj_version = 1\nanalyzed_programs_and_libraries = 'Demo'\n")
+    _write_project(path, "analyzed_programs_and_libraries = 'Demo'\n")
     with pytest.raises(ValueError, match=r"analyzed_programs_and_libraries"):
         load_project(path)
 
-    path.write_text("slproj_version = 1\nmode = 3\n")
+    _write_project(path, "analyzers = 'variables'\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
+        load_project(path)
+
+    _write_project(path, "analyzers = [1]\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
+        load_project(path)
+
+    _write_project(path, "mode = 3\n")
     with pytest.raises(ValueError, match=r"mode"):
         load_project(path)
 
-    path.write_text("slproj_version = 1\nanalysis = 'nope'\n")
+    _write_project(path, "analysis = 'nope'\n")
     with pytest.raises(ValueError, match=r"analysis"):
         load_project(path)
 
@@ -103,7 +126,7 @@ def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
 
 def test_load_project_warns_about_unknown_keys(tmp_path: Path) -> None:
     path = tmp_path / SLPROJ_FILENAME
-    path.write_text("slproj_version = 1\nrun_history = { enabled = false }\n")
+    _write_project(path, "run_history = { enabled = false }\n")
 
     project = load_project(path)
 
@@ -115,10 +138,11 @@ def test_load_project_warns_about_unknown_keys(tmp_path: Path) -> None:
 def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     data = {
-        "slproj_version": 1,
+        "slproj_version": SLPROJ_VERSION,
         "mode": "official",
         "program_dir": tmp_path / "src",
         "other_lib_dirs": [tmp_path / "lib1", tmp_path / "lib2"],
+        "string_capacities": {"identstring": 11, "tagstring": 22, "string": 33, "linestring": 44, "maxstring": 55},
         "analysis": {"validate": True},
     }
     save_project(path, cast(ProjectDict, data))
@@ -126,27 +150,55 @@ def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     assert project.data["mode"] == "official"
     assert project.data["program_dir"] == str(tmp_path / "src")
     assert project.data["other_lib_dirs"] == [str(tmp_path / "lib1"), str(tmp_path / "lib2")]
+    assert project.data["string_capacities"] == {
+        "identstring": 11,
+        "tagstring": 22,
+        "string": 33,
+        "linestring": 44,
+        "maxstring": 55,
+    }
     assert project.data["analysis"] == {"validate": True}
 
 
 def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     data: dict[str, object] = {
-        "slproj_version": 1,
+        "slproj_version": SLPROJ_VERSION,
         "analyzed_programs_and_libraries": [],
         "mode": "official",
         "program_dir": tmp_path / "src",
         "ABB_lib_dir": "",
         "icf_dir": "",
+        "analyzers": ["variables", "sfc"],
         "other_lib_dirs": [],
-        "analysis": {"spec_compliance": {"step_prefix": "ST_"}},
+        "string_capacities": {"identstring": 15, "tagstring": 30, "string": 20, "linestring": 80, "maxstring": 140},
+        "analysis": {"cyclomatic_module_threshold": 30},
     }
     save_project(path, cast(ProjectDict, data))
     project = load_project(path)
 
     cfg = project.to_default_merged_config_dict()
 
-    assert cfg["analysis"]["spec_compliance"]["step_prefix"] == "ST_"
+    assert cfg["analysis"]["cyclomatic_module_threshold"] == 30
+    assert cfg["string_capacities"]["string"] == 20
+    assert project.analyzers == ("variables", "sfc")
+    # Analyzer selection belongs to the project file, not the merged runtime
+    # config that every command and the UI work from.
+    assert "analyzers" not in cfg
+
+
+def test_project_analyzers_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "proj.slproj"
+    init_project(path)
+
+    data = load_project(path).data
+    data["analyzers"] = ["dataflow", "sfc"]
+    save_project(path, data)
+
+    project = load_project(path)
+
+    assert project.data["analyzers"] == ["dataflow", "sfc"]
+    assert project.analyzers == ("dataflow", "sfc")
 
 
 def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:
@@ -171,9 +223,17 @@ def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     project = init_project(path)
     assert path.exists()
+    assert SLPROJ_VERSION == 2
     assert project.data["slproj_version"] == SLPROJ_VERSION
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+    assert project.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     with pytest.raises(FileExistsError):
         init_project(path)
 
@@ -198,9 +258,11 @@ def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> Non
 
     project.data["analyzed_programs_and_libraries"].append("Demo")
     project.data["other_lib_dirs"].append("libs")
+    project.data["string_capacities"]["string"] = 7
 
     assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
     assert DEFAULT_PROJECT_DICT["other_lib_dirs"] == []
+    assert DEFAULT_PROJECT_DICT["string_capacities"]["string"] == 40
 
 
 def test_normalize_converters() -> None:

@@ -7,10 +7,7 @@
             "semantic.condition-always-false",
             "semantic.condition-always-true",
             "semantic.dead-overwrite",
-            "semantic.never-read-write",
-            "semantic.non-state-multi-site",
-            "spec.sequence_step_prefix",
-            "spec.transition_prefix"
+            "semantic.never-read-write"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -18,15 +15,12 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 13,
+                "finding_count": 5,
                 "rule_counts": {
                     "semantic.condition-always-false": 1,
                     "semantic.condition-always-true": 2,
                     "semantic.dead-overwrite": 1,
-                    "semantic.never-read-write": 1,
-                    "semantic.non-state-multi-site": 1,
-                    "spec.sequence_step_prefix": 3,
-                    "spec.transition_prefix": 3
+                    "semantic.never-read-write": 1
                 }
             }
         },

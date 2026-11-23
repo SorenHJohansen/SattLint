@@ -32,7 +32,7 @@ from ...resolution.common import (
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
-from ...resolution.type_graph import AmbiguousRecordError, RecordDef, TypeGraph, resolve_record
+from ...resolution.type_graph import AmbiguousRecordError, TypeGraph, resolve_record
 from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 from ._icf_file_io import (
     decode_icf_text as _decode_icf_text_impl,
@@ -91,8 +91,9 @@ _GROUP_SUFFIX_RULES: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {
     },
 }
 
-_OPTIONAL_PARAMETER_RECORD_FIELDS: dict[str, set[str]] = {
-    "acssignofftype": {"meaning"},
+_IDENTITY_GROUP_FIELDS: dict[str, tuple[str, ...]] = {
+    "journaldata_dcstomes": ("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME"),
+    "journaldata_mestodcs": ("RESULT_CODE", "RESULT_TEXT", "LMES_RET_VAL", "LMES_RET_TEXT"),
 }
 
 
@@ -569,128 +570,37 @@ def _validate_value_prefix_consistency(entries: list[ICFEntry]) -> ICFValidation
     )
 
 
-def _record_for(
-    type_graph: TypeGraph,
-    datatype_name: str,
-    library: str | None,
-) -> RecordDef | None:
-    """Resolve a record for ICF validation, preferring the entry's library.
+def _validate_journal_identity_groups(entries: list[ICFEntry]) -> list[ICFValidationIssue]:
+    """Report an incomplete MES identity group.
 
-    An undecidable name has no known layout, so the completeness check has
-    nothing to compare and the record stays unresolved.
+    ``JournalData_DCStoMES`` and ``JournalData_MEStoDCS`` are fixed-key
+    identity groups: once a group maps any of its keys it must map all of
+    them. ``JOURNAL_TYPE`` is not required because real configurations omit it.
+    A group that is absent is never a finding, and ``JournalData_Parameters``
+    is a deliberate per-journal subset, so it is never checked for
+    completeness.
     """
-    return resolve_record(type_graph, datatype_name, library=library)
+    grouped: dict[tuple[str | None, str | None, str], list[ICFEntry]] = {}
+    for entry in entries:
+        group = _normalize_group_name(entry.group)
+        if group is None or group not in _IDENTITY_GROUP_FIELDS:
+            continue
+        grouped.setdefault((entry.unit, entry.journal, group), []).append(entry)
 
-
-def _validate_parameter_record_completeness(
-    type_graph: TypeGraph,
-    resolved_entries: list[ICFResolvedEntry],
-    placeholder_entries: list[ICFEntry] | None = None,
-) -> list[ICFValidationIssue]:
     issues: list[ICFValidationIssue] = []
-    grouped: dict[
-        tuple[str | None, str | None, str | None, str | None, tuple[str, ...], str, tuple[str, ...], str],
-        list[ICFResolvedEntry],
-    ] = {}
-
-    for resolved in resolved_entries:
-        if _normalize_group_name(resolved.entry.group) != "journaldata_parameters":
+    for (unit, journal, group), group_entries in grouped.items():
+        present = {_cf(entry.key) for entry in group_entries}
+        missing = [name for name in _IDENTITY_GROUP_FIELDS[group] if _cf(name) not in present]
+        if not missing:
             continue
-        if isinstance(resolved.root_datatype, ScalarDatatype):
-            continue
-        if resolved.root_datatype is not None and not isinstance(resolved.root_datatype, str):
-            continue
-        if not resolved.field_path:
-            continue
-        field_segments = [segment for segment in resolved.field_path.split(".") if segment]
-        if not field_segments:
-            continue
-        record_path = tuple(field_segments[:-1])
-        datatype_name = resolve_record_datatype(
-            type_graph,
-            resolved.root_datatype,
-            list(record_path),
-            library=resolved.current_library,
-        )
-        if datatype_name is None:
-            continue
-        record = _record_for(type_graph, datatype_name, resolved.current_library)
-        if record is None:
-            continue
-        key = (
-            resolved.entry.unit,
-            resolved.entry.journal,
-            resolved.entry.group,
-            resolved.current_library,
-            tuple(resolved.module_path),
-            resolved.variable_name,
-            record_path,
-            datatype_name,
-        )
-        grouped.setdefault(key, []).append(resolved)
-
-    grouped_items = list(grouped.items())
-    records_by_scope: dict[
-        tuple[str | None, str | None, str | None, str | None],
-        list[tuple[tuple[str, ...], str, tuple[str, ...]]],
-    ] = {}
-    for (
-        unit,
-        journal,
-        group,
-        library,
-        module_path,
-        variable_name,
-        record_path,
-        _datatype_name,
-    ), _entries in grouped_items:
-        records_by_scope.setdefault((unit, journal, group, library), []).append(
-            (module_path, variable_name, record_path)
-        )
-
-    for (
-        unit,
-        journal,
-        group,
-        library,
-        module_path,
-        variable_name,
-        record_path,
-        datatype_name,
-    ), entries in grouped_items:
-        record = _record_for(type_graph, datatype_name, library)
-        if record is None:
-            continue
-        expected_fields = {field.name: _cf(field.name) for field in record.fields_by_key.values()}
-        optional_fields = _OPTIONAL_PARAMETER_RECORD_FIELDS.get(_cf(datatype_name), set())
-        present = {_cf(resolved.leaf_name) for resolved in entries}
-        for ph in placeholder_entries or []:
-            if _normalize_group_name(ph.group) != "journaldata_parameters":
-                continue
-            if ph.unit != unit or ph.journal != journal or ph.group != group:
-                continue
-            present.add(_cf(ph.key))
-        for other_module_path, other_variable_name, other_record_path in records_by_scope.get(
-            (unit, journal, group, library), ()
-        ):
-            if other_module_path != module_path or other_variable_name != variable_name:
-                continue
-            if len(other_record_path) <= len(record_path):
-                continue
-            if other_record_path[: len(record_path)] != record_path:
-                continue
-            present.add(_cf(other_record_path[len(record_path)]))
-        missing = [name for name, key in expected_fields.items() if key not in present and key not in optional_fields]
-        if missing:
-            record_label = variable_name if not record_path else f"{variable_name}.{'.'.join(record_path)}"
-            issues.append(
-                ICFValidationIssue(
-                    entry=entries[0].entry,
-                    reason="missing journal parameter fields",
-                    detail=f"record {record_label} missing {len(missing)} fields: {', '.join(sorted(missing))}",
-                )
+        label = journal or unit or group_entries[0].group or group
+        issues.append(
+            ICFValidationIssue(
+                entry=group_entries[0],
+                reason="missing journal parameter fields",
+                detail=(f"group {group_entries[0].group} for {label} is missing identity keys: " + ", ".join(missing)),
             )
-
+        )
     return issues
 
 
@@ -783,7 +693,6 @@ def validate_icf_entries_against_program(
     type_graph = TypeGraph.from_basepicture(base_picture)
     issues: list[ICFValidationIssue] = []
     resolved_entries: list[ICFResolvedEntry] = []
-    placeholder_entries: list[ICFEntry] = []
     skipped_details: list[ICFSkippedEntry] = []
     validated = 0
     valid = 0
@@ -791,7 +700,6 @@ def validate_icf_entries_against_program(
 
     for entry in entries:
         if _is_placeholder_icf_value(entry.value):
-            placeholder_entries.append(entry)
             skipped_details.append(
                 ICFSkippedEntry(
                     entry=entry,
@@ -906,7 +814,7 @@ def validate_icf_entries_against_program(
 
         valid += 1
 
-    issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries, placeholder_entries))
+    issues.extend(_validate_journal_identity_groups(entries))
     issues.extend(_validate_unit_structure(base_picture, entries, moduletype_index=moduletype_index))
     prefix_consistency_issue = _validate_value_prefix_consistency(entries)
     if prefix_consistency_issue is not None:

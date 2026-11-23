@@ -11,17 +11,18 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, VarRef
+from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.datatype_fields import analyze_datatype_fields
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.registry import (
-    DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
+    get_selectable_analyzer_keys,
     get_selectable_analyzers,
 )
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.reporting.variables_report import (
+    DATATYPE_FIELD_ANALYSIS_KINDS,
     FieldPathVariableIssue,
     IssueKind,
     UnusedDatatypeFieldIssue,
@@ -136,6 +137,9 @@ def _unused_field_names(report: VariablesReport) -> set[str]:
 
 def test_analyze_datatype_fields_reports_unused_field():
     report = analyze_datatype_fields(_picture_with_unused_field())
+
+    # A is written, which is usage even though nothing reads it. Only B has no
+    # read and no write anywhere, so only B is reported.
     assert _unused_field_names(report) == {"B"}
 
 
@@ -151,8 +155,8 @@ def test_default_variables_run_does_not_emit_datatype_field_kinds():
     assert all(issue.kind not in field_kinds for issue in report.issues)
 
 
-def test_datatype_fields_is_registered_selectable_but_not_default_cli():
-    assert "datatype-fields" not in DEFAULT_CLI_ANALYZER_KEYS
+def test_datatype_fields_is_registered_and_selectable():
+    assert "datatype-fields" in get_selectable_analyzer_keys()
     assert any(spec.key == "datatype-fields" for spec in get_selectable_analyzers())
 
     catalog = get_default_analyzer_catalog()
@@ -208,34 +212,98 @@ def _picture_with_module_and_local_records() -> tuple[BasePicture, Variable, Var
     return bp, param_rec, local_rec
 
 
-def test_field_asymmetry_ignores_module_parameter_contract_fields():
-    bp, param_rec, _local_rec = _picture_with_module_and_local_records()
+def test_field_usage_is_aggregated_across_module_parameter_and_local_instances():
+    bp, param_rec, local_rec = _picture_with_module_and_local_records()
 
     report = analyze_datatype_fields(bp)
-    param_issues = [
+
+    # ParamRec.B and LocalRec.B are read; LocalRec.A is written. Both fields
+    # are therefore used somewhere in the loaded unit, so neither instance may
+    # produce a field verdict.
+    assert _unused_field_names(report) == set()
+    field_issues = [
         issue
         for issue in report.issues
-        if isinstance(issue, FieldPathVariableIssue)
-        and issue.variable is param_rec
-        and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+        if isinstance(issue, FieldPathVariableIssue) and (issue.variable is param_rec or issue.variable is local_rec)
     ]
+    assert field_issues == []
 
-    assert param_issues == []
 
-
-def test_field_asymmetry_still_reports_local_record_fields():
-    bp, _param_rec, local_rec = _picture_with_module_and_local_records()
+def test_per_instance_field_asymmetry_is_not_reported():
+    bp, _param_rec, _local_rec = _picture_with_module_and_local_records()
 
     report = analyze_datatype_fields(bp)
-    local_kinds = {
-        issue.kind
-        for issue in report.issues
-        if isinstance(issue, FieldPathVariableIssue)
-        and issue.variable is local_rec
-        and issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+
+    assert not [
+        issue for issue in report.issues if issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+    ]
+    assert {issue.kind for issue in report.issues} <= {
+        IssueKind.UNUSED_DATATYPE,
+        IssueKind.UNUSED_DATATYPE_FIELD,
     }
 
-    assert local_kinds == {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ}
+
+def test_datatype_field_issue_kind_set_is_global_only():
+    assert set(DATATYPE_FIELD_ANALYSIS_KINDS) == {
+        IssueKind.UNUSED_DATATYPE,
+        IssueKind.UNUSED_DATATYPE_FIELD,
+    }
+
+
+def _picture_with_record_copy() -> BasePicture:
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
+        ],
+    )
+    source = Variable(name="Source", datatype="RecType")
+    destination = Variable(name="Destination", datatype="RecType")
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[source, destination, status],
+        submodules=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="CopyRecord",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Source"), _varref("Destination"), _varref("Status")),
+                            )
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    return BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+
+def test_record_copy_marks_every_field_used():
+    report = analyze_datatype_fields(_picture_with_record_copy())
+
+    assert _unused_field_names(report) == set()
 
 
 def test_reduced_mode_reuses_published_variables_analyzer_and_keeps_findings():
@@ -298,6 +366,17 @@ def test_unused_datatype_is_reported_once_for_the_definition():
     issue = report.issues[0]
     assert isinstance(issue, UnusedDatatypeIssue)
     assert issue.datatype_name == "DeadType"
+    assert issue.module_path == ["Root", "DataType:DeadType"]
+
+
+def test_unused_datatype_metadata_mentions_the_scanned_workspace():
+    from sattlint.models._variable_issues import variable_issue_metadata  # noqa: PLC0415
+
+    field_metadata = variable_issue_metadata(IssueKind.UNUSED_DATATYPE_FIELD)
+    datatype_metadata = variable_issue_metadata(IssueKind.UNUSED_DATATYPE)
+
+    assert "no consumer in the scanned workspace" in (field_metadata.suggestion or "")
+    assert "no consumer in the scanned workspace" in (datatype_metadata.suggestion or "")
 
 
 def test_used_datatype_does_not_emit_the_record_level_finding():

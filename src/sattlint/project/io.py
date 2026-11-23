@@ -13,12 +13,12 @@ from typing import Any, cast
 
 import tomli_w
 
+from ..config.string_capacities import validate_string_capacities
 from ..config.types import ConfigObjectMap
 from .models import SattLintProjectFile
-from .types import DEFAULT_PROJECT_DICT, ProjectDict
+from .types import DEFAULT_PROJECT_DICT, SLPROJ_VERSION, ProjectDict
 
 SLPROJ_FILENAME = ".slproj"
-SLPROJ_VERSION = 1
 
 
 def _project_path_hint(path: Path) -> str:
@@ -67,6 +67,17 @@ def _type_error(key: str, expected: str, path: Path) -> ValueError:
     return ValueError(f"Invalid .slproj value for {key!r} in {_project_path_hint(path)}: expected {expected}.")
 
 
+def _version_error(version: int, path: Path) -> ValueError:
+    hint = _project_path_hint(path)
+    if version == 1:
+        return ValueError(
+            f"Unsupported .slproj version 1 in {hint}; version 2 requires a top-level [string_capacities] "
+            "table with identstring = 15, tagstring = 30, string = 40, linestring = 80, maxstring = 140 "
+            "(or the project's own positive values)."
+        )
+    return ValueError(f"Unsupported .slproj version {version} in {hint}; this tool supports version {SLPROJ_VERSION}.")
+
+
 def _string_list(key: str, value: object, path: Path) -> list[str]:
     if not isinstance(value, list):
         raise _type_error(key, "a list of strings", path)
@@ -79,7 +90,9 @@ def _string_list(key: str, value: object, path: Path) -> list[str]:
 def _validate_project_data(raw: Mapping[str, object], path: Path) -> tuple[ProjectDict, tuple[str, ...]]:
     """Validate a parsed .slproj table against the project defaults.
 
-    Missing keys take their defaults, so a sparse project file stays valid.
+    Missing scalar keys take their defaults, so a sparse project file stays
+    valid. The ``[string_capacities]`` table is the exception: it is required,
+    so it is validated from the raw file rather than seeded from the defaults.
     Unknown keys are ignored with a warning instead of being read by accident.
     """
     data: dict[str, object] = deepcopy(dict(DEFAULT_PROJECT_DICT))
@@ -94,15 +107,22 @@ def _validate_project_data(raw: Mapping[str, object], path: Path) -> tuple[Proje
     if isinstance(version, bool) or not isinstance(version, int):
         raise _type_error("slproj_version", "an integer", path)
     if version != SLPROJ_VERSION:
+        raise _version_error(version, path)
+
+    if "string_capacities" not in raw:
         raise ValueError(
-            f"Unsupported .slproj version {version} in {_project_path_hint(path)}; "
-            f"this tool supports version {SLPROJ_VERSION}."
+            f"Missing required [string_capacities] table in {_project_path_hint(path)}. "
+            "Declare identstring, tagstring, string, linestring, and maxstring as positive integers "
+            "(standard values: 15, 30, 40, 80, 140)."
         )
+    capacities = validate_string_capacities(raw["string_capacities"], location=_project_path_hint(path))
+    data["string_capacities"] = capacities.as_dict()
 
     data["analyzed_programs_and_libraries"] = _string_list(
         "analyzed_programs_and_libraries", data["analyzed_programs_and_libraries"], path
     )
     data["other_lib_dirs"] = _string_list("other_lib_dirs", data["other_lib_dirs"], path)
+    data["analyzers"] = _string_list("analyzers", data["analyzers"], path)
 
     mode = data["mode"]
     if mode not in ("official", "draft"):

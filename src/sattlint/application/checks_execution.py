@@ -73,7 +73,7 @@ class TargetRunOutcome:
 
 
 def get_enabled_analyzers() -> list[Any]:
-    return cast(list[Any], analysis_catalog_module.get_default_cli_analyzers())
+    return cast(list[Any], analysis_catalog_module.get_selectable_analyzers())
 
 
 def _analyzer_failure_message(name: str, exc: Exception, *, debug: bool) -> str:

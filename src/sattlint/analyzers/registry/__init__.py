@@ -17,20 +17,9 @@ from ..plugin import (
 )
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata
 
-# Policy (analyzer execution refactor B4.9): every registered analyzer is
-# selectable, and is either in the default CLI set below or deliberately opt-in
-# (datatype-fields, cyclomatic-complexity, version-drift).
-DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
-    "variables",
-    "picture-display-paths",
-    "sfc",
-    "comment-code",
-    "spec-compliance",
-    "alarm-integrity",
-    "same-cycle",
-    "dataflow",
-    "icf",
-)
+# Policy: there is no default analyzer set. Every run names the analyzers it
+# wants, either through repeated ``--analyzer`` options or through the
+# ``analyzers`` list in the project file, so a run is always reproducible.
 
 
 #: Analyzer entry points resolved on first attribute access. Building the
@@ -50,9 +39,7 @@ _LAZY_ANALYZER_EXPORTS: dict[str, tuple[str, str]] = {
     "analyze_picture_display_paths": ("sattlint.analyzers.picture_display_paths", "analyze_picture_display_paths"),
     "analyze_same_cycle": ("sattlint.analyzers.same_cycle", "analyze_same_cycle"),
     "analyze_sfc": ("sattlint.analyzers.sfc", "analyze_sfc"),
-    "analyze_spec_compliance": ("sattlint.analyzers.spec_compliance", "analyze_spec_compliance"),
     "analyze_variables": ("sattlint.analyzers.variables", "analyze_variables"),
-    "analyze_version_drift": ("sattlint.analyzers.modules", "analyze_version_drift"),
 }
 
 
@@ -78,7 +65,6 @@ class AnalyzerMetadataDict(TypedDict):
     scope: str
     implementation_bucket: str
     output_artifacts: list[str]
-    cli_exposed: bool
     acceptance_tests: list[str]
     depends_on_artifacts: list[str]
     supports_baselines: bool
@@ -117,7 +103,6 @@ class AnalyzerMetadata:
             scope=delivery.delivery_scope,
             implementation_bucket=delivery.implementation_bucket,
             output_artifacts=list(delivery.output_artifacts),
-            cli_exposed=delivery.cli_exposed,
             acceptance_tests=list(delivery.acceptance_tests),
             depends_on_artifacts=list(delivery.depends_on_artifacts),
             supports_baselines=delivery.supports_baselines,
@@ -146,18 +131,6 @@ def canonicalize_analyzer_key(key: str) -> str:
 
 def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
     return tuple(canonicalize_analyzer_key(key.strip()) for key in keys if key.strip())
-
-
-def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            analyzer.spec.key for analyzer in get_default_analyzer_catalog().analyzers if analyzer.delivery.cli_exposed
-        )
-    )
-
-
-def get_actual_cli_analyzer_keys() -> tuple[str, ...]:
-    return tuple(spec.key for spec in get_default_cli_analyzers())
 
 
 @lru_cache(maxsize=8)
@@ -194,11 +167,9 @@ def get_selectable_analyzers() -> list[AnalyzerSpec]:
     return list(get_default_analyzers())
 
 
-def get_default_cli_analyzers() -> list[AnalyzerSpec]:
-    enabled_by_key = {canonicalize_analyzer_key(spec.key): spec for spec in get_enabled_analyzers()}
-    return [
-        enabled_by_key[key] for key in canonicalize_analyzer_keys(DEFAULT_CLI_ANALYZER_KEYS) if key in enabled_by_key
-    ]
+def get_selectable_analyzer_keys() -> tuple[str, ...]:
+    """Every analyzer key a run can select, in canonical spelling, sorted."""
+    return tuple(sorted(spec.key for spec in get_selectable_analyzers()))
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
@@ -209,7 +180,6 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
 
 
 __all__ = [
-    "DEFAULT_CLI_ANALYZER_KEYS",
     "AnalyzerCatalog",
     "AnalyzerCatalogReport",
     "AnalyzerDeliveryMetadata",
@@ -219,13 +189,11 @@ __all__ = [
     "build_delivery_metadata",
     "canonicalize_analyzer_key",
     "canonicalize_analyzer_keys",
-    "get_actual_cli_analyzer_keys",
-    "get_declared_cli_analyzer_keys",
     "get_default_analyzer_catalog",
     "get_default_analyzers",
-    "get_default_cli_analyzers",
     "get_enabled_analyzers",
     "get_registered_plugin_analyzers",
+    "get_selectable_analyzer_keys",
     "get_selectable_analyzers",
     "register_analyzer",
 ]
