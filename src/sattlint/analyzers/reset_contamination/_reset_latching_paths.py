@@ -105,9 +105,9 @@ def collect_boolean_stmt_paths(
             call_states.append(next_state)
         return call_states or states
 
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         next_states = states
-        for item in cast(list[Any], obj):
+        for item in cast(list[Any] | tuple[Any, ...], obj):
             next_states = collect_boolean_stmt_paths(item, env, next_states)
         return next_states
 

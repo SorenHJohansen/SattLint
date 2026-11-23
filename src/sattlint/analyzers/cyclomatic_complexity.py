@@ -308,8 +308,8 @@ class CyclomaticComplexityAnalyzer:
             return self._count_node(node.operand)
         if isinstance(node, VarRef):
             return 0
-        if isinstance(node, list):
-            return sum(self._count_node(item) for item in cast(list[object], node))
+        if isinstance(node, (list, tuple)):
+            return sum(self._count_node(item) for item in cast(list[object] | tuple[object, ...], node))
         return 0
 
 

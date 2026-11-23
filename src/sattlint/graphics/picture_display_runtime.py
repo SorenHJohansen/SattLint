@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, cast
 
 from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
@@ -117,9 +118,9 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
     ) -> None:
         nonlocal record_index
         graph_objects = getattr(moduledef, "graph_objects", None)
-        if not isinstance(graph_objects, list):
+        if not isinstance(graph_objects, Sequence) or isinstance(graph_objects, (str, bytes)):
             return
-        typed_graph_objects = cast(list[object], graph_objects)
+        typed_graph_objects = cast(Sequence[object], graph_objects)
         for graph_object in typed_graph_objects:
             object_type = getattr(graph_object, "type", None)
             if (
@@ -162,9 +163,9 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             moduledef: object, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
         ) -> None:
             graph_objects = getattr(moduledef, "graph_objects", None)
-            if not isinstance(graph_objects, list):
+            if not isinstance(graph_objects, Sequence) or isinstance(graph_objects, (str, bytes)):
                 return
-            for graph_object in cast(list[object], graph_objects):
+            for graph_object in cast(Sequence[object], graph_objects):
                 graph_object_type = getattr(graph_object, "type", None)
                 if not isinstance(graph_object_type, str):
                     continue

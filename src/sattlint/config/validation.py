@@ -470,18 +470,31 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
         if str(raw_path).strip()
     ]
 
-    # The parser owns code discovery: the mode, the candidate extensions, and the
-    # case-insensitive companion match all come from the same surface the loader
-    # uses, so validation cannot drift from what a load would find.
+    # The parser owns the mode and the candidate extensions. Code discovery is
+    # case-insensitive under the language name table, but the parser's companion
+    # index covers sidecars and graphics, not code bodies, so probe the exact
+    # names first and fall back to a language-identity directory scan.
     mode = str(cfg.get("mode", "official")).strip().casefold()
     load_mode = parser_api.LoadMode.DRAFT if mode == "draft" else parser_api.LoadMode.OFFICIAL
     extensions = parser_api.code_ext_candidates(load_mode)
+    wanted = {extension.lower() for extension in extensions}
+    target_key = parser_api.UnitIdentity.of(target).key
 
     for directory in dirs:
         if not directory.is_dir():
             continue
-        if parser_api.find_companion_beside(directory / f"{target}{extensions[0]}", extensions) is not None:
-            return True
+        for extension in extensions:
+            if (directory / f"{target}{extension}").is_file():
+                return True
+        try:
+            entries = sorted(directory.iterdir(), key=lambda entry: entry.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.suffix.lower() not in wanted or not entry.is_file():
+                continue
+            if parser_api.UnitIdentity.of(entry.stem).key == target_key:
+                return True
 
     return False
 

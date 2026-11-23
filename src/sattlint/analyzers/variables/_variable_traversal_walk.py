@@ -265,8 +265,8 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         self._add_magic_number_issue(path, value, span)
         return
 
-    if isinstance(obj, list):
-        for item in cast(list[Any], obj):
+    if isinstance(obj, (list, tuple)):
+        for item in cast(list[Any] | tuple[Any, ...], obj):
             self._walk_stmt_or_expr(item, context, path, is_ui_read=is_ui_read)
 
 

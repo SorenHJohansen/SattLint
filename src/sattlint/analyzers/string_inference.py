@@ -390,7 +390,7 @@ class ExactStringInferenceEngine:
         return current
 
     def _execute_statement(self, statement: object, state: _AbstractState, scope: ScopeContext) -> _AbstractState:
-        if isinstance(statement, list):
+        if isinstance(statement, (list, tuple)):
             return self._execute_statement_list(statement, state, scope)
         if isinstance(statement, Assignment):
             return self._execute_assignment(statement.target, statement.value, state, scope)
@@ -785,7 +785,7 @@ def _declared_variables(
     declared: list[Variable] = []
     for attribute in ("moduleparameters", "localvariables"):
         values = getattr(node, attribute, None)
-        if isinstance(values, list):
+        if isinstance(values, (list, tuple)):
             declared.extend(variable for variable in values if isinstance(variable, Variable))
     return tuple(declared)
 

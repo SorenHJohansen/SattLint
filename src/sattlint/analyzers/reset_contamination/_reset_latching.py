@@ -153,8 +153,8 @@ def scan_stmt_for_latching(
                 sequence_name=sequence_name,
             )
         return
-    if isinstance(obj, list):
-        for item in cast(list[Any], obj):
+    if isinstance(obj, (list, tuple)):
+        for item in cast(list[Any] | tuple[Any, ...], obj):
             scan_stmt_for_latching(
                 item,
                 env,
