@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import inspect
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +13,7 @@ import pytest
 
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache
+from sattlint.models import _variable_issues as variable_issues_module
 
 
 def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,6 +34,33 @@ def test_record_layout_analyzers_carry_a_report_cache_version(analyzer_key: str)
     computed with the old name-only layouts would be reused.
     """
     assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
+
+
+def _variable_issue_layout_fingerprint() -> str:
+    """Hash the ordered field layout of every variable issue record."""
+    layouts = sorted(
+        (record.__qualname__, tuple(field.name for field in dataclasses.fields(record)))
+        for record in vars(variable_issues_module).values()
+        if inspect.isclass(record)
+        and dataclasses.is_dataclass(record)
+        and record.__module__ == variable_issues_module.__name__
+    )
+    encoded = "\n".join(f"{name}:{','.join(field_names)}" for name, field_names in layouts)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:16]
+
+
+def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> None:
+    """A cached variable report pickles these records by positional field order.
+
+    Adding or reordering a field leaves an older cached record partially
+    initialized, so a cache hit raises ``AttributeError`` much later while the
+    report is rendered. When the fingerprint below fails, bump the
+    ``variables`` and ``datatype-fields`` report cache versions and update the
+    expected fingerprint and tags in this test.
+    """
+    assert _variable_issue_layout_fingerprint() == "9483e7c0b9e31d1d"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-23-declaration-role"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-23-declaration-role"
 
 
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:
