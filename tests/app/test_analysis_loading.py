@@ -132,6 +132,9 @@ def test_analysis_loading_reverse_consumer_helpers_cover_scan_and_queueing(
         "NoDeps": program_dir / "NoDeps.z",
         "NoPath": None,
         "DupLocal": program_dir / "CandidateA.z",
+        # The consumer closure asks for the consumers of every discovered
+        # consumer; ``selected.l`` has no dependency list, so the walk stops.
+        "Selected": program_dir / "selected.l",
     }
     deps_map = {
         None: ["Selected"],
