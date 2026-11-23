@@ -22,6 +22,7 @@ from sattlint.parser_api import (
     split_dotted_name as _split_dotted_name,
 )
 
+from ...config.string_capacities import StringCapacities
 from ...reporting.variables_report import (
     MinMaxMappingMismatchIssue,
     StringMappingMismatchIssue,
@@ -29,7 +30,7 @@ from ...reporting.variables_report import (
 )
 from ...resolution import AmbiguousRecordError, TypeGraph
 from ...resolution.common import varname_full
-from ._string_capacity import STRING_CAPACITIES, string_capacity_for_datatype
+from ._string_capacity import capacity_for_datatype, is_string_datatype
 
 log = logging.getLogger("SattLint")
 
@@ -45,11 +46,14 @@ class Validator(Protocol):
 class StringMappingValidator:
     """Validates string variable mapping types."""
 
+    def __init__(self, capacities: StringCapacities) -> None:
+        self._capacities = capacities
+
     def _is_string_simple_type(self, dt: ScalarDatatype | str | None) -> bool:
-        return isinstance(dt, ScalarDatatype) and dt in STRING_CAPACITIES
+        return is_string_datatype(dt)
 
     def _string_limit(self, dt: ScalarDatatype | str | None) -> int | None:
-        return string_capacity_for_datatype(dt)
+        return capacity_for_datatype(self._capacities, dt)
 
     def _mapping_context(self, target: Variable, source: Variable) -> str:
         return (

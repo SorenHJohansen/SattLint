@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Protocol, TypeGuard
 
+from ..config.string_capacities import resolve_string_capacities
 from ..core.syntax import CodeMode, normalize_code_mode
 from .parser_adapter import ParserProjectBinding
 
@@ -124,4 +125,5 @@ def build_parser_binding(
         status_update_fn=status_update_fn,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
+        string_capacities=resolve_string_capacities(cfg),
     )

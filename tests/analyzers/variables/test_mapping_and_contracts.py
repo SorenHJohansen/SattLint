@@ -17,6 +17,7 @@ from sattlint.analyzers.variables import (
     IssueKind,
     VariablesAnalyzer,
 )
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.reporting.variables_report import UnusedIssue
 from sattlint.resolution.type_graph import TypeGraph
 from tests.helpers.variable_test_support import (
@@ -699,7 +700,7 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
 
 def test_validator_helper_branches_cover_string_and_minmax_helpers():
-    string_validator = validators_module.StringMappingValidator()
+    string_validator = validators_module.StringMappingValidator(STANDARD_STRING_CAPACITIES)
     minmax_validator = validators_module.MinMaxValidator()
 
     assert string_validator._is_string_simple_type(ScalarDatatype.STRING) is True

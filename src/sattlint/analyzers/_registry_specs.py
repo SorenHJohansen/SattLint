@@ -23,6 +23,7 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
         context.include_dependency_moduletype_usage
     ),
     "shared_artifacts": lambda _registry_module, context: getattr(context, "shared_artifacts", None),
+    "string_capacities": lambda _registry_module, context: context.string_capacities,
     "unavailable_libraries": lambda _registry_module, context: context.unavailable_libraries,
 }
 

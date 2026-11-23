@@ -8,6 +8,7 @@ from time import perf_counter
 
 from sattlint.parser_api import BasePicture, GraphicsModel
 
+from ..config.string_capacities import StringCapacities
 from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, ProjectGraph
 from ..models.project_graph_warnings import record_project_warning
 from ..validation.shared import ValidationNotice
@@ -25,6 +26,7 @@ def attach_graphics_companion(
     code_path: Path,
     graph: ProjectGraph,
     owner_name: str,
+    capacities: StringCapacities,
     timing_sink: Callable[[str, str, float], None] | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> GraphicsAttachments:
@@ -68,6 +70,7 @@ def attach_graphics_companion(
         picture_display_diagnostics = picture_display_path_diagnostics(
             bp,
             picture_display_occurrences,
+            capacities=capacities,
             graph=graph,
             status_callback=status_callback,
         )

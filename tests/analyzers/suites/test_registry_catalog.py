@@ -9,6 +9,7 @@ import pytest
 
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers.framework import AnalysisContext, AnalyzerSpec, Report
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 
 
 def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
@@ -80,6 +81,7 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
             unavailable_libraries={"MissingLib"},
             target_is_library=True,
             config={"profile": "test"},
+            string_capacities=STANDARD_STRING_CAPACITIES,
             include_dependency_moduletype_usage=None,
             program_ast_loader=None,
         ),

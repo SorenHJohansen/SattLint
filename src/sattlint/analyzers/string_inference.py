@@ -42,6 +42,7 @@ from sattlint.parser_api import (
     is_string_simple_type,
 )
 
+from ..config.string_capacities import StringCapacities
 from ..resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext
 from ._string_models import (
@@ -78,7 +79,7 @@ from ._string_operations import (
     _unknown_string_result,
     _with_end_cursor,
 )
-from .shared._string_capacity import string_capacity_for_datatype
+from .shared._string_capacity import capacity_for_datatype
 
 if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
@@ -96,6 +97,7 @@ class ExactStringInferenceEngine:
         self,
         base_picture: BasePicture,
         *,
+        capacities: StringCapacities,
         graph: ProjectGraph | None = None,
         progress_callback: Callable[[str], None] | None = None,
         debug: bool = False,
@@ -103,6 +105,7 @@ class ExactStringInferenceEngine:
         self.base_picture = base_picture
         self.graph = graph
         self.debug = debug
+        self._capacities = capacities
         self._context_build_depth = 0
         self._context_build_limit_reported = False
         self._progress_callback: Callable[[str], None] = (
@@ -140,7 +143,7 @@ class ExactStringInferenceEngine:
             return StringInferenceResult()
         return self._solved_state.string_values.get(
             resolved.key,
-            _unknown_string_result(max_length=string_capacity_for_datatype(resolved.variable.datatype)),
+            _unknown_string_result(max_length=capacity_for_datatype(self._capacities, resolved.variable.datatype)),
         )
 
     def _ensure_solved(self) -> None:
@@ -335,7 +338,7 @@ class ExactStringInferenceEngine:
                         source_kind="initializer",
                         source_label=variable.name,
                         source_module_path=context.path,
-                        max_length=string_capacity_for_datatype(variable.datatype),
+                        max_length=capacity_for_datatype(self._capacities, variable.datatype),
                     )
                 elif isinstance(init_value, int) and variable.datatype is ScalarDatatype.INTEGER:
                     state.int_values[slot_key] = _normalize_int_result(_IntResult((init_value,), False))
@@ -348,7 +351,9 @@ class ExactStringInferenceEngine:
                     target_name = varname_base(binding.target_ref)
                     target_variable = context.scope.env.get(target_name) if target_name is not None else None
                     capacity = (
-                        string_capacity_for_datatype(target_variable.datatype) if target_variable is not None else None
+                        capacity_for_datatype(self._capacities, target_variable.datatype)
+                        if target_variable is not None
+                        else None
                     )
                     state.string_values[target_key] = _result_for_literal(
                         binding.source_literal,
@@ -437,7 +442,9 @@ class ExactStringInferenceEngine:
             and not int_result.values
         ):
             next_state.string_values[target_slot.key] = _with_end_cursor(
-                _retarget_string_result(string_result, target_result=_read_string_result(state, target_slot))
+                _retarget_string_result(
+                    string_result, target_result=_read_string_result(state, target_slot, capacities=self._capacities)
+                )
             )
             return next_state
         if int_result.values or (int_result.unknown and target_is_integer):
@@ -481,11 +488,11 @@ class ExactStringInferenceEngine:
         if name == "clearstring" and len(args) >= 1:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 next_state.string_values[target_slot.key] = StringInferenceResult(
                     candidates=(StringCandidate(text=""),),
                     cursor_positions=(1,),
-                    max_length=string_capacity_for_datatype(target_slot.variable.datatype),
+                    max_length=capacity_for_datatype(self._capacities, target_slot.variable.datatype),
                     overflow_operations=target_result.overflow_operations,
                     overflow_examples=target_result.overflow_examples,
                 )
@@ -494,7 +501,7 @@ class ExactStringInferenceEngine:
         if name == "setstringpos" and len(args) >= 2:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 positions = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _set_cursor_positions(target_result, positions)
             return next_state
@@ -502,7 +509,7 @@ class ExactStringInferenceEngine:
         if name == "cutstring" and len(args) >= 2:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 length_result = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _cut_string_result(target_result, length_result)
             return next_state
@@ -525,8 +532,9 @@ class ExactStringInferenceEngine:
                 next_state.string_values[target_slot.key] = _copy_into_target(
                     source_result,
                     target_slot.variable.datatype,
+                    capacities=self._capacities,
                     operation_name="CopyString" if name == "copystring" else "CopyStringNoSort",
-                    target_result=_read_string_result(state, target_slot),
+                    target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                 )
             return next_state
 
@@ -535,10 +543,11 @@ class ExactStringInferenceEngine:
             if target_slot is not None:
                 left = self._eval_string_expr(args[0], state, scope)
                 right = self._eval_string_expr(args[1], state, scope)
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 next_state.string_values[target_slot.key] = _concatenate_results(
                     left,
                     right,
+                    capacities=self._capacities,
                     target_result=target_result,
                     target_datatype=target_slot.variable.datatype,
                 )
@@ -557,13 +566,14 @@ class ExactStringInferenceEngine:
         if name == "insertstring" and len(args) >= 3:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 source_result = self._eval_string_expr(args[1], state, scope)
                 length_result = self._eval_int_expr(args[2], state, scope)
                 next_state.string_values[target_slot.key] = _insert_string_result(
                     target_result,
                     source_result,
                     length_result,
+                    capacities=self._capacities,
                     target_datatype=target_slot.variable.datatype,
                     operation_name="InsertString",
                 )
@@ -572,11 +582,12 @@ class ExactStringInferenceEngine:
         if name == "putblanks" and len(args) >= 2:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 length_result = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _put_blanks_result(
                     target_result,
                     length_result,
+                    capacities=self._capacities,
                     target_datatype=target_slot.variable.datatype,
                 )
             return next_state
@@ -584,12 +595,13 @@ class ExactStringInferenceEngine:
         if name == "extractstring" and len(args) >= 3:
             target_slot = _resolve_target_arg(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 source_result = self._eval_string_expr(args[1], state, scope)
                 length_result = self._eval_int_expr(args[2], state, scope)
                 next_state.string_values[target_slot.key] = _extract_string_result(
                     source_result,
                     length_result,
+                    capacities=self._capacities,
                     target_result=target_result,
                     target_datatype=target_slot.variable.datatype,
                     operation_name="ExtractString",
@@ -610,14 +622,14 @@ class ExactStringInferenceEngine:
             target_slot = _resolve_target_arg(scope, args[1])
             if target_slot is not None:
                 source_result = self._eval_string_expr(args[0], state, scope)
-                target_capacity = string_capacity_for_datatype(target_slot.variable.datatype)
+                target_capacity = capacity_for_datatype(self._capacities, target_slot.variable.datatype)
                 if name == "nationaluppercase":
                     next_state.string_values[target_slot.key] = _transform_string_result(
                         source_result,
                         str.upper,
                         target_capacity,
                         operation_name="NationalUpperCase",
-                        target_result=_read_string_result(state, target_slot),
+                        target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                     )
                 else:
                     next_state.string_values[target_slot.key] = _transform_string_result(
@@ -625,7 +637,7 @@ class ExactStringInferenceEngine:
                         str.lower,
                         target_capacity,
                         operation_name="NationalLowerCase",
-                        target_result=_read_string_result(state, target_slot),
+                        target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                     )
             return next_state
 
@@ -648,7 +660,7 @@ class ExactStringInferenceEngine:
             resolved = _resolve_slot(scope, ref_name)
             if resolved is None:
                 return _unknown_string_result()
-            return _read_string_result(state, resolved)
+            return _read_string_result(state, resolved, capacities=self._capacities)
 
         if isinstance(expr, TernaryOp):
             merged = StringInferenceResult()

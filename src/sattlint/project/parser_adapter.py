@@ -47,6 +47,7 @@ from sattlint.parser_api import (
 )
 from sattlint.parser_api import read_dependency_names as parser_read_dependency_names
 
+from ..config.string_capacities import STANDARD_STRING_CAPACITIES, StringCapacities
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
 from ..models.project_graph import ProjectFailure, ProjectGraph
@@ -161,6 +162,10 @@ class ParserProjectBinding:
     status_update_fn: Callable[[str], None] | None = None
     stage_timing_sink: LoadStageTimingSink | None = None
     graphics_timing_sink: Callable[[str, str, float], None] | None = None
+    #: The project's configured string capacities. Load-time graphics path
+    #: diagnostics infer string values, so they need the same capacities the
+    #: analysis context carries.
+    string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
     # Session-scoped adapter state, shared across every load/visit in one
     # binding lifetime. These are the analogues of the old loader shell's
     # ``_visited`` / ``_lib_by_name`` / status dedupe, and are excluded from
@@ -401,6 +406,7 @@ def _index_program(
             code_path=code_path,
             graph=graph,
             owner_name=name,
+            capacities=binding.string_capacities,
             timing_sink=binding.graphics_timing_sink,
             status_callback=_status_cb,
         )

@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import ScalarDatatype, Variable
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared._validators import StringMappingValidator
 from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.models._variable_issues import IssueKind, variable_issue_metadata
 from sattlint.reporting.variables_report import (
     MagicNumberIssue,
@@ -127,7 +128,7 @@ def test_datatype_report_excludes_supporting_variable_findings() -> None:
 
 
 def test_string_mapping_finding_shows_both_capacities() -> None:
-    issues = StringMappingValidator().check_string_mapping(
+    issues = StringMappingValidator(STANDARD_STRING_CAPACITIES).check_string_mapping(
         Variable(name="Name", datatype=ScalarDatatype.IDENTSTRING),
         Variable(name="SourceName", datatype=ScalarDatatype.STRING),
         ["Root", "Child"],

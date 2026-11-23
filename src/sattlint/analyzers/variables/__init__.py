@@ -20,6 +20,7 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...config.string_capacities import resolve_string_capacities
 from ...core.timings import PhaseTiming
 from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
@@ -386,7 +387,7 @@ class VariablesAnalyzer(
 
         self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()
-        self._string_validator = StringMappingValidator()
+        self._string_validator = StringMappingValidator(resolve_string_capacities(self._config))
 
     def __init__(
         self,
