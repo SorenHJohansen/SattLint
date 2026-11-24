@@ -15,8 +15,10 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     FrameModule,
+    GraphObject,
     IntLiteral,
     ModuleCode,
+    ModuleDef,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
@@ -208,3 +210,135 @@ def test_frame_scoped_mapping_contract_check_uses_the_ancestor_declaration() -> 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
     assert len(issues) == 1
     assert issues[0].source_decl_module_path == ["BasePicture", "Vessel"]
+
+
+def test_frame_module_credits_the_parameter_the_value_passes_through() -> None:
+    """A parameter between a frame and its reader is used, not dead.
+
+    Resolving the mapping source through the scope chain lands on the aliased
+    root variable, so the parameter the value is forwarded through has to be
+    credited with the usage explicitly.
+    """
+    actual = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
+    leaf_formal = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
+    observed = Variable(name="Observed", datatype=ScalarDatatype.INTEGER)
+    leaf = SingleModule(
+        header=_hdr("Leaf"),
+        moduleparameters=[leaf_formal],
+        localvariables=[observed],
+        parametermappings=[_mapping("Signal", "Signal")],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[_equation("Read", "Observed", _varref("Signal"))]),
+    )
+    frame = FrameModule(header=_hdr("Panel"), submodules=[leaf])
+    middle_formal = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
+    middle = SingleModule(
+        header=_hdr("Middle"),
+        moduleparameters=[middle_formal],
+        parametermappings=[_mapping("Signal", "Signal")],
+        submodules=[frame],
+        modulecode=None,
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[actual],
+        submodules=[middle],
+        modulecode=None,
+        moduledef=None,
+    )
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset({IssueKind.UNUSED}))
+    analyzer.run()
+
+    assert analyzer.get_usage(middle_formal).read is True
+    assert analyzer.issues == []
+
+
+def test_reference_in_a_frame_descendant_credits_the_mapped_ancestor_parameter() -> None:
+    """A read below a frame names the parameter the frame forwards.
+
+    The reference sits in a leaf below a frame with no declarations, so the
+    nearest declaration is the mapped parameter of an ancestor module. Resolving
+    only through the mapping would attribute the read to the aliased root and
+    leave the parameter reported as unused.
+    """
+    actual = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
+    middle_formal = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
+    observed = Variable(name="Observed", datatype=ScalarDatatype.INTEGER)
+    leaf = SingleModule(
+        header=_hdr("Leaf"),
+        localvariables=[observed],
+        modulecode=ModuleCode(equationblocks=[_equation("Read", "Observed", _varref("Signal"))]),
+    )
+    frame = FrameModule(header=_hdr("Panel"), submodules=[leaf])
+    middle = SingleModule(
+        header=_hdr("Middle"),
+        moduleparameters=[middle_formal],
+        parametermappings=[_mapping("Signal", "Signal")],
+        submodules=[frame],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[actual],
+        submodules=[middle],
+        modulecode=None,
+        moduledef=None,
+    )
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset({IssueKind.UNUSED}))
+    analyzer.run()
+
+    assert analyzer.get_usage(middle_formal).read is True
+    assert analyzer.get_usage(actual).read is True
+    assert analyzer.issues == []
+
+
+def test_text_variable_in_a_frame_credits_the_ancestor_parameter() -> None:
+    """A picture text bound by name reads the parameter it names.
+
+    ``"HeaderName" VarName`` inside a frame is resolved lexically. The frame
+    declares nothing, so the value belongs to an ancestor module parameter; the
+    global index cannot decide it when several modules declare the same name.
+    """
+    header_name = Variable(name="HeaderName", datatype=ScalarDatatype.STRING)
+    duplicate = Variable(name="HeaderName", datatype=ScalarDatatype.STRING)
+    shown_frame = FrameModule(
+        header=_hdr("L2"),
+        moduledef=ModuleDef(
+            graph_objects=[GraphObject("TextObject", properties={"text_vars": [_varref("HeaderName")]})]
+        ),
+    )
+    panel = ModuleTypeDef(
+        name="Panel",
+        moduleparameters=[header_name],
+        submodules=[shown_frame],
+        moduledef=None,
+        modulecode=None,
+        origin_file=ROOT_ORIGIN,
+    )
+    other = ModuleTypeDef(
+        name="Other",
+        moduleparameters=[duplicate],
+        moduledef=None,
+        modulecode=None,
+        origin_file=ROOT_ORIGIN,
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[panel, other],
+        localvariables=[],
+        submodules=[ModuleTypeInstance(header=_hdr("Panel1"), moduletype_name="Panel")],
+        modulecode=None,
+        moduledef=None,
+        origin_file=ROOT_ORIGIN,
+    )
+    analyzer = VariablesAnalyzer(bp, selected_issue_kinds=frozenset({IssueKind.UNUSED}))
+    analyzer.run()
+
+    assert analyzer.get_usage(header_name).read is True
+    assert analyzer.get_usage(header_name).ui_read is True
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is header_name for issue in analyzer.issues)
+    assert any(issue.kind is IssueKind.UNUSED and issue.variable is duplicate for issue in analyzer.issues)

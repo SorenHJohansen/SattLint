@@ -16,6 +16,13 @@ from sattlint.parser_api import (
 type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
 type ModuleNode = BasePicture | SubmoduleNode
 
+# ``id(node)`` plus the resolution context identifies one module-type lookup.
+# The node is kept in the value so an id is never reused while cached.
+type ModuleTypeResolutionCache = dict[
+    tuple[int, str | None, str | None],
+    tuple[ModuleTypeInstance, ModuleTypeDef],
+]
+
 
 @dataclass(frozen=True)
 class ResolvedModulePath:
@@ -193,6 +200,7 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
     bp: BasePicture,
     module_path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    resolution_cache: ModuleTypeResolutionCache | None = None,
 ) -> ResolvedModulePath:
     """Resolve a strict dotted module path relative to the BasePicture.
 
@@ -228,23 +236,32 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
     current_file = bp.origin_file
 
     def resolve_moduletype(node: ModuleTypeInstance) -> ModuleTypeDef:
-        if moduletype_index is not None:
-            matches = moduletype_index.get(node.moduletype_name.casefold(), [])
-            if matches:
-                return select_moduletype_def_strict(
-                    bp,
-                    node.moduletype_name,
-                    matches,
-                    current_library=current_library,
-                    current_file=current_file,
-                    available_names=[mt.name for defs in moduletype_index.values() for mt in defs],
-                )
-        return resolve_moduletype_def_strict(
-            bp,
-            node.moduletype_name,
-            current_library=current_library,
-            current_file=current_file,
-        )
+        cache_key = (id(node), current_file, current_library)
+        if resolution_cache is not None:
+            cached = resolution_cache.get(cache_key)
+            if cached is not None:
+                return cached[1]
+        resolved: ModuleTypeDef
+        matches = moduletype_index.get(node.moduletype_name.casefold(), []) if moduletype_index is not None else []
+        if matches and moduletype_index is not None:
+            resolved = select_moduletype_def_strict(
+                bp,
+                node.moduletype_name,
+                matches,
+                current_library=current_library,
+                current_file=current_file,
+                available_names=[mt.name for defs in moduletype_index.values() for mt in defs],
+            )
+        else:
+            resolved = resolve_moduletype_def_strict(
+                bp,
+                node.moduletype_name,
+                current_library=current_library,
+                current_file=current_file,
+            )
+        if resolution_cache is not None:
+            resolution_cache[cache_key] = (node, resolved)
+        return resolved
 
     def children_of(node: object) -> list[ModuleNode]:
         if isinstance(node, BasePicture | SingleModule | FrameModule | ModuleTypeDef):

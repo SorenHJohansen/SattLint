@@ -38,10 +38,22 @@ def _declared_variables(
 ) -> list[Variable]:
     """Return every name a scope declares, in declaration order.
 
-    Parameters shadow outer names just like locals do, and their mapped values
-    are the ones a same-named local would capture, so both kinds participate.
+    Parameters are part of the visible scope: a same-named local in a nested
+    scope captures the value they receive, so both kinds extend the parent
+    name set.
     """
     return [*(moduleparameters or ()), *(localvariables or ())]
+
+
+def _shadowing_candidates(localvariables: Iterable[Variable] | None) -> list[Variable]:
+    """Return the declarations that can hide an outer name.
+
+    A module parameter is an explicit alias for the caller's variable, and its
+    mapping is visible at the invocation, so a parameter repeating an outer
+    name forwards that same value instead of hiding it. Only a local
+    declaration creates a name the outer scope no longer reaches.
+    """
+    return list(localvariables or ())
 
 
 def collect_shadowing_issues(self: Any) -> None:
@@ -78,7 +90,7 @@ def _walk_shadowing_submodules(
 
         if isinstance(child, SingleModule):
             child_variables = _declared_variables(child.moduleparameters, child.localvariables)
-            _check_shadowing(self, child_variables, parent_locals, child_path)
+            _check_shadowing(self, _shadowing_candidates(child.localvariables), parent_locals, child_path)
             next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,
@@ -90,7 +102,7 @@ def _walk_shadowing_submodules(
             )
         elif isinstance(child, FrameModule):
             frame_variables = _declared_variables(child.moduleparameters, child.localvariables)
-            _check_shadowing(self, frame_variables, parent_locals, child_path)
+            _check_shadowing(self, _shadowing_candidates(child.localvariables), parent_locals, child_path)
             frame_locals = _extend_locals(parent_locals, frame_variables, child_path)
             _walk_shadowing_submodules(
                 self,
@@ -111,7 +123,7 @@ def _walk_shadowing_submodules(
                 continue
 
             child_variables = _declared_variables(moduletype.moduleparameters, moduletype.localvariables)
-            _check_shadowing(self, child_variables, parent_locals, child_path)
+            _check_shadowing(self, _shadowing_candidates(moduletype.localvariables), parent_locals, child_path)
             next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,

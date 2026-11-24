@@ -19,6 +19,7 @@ _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
     "debug": lambda _registry_module, context: context.debug,
     "graph": lambda _registry_module, context: context.graph,
     "program_ast_loader": lambda _registry_module, context: context.program_ast_loader,
+    "program_ast_batch_loader": lambda _registry_module, context: getattr(context, "program_ast_batch_loader", None),
     "include_dependency_moduletype_usage": lambda _registry_module, context: (
         context.include_dependency_moduletype_usage
     ),

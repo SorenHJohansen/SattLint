@@ -12,6 +12,7 @@ import io
 from collections.abc import Callable, Iterator
 from contextlib import redirect_stdout
 from dataclasses import replace
+from time import perf_counter
 from typing import Any, cast
 
 from sattlint.parser_api import BasePicture
@@ -229,9 +230,21 @@ def collect_run_checks_result(
         emit_line=emit_line,
     )
     try:
+        load_started_at = perf_counter()
         for target_name, project_bp, graph in loaded_projects:
-            outcome = execute_target(target_name, project_bp, graph, execution=execution)
+            load_duration_ms = round((perf_counter() - load_started_at) * 1000, 3)
+            outcome = execute_target(
+                target_name,
+                project_bp,
+                graph,
+                execution=execution,
+                load_duration_ms=load_duration_ms,
+            )
             target_results.append(outcome.target)
+            # Drop the graph before the iterator loads the next target. The
+            # loader generator clears its own reference as well, so the next
+            # load does not hold two full project graphs at once.
+            del project_bp, graph
             if outcome.cancelled:
                 return build_run_result(
                     output_lines=output_lines,
@@ -240,6 +253,7 @@ def collect_run_checks_result(
                     cancelled=True,
                     failures=load_failures.snapshot(),
                 )
+            load_started_at = perf_counter()
         for per_run_result in _iter_per_run_analyzer_results(per_run_analyzers, cfg, emit_line):
             target_results.append(per_run_result)
     except KeyboardInterrupt:

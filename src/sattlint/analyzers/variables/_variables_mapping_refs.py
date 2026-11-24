@@ -50,21 +50,29 @@ def ordered_alias_links(links: Sequence[AliasLink]) -> Iterator[AliasLink]:
         by_parent.setdefault(id(link[0]), []).append((index, link))
 
     applied: set[int] = set()
+    settled: set[int] = set()
+    visiting: set[int] = set()
 
-    def _settle(variable: Variable, visiting: frozenset[int]) -> Iterator[AliasLink]:
+    def _settle(variable: Variable) -> Iterator[AliasLink]:
         variable_id = id(variable)
-        if variable_id in visiting:
+        if variable_id in visiting or variable_id in settled:
             return
-        next_visiting = visiting | {variable_id}
-        for index, link in by_parent.get(variable_id, ()):
-            yield from _settle(link[1], next_visiting)
-            if index in applied:
-                continue
-            applied.add(index)
-            yield link
+        visiting.add(variable_id)
+        try:
+            for index, link in by_parent.get(variable_id, ()):
+                if index in applied:
+                    continue
+                yield from _settle(link[1])
+                if index in applied:
+                    continue
+                applied.add(index)
+                yield link
+        finally:
+            visiting.discard(variable_id)
+        settled.add(variable_id)
 
     for _index, link in indexed:
-        yield from _settle(link[0], frozenset())
+        yield from _settle(link[0])
 
 
 __all__ = [

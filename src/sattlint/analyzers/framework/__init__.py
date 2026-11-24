@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, Literal, Protocol, cast
@@ -34,6 +34,7 @@ __all__ = [
     "CollectedViews",
     "Findings",
     "Issue",
+    "ProgramAstBatchLoader",
     "ProgramAstLoader",
     "Report",
     "SimpleReport",
@@ -137,6 +138,20 @@ class ProgramAstLoader(Protocol):
     def __call__(self, cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]: ...
 
 
+class ProgramAstBatchLoader(Protocol):
+    """Contract for loading several program ASTs in one parser pass.
+
+    The returned graph holds every program, and the mapping gives each
+    requested program its own picture from that graph.
+    """
+
+    def __call__(
+        self,
+        cfg: ConfigDict,
+        program_names: Sequence[str],
+    ) -> tuple[dict[str, BasePicture], ProjectGraph]: ...
+
+
 @dataclass
 class SimpleReport:
     name: str
@@ -184,6 +199,7 @@ class AnalysisContext:
     shared_artifacts: AnalysisSharedArtifacts | None = None
     include_dependency_moduletype_usage: bool | None = None
     program_ast_loader: ProgramAstLoader | None = None
+    program_ast_batch_loader: ProgramAstBatchLoader | None = None
     string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
 
     @property
@@ -202,6 +218,7 @@ def build_analysis_context(
     create_shared_artifacts: bool = False,
     include_dependency_moduletype_usage: bool | None = None,
     program_ast_loader: ProgramAstLoader | None = None,
+    program_ast_batch_loader: ProgramAstBatchLoader | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
     if resolved_shared_artifacts is None and create_shared_artifacts:
@@ -229,6 +246,7 @@ def build_analysis_context(
         shared_artifacts=resolved_shared_artifacts,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
         program_ast_loader=program_ast_loader,
+        program_ast_batch_loader=program_ast_batch_loader,
         string_capacities=resolve_string_capacities(config),
     )
 

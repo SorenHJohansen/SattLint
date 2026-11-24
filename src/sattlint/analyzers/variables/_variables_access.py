@@ -11,7 +11,7 @@ from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
 from ...resolution import AccessKind, AmbiguousRecordError, CanonicalPath, resolve_record
 from ...resolution.common import varname_full
-from ...resolution.scope import ScopeContext
+from ...resolution.scope import ScopeContext, find_nearest_declaration
 from ...resolution.type_graph import LeafExpansionIssue, LeafExpansionPolicy
 from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import matches_root_origin
@@ -58,20 +58,27 @@ def _mark_ref_access(
 ) -> None:
     base = full_ref.split(".", 1)[0].casefold()
     local_field_path = full_ref.split(".", 1)[1] if "." in full_ref else ""
-    local_var = context.env.get(base)
-    if local_var is not None and base in context.param_mappings:
-        self.usage_tracker.mark_ref_access(
-            variable=local_var,
-            field_path=local_field_path,
-            decl_module_path=context.module_path,
-            context=context,
-            path=path,
-            kind=kind,
-            syntactic_ref=full_ref,
-            ui_read=is_ui_read,
-        )
-
+    declaration = find_nearest_declaration(context, base)
     variable, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
+
+    # A reference names the declaration nearest to it even when a parameter
+    # mapping forwards the value to an outer variable. Resolving through the
+    # mapping would skip that declaration, so credit it explicitly; alias
+    # propagation then carries the usage on to the mapped source.
+    if declaration is not None:
+        declared_var, declared_path, _declared_display = declaration
+        if declared_var is not variable:
+            self.usage_tracker.mark_ref_access(
+                variable=declared_var,
+                field_path=local_field_path,
+                decl_module_path=declared_path,
+                context=context,
+                path=path,
+                kind=kind,
+                syntactic_ref=full_ref,
+                ui_read=is_ui_read,
+            )
+
     if variable is None:
         return
 

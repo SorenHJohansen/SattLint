@@ -79,6 +79,7 @@ def _run_target_record(result: ChecksTargetResult) -> RunTargetRecord:
         stage_timings_ms=result.stage_timings_ms,
         graphics_timings_ms=result.graphics_timings_ms,
         module=result.module,
+        load_duration_ms=result.load_duration_ms,
     )
 
 

@@ -59,8 +59,8 @@ def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> N
     expected fingerprint and tags in this test.
     """
     assert _variable_issue_layout_fingerprint() == "9483e7c0b9e31d1d"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-23-declaration-role"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-23-declaration-role"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-24-descendant-scope-usage"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-24-descendant-scope-usage"
 
 
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:

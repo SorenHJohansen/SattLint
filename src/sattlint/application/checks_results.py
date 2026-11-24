@@ -46,6 +46,7 @@ class ChecksTargetResult:
     shared_artifact_profile: str | None = None
     is_pseudo: bool = False
     module: RunModuleRecord | None = None
+    load_duration_ms: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

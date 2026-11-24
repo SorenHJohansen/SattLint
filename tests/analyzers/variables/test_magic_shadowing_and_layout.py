@@ -297,3 +297,69 @@ ENDDEF (*BasePicture*);
     assert shadowing[0].variable is not None
     assert shadowing[0].variable.name == "Setting"
     assert shadowing[0].role == "shadows 'Setting' from BasePicture"
+
+
+def test_shadowing_ignores_a_module_parameter_that_repeats_an_outer_name() -> None:
+    """A parameter forwards the caller's variable; it does not hide a name."""
+    code = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Shadow"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+MODULEPARAMETERS
+   Setting: integer := 0;
+SUBMODULES
+   Worker Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MODULEDEFINITION DateCode_ 2
+   MODULEPARAMETERS
+      Setting: integer := 1;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*Worker*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    report = analyze_variables(
+        parser_core_parse_source_text(code), selected_issue_kinds=frozenset({IssueKind.SHADOWING})
+    )
+
+    assert not [issue for issue in report.issues if issue.kind is IssueKind.SHADOWING]
+
+
+def test_shadowing_still_reports_a_local_that_repeats_a_module_parameter() -> None:
+    code = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Shadow"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+MODULEPARAMETERS
+   Setting: integer := 0;
+SUBMODULES
+   Worker Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MODULEDEFINITION DateCode_ 2
+   LOCALVARIABLES
+      Setting: integer := 1;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*Worker*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    report = analyze_variables(
+        parser_core_parse_source_text(code), selected_issue_kinds=frozenset({IssueKind.SHADOWING})
+    )
+
+    shadowing = [issue for issue in report.issues if issue.kind is IssueKind.SHADOWING]
+    assert len(shadowing) == 1
+    assert shadowing[0].variable is not None
+    assert shadowing[0].variable.name == "Setting"

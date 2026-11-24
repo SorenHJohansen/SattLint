@@ -130,8 +130,7 @@ def _mark_reference_read(
 def _walk_graph_object(self: VariablesAnalyzer, go: GraphObject, context: ScopeContext, path: list[str]) -> None:
     properties = go.properties
     for text_var in properties.get("text_vars", []) or []:
-        base = text_var.name.split(".", 1)[0] if text_var.name else None
-        self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
+        _mark_reference_read(self, text_var.name, context, path, is_ui_read=True)
     for tail in properties.get("tails", []) or []:
         self._walk_tail(tail, context, path, is_ui_read=True)
 

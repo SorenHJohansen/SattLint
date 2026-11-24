@@ -120,6 +120,7 @@ def run_per_run_analyzer(
             config=cfg,
             create_shared_artifacts=True,
             program_ast_loader=project_loading_module.load_program_ast,
+            program_ast_batch_loader=project_loading_module.load_program_asts,
         )
         report = analysis_dispatch_module.run_registry_analyzer(spec, context)
     except Exception as exc:  # noqa: BLE001 - a per-run failure should not abort the run
@@ -298,6 +299,7 @@ def execute_target(
     graph: ProjectGraph,
     *,
     execution: TargetExecution,
+    load_duration_ms: float | None = None,
 ) -> TargetRunOutcome:
     target_analyzers: list[ChecksAnalyzerResult] = []
     target_started_at = perf_counter()
@@ -357,6 +359,7 @@ def execute_target(
                 module=module_tree,
                 stage_timings_ms=stage_timings_ms or None,
                 graphics_timings_ms=graphics_timings_ms or None,
+                load_duration_ms=load_duration_ms,
             ),
             cancelled=True,
         )
@@ -392,5 +395,6 @@ def execute_target(
             analyzer_bottleneck=analyzer_bottleneck,
             analyzer_phase_bottleneck=analyzer_phase_bottleneck,
             shared_artifact_profile=shared_artifact_profile,
+            load_duration_ms=load_duration_ms,
         )
     )

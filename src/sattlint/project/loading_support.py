@@ -12,7 +12,6 @@ from lark.exceptions import VisitError
 from sattlint.parser_api import BasePicture, ProjectLoadError
 
 from ..config.types import ConfigDict
-from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
@@ -88,7 +87,13 @@ def _workspace_dependency_suffixes(mode: CodeMode | str | None) -> tuple[str, ..
 
 
 def _collect_analysis_timings(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False)) or profiling_module.create_profiler().enabled
+    """Always collect load timings for a saved run.
+
+    The sinks only add a couple of ``perf_counter`` calls per loaded program,
+    and a run that cannot attribute its time is hard to act on. Cache hits
+    clear the report anyway, so a warm load simply records no stage timings.
+    """
+    return True
 
 
 def _with_status_line(

@@ -10,7 +10,7 @@ from typing import Any, Protocol, cast
 from sattlint.parser_api import BasePicture, ParameterMapping, Variable
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
-from sattlint.resolution.scope import ScopeContext
+from sattlint.resolution.scope import ScopeContext, find_nearest_declaration
 
 from ...core.call_signatures import resolve_call_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
@@ -378,6 +378,58 @@ class EffectFlowTracker:
                 pending.append(source_key)
         return effective_keys
 
+    def _mark_nearest_declaration_usage(
+        self,
+        *,
+        parent_context: ScopeContext | None,
+        source_base: str,
+        field_path: str,
+        resolved_var: Variable,
+        target_name: str | None,
+        child_ui_reads: set[str] | None,
+        child_non_ui_reads: set[str] | None,
+        child_used_writes: set[str] | None,
+        external_typename: str | None,
+    ) -> None:
+        """Credit the nearest declaration a mapping passes through.
+
+        A frame's environment holds only its own declarations, so resolving a
+        mapping source through the scope chain lands on the aliased root
+        variable and skips every parameter the value is forwarded through.
+        Those parameters consume the mapping as well; without this credit a
+        forwarded parameter looks like it is never used.
+        """
+        if parent_context is None or target_name is None:
+            return
+        declaration = _nearest_declaration(parent_context, source_base)
+        if declaration is None or declaration[0] is resolved_var:
+            return
+        variable, decl_path, _display_path = declaration
+        usage = self._get_usage(variable)
+        if external_typename is not None:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path)
+                usage.mark_field_written(field_path, decl_path)
+            else:
+                usage.mark_read(decl_path)
+                usage.mark_written(decl_path)
+            return
+        if child_ui_reads is not None and target_name in child_ui_reads:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path, ui=True)
+            else:
+                usage.mark_ui_read(decl_path)
+        if child_non_ui_reads is not None and target_name in child_non_ui_reads:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path)
+            else:
+                usage.mark_read(decl_path)
+        if child_used_writes is not None and target_name in child_used_writes:
+            if field_path:
+                usage.mark_field_written(field_path, decl_path)
+            else:
+                usage.mark_written(decl_path)
+
     def _propagate_external_mapping_usage(
         self,
         *,
@@ -516,6 +568,7 @@ class EffectFlowTracker:
         # A frame's environment holds only its own declarations, so fall back to the
         # scope chain, which finds an actual declared in an ancestor; the global index
         # is the last resort for a reference the scope chain cannot resolve.
+        written_field_path = source_field_path
         src_var: Variable | None = parent_env.get(source_base)
         decl_path = parent_path
         if src_var is None and parent_context is not None:
@@ -531,6 +584,18 @@ class EffectFlowTracker:
 
         if src_var is None:
             return
+
+        self._mark_nearest_declaration_usage(
+            parent_context=parent_context,
+            source_base=source_base,
+            field_path=written_field_path,
+            resolved_var=src_var,
+            target_name=target_name,
+            child_ui_reads=child_ui_reads,
+            child_non_ui_reads=child_non_ui_reads,
+            child_used_writes=child_used_writes,
+            external_typename=external_typename,
+        )
 
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
@@ -564,3 +629,11 @@ class EffectFlowTracker:
                     self._get_usage(src_var).mark_field_written(source_field_path, decl_path)
                 else:
                     self._get_usage(src_var).mark_written(decl_path)
+
+
+def _nearest_declaration(
+    parent_context: ScopeContext,
+    base_name: str,
+) -> tuple[Variable, list[str], list[str]] | None:
+    """Return the closest scope declaration of a name, ignoring aliases."""
+    return find_nearest_declaration(parent_context, base_name)

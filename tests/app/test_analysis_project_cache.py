@@ -1327,3 +1327,73 @@ def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path: 
     assert "UnusedLocal" in unused_names, f"Expected UnusedLocal in unused variables, got: {unused_names}"
     assert "UsedLocal" not in unused_names
     assert "DepLocal" not in unused_names
+
+
+def test_load_program_asts_parses_the_batch_once_and_reuses_the_cache(monkeypatch: pytest.MonkeyPatch):
+    program_a = named_object("ProgramA")
+    program_b = named_object("ProgramB")
+    graph = SimpleNamespace(
+        ast_by_name={"ProgramA": program_a, "ProgramB": program_b},
+        unavailable_libraries=set(),
+        failures={},
+        source_files={Path("ProgramA.x")},
+    )
+    parse_calls: list[tuple[str, object]] = []
+
+    def _fake_load(_binding: object, target: str, **kwargs: object) -> object:
+        parse_calls.append((target, kwargs.get("extra_roots")))
+        return graph
+
+    cache_state: dict[str, object] = {}
+    save_calls: list[str] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir: Path) -> None:
+            self.cache_dir = cache_dir
+
+        def load_validated(self, key: str) -> object | None:
+            return cache_state.get(key)
+
+        def manifest_paths(self, key: str) -> frozenset[Path]:
+            del key
+            return frozenset({Path("ProgramA.x")})
+
+        def save(self, key: str, *, project: object, files: object) -> None:
+            del files
+            save_calls.append(key)
+            cache_state[key] = {"project": project}
+
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", _fake_load)
+    monkeypatch.setattr(analysis_loading_module, "cache_manifest_files", lambda *_args, **_kwargs: {Path("ProgramA.x")})
+    monkeypatch.setattr(cache_mod, "get_cache_dir_or_none", lambda: Path("cache-dir"))
+    monkeypatch.setattr(cache_mod, "build_ast_cache", lambda cache_dir, _cls: FakeCache(cache_dir))
+
+    cfg = cast(
+        ConfigDict,
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+            "icf_dir": "",
+        },
+    )
+
+    asts, loaded_graph = analysis_loading_module.load_program_asts(cfg, ["ProgramA", "ProgramB"])
+
+    expected_key = cache_mod.compute_cache_key(
+        cfg,
+        analysis_target="icf-program-batch::programa|programb",
+    )
+    assert asts == {"ProgramA": program_a, "ProgramB": program_b}
+    assert loaded_graph is graph
+    assert parse_calls == [("ProgramA", ("ProgramB",))]
+    assert save_calls == [expected_key]
+
+    cached_asts, cached_graph = analysis_loading_module.load_program_asts(cfg, ["ProgramB", "ProgramA"])
+
+    assert len(parse_calls) == 1
+    assert cached_asts == asts
+    assert cached_graph is graph

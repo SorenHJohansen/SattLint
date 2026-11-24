@@ -101,10 +101,33 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
     raise RuntimeError("Textual is required for interactive startup, but it is unavailable in this environment.")
 
 
+def _run_checks_result_in_subprocess(
+    cfg: ConfigDict,
+    selected_keys: list[str],
+    *,
+    project_path: str = "",
+    emit_output: Callable[[str], None] | None = None,
+) -> Any:
+    """Keep the interactive app off the analysis heap.
+
+    An in-process run leaves its parsed project graphs and analyzer indexes in
+    the CPython arenas long after the findings are stored. The child process
+    exits when the run is saved, and the app loads the run record instead.
+    """
+    from ..application.subprocess_analysis import run_checks_result_in_subprocess  # noqa: PLC0415
+
+    return run_checks_result_in_subprocess(
+        cfg,
+        selected_keys,
+        project_path=project_path,
+        emit_output=emit_output,
+    )
+
+
 def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
     return {
         "_run_checks": analyze_application.run_checks,
-        "run_checks_result": analyze_application.run_checks_result,
+        "run_checks_result": _run_checks_result_in_subprocess,
         "generate_change_review": change_review_application.generate_change_review,
     }
 

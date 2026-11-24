@@ -19,6 +19,7 @@ find_all_aliases_upstream = alias_utils.find_all_aliases_upstream
 varname_base = alias_utils.varname_base
 varname_full = alias_utils.varname_full
 ResolvedModulePath = _moduletype_resolution.ResolvedModulePath
+ModuleTypeResolutionCache = _moduletype_resolution.ModuleTypeResolutionCache
 dedupe_moduletype_defs = _moduletype_resolution.dedupe_moduletype_defs
 format_moduletype_label = _moduletype_resolution.format_moduletype_label
 narrow_matches_by_source_preference = _moduletype_resolution.narrow_matches_by_source_preference

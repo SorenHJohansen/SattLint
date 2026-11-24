@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -505,3 +506,68 @@ def test_icf_is_registered_and_selectable() -> None:
     icf_analyzers = [analyzer for analyzer in catalog.analyzers if analyzer.spec.key == "icf"]
     assert len(icf_analyzers) == 1
     assert icf_analyzers[0].spec.category == "correctness"
+
+
+def test_batch_loader_loads_every_referenced_program_in_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "First.icf"
+    f2 = icf_dir / "Second.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA", "ProgramB"], f2: ["ProgramC", "ProgramA"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(_issue("unresolved path")), seen=seen)
+
+    batch_calls: list[list[str]] = []
+
+    def _batch_loader(cfg: ConfigDict, program_names: Sequence[str]) -> tuple[dict[str, BasePicture], ProjectGraph]:
+        del cfg
+        batch_calls.append(list(program_names))
+        return {name: _base_picture(name) for name in program_names}, _graph()
+
+    single_calls: list[str] = []
+
+    def _single_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        single_calls.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_single_loader,
+        program_ast_batch_loader=_batch_loader,
+    )
+
+    assert batch_calls == [["ProgramA", "ProgramB", "ProgramC"]]
+    assert single_calls == []
+    assert sorted(program for program, _entries in seen) == ["ProgramA", "ProgramA", "ProgramB", "ProgramC"]
+    assert len(report.issues) == 4
+
+
+def test_batch_loader_failure_falls_back_to_per_program_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "First.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA", "ProgramB"]})
+    _patch_merge(monkeypatch)
+    _patch_validation(monkeypatch, _report())
+
+    def _batch_loader(cfg: ConfigDict, program_names: Sequence[str]) -> tuple[dict[str, BasePicture], ProjectGraph]:
+        del cfg, program_names
+        raise RuntimeError("batch failed")
+
+    loaded: list[str] = []
+
+    def _single_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_single_loader,
+        program_ast_batch_loader=_batch_loader,
+    )
+
+    assert loaded == ["ProgramA", "ProgramB"]

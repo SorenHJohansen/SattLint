@@ -491,6 +491,7 @@ def test_collect_run_checks_result_binds_the_program_loader_for_per_run_analyzer
     assert result.cancelled is False
     assert len(captured) == 1
     assert captured[0].program_ast_loader is project_loading_module.load_program_ast
+    assert captured[0].program_ast_batch_loader is project_loading_module.load_program_asts
 
 
 def test_run_checks_selection_is_exact_and_drops_unregistered_keys(monkeypatch: pytest.MonkeyPatch):
@@ -1373,3 +1374,31 @@ def test_debug_run_keeps_the_full_analyzer_failure_text() -> None:
     )
 
     assert result.targets[0].analyzers[0].summary == "State inference failed: boom"
+
+
+def test_run_record_keeps_the_target_load_duration() -> None:
+    result = checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    record = checks_application.build_run_record(result, cast(ConfigDict, DEFAULT_CONFIG.copy()))
+
+    load_duration_ms = record.targets[0].load_duration_ms
+    assert load_duration_ms is not None
+    assert load_duration_ms >= 0.0

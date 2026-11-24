@@ -199,6 +199,7 @@ class RunTargetRecord:
     stage_timings_ms: NamedTimings | None = None
     graphics_timings_ms: NamedTimings | None = None
     module: RunModuleRecord | None = None
+    load_duration_ms: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -210,6 +211,7 @@ class RunTargetRecord:
                 self.graphics_timings_ms.to_dict() if self.graphics_timings_ms is not None else None
             ),
             "module": self.module.to_dict() if self.module is not None else None,
+            "load_duration_ms": self.load_duration_ms,
         }
 
     @classmethod
@@ -233,6 +235,8 @@ class RunTargetRecord:
             module=RunModuleRecord.from_dict(cast(Mapping[str, object], payload["module"]))
             if isinstance(payload.get("module"), Mapping)
             else None,
+            # Records written before target load timing was recorded have no value.
+            load_duration_ms=_optional_float_field(payload, "load_duration_ms"),
         )
 
 

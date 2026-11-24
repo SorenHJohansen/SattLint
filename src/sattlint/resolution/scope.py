@@ -22,6 +22,29 @@ def _module_path_prefix_matches(reference_segments: list[str], module_path: list
     )
 
 
+def find_nearest_declaration(
+    context: ScopeContext,
+    base_name: str,
+) -> tuple[Variable, list[str], list[str]] | None:
+    """Return the closest scope that declares ``base_name``, ignoring aliases.
+
+    ``resolve_variable`` follows a parameter mapping to the variable the
+    parameter aliases, which is what dataflow needs but skips the declarations
+    in between. Walking the environments instead finds the declaration a
+    reference actually names.
+    """
+    key = base_name.casefold()
+    current: ScopeContext | None = context
+    while current is not None:
+        variable = current.env.get(key)
+        if variable is not None:
+            module_path = list(getattr(current, "module_path", []))
+            display_path = list(getattr(current, "display_module_path", module_path))
+            return variable, module_path, display_path
+        current = getattr(current, "parent_context", None)
+    return None
+
+
 @dataclass
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
@@ -103,6 +126,10 @@ class ScopeContext:
         result = None, field_path, self.module_path, self.display_module_path
         self._resolve_cache[cache_key] = result
         return result
+
+    def nearest_declaration(self, base_name: str) -> tuple[Variable, list[str], list[str]] | None:
+        """Return the closest scope that declares ``base_name``, ignoring aliases."""
+        return find_nearest_declaration(self, base_name)
 
     def resolve_global_name(self, base_name: str) -> tuple[Variable | None, list[str], list[str]]:
         """Resolve a GLOBAL-mapped name by walking up scopes (env only).

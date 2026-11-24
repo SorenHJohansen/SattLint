@@ -28,6 +28,7 @@ from ...reporting.icf_report import (
     summarize_icf_unit_drift,
 )
 from ...resolution.common import (
+    ModuleTypeResolutionCache,
     ResolvedModulePath,
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
@@ -312,10 +313,28 @@ def _find_variable_in_module_scope(
     return None
 
 
+def _resolve_module_path(
+    base_picture: BasePicture,
+    module_path: str,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None,
+    resolution_cache: ModuleTypeResolutionCache | None,
+) -> ResolvedModulePath:
+    """Resolve a path, sharing the module-type lookup cache when one is supplied."""
+    if resolution_cache is None:
+        return resolve_module_by_strict_path(base_picture, module_path, moduletype_index=moduletype_index)
+    return resolve_module_by_strict_path(
+        base_picture,
+        module_path,
+        moduletype_index=moduletype_index,
+        resolution_cache=resolution_cache,
+    )
+
+
 def _resolve_icf_path(
     base_picture: BasePicture,
     path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    resolution_cache: ModuleTypeResolutionCache | None = None,
 ) -> tuple[ResolvedModulePath | None, Variable | None, list[str]]:
     segments = [s for s in path.split(".") if s]
     if not segments:
@@ -325,11 +344,7 @@ def _resolve_icf_path(
         module_path = ".".join(segments[:i])
         resolved: ResolvedModulePath | None
         try:
-            resolved = resolve_module_by_strict_path(
-                base_picture,
-                module_path,
-                moduletype_index=moduletype_index,
-            )
+            resolved = _resolve_module_path(base_picture, module_path, moduletype_index, resolution_cache)
         except ValueError:
             resolved = None
 
@@ -365,6 +380,7 @@ def _describe_unresolved_icf_path(
     base_picture: BasePicture,
     path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    resolution_cache: ModuleTypeResolutionCache | None = None,
 ) -> str:
     path_segments = _split_path(path)
     if not path_segments:
@@ -373,11 +389,7 @@ def _describe_unresolved_icf_path(
     for prefix_length in range(len(path_segments), 0, -1):
         module_prefix = ".".join(path_segments[:prefix_length])
         try:
-            resolved = resolve_module_by_strict_path(
-                base_picture,
-                module_prefix,
-                moduletype_index=moduletype_index,
-            )
+            resolved = _resolve_module_path(base_picture, module_prefix, moduletype_index, resolution_cache)
         except ValueError:
             continue
 
@@ -396,10 +408,11 @@ def _describe_unresolved_icf_path(
         if variable is None:
             marked_path = _mark_path_segment(path_segments, prefix_length)
             try:
-                resolve_module_by_strict_path(
+                _resolve_module_path(
                     base_picture,
                     ".".join(path_segments[: prefix_length + 1]),
-                    moduletype_index=moduletype_index,
+                    moduletype_index,
+                    resolution_cache,
                 )
             except ValueError as exc:
                 return f"{marked_path}; {exc}"
@@ -413,10 +426,11 @@ def _describe_unresolved_icf_path(
 
     for prefix_length in range(1, len(path_segments) + 1):
         try:
-            resolve_module_by_strict_path(
+            _resolve_module_path(
                 base_picture,
                 ".".join(path_segments[:prefix_length]),
-                moduletype_index=moduletype_index,
+                moduletype_index,
+                resolution_cache,
             )
         except ValueError as exc:
             return f"{_mark_path_segment(path_segments, prefix_length - 1)}; {exc}"
@@ -691,6 +705,7 @@ def validate_icf_entries_against_program(
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
 ) -> ICFValidationReport:
     type_graph = TypeGraph.from_basepicture(base_picture)
+    resolution_cache: ModuleTypeResolutionCache = {}
     issues: list[ICFValidationIssue] = []
     resolved_entries: list[ICFResolvedEntry] = []
     skipped_details: list[ICFSkippedEntry] = []
@@ -739,6 +754,7 @@ def validate_icf_entries_against_program(
             base_picture,
             path,
             moduletype_index=moduletype_index,
+            resolution_cache=resolution_cache,
         )
         if resolved is None or var is None:
             issues.append(
@@ -749,6 +765,7 @@ def validate_icf_entries_against_program(
                         base_picture,
                         path,
                         moduletype_index=moduletype_index,
+                        resolution_cache=resolution_cache,
                     ),
                 )
             )

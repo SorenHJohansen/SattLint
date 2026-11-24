@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import contextlib
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -19,6 +19,7 @@ from sattlint.parser_api import (
 from .. import cache as cache_module
 from ..config.types import ConfigDict
 from ..core.debug import log_debug_exception
+from ..core.memory import release_unused_memory
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
@@ -72,6 +73,11 @@ def iter_loaded_projects(
             continue
         _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
         yield target_name, project_bp, graph
+        # The consumer drops its references before asking for the next target.
+        # Clear this frame too, so loading the next target does not keep the
+        # previous graph alive alongside it.
+        del project_bp, graph
+        release_unused_memory()
 
 
 def source_paths_for_current_target(
@@ -127,6 +133,7 @@ def cache_manifest_files(
     find_dependency_path_fn: Callable[[str], Path | None],
     resolve_graphics_companion_path_fn: Callable[..., Path | None],
     resolve_distribution_companion_path_fn: Callable[..., Path | None] = resolve_distribution_companion_path,
+    include_icf_inputs: bool = True,
 ) -> set[Path]:
     manifest_files: set[Path] = set(graph.source_files)
     # One resolved mode for both companion families: an absent mode takes the
@@ -157,6 +164,8 @@ def cache_manifest_files(
     # results go stale when configured ICF files change. The directory itself
     # is part of the manifest too: the file list is a snapshot, so a newly
     # added ICF file would otherwise change neither the key nor the manifest.
+    if not include_icf_inputs:
+        return manifest_files
     icf_dir, icf_files = configured_icf_files(cfg)
     manifest_files.update(icf_files)
     if icf_dir is not None:
@@ -175,9 +184,10 @@ def _load_parser_graph(
     lib_names: dict[str, str],
     validate: LoadValidation = LoadValidation.INVOKED,
     index_program_view: bool = True,
+    extra_roots: Sequence[str] = (),
 ) -> ProjectGraph:
     graph = ProjectGraph()
-    project = load_parser_project(binding, [target_name], validate=validate)
+    project = load_parser_project(binding, [target_name, *extra_roots], validate=validate)
     convert_project_into_graph(
         project,
         graph,
@@ -185,6 +195,7 @@ def _load_parser_graph(
         root_name=target_name,
         strict=strict,
         lib_names=lib_names,
+        extra_roots=extra_roots,
         index_program_view=index_program_view,
     )
     return graph
@@ -473,6 +484,106 @@ def load_program_ast_with_live_status(
             status_update_fn=status_update_fn,
         ),
     )
+
+
+def _program_batch_cache_target(program_names: Sequence[str]) -> str:
+    """A stable synthetic cache identity for a set of referenced programs.
+
+    Real program names are identifiers, so the separator makes a collision with
+    a project target impossible while still hashing the exact set that was
+    parsed.
+    """
+    normalized = sorted(name.casefold() for name in program_names)
+    return "icf-program-batch::" + "|".join(normalized)
+
+
+def load_program_asts(
+    cfg: ConfigDict,
+    program_names: Sequence[str],
+    *,
+    status_update_fn: Callable[[str], None] | None = None,
+) -> tuple[dict[str, BasePicture], ProjectGraph]:
+    """Load several referenced programs in one parser pass, reusing the AST cache.
+
+    ICF files reference programs that are often not analysis targets. Loading
+    them one at a time parsed their shared dependency closure once per program.
+    A single parser call parses that closure once, and the batch result is
+    cached against the exact program set so later runs skip the parse entirely.
+    """
+    names = list(dict.fromkeys(name for name in program_names if name))
+    if not names:
+        return {}, ProjectGraph()
+
+    cache_dir = cache_module.get_cache_dir_or_none()
+    cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, cache_module.ASTCache)
+    key = cache_module.compute_cache_key(cfg, analysis_target=_program_batch_cache_target(names))
+    if cache is not None:
+        cached = cache.load_validated(key)
+        payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
+        cached_project = payload_map.get("project") if payload_map is not None else None
+        cached_project_tuple = cast(tuple[object, ...], cached_project) if isinstance(cached_project, tuple) else None
+        if cached_project_tuple is not None and len(cached_project_tuple) == 2:
+            cached_asts, cached_graph = cast(tuple[dict[str, BasePicture], ProjectGraph], cached_project_tuple)
+            with contextlib.suppress(AttributeError):
+                cached_graph.loaded_from_cache = True
+            for attr in (
+                "load_stage_timings",
+                "load_stage_timings_by_program",
+                "graphics_load_timings",
+                "graphics_load_timings_by_program",
+            ):
+                with contextlib.suppress(AttributeError):
+                    setattr(cached_graph, attr, {})
+            _attach_analysis_cache_metadata(
+                cached_graph,
+                cache_key=key,
+                manifest_files=cache.manifest_paths(key),
+            )
+            return dict(cached_asts), cached_graph
+
+    binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
+    lib_names: dict[str, str] = {}
+    graph = _load_parser_graph(
+        binding,
+        names[0],
+        strict=False,
+        lib_names=lib_names,
+        validate=LoadValidation.NONE,
+        extra_roots=tuple(names[1:]),
+    )
+
+    asts: dict[str, BasePicture] = {}
+    by_casefold = {name.casefold(): name for name in graph.ast_by_name}
+    missing: list[str] = []
+    for name in names:
+        resolved_name = name if name in graph.ast_by_name else by_casefold.get(name.casefold(), name)
+        program_bp = graph.ast_by_name.get(resolved_name)
+        if program_bp is None:
+            missing.append(name)
+            continue
+        asts[name] = program_bp
+    if missing:
+        raise RuntimeError(f"Program(s) {', '.join(repr(name) for name in missing)} were not parsed.")
+
+    manifest_files = cache_manifest_files(
+        cfg,
+        graph,
+        find_dependency_path_fn=lambda name: find_dependency_path(binding, name),
+        resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
+        include_icf_inputs=False,
+    )
+    if graph.unavailable_libraries or getattr(graph, "failures", None):
+        # An incomplete batch must not be replayed after the missing dependency
+        # appears; the caller still gets this load.
+
+        return asts, graph
+    _attach_analysis_cache_metadata(graph, cache_key=key, manifest_files=manifest_files)
+    if cache is not None:
+        try:
+            cache.save(key, project=(asts, graph), files=manifest_files)
+        except OSError as exc:
+            log.debug("AST cache write failed for the program batch: %s", exc)
+    return asts, graph
 
 
 def ensure_ast_cache(

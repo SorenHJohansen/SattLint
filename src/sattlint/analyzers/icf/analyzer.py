@@ -31,7 +31,7 @@ from ...config.types import ConfigDict
 from ...models.project_graph import ProjectGraph, merge_project_basepicture, program_identity
 from ...project.support import configured_icf_files
 from ...reporting.icf_report import ICFEntry, ICFValidationIssue
-from ..framework import Issue, ProgramAstLoader, SimpleReport
+from ..framework import Issue, ProgramAstBatchLoader, ProgramAstLoader, SimpleReport
 from . import parse_icf_file, validate_icf_entries_against_program
 from ._icf_file_io import extract_icf_sattline_ref, is_placeholder_icf_value
 
@@ -122,7 +122,7 @@ def _load_referenced_program(
     config: ConfigDict,
     *,
     base_picture: BasePicture | None,
-    program_ast_loader: ProgramAstLoader,
+    program_ast_loader: ProgramAstLoader | None,
     program_cache: dict[str, _LoadedProgram],
 ) -> tuple[_LoadedProgram | None, Exception | None]:
     key = program_name.casefold()
@@ -134,6 +134,10 @@ def _load_referenced_program(
     # program's own name is the only usable identity here.
     if base_picture is not None and program_identity(base_picture).casefold() == key:
         loaded = _LoadedProgram(base_picture=base_picture, moduletype_index=None)
+    elif program_ast_loader is None:
+        return None, RuntimeError(
+            "the batch load did not provide this program and no single-program loader is available"
+        )
     else:
         try:
             program_bp, graph = program_ast_loader(config, program_name)
@@ -156,7 +160,7 @@ def _validate_icf_program(
     *,
     base_picture: BasePicture | None,
     debug: bool,
-    program_ast_loader: ProgramAstLoader,
+    program_ast_loader: ProgramAstLoader | None,
     program_cache: dict[str, _LoadedProgram],
 ) -> list[Issue]:
     loaded, load_error = _load_referenced_program(
@@ -201,34 +205,56 @@ def _validate_icf_program(
     ]
 
 
-def _validate_icf_file(
-    icf_file: Path,
+def _referenced_program_names(file_entries: list[tuple[Path, list[ICFEntry]]]) -> list[str]:
+    """Every program the configured files reference, in first-seen order."""
+    seen: set[str] = set()
+    names: list[str] = []
+    for _icf_file, entries in file_entries:
+        for program_name in _entries_by_program(entries):
+            key = program_name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            names.append(program_name)
+    return names
+
+
+def _preload_referenced_programs(
+    program_names: list[str],
     config: ConfigDict,
     *,
     base_picture: BasePicture | None,
-    debug: bool,
-    program_ast_loader: ProgramAstLoader,
+    program_ast_batch_loader: ProgramAstBatchLoader | None,
     program_cache: dict[str, _LoadedProgram],
-) -> list[Issue]:
-    entries = parse_icf_file(icf_file)
-    if not entries:
-        return []
+) -> None:
+    """Load all referenced programs in one pass when a batch loader is available.
 
-    issues: list[Issue] = []
-    for program_name, program_entries in _entries_by_program(entries).items():
-        issues.extend(
-            _validate_icf_program(
-                icf_file,
-                program_name,
-                program_entries,
-                config,
-                base_picture=base_picture,
-                debug=debug,
-                program_ast_loader=program_ast_loader,
-                program_cache=program_cache,
-            )
+    A per-program load parses the shared dependency closure again for every
+    referenced program, which dominated ICF analysis time. The batch loader
+    parses that closure once and returns one graph for every program.
+    """
+    if program_ast_batch_loader is None:
+        return
+    pending = [
+        name
+        for name in program_names
+        if name.casefold() not in program_cache
+        and (base_picture is None or program_identity(base_picture).casefold() != name.casefold())
+    ]
+    if not pending:
+        return
+    try:
+        program_pictures, graph = program_ast_batch_loader(config, pending)
+    except (OSError, RuntimeError, ValueError, ProjectLoadError):
+        # A failed batch falls back to the per-program loader, which reports
+        # the failure against the program it concerns.
+        return
+    moduletype_index = _moduletype_index_for(graph)
+    for program_name, program_bp in program_pictures.items():
+        program_cache[program_name.casefold()] = _LoadedProgram(
+            base_picture=merge_project_basepicture(program_bp, graph),
+            moduletype_index=moduletype_index,
         )
-    return issues
 
 
 def analyze_icf_configuration(
@@ -237,14 +263,18 @@ def analyze_icf_configuration(
     config: ConfigDict | None = None,
     debug: bool = False,
     program_ast_loader: ProgramAstLoader | None = None,
+    program_ast_batch_loader: ProgramAstBatchLoader | None = None,
 ) -> SimpleReport:
     """Validate every program referenced by the configured ``.icf`` files.
 
     ``base_picture`` is optional; when it matches one of the referenced
     programs the already-loaded AST is reused instead of re-loading it.
-    ``program_ast_loader`` is the caller-supplied project loader contract used
-    for the remaining programs; the analyzer layer never imports the project
-    package. The analyzer is delivered as a once-per-session whole-run check.
+    ``program_ast_loader`` loads a single referenced program.
+    ``program_ast_batch_loader`` loads them all in one parser pass, which is
+    what keeps a run with many referenced programs from parsing their shared
+    dependency closure once per program; the analyzer layer never imports the
+    project package. The analyzer is delivered as a once-per-session whole-run
+    check.
     """
     if config is None:
         return SimpleReport(name="ICF configuration", issues=[])
@@ -253,22 +283,36 @@ def analyze_icf_configuration(
     if not icf_files:
         return SimpleReport(name="ICF configuration", issues=[])
 
-    if program_ast_loader is None:
+    if program_ast_loader is None and program_ast_batch_loader is None:
         raise RuntimeError("ICF analysis needs a program loader to load the programs an .icf file references.")
 
-    issues: list[Issue] = []
+    file_entries = [(icf_file, parse_icf_file(icf_file)) for icf_file in icf_files]
     program_cache: dict[str, _LoadedProgram] = {}
-    for icf_file in icf_files:
-        issues.extend(
-            _validate_icf_file(
-                icf_file,
-                config=config,
-                base_picture=base_picture,
-                debug=debug,
-                program_ast_loader=program_ast_loader,
-                program_cache=program_cache,
+    _preload_referenced_programs(
+        _referenced_program_names(file_entries),
+        config,
+        base_picture=base_picture,
+        program_ast_batch_loader=program_ast_batch_loader,
+        program_cache=program_cache,
+    )
+
+    issues: list[Issue] = []
+    for icf_file, entries in file_entries:
+        if not entries:
+            continue
+        for program_name, program_entries in _entries_by_program(entries).items():
+            issues.extend(
+                _validate_icf_program(
+                    icf_file,
+                    program_name,
+                    program_entries,
+                    config,
+                    base_picture=base_picture,
+                    debug=debug,
+                    program_ast_loader=program_ast_loader,
+                    program_cache=program_cache,
+                )
             )
-        )
     return SimpleReport(name="ICF configuration", issues=issues)
 
 

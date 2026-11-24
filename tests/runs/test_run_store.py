@@ -72,6 +72,7 @@ def _sample_record_with_timings() -> RunRecord:
             RunTargetRecord(
                 target_name="RootProgram",
                 is_library=False,
+                load_duration_ms=812.5,
                 stage_timings_ms=NamedTimings.of({"load_or_parse": 12.5, "validate": 3.0}),
                 graphics_timings_ms=NamedTimings.of({"correlate-picture-display": 7.25}),
                 analyzers=(
@@ -126,6 +127,7 @@ def test_run_timings_round_trip_through_the_store(tmp_path: Path) -> None:
 
     assert loaded is not None
     target = loaded.targets[0]
+    assert target.load_duration_ms == 812.5
     assert target.stage_timings_ms == {"load_or_parse": 12.5, "validate": 3.0}
     assert target.graphics_timings_ms == {"correlate-picture-display": 7.25}
     assert target.analyzers[0].phase_timings_ms == (
@@ -135,6 +137,7 @@ def test_run_timings_round_trip_through_the_store(tmp_path: Path) -> None:
 
     payload = json.loads((tmp_path / f"{stored.run_id}.json").read_text(encoding="utf-8"))
     target_payload = payload["targets"][0]
+    assert target_payload["load_duration_ms"] == 812.5
     assert target_payload["stage_timings_ms"] == {"load_or_parse": 12.5, "validate": 3.0}
     assert target_payload["graphics_timings_ms"] == {"correlate-picture-display": 7.25}
     assert target_payload["analyzers"][0]["phase_timings_ms"] == [
