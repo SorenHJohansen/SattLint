@@ -88,5 +88,9 @@ def run_with_analysis_report_cache[ReportT](
         log.debug("Analysis report cache miss: %s", analyzer_cache_key)
 
     report = run_fn()
-    report_cache.save(cache_key, report=report, files=manifest_files)
+    report_cache.save(
+        cache_key,
+        report=cache_module.cacheable_report_payload(report),
+        files=manifest_files,
+    )
     return report
