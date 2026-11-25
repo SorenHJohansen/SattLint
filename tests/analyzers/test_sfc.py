@@ -442,3 +442,23 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch: pytes
 
     assert build_calls == ["Root"]
     assert shared_artifacts.counters.variable_foundation_builds == 1
+
+
+def test_forward_fork_target_is_not_reported_unreachable() -> None:
+    findings: list[sfc_module.SfcReachabilityFinding] = []
+    sfc_module._inspect_sfc_linear_nodes(
+        findings,
+        [
+            _fork_step("Jump", ("Later",)),
+            _step("Skipped", []),
+            _step("Later", []),
+            SFCTransition(name="After", condition=True),
+        ],
+        ["Root"],
+        "SeqMain",
+    )
+
+    labels = [finding.node_label for finding in findings]
+    assert "SFCStep:Skipped" in labels
+    assert "SFCStep:Later" not in labels
+    assert "SFCTransition:After" not in labels

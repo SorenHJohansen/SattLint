@@ -817,6 +817,8 @@ def _add_magic_number_issue(
 ) -> None:
     if value == 0:
         return
+    if not _should_collect_issue_kind(self, IssueKind.MAGIC_NUMBER):
+        return
 
     self.append_issue(
         MagicNumberIssue(

@@ -1,5 +1,7 @@
 """Focused tests for the opt-in ``datatype-fields`` analyzer."""
 
+from pathlib import Path
+
 import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -21,6 +23,7 @@ from sattlint.analyzers.registry import (
     get_selectable_analyzers,
 )
 from sattlint.analyzers.variables import analyze_variables
+from sattlint.parser_api import parse_source_file
 from sattlint.reporting.variables_report import (
     DATATYPE_FIELD_ANALYSIS_KINDS,
     FieldPathVariableIssue,
@@ -241,6 +244,73 @@ def test_per_instance_field_asymmetry_is_not_reported():
         IssueKind.UNUSED_DATATYPE,
         IssueKind.UNUSED_DATATYPE_FIELD,
     }
+
+
+def test_datatype_fields_does_not_emit_magic_number_findings_from_a_parsed_fixture():
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "corpus" / "valid" / "ControlFlow.s"
+
+    report = analyze_datatype_fields(parse_source_file(fixture))
+
+    assert all(issue.kind in {IssueKind.UNUSED_DATATYPE, IssueKind.UNUSED_DATATYPE_FIELD} for issue in report.issues)
+
+
+def test_datatype_fields_does_not_emit_record_component_order_findings():
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="First", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Second", datatype=ScalarDatatype.REAL),
+        ],
+    )
+    rec = Variable(name="Rec", datatype="RecType")
+    result = Variable(name="ResultRec", datatype="AnyType")
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[rec, result, status],
+        submodules=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="GetRecordComponent",
+                                args=(
+                                    VarRef(name="Rec"),
+                                    2,
+                                    VarRef(name="ResultRec"),
+                                    VarRef(name="Status"),
+                                ),
+                            )
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_datatype_fields(bp)
+
+    assert not [issue for issue in report.issues if issue.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE]
 
 
 def test_datatype_field_issue_kind_set_is_global_only():

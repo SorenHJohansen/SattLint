@@ -4,7 +4,7 @@
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.shadowing"
+            "shadowing"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,8 +14,12 @@
             },
             "summary.json": {
                 "analyzer_key": "variables",
+                "finding_count": 4,
                 "rule_counts": {
-                    "semantic.shadowing": 1
+                    "magic_number": 1,
+                    "never_read": 1,
+                    "read_only_non_const": 1,
+                    "shadowing": 1
                 }
             }
         },

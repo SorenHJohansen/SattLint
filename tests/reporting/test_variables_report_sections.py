@@ -12,6 +12,7 @@ from sattlint.reporting.variables_report import (
     DatatypeDuplicationIssue,
     IssueKind,
     MinMaxMappingMismatchIssue,
+    NestedRecordCandidateIssue,
     RecordComponentOrderIssue,
     UnusedIssue,
     VariableIssue,
@@ -92,7 +93,7 @@ def test_table_locations_use_one_path_spelling() -> None:
 
 
 def test_duplicated_datatype_rows_sort_case_insensitively() -> None:
-    issues = [
+    issues: list[DatatypeDuplicationIssue | NestedRecordCandidateIssue] = [
         DatatypeDuplicationIssue(
             module_path=["BasePicture", "A"],
             variable=_variable("One", "BetaType"),

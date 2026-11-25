@@ -32,6 +32,7 @@ __all__ = [
     "IssueKind",
     "MagicNumberIssue",
     "MinMaxMappingMismatchIssue",
+    "NestedRecordCandidateIssue",
     "NeverReadIssue",
     "ProcedureStatusIssue",
     "ReadBeforeWriteIssue",
@@ -164,8 +165,8 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         suggestion="Use matching string datatypes on both sides of the mapping, or change the contract to the correct string type.",
     ),
     IssueKind.DATATYPE_DUPLICATION: VariableIssueMetadata(
-        explanation="Duplicate datatype layouts are easy to let drift apart and make structural changes harder to maintain.",
-        suggestion="Promote the shared layout to one named RECORD datatype and reuse that definition.",
+        explanation="Repeated field groups and duplicate layouts are easy to let drift apart and make structural changes harder to maintain.",
+        suggestion="Extract the shared field group into a named RECORD datatype and declare it as one field, or reuse the existing record definition.",
     ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: VariableIssueMetadata(
         explanation="Mismatched Min_/Max_ mappings suggest the parameter contract no longer describes the same base signal.",
@@ -397,6 +398,20 @@ class DatatypeDuplicationIssue(VariableTargetIssue):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class NestedRecordCandidateIssue(VariableIssueBase):
+    """A field group repeated by several records that can become a nested record."""
+
+    kind: ClassVar[Literal[IssueKind.DATATYPE_DUPLICATION]] = IssueKind.DATATYPE_DUPLICATION
+    field_names: tuple[str, ...]
+    record_names: tuple[str, ...]
+
+    def __str__(self) -> str:
+        records = ", ".join(self.record_names)
+        fields = ", ".join(repr(name) for name in self.field_names)
+        return f"[{'.'.join(self.module_path)}] fields {fields} repeat in {records}; extract them into a nested record"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MinMaxMappingMismatchIssue(RelatedVariableIssue):
     kind: ClassVar[Literal[IssueKind.MIN_MAX_MAPPING_MISMATCH]] = IssueKind.MIN_MAX_MAPPING_MISMATCH
 
@@ -485,6 +500,7 @@ type VariableIssue = (
     | UnknownParameterTargetIssue
     | StringMappingMismatchIssue
     | DatatypeDuplicationIssue
+    | NestedRecordCandidateIssue
     | MinMaxMappingMismatchIssue
     | MagicNumberIssue
     | ShadowingIssue

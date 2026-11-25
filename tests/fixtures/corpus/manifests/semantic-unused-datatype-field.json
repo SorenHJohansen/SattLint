@@ -1,21 +1,21 @@
 {
     "case_id": "semantic-unused-datatype-field",
     "target_file": "../semantic/analyzer/UnusedDatatypeField.s",
-    "mode": "analyzer-variables",
+    "mode": "analyzer-datatype-fields",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unused-datatype-field"
+            "unused_datatype_field"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
                 "missing_dependency_count": 0,
-                "analyzer_key": "variables"
+                "analyzer_key": "datatype-fields"
             },
             "summary.json": {
-                "analyzer_key": "variables",
+                "analyzer_key": "datatype-fields",
                 "rule_counts": {
-                    "semantic.unused-datatype-field": 1
+                    "unused_datatype_field": 1
                 }
             }
         },

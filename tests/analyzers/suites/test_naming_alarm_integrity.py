@@ -172,9 +172,45 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
 
 
 def test_alarm_integrity_detects_never_cleared_alarm_variable():
+    detector = ModuleTypeDef(
+        name="EventDetector1",
+        moduleparameters=[
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+    )
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="AlarmTrip", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[detector],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmA"),
+                moduletype_name="EventDetector1",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="TRIP",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmTrip"),
+                        source_literal=None,
+                    ),
+                ],
+            )
+        ],
         modulecode=ModuleCode(
             equationblocks=[
                 Equation(

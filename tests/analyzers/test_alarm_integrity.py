@@ -181,6 +181,30 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[Variable(name="AlarmTrip", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[_event_detector_typedef(with_default_priority=True)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmA"),
+                moduletype_name="EventDetector1",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="TRIP",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmTrip"),
+                        source_literal=None,
+                    ),
+                ],
+            )
+        ],
         modulecode=ModuleCode(
             equationblocks=[
                 Equation(
@@ -203,8 +227,12 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
 def _submodule_write_back_bp(*, submodule_writes_false: bool) -> BasePicture:
     write_value = not submodule_writes_false
     alarm_check = ModuleTypeDef(
-        name="AlarmCheckType",
-        moduleparameters=[Variable(name="Start", datatype=ScalarDatatype.BOOLEAN)],
+        name="EventDetector1",
+        moduleparameters=[
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
+        ],
         localvariables=[],
         submodules=[],
         moduledef=None,
@@ -214,7 +242,7 @@ def _submodule_write_back_bp(*, submodule_writes_false: bool) -> BasePicture:
                     name="Output",
                     position=(0.0, 0.0),
                     size=(1.0, 1.0),
-                    code=[Assignment(target=_varref("Start"), value=write_value)],
+                    code=[Assignment(target=_varref("Condition"), value=write_value)],
                 )
             ]
         ),
@@ -237,16 +265,23 @@ def _submodule_write_back_bp(*, submodule_writes_false: bool) -> BasePicture:
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("AlarmManualCheck"),
-                moduletype_name="AlarmCheckType",
+                moduletype_name="EventDetector1",
                 parametermappings=[
                     ParameterMapping(
-                        target=_varref("Start"),
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="MANUAL",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
                         source_type=MappingSource.VARIABLE,
                         is_duration=False,
                         is_source_global=False,
                         source=_varref("AlarmManStart"),
                         source_literal=None,
-                    )
+                    ),
                 ],
             )
         ],
@@ -924,12 +959,14 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
 
     def _boolean_write_entries(*_args: object, **_kwargs: object) -> dict[str, object]:
         return {
-            "trip": type("Entry", (), {"values": {True}, "display": "AlarmTrip"})(),
-            "cleared": type("Entry", (), {"values": {True, False}, "display": "AlarmCleared"})(),
-            "false_only": type("Entry", (), {"values": {False}, "display": "AlarmFalse"})(),
+            "trip": type("Entry", (), {"values": {True}, "display": "RootFlag"})(),
+            "cleared": type("Entry", (), {"values": {True, False}, "display": "OtherFlag"})(),
+            "false_only": type("Entry", (), {"values": {False}, "display": "FalseOnly"})(),
         }
 
-    monkeypatch.setattr(alarm_integrity_module, "_collect_alarm_boolean_writes", _boolean_write_entries)
+    monkeypatch.setattr(alarm_integrity_module, "_collect_boolean_literal_writes", _boolean_write_entries)
+    real_analyzer._candidates = analyzer._candidates
     real_analyzer._check_module_code(None, ["Root"], {})
     real_analyzer._check_module_code(ModuleCode(equationblocks=[]), ["Root"], {})
+    real_analyzer._emit_never_cleared_issues()
     assert [issue.kind for issue in real_analyzer.issues] == ["alarm.never_cleared"]

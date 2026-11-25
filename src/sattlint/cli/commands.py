@@ -350,7 +350,7 @@ def command_analyze(args: argparse.Namespace) -> int:
         else:
             details = {"output": list(result.output_lines)}
         raise CliError(
-            "Self-check failed. Analysis did not start.",
+            "Analysis did not produce any target results.",
             code="analysis_preflight_failed",
             exit_code=2,
             details=details,

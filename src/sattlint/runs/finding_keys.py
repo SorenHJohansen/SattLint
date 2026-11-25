@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from ..application.findings import AnalysisFinding
+from ..application.findings import AnalysisFinding, finding_data_key
 
 
 def finding_acknowledgement_key(
@@ -35,6 +35,7 @@ def finding_acknowledgement_key(
         "message": finding.message,
         "module_path": list(finding.module_path),
         "site": "" if site is None else str(site),
+        "data": finding_data_key(finding),
     }
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

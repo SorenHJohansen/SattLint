@@ -46,6 +46,9 @@ class _DataflowStateMixin:
         if resolved.state_access == "old":
             return state
 
+        self._mutated_symbols.add(resolved.symbol_key)
+        self._mutated_symbols.add(resolved.symbol_root_key)
+
         next_state = state.copy()
         whole_symbol_write = treat_as_root_overwrite or resolved.symbol_key == resolved.symbol_root_key
 
@@ -136,8 +139,9 @@ class _DataflowStateMixin:
         SFC steps run in different scans. Carrying pending writes or constant
         traces across ENTER/ACTIVE/EXIT boundaries turns intentional
         enable/disable sequences into false dead-overwrite or conflicting-
-        constant findings. Values remain in the state so transition conditions
-        still see the latest assigned value.
+        constant findings. Values remain in the state so a step's outgoing
+        transition still sees what its enter and active code assigned; exit
+        code runs after that guard fires.
         """
         next_state = state.copy()
         for key in tuple(next_state):
@@ -221,6 +225,15 @@ class _DataflowStateMixin:
     ) -> StateMap:
         next_state = state.copy()
         for variable in variables:
+            # An OpSave value is restored from the saved state on every start
+            # after the first one, so its declaration initializer is not the
+            # value the code observes.
+            if variable.opsave and not variable.const:
+                continue
+            # A library's unmapped module parameter is part of its public
+            # interface; the program that connects it decides the value.
+            if id(variable) in self._unmapped_interface_parameter_ids:
+                continue
             current_key = self._state_key(module_path, variable.name, "")
             old_key = self._old_state_key(current_key)
             value = self._static_literal(variable.init_value)

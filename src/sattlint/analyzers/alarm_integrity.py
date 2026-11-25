@@ -147,6 +147,7 @@ class AlarmIntegrityAnalyzer:
         self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._candidates: list[_AlarmCandidate] = []
+        self._module_writes: list[tuple[list[str], dict[str, Variable], dict[str, _AlarmBooleanWriteSummary]]] = []
 
     @property
     def issues(self) -> list[Issue]:
@@ -180,6 +181,7 @@ class AlarmIntegrityAnalyzer:
 
         self._emit_duplicate_tag_issues()
         self._emit_duplicate_condition_issues()
+        self._emit_never_cleared_issues()
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
@@ -576,26 +578,72 @@ class AlarmIntegrityAnalyzer:
         if modulecode is None:
             return
 
-        writes = _collect_alarm_boolean_writes(modulecode, env)
+        writes = _collect_boolean_literal_writes(modulecode, env)
         self._record_submodule_clears(writes, submodules or [], env, current_library)
-        for entry in writes.values():
+        self._module_writes.append((module_path.copy(), env, writes))
+
+    def _emit_never_cleared_issues(self) -> None:
+        """Report boolean alarm conditions that are only ever set to True.
+
+        A variable is an alarm condition when an alarm source maps it as a
+        condition parameter. The name-based fallback was both too broad (a
+        command flag named ``AlarmReset``) and too narrow (``TempHigh`` mapped
+        to an alarm source), so membership is structural now. Root globals are
+        merged across modules so a clear in a sibling module counts.
+        """
+        condition_names: set[str] = set()
+        for candidate in self._candidates:
+            if candidate.condition_key:
+                condition_names.add(candidate.condition_key.casefold())
+            if candidate.condition_display:
+                condition_names.add(candidate.condition_display.casefold())
+        if not condition_names:
+            return
+
+        root_names = {variable.name.casefold() for variable in self.bp.localvariables or []}
+        root_values: dict[str, set[bool]] = {}
+        root_first: dict[str, tuple[list[str], _AlarmBooleanWriteSummary]] = {}
+        local_candidates: list[tuple[list[str], _AlarmBooleanWriteSummary]] = []
+        for module_path, env, writes in self._module_writes:
+            env_names = {name.casefold() for name in env}
+            for entry in writes.values():
+                display_key = entry.display.casefold()
+                base_key = display_key.split(".", 1)[0]
+                is_root_global = base_key in root_names and base_key not in env_names
+                if is_root_global:
+                    root_values.setdefault(display_key, set()).update(entry.values)
+                    root_first.setdefault(display_key, (module_path, entry))
+                elif display_key in condition_names or base_key in condition_names:
+                    local_candidates.append((module_path, entry))
+
+        for display_key, values in sorted(root_values.items()):
+            if True not in values or False in values:
+                continue
+            module_path, entry = root_first[display_key]
+            self._append_never_cleared(module_path, entry)
+
+        for module_path, entry in local_candidates:
             values = entry.values
             if True not in values or False in values:
                 continue
-            self._issues.append(
-                Issue(
-                    kind="alarm.never_cleared",
-                    message=(
-                        f"Alarm variable {entry.display!r} is only written with True and is never explicitly cleared to False in this scope."
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "variable": entry.display,
-                        "site": ".".join(module_path),
-                        "context": f"{entry.display} = TRUE",
-                    },
-                )
+            self._append_never_cleared(module_path, entry)
+
+    def _append_never_cleared(self, module_path: list[str], entry: _AlarmBooleanWriteSummary) -> None:
+        self._issues.append(
+            Issue(
+                kind="alarm.never_cleared",
+                message=(
+                    f"Alarm condition {entry.display!r} is only written with True and is never "
+                    "explicitly cleared to False in this scope."
+                ),
+                module_path=module_path.copy(),
+                data={
+                    "variable": entry.display,
+                    "site": ".".join(module_path),
+                    "context": f"{entry.display} = TRUE",
+                },
             )
+        )
 
     def _record_submodule_clears(
         self,

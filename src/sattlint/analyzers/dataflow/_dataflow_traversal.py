@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from sattlint.parser_api import (
@@ -8,8 +9,10 @@ from sattlint.parser_api import (
     FuncCallStmt,
     IfStmt,
     ModuleCode,
+    ModuleDef,
     ModuleTypeDef,
     ModuleTypeInstance,
+    ProcedureCall,
     Sequence,
     SFCAlternative,
     SFCFork,
@@ -20,12 +23,28 @@ from sattlint.parser_api import (
     SFCTransitionSub,
     SingleModule,
     VarRef,
+    VarTail,
+    walk,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...resolution.common import resolve_moduletype_def_strict
 from ...resolution.scope import ScopeContext
 from ._dataflow_common import PendingWrite, StateMap
 from ._dataflow_scope_support import DataflowScopeSupportMixin
+
+
+@dataclass(frozen=True, slots=True)
+class _StepStates:
+    """State snapshots around an SFC step's exit code.
+
+    A step's ``EXITCODE`` runs only after the outgoing transition fires, so the
+    guard is evaluated against ``guard``, while the next step starts from
+    ``after_exit``.
+    """
+
+    guard: StateMap
+    after_exit: StateMap
 
 
 class _DataflowTraversalMixin(DataflowScopeSupportMixin):
@@ -38,9 +57,16 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             module_path=root_path,
             current_library=getattr(self.bp, "origin_lib", None),
             parent_context=None,
+            children=self.bp.submodules or [],
         )
         root_state = self._seed_state({}, root_path, root_variables)
-        root_state = self._walk_module_code(self.bp.modulecode, root_context, root_path, root_state)
+        root_state = self._walk_module_code(
+            self.bp.modulecode,
+            root_context,
+            root_path,
+            root_state,
+            getattr(self.bp, "moduledef", None),
+        )
         self._final_root_state = self._walk_modules(self.bp.submodules or [], root_context, root_path, root_state)
 
     def run(self: Any) -> list[Any]:
@@ -69,7 +95,13 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             return state
         self._active_typedefs.add(typedef_key)
         try:
-            next_state = self._walk_module_code(moduletype.modulecode, context, module_path, state)
+            next_state = self._walk_module_code(
+                moduletype.modulecode,
+                context,
+                module_path,
+                state,
+                moduletype.moduledef,
+            )
             return self._walk_modules(moduletype.submodules or [], context, module_path, next_state)
         finally:
             self._active_typedefs.discard(typedef_key)
@@ -91,7 +123,13 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                     child_path,
                     [*(child.moduleparameters or []), *(child.localvariables or [])],
                 )
-                child_state = self._walk_module_code(child.modulecode, child_context, child_path, child_state)
+                child_state = self._walk_module_code(
+                    child.modulecode,
+                    child_context,
+                    child_path,
+                    child_state,
+                    child.moduledef,
+                )
                 current_state = self._walk_modules(child.submodules or [], child_context, child_path, child_state)
                 continue
 
@@ -104,7 +142,16 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                     current_library=parent_context.current_library,
                     parent_context=parent_context,
                 )
-                frame_state = self._walk_module_code(child.modulecode, frame_context, child_path, current_state)
+                frame_context.submodule_mapped_source_keys.update(
+                    self._child_mapped_source_keys(child.submodules or [], frame_context)
+                )
+                frame_state = self._walk_module_code(
+                    child.modulecode,
+                    frame_context,
+                    child_path,
+                    current_state,
+                    child.moduledef,
+                )
                 current_state = self._walk_modules(child.submodules or [], frame_context, child_path, frame_state)
                 continue
 
@@ -149,7 +196,9 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
+        moduledef: ModuleDef | None = None,
     ) -> StateMap:
+        state = self._invalidate_interaction_writes(state, moduledef, context)
         if modulecode is None:
             return state
 
@@ -173,6 +222,36 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
 
         return current_state
 
+    def _invalidate_interaction_writes(
+        self: Any,
+        state: StateMap,
+        moduledef: ModuleDef | None,
+        context: ScopeContext,
+    ) -> StateMap:
+        """Forget constant facts for variables an interact object writes.
+
+        An ``OutVar_`` tail is written by the operator at runtime, so a value
+        seeded from the initializer is not a fact the guard can rely on.
+        """
+        if moduledef is None:
+            return state
+        next_state = state
+        for interact_object in moduledef.interact_objects or []:
+            for event in walk(interact_object, prune=lambda node: isinstance(node, ProcedureCall)):
+                node = event.node
+                if not isinstance(node, VarTail) or node.direction != "out":
+                    continue
+                name = node.bound_name
+                if not name:
+                    continue
+                resolved = self._resolve_ref(VarRef(name=name), context)
+                if resolved is None:
+                    continue
+                next_state = self._invalidate_symbol(next_state, resolved.symbol_root_key)
+                next_state.pop(self._pending_state_key(resolved.symbol_root_key), None)
+                self._invalidate_constant_traces(next_state, resolved.symbol_root_key)
+        return next_state
+
     def _walk_sequence(
         self: Any,
         sequence: Sequence,
@@ -187,6 +266,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             state,
             sequence_name=sequence.name,
             branch_path=(),
+            pending_guard_state=None,
         )
 
     def _walk_sequence_nodes(  # noqa: PLR0915
@@ -198,16 +278,20 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         *,
         sequence_name: str,
         branch_path: tuple[int, ...],
+        pending_guard_state: StateMap | None,
     ) -> StateMap:
         current_state = state
         terminated_by: dict[str, Any] | None = None
+        guard_state: StateMap | None = pending_guard_state
 
         for node in nodes:
             if terminated_by is not None:
                 continue
 
             if isinstance(node, SFCStep):
-                current_state = self._walk_sequence_step(node, context, module_path, current_state)
+                step_states = self._walk_sequence_step(node, context, module_path, current_state)
+                current_state = step_states.after_exit
+                guard_state = step_states.guard
                 if isinstance(node.fork, SFCFork):
                     terminated_by = {"kind": "SFCFork", "targets": list(node.fork.targets)}
                 continue
@@ -216,8 +300,10 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 label = f"TRANS:{node.name or '<unnamed>'}"
                 self._push_site(label)
                 try:
+                    condition_state = current_state if guard_state is None else guard_state
+                    guard_state = None
                     self._report_condition(
-                        node.condition, context, module_path, self._external_scan_state(context, current_state)
+                        node.condition, context, module_path, self._external_scan_state(context, condition_state)
                     )
                 finally:
                     self._pop_site()
@@ -238,11 +324,13 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                                 current_state.copy(),
                                 sequence_name=sequence_name,
                                 branch_path=(*branch_path, branch_index),
+                                pending_guard_state=guard_state,
                             )
                         )
                     finally:
                         self._pop_site()
                 current_state = self._merge_states(branch_states or [current_state])
+                guard_state = None
                 continue
 
             if isinstance(node, SFCParallel):
@@ -258,11 +346,13 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                                 current_state.copy(),
                                 sequence_name=sequence_name,
                                 branch_path=(*branch_path, branch_index),
+                                pending_guard_state=guard_state,
                             )
                         )
                     finally:
                         self._pop_site()
                 current_state = self._merge_states(branch_states or [current_state])
+                guard_state = None
                 continue
 
             if isinstance(node, SFCSubsequence):
@@ -275,9 +365,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                         current_state,
                         sequence_name=sequence_name,
                         branch_path=branch_path,
+                        pending_guard_state=guard_state,
                     )
                 finally:
                     self._pop_site()
+                guard_state = None
                 continue
 
             if isinstance(node, SFCTransitionSub):
@@ -290,9 +382,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                         current_state,
                         sequence_name=sequence_name,
                         branch_path=branch_path,
+                        pending_guard_state=guard_state,
                     )
                 finally:
                     self._pop_site()
+                guard_state = None
                 continue
 
         return current_state
@@ -303,7 +397,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
-    ) -> StateMap:
+    ) -> _StepStates:
         current_state = state
         base = f"STEP:{step.name}"
         self._push_site(f"{base}:ENTER")
@@ -331,6 +425,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         finally:
             self._pop_site()
 
+        guard_state = current_state
         self._push_site(f"{base}:EXIT")
         try:
             current_state = self._analyze_block(
@@ -342,7 +437,7 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         finally:
             self._pop_site()
 
-        return current_state
+        return _StepStates(guard=guard_state, after_exit=current_state)
 
     def _external_scan_state(self: Any, context: ScopeContext, state: StateMap) -> StateMap:
         next_state = state
@@ -355,6 +450,8 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 resolved = self._resolve_ref(VarRef(name=name), scope)
                 if resolved is not None:
                     next_state = self._invalidate_symbol(next_state, resolved.symbol_key)
+            for key in scope.submodule_mapped_source_keys:
+                next_state = self._invalidate_symbol(next_state, key)
             scope = scope.parent_context
         return next_state
 
@@ -372,6 +469,17 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                 resolved = self._resolve_ref(statement.target, context)
                 if resolved is not None:
                     roots.add(resolved.symbol_root_key)
+                continue
+            if isinstance(statement, FuncCallStmt):
+                signature = resolve_call_signature(statement.call.name)
+                if signature is None:
+                    continue
+                for parameter, argument in zip(signature.parameters, statement.call.args, strict=False):
+                    if not parameter.is_output:
+                        continue
+                    resolved = self._resolve_ref(argument, context)
+                    if resolved is not None:
+                        roots.add(resolved.symbol_root_key)
         return roots
 
     def _analyze_block(

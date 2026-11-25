@@ -117,8 +117,9 @@ def _patch_validation(
         expected_program: str,
         debug: bool = False,
         moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+        unavailable_libraries: object = None,
     ) -> ICFValidationReport:
-        del debug, moduletype_index
+        del debug, moduletype_index, unavailable_libraries
         if seen is not None:
             seen.append((expected_program, [entry.value for entry in entries]))
         return report
@@ -482,8 +483,9 @@ def test_loaded_graph_moduletypes_reach_validation(monkeypatch: pytest.MonkeyPat
         expected_program: str,
         debug: bool = False,
         moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+        unavailable_libraries: object = None,
     ) -> ICFValidationReport:
-        del expected_program, debug
+        del expected_program, debug, unavailable_libraries
         seen_indexes.append(moduletype_index)
         return _report()
 

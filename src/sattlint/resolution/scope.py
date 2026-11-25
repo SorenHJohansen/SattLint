@@ -13,6 +13,10 @@ def _moduleparameter_keys_factory() -> frozenset[str]:
     return frozenset()
 
 
+def _symbol_key_set_factory() -> set[tuple[str, ...]]:
+    return set()
+
+
 def _module_path_prefix_matches(reference_segments: list[str], module_path: list[str]) -> bool:
     if len(reference_segments) <= len(module_path):
         return False
@@ -57,6 +61,8 @@ class ScopeContext:
     moduleparameter_keys: frozenset[str] = field(default_factory=_moduleparameter_keys_factory)
     current_library: str | None = None
     parent_context: ScopeContext | None = None
+    #: Symbols a direct child module can write through its parameter mappings.
+    submodule_mapped_source_keys: set[tuple[str, ...]] = field(default_factory=_symbol_key_set_factory)
     _resolve_cache: dict[str, tuple[Variable | None, str, list[str], list[str]]] = field(
         default_factory=_resolve_cache_factory,
         init=False,

@@ -413,7 +413,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     record_boolean_write(_varref("Counter"), env, bool_out)
     record_boolean_write(_varref("Flag.Member"), env, bool_out)
     record_boolean_write(_varref("Flag"), env, bool_out)
-    assert set(bool_out) == {("flag", "")}
+    assert set(bool_out) == {("flag", ""), ("flag", "member")}
 
     call_out: WriteMap = {}
     record_function_call_writes("NoSuchBuiltin", [_varref("Counter")], env, call_out)

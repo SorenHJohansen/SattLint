@@ -101,19 +101,21 @@ def prune_runs(runs_dir: Path | None, *, limit: int) -> int:
 
 
 def _prune_runs_beyond_limit(runs_dir: Path, *, limit: int) -> int:
-    summaries = list_runs(runs_dir=runs_dir)
-    if limit < 0 or len(summaries) <= limit:
+    if limit < 0:
+        return 0
+    paths = sorted(runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda path: path.name, reverse=True)
+    if len(paths) <= limit:
         return 0
 
     removed = 0
-    for summary in reversed(summaries[limit:]):
-        path = _run_path(runs_dir, summary.run_id)
+    for path in reversed(paths[limit:]):
+        run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
         try:
             path.unlink()
         except OSError:
             continue
-        _remove_summary(runs_dir, summary.run_id)
-        _remove_acknowledgements(runs_dir, summary.run_id)
+        _remove_summary(runs_dir, run_id)
+        _remove_acknowledgements(runs_dir, run_id)
         removed += 1
     return removed
 
@@ -214,8 +216,7 @@ def save_run_acknowledgements(
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     path = _acknowledged_path(resolved_runs_dir, run_id)
     if not keys:
-        _remove_file(path)
-        return True
+        return _remove_file(path) or not path.exists()
     try:
         resolved_runs_dir.mkdir(parents=True, exist_ok=True)
         _atomic_write_json(path, sorted(keys))

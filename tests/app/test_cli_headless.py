@@ -1233,6 +1233,20 @@ def test_resolve_run_latest_prefers_the_current_project(monkeypatch: pytest.Monk
     assert resolve_run("latest").run_id == "other"
 
 
+def test_resolve_run_latest_rejects_a_project_with_no_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    summaries = [
+        RunSummary.from_record(
+            RunRecord(run_id="other", started_at="s", finished_at="f", project_tag="p", project_path="/p/other.slproj")
+        )
+    ]
+    monkeypatch.setattr(findings_module, "list_runs", lambda: tuple(summaries))
+
+    with pytest.raises(CliError) as error:
+        resolve_run("latest", project_path="/p/mine.slproj")
+
+    assert error.value.code == "no_runs_for_project"
+
+
 def test_analyze_output_write_failure_is_a_user_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -47,12 +47,13 @@ jobs:
       - name: Pyright on production code and tests
         run: uv run --frozen pyright src/sattlint tests
 
-      # Ruff and Pyright run above; the remaining hooks keep whitespace,
-      # end-of-file, YAML/TOML, merge-conflict, line-ending and large-file
-      # checks on CI instead of only on developer machines.
+      # Ruff, Pyright, and the docs check run above or in their own job; the
+      # remaining hooks keep whitespace, end-of-file, YAML/TOML,
+      # merge-conflict, line-ending and large-file checks on CI instead of only
+      # on developer machines.
       - name: Pre-commit hygiene hooks
         env:
-          SKIP: ruff,ruff-format,pyright
+          SKIP: ruff,ruff-format,pyright,docs-check
         run: uv run --frozen pre-commit run --all-files --show-diff-on-failure
 
       - name: Full pytest with coverage

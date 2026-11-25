@@ -1,0 +1,186 @@
+# Caching and Runs
+
+SattLint stores parsed projects, analyzer reports, run history, and profile
+events under the platform cache directory. Every stored artifact is an
+optimization or a convenience: analysis still works when the directory is
+unavailable.
+
+## Cache location
+
+| Platform | Cache root |
+| --- | --- |
+| Linux | `$XDG_CACHE_HOME/sattlint`, or `~/.cache/sattlint` |
+| Windows | `%APPDATA%\sattlint\cache` |
+
+The directory is created on demand. A legacy Linux cache stored under the
+configuration directory is migrated once per process.
+
+## Two caches
+
+```mermaid
+flowchart LR
+    Config["Configuration"] --> ProjectKey["Project cache key"]
+    ProjectKey --> AST["AST cache: parsed project graph"]
+    ProjectKey --> ReportKey["Analyzer report key"]
+    ReportKey --> Report["Analysis report cache: one report per analyzer"]
+    Parser["Parser version"] --> ProjectKey
+    Parser --> ReportKey
+    Capacities["String capacities"] --> ProjectKey
+    Settings["Analyzer settings"] --> ReportKey
+```
+
+### AST cache
+
+The AST cache stores a validated loaded project graph for one target.
+
+- The key is derived from the parser version, the analysis target, and every
+  configuration key that affects loading: targets, mode, roots, and string
+  capacities.
+- The payload is a signed pickle containing the root picture and project graph.
+- The manifest is a JSON snapshot of every file that contributed to the load:
+  source files, graphics companions, distribution companions, dependency
+  sidecars, and the ICF directory and files.
+- A cached entry is reused only when its manifest still matches the files on
+  disk.
+
+A manifest that includes a directory records the directory itself, so adding a
+new ICF file invalidates the entry even though the old file list has not
+changed.
+
+### Analysis report cache
+
+The analysis report cache stores one analyzer report per target and analyzer.
+
+- The key combines the project cache key, the analyzer key, the analyzer's
+  version marker, and the effective analyzer settings.
+- The analyzer version marker changes when that analyzer's behavior changes, so
+  an upgrade does not replay an old report.
+- The payload includes the report and a file manifest; the manifest is
+  validated before the report is used.
+- The cache is stored under a directory named for the report schema version and
+  the parser version. Entries from another generation are pruned instead of
+  read.
+
+The semantic foundation is not persisted. It holds references to parser objects
+from one specific parse, so restoring it from disk would create identity
+mismatches. Reusing the parsed ASTs is the supported cold-start saving.
+
+## Cache safety
+
+- Payloads are written through a temporary file and an atomic replace.
+- Payloads are owner-only.
+- Pickle payloads carry a magic header and an HMAC-SHA256 signature.
+- The signing key lives one level above the cache root, so copying or clearing
+  the cache tree does not copy the key along with the data.
+- A missing key means a payload cannot be verified and is treated as a miss.
+- A failed write is logged and the run continues.
+- An unusable cache directory degrades to an uncached run.
+
+## Cache invalidation
+
+An entry is invalid when any of these changes:
+
+- the parser version;
+- the cache schema or payload version;
+- the analysis target;
+- the project roots, targets, or mode;
+- the string capacity table;
+- the analyzer settings;
+- the behavior version of the analyzer that produced a report;
+- any file in the manifest, including its size or modification time.
+
+Deleting a file from the manifest is also a mismatch because the manifest
+tracks the exact set of files.
+
+## Pruning and clearing
+
+The cache manager can:
+
+- prune stale entries, including entries from another cache generation;
+- clear all AST and report cache entries;
+- remove orphaned payloads or manifests.
+
+A startup prune removes entries that are structurally invalid or belong to
+another generation. It does not delete a valid entry just because it is old;
+freshness is decided by the manifest.
+
+The interactive shell exposes cache maintenance through its application flows.
+The headless CLI exposes cache behavior through `--no-cache` on `analyze`.
+
+## Run history
+
+Run history is stored beside the cache:
+
+```text
+<cache root>/runs/
+```
+
+Each run has:
+
+- `<run-id>.json`: the full run record;
+- `<run-id>.summary`: a small sidecar that lets the results view list runs
+  without loading every finding;
+- `<run-id>.acknowledged`: the finding keys acknowledged for that run, when any
+  exist.
+
+### Run IDs
+
+A run ID is a sortable UTC timestamp with a short random suffix. It is a single
+path segment: no separators, no leading dot, no traversal. An invalid or
+colliding ID is replaced with a fresh one; an existing run is never overwritten.
+
+### Record content
+
+A run record contains:
+
+- the run ID and timestamps;
+- the project tag and project path;
+- selected analyzers;
+- target records and their analyzer records;
+- project-level analyzer records;
+- findings;
+- the module tree snapshot;
+- session output lines;
+- load and analyzer timings;
+- cancellation state.
+
+The record has its own schema version, independent of the analysis pipeline. A
+record from another schema version is ignored instead of being misread.
+
+### Retention
+
+`run_history.enabled` controls whether completed runs are saved.
+`run_history.limit` controls how many recent runs remain. Pruning removes the
+oldest runs and their summary and acknowledgement sidecars. A negative limit
+disables pruning; zero keeps no runs.
+
+### Acknowledgements
+
+The results view can mark a finding as acknowledged for the selected run. The
+acknowledgement is stored by a stable finding key, not by row index, so it
+survives re-rendering. A missing or unreadable acknowledgement sidecar means the
+run has no acknowledgements and never blocks opening the run.
+
+### Corruption handling
+
+A corrupt or unreadable run record, summary, or acknowledgement file is ignored.
+Listing runs never writes to the run store. A failed save leaves the previous
+record intact because writes are atomic.
+
+## Profiling output
+
+When profiling is enabled, JSONL events are written to:
+
+```text
+<cache root>/profile/profile.jsonl
+```
+
+The log records load stages, analyzer durations, phase timings, and bottleneck
+information. It is diagnostic output, not part of analysis results.
+
+## Related pages
+
+- [Project loading](project-loading.md)
+- [Analysis pipeline](analysis-pipeline.md)
+- [CLI reference](cli.md)
+- [Troubleshooting](troubleshooting.md)

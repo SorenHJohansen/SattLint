@@ -428,7 +428,7 @@ def test_variables_report_summary_lists_all_requested_categories_when_empty():
     assert "Hidden global coupling" in summary
     assert "Unknown parameter mapping targets" not in summary
     assert "String mapping type mismatches" in summary
-    assert "Duplicated complex datatypes (should be RECORD)" in summary
+    assert "Extractable nested record candidates" in summary
     assert "Min/Max mapping name mismatches" in summary
     assert "Magic numbers in code" in summary
     assert "Reset contamination (missing reset writes)" in summary

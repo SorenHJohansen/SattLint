@@ -64,6 +64,24 @@ def test_unsafe_defaults_reports_true_boolean_bypass_default_in_root_typedef() -
     assert "bypass safety checks from startup" in (unsafe[0].role or "")
 
 
+def test_unsafe_defaults_ignores_safe_enable_targets() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="EnableAlarm", datatype=ScalarDatatype.BOOLEAN, init_value=True),
+            Variable(name="EnableWarning", datatype=ScalarDatatype.BOOLEAN, init_value=True),
+            Variable(name="EnablePump", datatype=ScalarDatatype.BOOLEAN, init_value=True),
+        ],
+        submodules=[],
+        modulecode=None,
+    )
+
+    report = _unsafe_only_report(bp)
+
+    unsafe = [issue for issue in report.issues if issue.kind is IssueKind.UNSAFE_BOOLEAN_DEFAULT]
+    assert [issue.variable.name for issue in unsafe if issue.variable is not None] == ["EnablePump"]
+
+
 def test_unsafe_defaults_ignores_false_and_external_typedef_defaults() -> None:
     bp = BasePicture(
         header=_hdr("Root"),

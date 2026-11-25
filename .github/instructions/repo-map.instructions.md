@@ -11,6 +11,7 @@ applyTo: ["src/**", "tests/**", ".github/**", "*.md"]
 | `src/sattlint/` | CLI, analyzers, reporting, config |
 | `src/sattlint/core/` | Shared semantic and document helpers |
 | `tests/` | Owner suites and regression coverage |
+| `docs/` | Canonical user, architecture, and maintenance documentation; start at `docs/README.md` |
 | `.github/` | CI, instructions, and optional chat customizations |
 
 ## Search Routing

@@ -126,6 +126,21 @@ def target_is_library(
     return all(not is_within_directory_fn(path, program_path) for path in source_paths)
 
 
+def _configured_search_roots(cfg: ConfigDict) -> set[Path]:
+    """Directories whose entry list decides which sources the loader can find."""
+    roots: set[Path] = set()
+    for key in ("program_dir", "ABB_lib_dir"):
+        raw = str(cfg.get(key, "") or "").strip()
+        if raw:
+            roots.add(Path(raw).expanduser())
+    other_dirs = cfg.get("other_lib_dirs")
+    for raw_dir in other_dirs or ():
+        text = str(raw_dir).strip()
+        if text:
+            roots.add(Path(text).expanduser())
+    return roots
+
+
 def cache_manifest_files(
     cfg: ConfigDict,
     graph: ProjectGraph,
@@ -159,6 +174,12 @@ def cache_manifest_files(
         deps_path = find_dependency_path_fn(target_name)
         if deps_path is not None:
             manifest_files.add(deps_path)
+
+    # The search roots are a snapshot too: a newly added consumer file changes
+    # neither the loaded source list nor a dependency sidecar, but it does
+    # change the directory entry. Record the roots so a library report goes
+    # stale when a new program starts using it.
+    manifest_files.update(_configured_search_roots(cfg))
 
     # ICF inputs participate in analysis-input tracking so ICF analysis
     # results go stale when configured ICF files change. The directory itself

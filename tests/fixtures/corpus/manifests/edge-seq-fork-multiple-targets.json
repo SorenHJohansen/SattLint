@@ -15,7 +15,7 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 17,
+                "finding_count": 13,
                 "rule_counts": {
                     "semantic.condition-always-true": 4,
                     "semantic.duplicate-transition-guard": 1,

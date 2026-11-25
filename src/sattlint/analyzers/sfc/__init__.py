@@ -68,6 +68,17 @@ def _node_fork_terminator(node: object) -> SfcTerminator | None:
     return SfcTerminator(kind="SFCFork", targets=tuple(fork.targets))
 
 
+def _is_forward_fork_target(node: object, terminator: SfcTerminator) -> bool:
+    """A later node named by the fork is reachable through that fork."""
+    if terminator.kind != "SFCFork" or not terminator.targets:
+        return False
+    name = getattr(node, "name", None)
+    if not name:
+        return False
+    folded = name.casefold()
+    return any(target.casefold() == folded for target in terminator.targets)
+
+
 def _is_empty_step(node: object) -> bool:
     """A step with no code and no fork; the grammar needs one to close a branch."""
     if not isinstance(node, SFCStep) or node.fork is not None:
@@ -95,18 +106,21 @@ def _inspect_sfc_linear_nodes(
             )
             if closes_parallel_branch:
                 continue
-            findings.append(
-                SfcReachabilityFinding(
-                    module_path=tuple(module_path),
-                    sequence_name=sequence_name,
-                    branch_path=branch_path,
-                    node_index=index,
-                    node_label=_sequence_node_label(node),
-                    node_type=type(node).__name__,
-                    terminated_by=terminated_by,
+            if _is_forward_fork_target(node, terminated_by):
+                terminated_by = None
+            else:
+                findings.append(
+                    SfcReachabilityFinding(
+                        module_path=tuple(module_path),
+                        sequence_name=sequence_name,
+                        branch_path=branch_path,
+                        node_index=index,
+                        node_label=_sequence_node_label(node),
+                        node_type=type(node).__name__,
+                        terminated_by=terminated_by,
+                    )
                 )
-            )
-            continue
+                continue
 
         if isinstance(node, SFCAlternative | SFCParallel):
             for branch_index, branch in enumerate(node.branches or []):

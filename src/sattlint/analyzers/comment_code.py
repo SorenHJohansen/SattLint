@@ -66,8 +66,8 @@ def _iter_code_comments(value: object) -> Iterator[CodeComment]:
         yield from _iter_code_comments(cast(object, getattr(value, field.name)))
 
 
-def _comment_module_paths(base_picture: BasePicture) -> dict[int, tuple[str, ...]]:
-    """Map every comment's starting line to its declared module path.
+def _comment_module_paths(base_picture: BasePicture) -> dict[tuple[str, int], tuple[str, ...]]:
+    """Map every comment's (source file, starting line) to its module path.
 
     The parser keeps ``CodeComment`` nodes with source spans, so ownership comes
     from the AST instead of a text-level module stack that can drift on record
@@ -75,10 +75,14 @@ def _comment_module_paths(base_picture: BasePicture) -> dict[int, tuple[str, ...
     headers. Paths use the ``TypeDef:`` marker for moduletype-owned code; the
     checks pipeline rewrites those to a real invocation before display.
     """
-    paths: dict[int, tuple[str, ...]] = {}
+    paths: dict[tuple[str, int], tuple[str, ...]] = {}
     root_name = base_picture.header.name
     if not root_name:
         return paths
+    origin_file = getattr(base_picture, "origin_file", None)
+    if not origin_file:
+        return paths
+    source_name = Path(origin_file).name.casefold()
 
     def walk(node: BasePicture | SingleModule | FrameModule | ModuleTypeDef, path: tuple[str, ...]) -> None:
         modulecode = node.modulecode
@@ -86,7 +90,7 @@ def _comment_module_paths(base_picture: BasePicture) -> dict[int, tuple[str, ...
             for comment in _iter_code_comments(modulecode):
                 span = comment.span
                 if span is not None:
-                    paths.setdefault(span.line, path)
+                    paths.setdefault((source_name, span.line), path)
         for child in node.submodules or ():
             if isinstance(child, ModuleTypeInstance):
                 continue
@@ -116,7 +120,7 @@ def analyze_comment_code_files(
     paths: Iterable[Path],
     basepicture_name: str,
     *,
-    module_paths_by_line: Mapping[int, tuple[str, ...]] | None = None,
+    module_paths_by_line: Mapping[tuple[str, int], tuple[str, ...]] | None = None,
 ) -> CommentCodeReport:
     hits: list[CommentCodeHit] = []
     issues: list[Issue] = []
@@ -135,7 +139,7 @@ def analyze_comment_code_files(
 
         for hit in find_comments_with_code(text):
             module_path = (
-                module_paths_by_line.get(hit.start_line, hit.module_path)
+                module_paths_by_line.get((path.name.casefold(), hit.start_line), hit.module_path)
                 if module_paths_by_line is not None
                 else hit.module_path
             )

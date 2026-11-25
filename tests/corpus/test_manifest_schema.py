@@ -32,8 +32,20 @@ def test_manifest_directory_contains_manifests() -> None:
     assert MANIFEST_PATHS, f"no corpus manifests found under {MANIFEST_DIR}"
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
 def _load(path: Path) -> dict[str, object]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
+    except ValueError as exc:
+        pytest.fail(f"{path.name}: invalid manifest JSON: {exc}")
     assert isinstance(payload, dict), f"{path.name}: manifest root is not an object"
     return cast("dict[str, object]", payload)
 
@@ -93,11 +105,30 @@ def test_manifest_declares_required_fields(manifest_path: Path) -> None:
         field="expectation.forbidden_finding_ids",
     )
     assert not (set(expected) & set(forbidden)), f"{manifest_path.name}: a finding id is both expected and forbidden"
+    assert len(expected) == len(set(expected)), f"{manifest_path.name}: duplicate expected finding id"
+    assert len(forbidden) == len(set(forbidden)), f"{manifest_path.name}: duplicate forbidden finding id"
 
     fragments = _artifact_fragments(payload, manifest_path)
     for fragment_name, fragment in fragments.items():
         assert fragment_name.endswith(".json"), f"{manifest_path.name}: artifact fragment {fragment_name!r} is not JSON"
         _expect_object(fragment, path=manifest_path, field=f"expectation.artifact_fragments.{fragment_name}")
+
+    summary = fragments.get("summary.json")
+    if isinstance(summary, dict):
+        summary_object = cast("dict[str, object]", summary)
+        rule_counts = summary_object.get("rule_counts")
+        finding_count = summary_object.get("finding_count")
+        if rule_counts is not None:
+            counts = _expect_object(rule_counts, path=manifest_path, field="summary.json.rule_counts")
+            total = 0
+            for rule, count in counts.items():
+                assert isinstance(count, int), f"{manifest_path.name}: rule count for {rule!r} is not an integer"
+                total += count
+            if finding_count is not None:
+                assert isinstance(finding_count, int), f"{manifest_path.name}: finding_count is not an integer"
+                assert finding_count == total, (
+                    f"{manifest_path.name}: finding_count {finding_count} != sum(rule_counts) {total}"
+                )
 
 
 @pytest.mark.parametrize("manifest_path", MANIFEST_PATHS, ids=_MANIFEST_IDS)

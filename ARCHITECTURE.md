@@ -1,8 +1,9 @@
 # Architecture Summary
 
 This is the short architecture summary for onboarding and AI routing.
-For deeper design rationale, principles, and operating details, use
-`AGENTS_REFERENCE.md`.
+For the detailed architecture guide, use
+[docs/architecture.md](docs/architecture.md). For deeper design rationale,
+principles, and operating details, use `AGENTS_REFERENCE.md`.
 
 ## Layering
 

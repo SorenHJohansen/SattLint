@@ -520,7 +520,16 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
         for variable in moduletype.moduleparameters or []:
             role = DECLARATION_ROLE_MODULE_PARAMETER
             usage = self._get_usage(variable)
-            if collect_unused and usage.is_unused and not _has_out_of_origin_consumer(self, variable):
+            # A library's module type is its public interface; a program outside
+            # the analyzed target connects these parameters even when the
+            # library's own code does not touch them.
+            is_external_interface = getattr(self, "analyzed_target_is_library", False)
+            if (
+                collect_unused
+                and usage.is_unused
+                and not _has_out_of_origin_consumer(self, variable)
+                and not is_external_interface
+            ):
                 self._append_issue(
                     UnusedIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
                 )

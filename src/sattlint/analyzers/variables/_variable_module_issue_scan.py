@@ -70,7 +70,12 @@ def _collect_variable_issues(
         # A contract outside the analyzed origin proves the variable is consumed even
         # though the read is invisible, so absence of use is not evidence of dead code.
         consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
-        if collect_unused and usage.is_unused and not consumed_out_of_origin:
+        if (
+            collect_unused
+            and usage.is_unused
+            and not consumed_out_of_origin
+            and not (role == DECLARATION_ROLE_MODULE_PARAMETER and getattr(self, "analyzed_target_is_library", False))
+        ):
             self.append_issue(UnusedIssue(module_path=path.copy(), variable=variable, role=role, declaration_role=role))
             continue
 

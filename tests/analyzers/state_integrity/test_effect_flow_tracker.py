@@ -301,7 +301,7 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     report = VariablesReport(basepicture_name="BasePicture", issues=issues)
     summary = report.summary()
 
-    assert "Duplicated complex datatypes (should be RECORD)" in summary
+    assert "Extractable nested record candidates" in summary
     assert "      Moduletype:" in summary
     assert "Datatype 'SharedRecord' declared 2 times in BasePicture.TypeDef:PanelType:" in summary
     assert "+ ParamType (moduleparameter)" in summary

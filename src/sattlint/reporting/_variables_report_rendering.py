@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -13,6 +13,7 @@ from ..models._variable_issues import (
     ImplicitLatchIssue,
     MagicNumberIssue,
     MinMaxMappingMismatchIssue,
+    NestedRecordCandidateIssue,
     ReadBeforeWriteIssue,
     RecordComponentOrderIssue,
     ResetContaminationIssue,
@@ -459,23 +460,25 @@ def append_string_mapping_mismatch(lines: list[str], title: str, issues: list[Va
 
 
 def render_datatype_duplication_rows(
-    lines: list[str], issues: list[DatatypeDuplicationIssue], preserve_typedef_path: bool
+    lines: list[str],
+    issues: Sequence[DatatypeDuplicationIssue | NestedRecordCandidateIssue],
+    preserve_typedef_path: bool,
 ) -> None:
     if not issues:
         lines.append("        none")
         return
 
-    for issue in sorted(
-        issues,
-        key=lambda item: (
-            item.variable.datatype_text.casefold(),
-            ".".join(item.module_path).casefold(),
-            item.variable.name.casefold(),
-        ),
-    ):
+    for issue in sorted(issues, key=_datatype_duplication_sort_key):
         location_path = issue.module_path if preserve_typedef_path else singlemodule_display_path(issue.module_path)
-        datatype_name = issue.variable.datatype_text
         location = ".".join(location_path)
+        if isinstance(issue, NestedRecordCandidateIssue):
+            fields = ", ".join(repr(field) for field in issue.field_names)
+            records = ", ".join(issue.record_names)
+            lines.append(f"        Fields {fields} repeat in {records} ({location}):")
+            lines.append("          - Extract the group into a nested RECORD and declare it as one field.")
+            continue
+
+        datatype_name = issue.variable.datatype_text
         count = issue.duplicate_count
         lines.append(f"        Datatype '{datatype_name}' declared {count} times in {location}:")
         lines.append(f"          - {issue.variable.name} ({issue.role})")
@@ -492,8 +495,26 @@ def render_datatype_duplication_rows(
                     lines.append(f"            + {duplicate_location}: {duplicate.variable_id} ({duplicate.role})")
 
 
+def _datatype_duplication_sort_key(
+    issue: DatatypeDuplicationIssue | NestedRecordCandidateIssue,
+) -> tuple[str, str, str]:
+    if isinstance(issue, NestedRecordCandidateIssue):
+        return (
+            (issue.field_names[0].casefold() if issue.field_names else ""),
+            ".".join(issue.module_path).casefold(),
+            ",".join(issue.record_names).casefold(),
+        )
+    return (
+        issue.variable.datatype_text.casefold(),
+        ".".join(issue.module_path).casefold(),
+        issue.variable.name.casefold(),
+    )
+
+
 def append_datatype_duplication(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-    duplication_issues = [issue for issue in issues if isinstance(issue, DatatypeDuplicationIssue)]
+    duplication_issues = [
+        issue for issue in issues if isinstance(issue, DatatypeDuplicationIssue | NestedRecordCandidateIssue)
+    ]
     append_grouped_issue_blocks(lines, title, duplication_issues, render_datatype_duplication_rows)
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from sattlint.parser_api import (
@@ -11,18 +12,16 @@ from sattlint.parser_api import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    ScalarDatatype,
     SingleModule,
     Variable,
 )
 
-from ...reporting.variables_report import DatatypeDuplicationIssue, DuplicateLocation
+from ...reporting.variables_report import NestedRecordCandidateIssue
 from ...resolution import decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.paths import path_startswith_casefold
 from ...resolution.scope import ScopeContext
-from ...types import VariableId
-from ...utils.casefolding import casefold_key, is_anytype_name
+from ...utils.casefolding import casefold_key
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
 from ._variables_contracts import typedef_usage_key
 
@@ -460,74 +459,89 @@ def _lookup_env_var_from_varname_dict(
     return env.get(base)
 
 
+_MIN_NESTED_RECORD_FIELDS = 3
+_MAX_NESTED_RECORD_FIELDS = 32
+_MAX_NESTED_WINDOW_FIELDS = 8
+
+type _FieldSignature = tuple[str, str, bool, bool]
+
+
+def _empty_record_names() -> set[str]:
+    return set()
+
+
+@dataclass
+class _FieldWindow:
+    records: set[str] = field(default_factory=_empty_record_names)
+    display_fields: tuple[str, ...] = ()
+
+
+def _field_signature(field: Variable) -> _FieldSignature:
+    return (
+        casefold_key(field.name),
+        casefold_key(str(field.datatype_text)),
+        bool(field.state),
+        bool(field.const),
+    )
+
+
+def _contains_window(long: tuple[_FieldSignature, ...], short: tuple[_FieldSignature, ...]) -> bool:
+    if len(short) > len(long):
+        return False
+    return any(long[index : index + len(short)] == short for index in range(len(long) - len(short) + 1))
+
+
 def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
-    var_locations: list[tuple[Any, list[str], str]] = []
+    """Report shared field groups that can become a nested record."""
+    records = [
+        datatype
+        for datatype in self.bp.datatype_defs or []
+        if self.is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+        and _MIN_NESTED_RECORD_FIELDS <= len(datatype.var_list or []) <= _MAX_NESTED_RECORD_FIELDS
+    ]
+    fields_by_record = {
+        datatype.name: tuple(_field_signature(field) for field in (datatype.var_list or [])) for datatype in records
+    }
 
-    bp_path = [self.bp.header.name]
-    for variable in self.bp.localvariables or []:
-        var_locations.append((variable, bp_path.copy(), "localvariable"))
+    windows: dict[tuple[_FieldSignature, ...], _FieldWindow] = {}
+    for record in records:
+        fields = tuple(record.var_list or [])
+        signatures = fields_by_record[record.name]
+        for start in range(len(signatures)):
+            for end in range(
+                start + _MIN_NESTED_RECORD_FIELDS,
+                min(len(signatures), start + _MAX_NESTED_WINDOW_FIELDS) + 1,
+            ):
+                window = signatures[start:end]
+                candidate = windows.setdefault(window, _FieldWindow())
+                candidate.records.add(record.name)
+                if not candidate.display_fields:
+                    candidate.display_fields = tuple(field.name for field in fields[start:end])
 
-    def _collect_from_module(mod: SingleModule | FrameModule | ModuleTypeInstance, path: list[str]) -> None:
-        if isinstance(mod, SingleModule):
-            my_path = [*path, mod.header.name]
-            for variable in mod.moduleparameters or []:
-                var_locations.append((variable, my_path.copy(), "moduleparameter"))
-            for variable in mod.localvariables or []:
-                var_locations.append((variable, my_path.copy(), "localvariable"))
-            for child in mod.submodules or []:
-                _collect_from_module(child, my_path)
-        elif isinstance(mod, FrameModule):
-            my_path = [*path, mod.header.name]
-            for child in mod.submodules or []:
-                _collect_from_module(child, my_path)
+    candidates = sorted(
+        ((window, candidate) for window, candidate in windows.items() if len(candidate.records) >= 2),
+        key=lambda item: (-len(item[0]), tuple(name.casefold() for name in sorted(item[1].records))),
+    )
 
-    for module in self.bp.submodules or []:
-        _collect_from_module(module, bp_path)
-
-    for moduletype in self.bp.moduletype_defs or []:
-        if not self.is_from_root_origin(
-            getattr(moduletype, "origin_file", None),
-            getattr(moduletype, "origin_lib", None),
+    kept: list[tuple[tuple[_FieldSignature, ...], set[str]]] = []
+    for window, candidate in candidates:
+        if all(len(fields_by_record[record_name]) == len(window) for record_name in candidate.records):
+            # Identical whole layouts should reuse one record, not nest a copy.
+            continue
+        if any(
+            _contains_window(kept_window, window) and candidate.records <= kept_records
+            for kept_window, kept_records in kept
         ):
             continue
-        td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
-        for variable in moduletype.moduleparameters or []:
-            var_locations.append((variable, td_path.copy(), "moduleparameter"))
-        for variable in moduletype.localvariables or []:
-            var_locations.append((variable, td_path.copy(), "localvariable"))
-
-    complex_vars = [
-        (variable, path, role)
-        for variable, path, role in var_locations
-        if not isinstance(variable.datatype, ScalarDatatype) and not is_anytype_name(variable.datatype_text)
-    ]
-
-    by_datatype: dict[tuple[tuple[str, ...], str], list[tuple[Any, list[str], str]]] = {}
-    for variable, path, role in complex_vars:
-        datatype_key = casefold_key(variable.datatype_text)
-        scope_key = tuple(segment.casefold() for segment in path)
-        by_datatype.setdefault((scope_key, datatype_key), []).append((variable, path, role))
-
-    declared_record_names = {datatype.name.casefold() for datatype in self.bp.datatype_defs or []}
-    for (_scope_key, datatype_name), occurrences in by_datatype.items():
-        if len(occurrences) < 2:
-            continue
-        if datatype_name in declared_record_names:
-            continue
-
-        first_var, first_path, first_role = occurrences[0]
-        duplicate_locs = [
-            DuplicateLocation(module_path=path, role=role, variable_id=VariableId(variable.name))
-            for variable, path, role in occurrences[1:]
-        ]
-
+        kept.append((window, candidate.records))
         self.append_issue(
-            DatatypeDuplicationIssue(
-                module_path=first_path,
-                variable=first_var,
-                role=first_role,
-                duplicate_count=len(occurrences),
-                duplicate_locations=duplicate_locs,
+            NestedRecordCandidateIssue(
+                module_path=[self.bp.header.name],
+                field_names=candidate.display_fields,
+                record_names=tuple(sorted(candidate.records, key=str.casefold)),
             )
         )
 
