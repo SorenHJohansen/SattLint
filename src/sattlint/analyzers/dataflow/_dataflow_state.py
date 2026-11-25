@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any, cast
 
 from sattlint.parser_api import Variable, VarRef, walk
@@ -239,11 +240,60 @@ class _DataflowStateMixin:
         state: StateMap,
         key: tuple[str, ...],
     ) -> StateMap:
+        """Drop ``key`` and every field below it, sharing ``state`` when nothing matches.
+
+        A write invalidates whatever this state knew about the target symbol. Most
+        writes target a symbol this state never recorded, so the map is returned
+        unchanged instead of copied: the traversal moves a state of hundreds of
+        symbols through every write, and an unconditional copy dominated the run.
+
+        A caller that goes on to mutate the result must own it; call
+        :meth:`_invalidate_symbol_for_write` for that.
+        """
+        return self._invalidate_symbols(state, (key,))
+
+    def _invalidate_symbols(
+        self: Any,
+        state: StateMap,
+        keys: Collection[tuple[str, ...]],
+    ) -> StateMap:
+        """Drop every ``keys`` entry and its fields in one pass over the state.
+
+        A step boundary invalidates every module parameter in scope, and testing
+        each of those against every tracked symbol made invalidation the largest
+        cost of the analyzer. Grouping the keys by their containing path lets one
+        pass answer all of them: a tracked key matches a key ``(*path, name)`` when
+        it starts with ``path`` and continues with ``name``.
+        """
+        groups: dict[tuple[str, ...], set[str]] = {}
+        for key in keys:
+            if key:
+                groups.setdefault(key[:-1], set()).add(key[-1])
+        if not groups:
+            return state
+        scopes = [(len(path), path, names) for path, names in groups.items()]
+        stale: list[tuple[str, ...]] = []
+        for existing in state:
+            existing_length = len(existing)
+            for path_length, path, names in scopes:
+                if existing_length > path_length and existing[path_length] in names and existing[:path_length] == path:
+                    stale.append(existing)
+                    break
+        if not stale:
+            return state
         next_state = state.copy()
-        prefixes = [existing for existing in next_state if existing[: len(key)] == key]
-        for existing in prefixes:
-            next_state.pop(existing, None)
+        for existing in stale:
+            del next_state[existing]
         return next_state
+
+    def _invalidate_symbol_for_write(
+        self: Any,
+        state: StateMap,
+        key: tuple[str, ...],
+    ) -> StateMap:
+        """Invalidate ``key`` and return a map the caller may freely mutate."""
+        next_state = self._invalidate_symbol(state, key)
+        return state.copy() if next_state is state else next_state
 
     def _merge_states(self: Any, states: list[StateMap]) -> StateMap:
         if not states:

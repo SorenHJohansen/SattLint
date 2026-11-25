@@ -154,9 +154,12 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
             return state
 
         current_state = state
+        # Every equation block's writes are invalidated before any sequence runs, so
+        # the whole set is applied in one pass instead of one pass per root.
+        equation_roots: set[tuple[str, ...]] = set()
         for equation in modulecode.equationblocks or []:
-            for root_key in self._active_write_roots(equation.code or [], context):
-                current_state = self._invalidate_symbol(current_state, root_key)
+            equation_roots.update(self._active_write_roots(equation.code or [], context))
+        current_state = self._invalidate_symbols(current_state, equation_roots)
         for sequence in modulecode.sequences or []:
             self._push_site(f"SQ:{getattr(sequence, 'name', '<unnamed>')}")
             try:
@@ -345,7 +348,11 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
         return current_state
 
     def _external_scan_state(self: Any, context: ScopeContext, state: StateMap) -> StateMap:
-        next_state = state
+        # A parameter written by code outside this scope can change between scans, so
+        # every non-constant parameter in the scope chain loses its tracked value.
+        # They are collected first and dropped in one pass: testing them one by one
+        # scanned the whole state once per parameter.
+        external_keys: set[tuple[str, ...]] = set()
         scope: ScopeContext | None = context
         while scope is not None:
             for name in scope.moduleparameter_keys | scope.param_mappings.keys():
@@ -354,9 +361,9 @@ class _DataflowTraversalMixin(DataflowScopeSupportMixin):
                     continue
                 resolved = self._resolve_ref(VarRef(name=name), scope)
                 if resolved is not None:
-                    next_state = self._invalidate_symbol(next_state, resolved.symbol_key)
+                    external_keys.add(resolved.symbol_key)
             scope = scope.parent_context
-        return next_state
+        return self._invalidate_symbols(state, external_keys)
 
     def _active_write_roots(self: Any, statements: list[object], context: ScopeContext) -> set[tuple[str, ...]]:
         roots: set[tuple[str, ...]] = set()
