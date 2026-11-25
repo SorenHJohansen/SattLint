@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,10 +87,12 @@ def select_moduletype_def_strict(  # noqa: PLR0915
     unavailable_libraries: set[str] | None = None,
     library_dependencies: Mapping[str, Iterable[str]] | None = None,
     source_dependencies: Mapping[str, Iterable[str]] | None = None,
-    available_names: Sequence[str] | None = None,
+    available_names: Callable[[], Sequence[str]] | None = None,
 ) -> ModuleTypeDef:
     if not matches:
-        candidates = available_names if available_names is not None else [mt.name for mt in (bp.moduletype_defs or [])]
+        candidates = (
+            available_names() if available_names is not None else [mt.name for mt in (bp.moduletype_defs or [])]
+        )
         available = sorted(set(candidates))
         note = ""
         if unavailable_libraries:
@@ -177,9 +179,17 @@ def resolve_moduletype_def_strict(
     source_dependencies: Mapping[str, Iterable[str]] | None = None,
 ) -> ModuleTypeDef:
     key = moduletype_name.casefold()
+    available_names: Callable[[], list[str]] | None
     if moduletype_index is not None:
-        matches = moduletype_index.get(key, [])
-        available_names = [mt.name for defs in moduletype_index.values() for mt in defs]
+        index = moduletype_index
+        matches = index.get(key, [])
+
+        # The available-name listing only feeds the unknown-type diagnostic, so it
+        # is built on demand: a hit must not walk every defined type to answer.
+        def list_available_names() -> list[str]:
+            return [mt.name for defs in index.values() for mt in defs]
+
+        available_names = list_available_names
     else:
         matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
         available_names = None
@@ -244,13 +254,14 @@ def resolve_module_by_strict_path(  # noqa: PLR0915
         resolved: ModuleTypeDef
         matches = moduletype_index.get(node.moduletype_name.casefold(), []) if moduletype_index is not None else []
         if matches and moduletype_index is not None:
+            index = moduletype_index
             resolved = select_moduletype_def_strict(
                 bp,
                 node.moduletype_name,
                 matches,
                 current_library=current_library,
                 current_file=current_file,
-                available_names=[mt.name for defs in moduletype_index.values() for mt in defs],
+                available_names=lambda: [mt.name for defs in index.values() for mt in defs],
             )
         else:
             resolved = resolve_moduletype_def_strict(
