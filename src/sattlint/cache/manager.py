@@ -43,6 +43,7 @@ class CacheManager:
         ast_cache = self.ast_cache
         analysis_report_cache = self.analysis_report_cache
         result = result.combine(ast_cache.drain_startup_prune_result().combine(ast_cache.prune_stale_entries()))
+        result = result.combine(ast_cache.prune_over_budget_entries())
         result = result.combine(
             cache_module.CachePruneResult(
                 analysis_report_entries=analysis_report_cache.drain_startup_pruned_entries()

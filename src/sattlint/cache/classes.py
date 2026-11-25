@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import pickle
+import time
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
@@ -148,6 +149,27 @@ class ASTCache:
             ast_manifest_entries=removed_manifests,
         )
 
+    def prune_over_budget_entries(self, *, now: float | None = None) -> cache_module.CachePruneResult:
+        """Drop the least recently used entries once the family exceeds its budget."""
+        payload_paths = sorted(self.cache_dir.glob("*.pickle"))
+        over_budget = cache_module.payloads_over_budget(
+            payload_paths,
+            time.time() if now is None else now,
+        )
+        removed_payloads = 0
+        removed_manifests = 0
+        for payload_path in over_budget:
+            if not cache_module._remove_file(payload_path):
+                continue
+            removed_payloads += 1
+            manifest_path = self._manifest_path(payload_path.stem)
+            if manifest_path.exists() and cache_module._remove_file(manifest_path):
+                removed_manifests += 1
+        return cache_module.CachePruneResult(
+            ast_payload_entries=removed_payloads,
+            ast_manifest_entries=removed_manifests,
+        )
+
     def drain_startup_prune_result(self) -> cache_module.CachePruneResult:
         result = self._startup_prune_result
         self._startup_prune_result = cache_module.CachePruneResult()
@@ -174,7 +196,13 @@ class AnalysisReportCache:
     def _prune_other_generations(self) -> int:
         removed = 0
         for path in self._root_dir.iterdir():
-            if path == self.cache_dir or not path.is_dir():
+            if not path.is_dir():
+                # Only a versioned directory is ever read, so a payload written
+                # directly under the root by an older layout is unreachable.
+                if path.is_file() and cache_module._remove_file(path):
+                    removed += 1
+                continue
+            if path == self.cache_dir:
                 continue
             for entry in path.iterdir():
                 if entry.is_file() and cache_module._remove_file(entry):

@@ -44,6 +44,7 @@ __all__ = [
     "get_cache_dir",
     "get_cache_dir_or_none",
     "get_cache_manager",
+    "payloads_over_budget",
     "prune_cache_dir",
 ]
 
@@ -53,6 +54,14 @@ _legacy_migration_attempted = False
 # replayed: they are still readable, but each one costs seconds to unpickle for
 # evidence no consumer restores.
 ANALYSIS_REPORT_CACHE_VERSION = 6
+#: A parsed project graph is tens to hundreds of megabytes and every distinct
+#: directory setting and target produces its own entry, so abandoned
+#: configurations would otherwise accumulate without limit. The least recently
+#: used payloads are dropped once the family exceeds this budget.
+CACHE_PAYLOAD_BUDGET_BYTES = 4 * 1024**3
+#: Entries used more recently than this are never evicted, so a working set that
+#: is currently in use cannot lose its cache to a single oversized sibling.
+CACHE_EVICTION_MIN_AGE_SECONDS = 7 * 24 * 60 * 60
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".sattlint-cache-key"
 _PICKLE_HMAC_SIZE = 32
@@ -107,6 +116,37 @@ def _safe_stat(path: Path) -> os.stat_result | None:
         return path.stat()
     except OSError:
         return None
+
+
+def payloads_over_budget(payloads: Sequence[Path], now: float) -> list[Path]:
+    """The least recently used payloads to drop so a cache family fits its budget.
+
+    ``payloads`` is the family's payload set. Entries touched within
+    :data:`CACHE_EVICTION_MIN_AGE_SECONDS` are never returned, so a working set in
+    active use cannot be evicted by an unlucky total; when those alone exceed the
+    budget the cache stays over it until an entry ages out.
+    """
+    entries: list[tuple[float, int, Path]] = []
+    total = 0
+    for path in payloads:
+        stat_result = _safe_stat(path)
+        if stat_result is None:
+            continue
+        entries.append((stat_result.st_mtime, stat_result.st_size, path))
+        total += stat_result.st_size
+    if total <= CACHE_PAYLOAD_BUDGET_BYTES:
+        return []
+
+    eviction_cutoff = now - CACHE_EVICTION_MIN_AGE_SECONDS
+    over_budget: list[Path] = []
+    for modified_at, size, path in sorted(entries):
+        if total <= CACHE_PAYLOAD_BUDGET_BYTES:
+            break
+        if modified_at > eviction_cutoff:
+            continue
+        over_budget.append(path)
+        total -= size
+    return over_budget
 
 
 def _matches_stat_snapshot(path: Path, *, mtime_ns: object, size: object) -> bool:
