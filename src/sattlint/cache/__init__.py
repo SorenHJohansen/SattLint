@@ -49,7 +49,10 @@ __all__ = [
 
 CACHE_VERSION = 17  # Bump when cached AST semantics or attached graphics companion record shapes change.
 _legacy_migration_attempted = False
-ANALYSIS_REPORT_CACHE_VERSION = 5
+# Bumped to 6 so entries written before reports were projected are pruned instead of
+# replayed: they are still readable, but each one costs seconds to unpickle for
+# evidence no consumer restores.
+ANALYSIS_REPORT_CACHE_VERSION = 6
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
 _PICKLE_HMAC_KEY_NAME = ".sattlint-cache-key"
 _PICKLE_HMAC_SIZE = 32
