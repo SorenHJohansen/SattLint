@@ -102,6 +102,7 @@ def build_parser_binding(
     status_update_fn: Callable[[str], None] | None = None,
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
+    parser_cache_dir: Path | None = None,
 ) -> ParserProjectBinding:
     validate_loader_config(cfg)
 
@@ -126,4 +127,5 @@ def build_parser_binding(
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
         string_capacities=resolve_string_capacities(cfg),
+        parser_cache_dir=parser_cache_dir,
     )

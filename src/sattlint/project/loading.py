@@ -331,6 +331,9 @@ def load_project(  # noqa: PLR0915
         status_update_fn=status_update_fn,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
+        # A run that asked for no cache must not leave or read parser-side state
+        # either, so the parser cache follows the same switch as the AST cache.
+        parser_cache_dir=cache_dir if use_cache else None,
     )
     lib_names: dict[str, str] = {}
     graph = _load_parser_graph(
@@ -541,7 +544,11 @@ def load_program_asts(
             )
             return dict(cached_asts), cached_graph
 
-    binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
+    binding = build_parser_binding(
+        cfg,
+        status_update_fn=status_update_fn,
+        parser_cache_dir=cache_dir,
+    )
     lib_names: dict[str, str] = {}
     graph = _load_parser_graph(
         binding,

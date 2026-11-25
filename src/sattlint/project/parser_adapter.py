@@ -166,6 +166,10 @@ class ParserProjectBinding:
     #: diagnostics infer string values, so they need the same capacities the
     #: analysis context carries.
     string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
+    #: Where the parser may keep its own per-file lookup and AST caches. Enabling
+    #: it makes a target stop re-parsing programs an earlier target in the same run
+    #: already parsed. ``None`` keeps the load hermetic.
+    parser_cache_dir: Path | None = None
     # Session-scoped adapter state, shared across every load/visit in one
     # binding lifetime. These are the analogues of the old loader shell's
     # ``_visited`` / ``_lib_by_name`` / status dedupe, and are excluded from
@@ -200,10 +204,13 @@ def load_parser_project(
     *,
     validate: LoadValidation = LoadValidation.INVOKED,
 ) -> SattLineProject:
-    """Load ``targets`` through the parser, hermetically (no parser-side cache).
+    """Load ``targets`` through the parser.
 
-    ``cache_dir=None`` keeps the load fully in-memory; the project-level
-    analysis-result cache remains SattLint's replay/refresh layer.
+    ``binding.parser_cache_dir`` (when set) enables the parser's own per-file
+    lookup and AST caches: a program a previous target already parsed is reused
+    instead of parsed again, which is what keeps a multi-target run from parsing
+    the shared dependency closure once per target. With no cache dir the load is
+    fully in-memory and hermetic.
 
     Single-target loads are memoized per binding (keyed by casefolded target and
     validation scope), the analogue of the old loader shell's ``_visited`` set:
@@ -234,7 +241,7 @@ def _load_project(
             mode=binding.parser_mode(),
             targets=targets,
             debug=binding.debug_fn,
-            cache_dir=None,
+            cache_dir=binding.parser_cache_dir,
             validate=validate,
         )
     except ModuleTypeCycleError as exc:

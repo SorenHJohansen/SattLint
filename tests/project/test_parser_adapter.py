@@ -12,6 +12,7 @@ round-trip test, which writes real ``.s`` / ``.l`` fixtures into ``tmp_path``.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from sattline_parser import Diagnostic, DiagnosticCode, parse_source_text
@@ -423,3 +424,69 @@ def test_convert_extra_roots_records_each_missing_root() -> None:
     assert set(graph.ast_by_name) == {"A"}
     assert any("'R1'" in entry for entry in graph.missing)
     assert any("'R2'" in entry for entry in graph.missing)
+
+
+def _recording_binding(program_dir: Path, cache_dir: Path | None) -> ParserProjectBinding:
+    return ParserProjectBinding(
+        program_dir=program_dir,
+        other_lib_dirs=(),
+        abb_lib_dir=None,
+        mode=CodeMode.DRAFT,
+        parser_cache_dir=cache_dir,
+    )
+
+
+class _RecordingProject:
+    """Stands in for the parser project so the loader's call can be inspected."""
+
+    captured: ClassVar[dict[str, object]] = {}
+
+    @staticmethod
+    def load(**kwargs: object) -> str:
+        _RecordingProject.captured.update(kwargs)
+        return "project"
+
+
+def _record_parser_load(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    _RecordingProject.captured = {}
+    monkeypatch.setattr(parser_adapter_module, "SattLineProject", _RecordingProject)
+    return _RecordingProject.captured
+
+
+def test_a_binding_without_a_cache_dir_loads_hermetically(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _record_parser_load(monkeypatch)
+
+    load_parser_project(_recording_binding(Path("/p"), None), ["Main"])
+
+    assert captured["cache_dir"] is None
+
+
+def test_a_binding_with_a_cache_dir_passes_it_to_the_parser(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured = _record_parser_load(monkeypatch)
+    cache_dir = tmp_path / "cache"
+
+    load_parser_project(_recording_binding(Path("/p"), cache_dir), ["Main"])
+
+    assert captured["cache_dir"] == cache_dir
+
+
+def test_two_targets_share_one_parser_cache(tmp_path: Path) -> None:
+    """A cached binding lets the second target build on the first target's parses."""
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "First.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Second.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "First.l").write_text("Shared\n", encoding="utf-8")
+    (program_dir / "Second.l").write_text("Shared\n", encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(mode=0o700)
+
+    first = load_parser_project(_recording_binding(program_dir, cache_dir), ["First"])
+    second = load_parser_project(_recording_binding(program_dir, cache_dir), ["Second"])
+
+    assert "Shared" in first
+    assert "Shared" in second
+    assert second.dependencies_of("Second") == ("Shared",)
+    file_ast_entries = list((cache_dir / "file_ast").iterdir())
+    assert file_ast_entries

@@ -128,6 +128,7 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch: pytes
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -323,6 +324,7 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch:
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -440,6 +442,7 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -522,6 +525,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -673,6 +677,7 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -791,6 +796,7 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -963,6 +969,7 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,

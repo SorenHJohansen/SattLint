@@ -55,6 +55,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch: pytest.Mon
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         refresh_mode: str = "full",
         stage_timing_sink: LoadStageTimingSink | None = None,
@@ -111,6 +112,7 @@ def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch: pyt
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         refresh_mode: str = "full",
         stage_timing_sink: LoadStageTimingSink | None = None,
@@ -360,6 +362,7 @@ def test_load_project_ast_only_collects_stage_timings(monkeypatch: pytest.Monkey
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -440,6 +443,7 @@ def test_load_project_uses_custom_target_load_error_factory(monkeypatch: pytest.
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         refresh_mode: str = "full",
         stage_timing_sink: LoadStageTimingSink | None = None,
@@ -708,6 +712,7 @@ def test_load_project_ignores_a_cache_write_failure(monkeypatch: pytest.MonkeyPa
     def fake_build_parser_binding(
         cfg: Mapping[str, object],
         *,
+        parser_cache_dir: Path | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         stage_timing_sink: LoadStageTimingSink | None = None,
         graphics_timing_sink: LoadStageTimingSink | None = None,
@@ -781,3 +786,69 @@ def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch: pyte
     assert graph.load_stage_timings == {}
     assert graph.load_stage_timings_by_program == {}
     assert graph.graphics_load_timings == {}
+
+
+def test_the_parser_cache_follows_the_run_cache_switch(monkeypatch: pytest.MonkeyPatch):
+    root_bp = named_object("TargetA", origin_file="TargetA.s")
+    graph = AnalysisGraphStub(
+        ast_by_name={"TargetA": root_bp},
+        missing=[],
+        warnings=[],
+        source_files={Path("programs/TargetA.s")},
+    )
+    seen: list[Path | None] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir: Path) -> None:
+            self.cache_dir = cache_dir
+
+        def load_validated(self, _key: str) -> None:
+            return None
+
+        def manifest_paths(self, _key: str) -> frozenset[Path]:
+            return frozenset()
+
+        def save(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    def fake_build_parser_binding(
+        _cfg: Mapping[str, object],
+        *,
+        parser_cache_dir: Path | None = None,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        seen.append(parser_cache_dir)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(project_application, "ASTCache", FakeCache)
+    monkeypatch.setattr(analysis_loading_module, "build_parser_binding", fake_build_parser_binding)
+    monkeypatch.setattr(analysis_loading_module, "_load_parser_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(analysis_loading_module, "find_dependency_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_loading_module, "read_dependency_names", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(analysis_loading_module, "merge_project_basepicture", lambda bp, graph: "merged")
+    cfg = cast(
+        ConfigDict,
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+    )
+
+    project_application.load_project(
+        cfg,
+        cache_key_for_target_fn=lambda _cfg, _target: "key",
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+        use_cache=True,
+    )
+    project_application.load_project(
+        cfg,
+        cache_key_for_target_fn=lambda _cfg, _target: "key",
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+        use_cache=False,
+    )
+
+    assert seen == [Path("cache-dir"), None]
