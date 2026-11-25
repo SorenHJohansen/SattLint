@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 from ..analyzers.catalog import canonicalize_analyzer_keys
-from ..application.findings import AnalysisFinding
+from ..application.findings import AnalysisFinding, finding_data_key
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
@@ -52,24 +51,6 @@ def _finding_context(finding: AnalysisFinding) -> str | None:
     return text or None
 
 
-def _stable_repr(value: object) -> str:
-    """A repr that never includes a memory address."""
-    return f"<{type(value).__name__}>"
-
-
-def _finding_data_key(finding: AnalysisFinding) -> str:
-    """A stable fingerprint of the finding payload.
-
-    Two findings can share a message and site but carry different detail (for
-    example different previous writes). Collapsing them would keep only the
-    first payload, so the data payload is part of finding identity.
-    """
-    try:
-        return json.dumps(finding.data, sort_keys=True, default=_stable_repr, separators=(",", ":"))
-    except (TypeError, ValueError):
-        return repr(finding.data)
-
-
 def _finding_id(
     *,
     target: str,
@@ -87,7 +68,7 @@ def _finding_id(
         site or "",
         context or "",
         finding.message,
-        _finding_data_key(finding),
+        finding_data_key(finding),
     )
     digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
     return f"f_{digest[:12]}"
@@ -123,7 +104,7 @@ def flat_findings(record: RunRecord) -> list[FlatFinding]:
                 site,
                 context,
                 finding.message,
-                _finding_data_key(finding),
+                finding_data_key(finding),
             )
             counts[key] = counts.get(key, 0) + 1
             if key not in representatives:
@@ -278,8 +259,14 @@ def resolve_run(run_id: str | None, *, project_path: str | None = None) -> RunRe
                 for summary in summaries
                 if summary.project_path and _same_project_path(summary.project_path, project_path)
             ]
-            if matching:
-                summaries = matching
+            if not matching:
+                raise CliError(
+                    "No analysis runs are recorded for this project.",
+                    code="no_runs_for_project",
+                    exit_code=2,
+                    details={"project": project_path},
+                )
+            summaries = matching
         # The newest record can be unreadable (truncated by a crash, written by
         # an older schema). Fall back to the newest record that loads.
         for summary in summaries:

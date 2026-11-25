@@ -491,17 +491,17 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 # Version 2 adds the project's [string_capacities] table to the key.
 CACHE_KEY_SCHEMA_VERSION = 2
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
-    "comment-code": "2026-11-20-explicit-selection",
+    "comment-code": "2026-11-25-file-line-ownership",
     "cyclomatic-complexity": "2026-11-21-worst-scope",
-    "sfc": "2026-11-21-branch-scope",
-    "variables": "2026-11-24-descendant-scope-usage",
-    "datatype-fields": "2026-11-24-descendant-scope-usage",
+    "sfc": "2026-11-25-forward-fork",
+    "variables": "2026-11-25-latch-and-gating",
+    "datatype-fields": "2026-11-25-latch-and-gating",
     "moduletype-usage": "2026-11-21-consumer-closure",
     "picture-display-paths": "2026-11-21-wmf-emf-skip",
-    "icf": "2026-11-21-entry-programs",
-    "dataflow": "2026-11-21-write-conflicts",
+    "icf": "2026-11-25-partial-project",
+    "dataflow": "2026-11-25-sfc-guard-and-state",
     "same-cycle": "2026-11-21-instance-dedupe",
-    "alarm-integrity": "2026-11-21-parameter-writeback",
+    "alarm-integrity": "2026-11-25-structural-never-cleared",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol

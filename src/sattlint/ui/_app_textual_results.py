@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from rich.style import Style
 from rich.text import Text
 
-from ..application.findings import AnalysisFinding, kind_human_label
+from ..application.findings import AnalysisFinding, finding_data_key, kind_human_label
 from ..models._variable_issues import (
     DECLARATION_ROLE_LOCAL_VARIABLE,
     DECLARATION_ROLE_MODULE_PARAMETER,
@@ -43,16 +43,26 @@ if _TEXTUAL_TREE is not None:
     from rich.cells import cell_len as _cell_len  # type: ignore[import-untyped]
 
     _TREE_TOGGLE_WIDTH = _cell_len(str(_TEXTUAL_TREE.ICON_NODE))
+    _TREE_LEAF_ICON = "\u2022 "
+    _TREE_LEAF_WIDTH = _cell_len(_TREE_LEAF_ICON)
 
     class _ResultsTree(_TEXTUAL_TREE):  # pyright: ignore[reportUntypedBaseClass]
-        """Results tree with cheap label measurement.
+        """Results tree that marks leaves and measures labels cheaply.
 
-        Textual's ``Tree._build`` re-measures every expanded label on each
-        expand/collapse through ``render_label`` (Rich ``Text`` copy/stylize/
-        assemble). Overriding ``get_label_width`` to measure the plain label
-        avoids that work; the width is memoized per node and invalidated when
-        the node's label or expand affordance changes.
+        A leaf node carries a dot instead of the expand triangle, so it is
+        clear it has nothing to open. Textual's ``Tree._build`` re-measures
+        every expanded label on each expand/collapse through ``render_label``
+        (Rich ``Text`` copy/stylize/assemble). Overriding ``get_label_width``
+        to measure the plain label avoids that work; the width is memoized per
+        node and invalidated when the node's label or expand affordance
+        changes.
         """
+
+        def render_label(self, node: Any, base_style: Style, style: Style) -> Text:
+            rendered = super().render_label(node, base_style, style)
+            if node.allow_expand:
+                return rendered
+            return Text.assemble((_TREE_LEAF_ICON, base_style), rendered)
 
         def get_label_width(self, node: Any) -> int:
             label = node.label
@@ -62,9 +72,7 @@ if _TEXTUAL_TREE is not None:
             cached = getattr(node, "_sattlint_label_width", None)
             if cached is not None and cached[0] == cache_key:
                 return int(cached[1])
-            width = _cell_len(text)
-            if allow_expand:
-                width += _TREE_TOGGLE_WIDTH
+            width = _cell_len(text) + (_TREE_TOGGLE_WIDTH if allow_expand else _TREE_LEAF_WIDTH)
             node._sattlint_label_width = (cache_key, width)
             return width
 
@@ -236,11 +244,17 @@ def _finding_groups(
     order; within a kind, module parameters come before local variables, and
     findings with no declaration kind come last.
     """
-    counts: dict[tuple[str, str | None, str, str | None], int] = {}
-    representatives: dict[tuple[str, str | None, str, str | None], AnalysisFinding] = {}
-    order: list[tuple[str, str | None, str, str | None]] = []
+    counts: dict[tuple[str, str | None, str, str | None, str], int] = {}
+    representatives: dict[tuple[str, str | None, str, str | None, str], AnalysisFinding] = {}
+    order: list[tuple[str, str | None, str, str | None, str]] = []
     for finding in analyzer.findings:
-        key = (finding.kind, _finding_declaration_role(finding), finding.message, _site_label(finding))
+        key = (
+            finding.kind,
+            _finding_declaration_role(finding),
+            finding.message,
+            _site_label(finding),
+            finding_data_key(finding),
+        )
         if key not in representatives:
             representatives[key] = finding
             counts[key] = 0
@@ -249,7 +263,7 @@ def _finding_groups(
 
     kind_order: list[str] = []
     role_order: dict[str, list[str | None]] = {}
-    for kind, role, _message, _site in order:
+    for kind, role, _message, _site, _data in order:
         if kind not in role_order:
             kind_order.append(kind)
             role_order[kind] = []
@@ -273,6 +287,16 @@ def _finding_module_path(finding: AnalysisFinding, analyzer: RunAnalyzerRecord) 
 def _analyzer_label(analyzer: RunAnalyzerRecord) -> str:
     label = analyzer.name
     return label if analyzer.status == "completed" else f"{label} — {analyzer.status}"
+
+
+def _mark_leaf_nodes(root: Any) -> None:
+    """Disallow expansion on nodes without children after the tree is built.
+
+    Nodes are created before their children are attached, so the final child
+    count decides which nodes are leaves.
+    """
+    for node in _walk_tree_nodes(root):
+        node.allow_expand = bool(node.children)
 
 
 def _auto_expand_single_child_chains(root: Any) -> None:
@@ -405,7 +429,15 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
     tree.reset("", data=None)
     tree.show_root = False
     first_selection = None
-    for target in record.targets:
+    targets = list(record.targets)
+    if any(analyzer.findings for analyzer in record.project_analyzers):
+        targets.append(
+            RunTargetRecord(
+                target_name="Project",
+                analyzers=record.project_analyzers,
+            )
+        )
+    for target in targets:
         if not any(analyzer.findings for analyzer in target.analyzers):
             continue
         module = target.module
@@ -480,6 +512,7 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                             _module_node_label(prefix[-1], has_findings=key in finding_paths),
                             data=_ModuleSelection(target, prefix, aliases),
                         )
+    _mark_leaf_nodes(tree.root)
     _auto_expand_single_child_chains(tree.root)
     tree.root.expand()
     return first_selection

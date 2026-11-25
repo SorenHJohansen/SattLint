@@ -254,6 +254,7 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
         Path("programs/TargetA.g"),
         Path("programs/TargetA.z"),
         Path("libraries/TargetB.z"),
+        Path("programs"),
     }
 
 
@@ -383,7 +384,7 @@ def test_analysis_loading_cache_manifest_files_adds_distribution_companions(tmp_
         resolve_graphics_companion_path_fn=lambda _source_path, **_kwargs: None,
     )
 
-    assert manifest_files == {draft_body, draft_companion, official_body, official_companion}
+    assert manifest_files == {draft_body, draft_companion, official_body, official_companion, tmp_path}
 
 
 def test_reverse_consumer_scan_prefers_the_mode_sidecar_and_falls_back(tmp_path: Path):

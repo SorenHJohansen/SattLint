@@ -14,7 +14,7 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 7,
+                "finding_count": 6,
                 "rule_counts": {
                     "semantic.never-read-write": 1,
                     "semantic.read-before-write": 4,

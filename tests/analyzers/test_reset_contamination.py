@@ -182,6 +182,30 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
     ]
 
 
+def test_reset_contamination_detects_root_modulecode_sequence() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=_reset_modulecode(),
+        moduledef=None,
+    )
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root"], "Counter")]
+
+
 def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     child = SingleModule(
         header=_hdr("Child"),

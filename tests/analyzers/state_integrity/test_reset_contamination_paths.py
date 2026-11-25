@@ -413,5 +413,5 @@ def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
         boolean_state,
     )
 
-    assert set(boolean_state.true_writes) == {("flag", "")}
+    assert set(boolean_state.true_writes) == {("flag", "member")}
     assert set(boolean_state.false_writes) == {("flag", "")}

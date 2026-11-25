@@ -26,7 +26,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import Assignment, BinOp, SLExpression, VarRef
+from sattline_parser.models.expressions import Assignment, BinOp, IfStmt, NotOp, SLExpression, VarRef
 
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.dataflow._dataflow_non_state_sites import (
@@ -287,6 +287,84 @@ def test_external_mapping_overlap_is_not_a_proven_hazard() -> None:
     report = analyze_same_cycle(bp)
 
     assert report.issues == []
+
+
+def test_dataflow_non_state_multi_site_treats_sibling_operation_guards_as_exclusive() -> None:
+    def module(name: str, value: int, *, guarded: bool) -> SingleModule:
+        statements: list[CodeItem] = [_assign("Shared", value)]
+        code: list[CodeItem] = [*statements]
+        if guarded:
+            code = []
+            code.append(
+                IfStmt(
+                    branches=((NotOp(operand=VarRef(name="PhaseSequence.Reset")), tuple(statements)),),
+                    else_block=None,
+                )
+            )
+        return SingleModule(
+            header=_hdr(name),
+            moduledef=None,
+            moduleparameters=[],
+            localvariables=[],
+            submodules=[],
+            modulecode=ModuleCode(equationblocks=[_eq("Calculations", code)], sequences=[]),
+            parametermappings=[],
+        )
+
+    guarded_bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="Shared", datatype=ScalarDatatype.INTEGER)],
+        submodules=[module("Fyld", 1, guarded=True), module("Toem", 2, guarded=True)],
+        modulecode=None,
+    )
+    unguarded_bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="Shared", datatype=ScalarDatatype.INTEGER)],
+        submodules=[module("Fyld", 1, guarded=False), module("Toem", 2, guarded=False)],
+        modulecode=None,
+    )
+
+    assert _multi_site_issues(guarded_bp) == []
+    assert len(_multi_site_issues(unguarded_bp)) == 1
+
+
+def test_dataflow_non_state_multi_site_ignores_state_writes_without_new() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER, state=True)],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq("First", [_assign("SharedValue", 1)]),
+                _eq("Second", [Assignment(target=VarRef(name="SharedValue", state="new"), value=2)]),
+            ],
+            sequences=[],
+        ),
+    )
+
+    assert _multi_site_issues(bp) == []
+
+
+def test_dataflow_non_state_multi_site_ignores_record_state_writes_without_new() -> None:
+    payload = DataType(
+        name="PayloadType",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="Value", datatype=ScalarDatatype.INTEGER, state=True)],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[payload],
+        localvariables=[Variable(name="Payload", datatype="PayloadType")],
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq("First", [_assign("Payload.Value", 1)]),
+                _eq("Second", [_assign("Payload.Value", 2)]),
+            ],
+            sequences=[],
+        ),
+    )
+
+    assert _multi_site_issues(bp) == []
 
 
 def test_dataflow_non_state_multi_site_reports_two_writing_equations() -> None:

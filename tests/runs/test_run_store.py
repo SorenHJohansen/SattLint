@@ -323,6 +323,16 @@ def test_finding_acknowledgement_key_is_stable_and_scoped() -> None:
         finding=finding,
         declaration_role="localvariable",
     )
+    assert key != finding_acknowledgement_key(
+        target_name="RootProgram",
+        analyzer_key="variables",
+        finding=AnalysisFinding(
+            kind="unused",
+            message="declared but never read",
+            module_path=("RootProgram", "Idle"),
+            data={"site": "SQ:Run", "previous_sites": ["EQ:Other"]},
+        ),
+    )
 
 
 def test_prune_runs_removes_summary_sidecars(tmp_path: Path) -> None:
@@ -535,3 +545,22 @@ def test_prune_runs_collects_orphan_summary_sidecars(tmp_path: Path) -> None:
     prune_runs(tmp_path, limit=5)
 
     assert not (tmp_path / f"{orphan.run_id}.summary").exists()
+
+
+def test_prune_runs_removes_old_schema_files(tmp_path: Path) -> None:
+    save_run(
+        RunRecord(
+            run_id="",
+            started_at="2026-09-01T10:00:00Z",
+            finished_at="2026-09-01T10:05:00Z",
+            project_tag="RootProgram",
+        ),
+        runs_dir=tmp_path,
+    )
+    old_path = tmp_path / "0000bad.json"
+    old_path.write_text(json.dumps({"schema_version": 999, "run_id": "0000bad"}), encoding="utf-8")
+
+    removed = prune_runs(tmp_path, limit=1)
+
+    assert removed == 1
+    assert not old_path.exists()

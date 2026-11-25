@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-moduletype-usage-unused",
+    "target_file": "../valid/MultiTypedefBlocks.s",
+    "mode": "analyzer-moduletype-usage",
+    "expectation": {
+        "expected_finding_ids": [
+            "module.unused_type"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "moduletype-usage"
+            },
+            "summary.json": {
+                "analyzer_key": "moduletype-usage",
+                "finding_count": 1,
+                "rule_counts": {
+                    "module.unused_type": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

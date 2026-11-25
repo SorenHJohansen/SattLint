@@ -11,8 +11,16 @@ from ._reset_path_state import WriteKey, WriteMap
 
 
 def _path_covers_write(reset_writes: WriteMap, key: WriteKey) -> bool:
-    var_key, _field_key = key
-    return key in reset_writes or (var_key, "") in reset_writes
+    var_key, field_key = key
+    if key in reset_writes or (var_key, "") in reset_writes:
+        return True
+    if not field_key:
+        return False
+    # Resetting a record (or a field subtree) clears every field beneath it.
+    return any(
+        reset_var == var_key and bool(reset_field) and field_key.startswith(f"{reset_field}.")
+        for reset_var, reset_field in reset_writes
+    )
 
 
 def _record_mode_write(target: Any, env: dict[str, Variable], state: Any) -> None:

@@ -15,6 +15,22 @@ SattLint is a Python toolkit for SattLine projects. It provides configurable sta
 
 ---
 
+## Documentation
+
+The full documentation set lives in [docs/README.md](docs/README.md). Start
+with the page that matches what you are doing:
+
+- [Getting started](docs/getting-started.md) for installation and a first run
+- [Project files](docs/project-files.md) and
+  [Configuration](docs/configuration.md) for settings
+- [CLI reference](docs/cli.md) for automation
+- [Analyzers](docs/analyzers.md) for every check and its selection
+- [Architecture](docs/architecture.md) for how the code is organized
+- [Change Review](docs/change-review.md) for official-versus-draft reviews
+- [Development](docs/development.md) for contributing
+
+---
+
 ## Requirements
 
 - **Windows** or **Linux**
@@ -295,7 +311,10 @@ and **App Settings → Run History** controls how many runs are retained.
 
 ## For Developers
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, tests, and tooling.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and
+[docs/development.md](docs/development.md) for the code rules, validation
+ladder, and analyzer development. The documentation index is
+[docs/README.md](docs/README.md).
 
 ---
 

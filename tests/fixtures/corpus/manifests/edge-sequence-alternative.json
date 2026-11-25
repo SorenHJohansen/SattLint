@@ -16,7 +16,7 @@
                 "missing_dependency_count": 0
             },
             "summary.json": {
-                "finding_count": 17,
+                "finding_count": 15,
                 "rule_counts": {
                     "semantic.condition-always-false": 3,
                     "semantic.condition-always-true": 2,

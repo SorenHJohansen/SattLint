@@ -5,6 +5,7 @@ from typing import Any, cast
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
+    DataType,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
@@ -20,14 +21,13 @@ from sattlint.analyzers.variables import (
     _variables_execution as variables_execution_module,
 )
 from sattlint.reporting.variables_report import (
-    DuplicateLocation,
+    NestedRecordCandidateIssue,
     NeverReadIssue,
     StringMappingMismatchIssue,
     UnusedIssue,
     VariableIssue,
     VariablesReport,
 )
-from sattlint.types import VariableId
 from tests.helpers.variable_test_support import (
     UsageStub as _UsageStub,
 )
@@ -39,80 +39,69 @@ from tests.helpers.variable_test_support import (
 )
 
 
-def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
-    fyld = ModuleTypeDef(
-        name="Fyld",
-        moduleparameters=[
-            Variable(name="WildcardA", datatype="AnyType"),
-            Variable(name="WildcardB", datatype="AnyType"),
+def test_nested_record_candidate_reports_a_shared_field_group():
+    signal_a = DataType(
+        name="SignalA",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="Raw", datatype=ScalarDatatype.REAL),
+            Variable(name="Min", datatype=ScalarDatatype.REAL),
+            Variable(name="Max", datatype=ScalarDatatype.REAL),
+            Variable(name="Scale", datatype=ScalarDatatype.REAL),
         ],
-        localvariables=[
-            Variable(name="PhaseTimer", datatype="Timer"),
-            Variable(name="PhaseTimerCopy", datatype="Timer"),
-        ],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        origin_file="LibraryRoot.x",
+        origin_file="LibraryRoot.s",
         origin_lib="ProjectLib",
     )
-    applik = ModuleTypeDef(
-        name="Applik",
-        moduleparameters=[Variable(name="WildcardC", datatype="AnyType")],
-        localvariables=[Variable(name="PhaseTimer", datatype="Timer")],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        origin_file="LibraryRoot.x",
+    signal_b = DataType(
+        name="SignalB",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="Raw", datatype=ScalarDatatype.REAL),
+            Variable(name="Min", datatype=ScalarDatatype.REAL),
+            Variable(name="Max", datatype=ScalarDatatype.REAL),
+            Variable(name="Offset", datatype=ScalarDatatype.REAL),
+        ],
+        origin_file="LibraryRoot.s",
         origin_lib="ProjectLib",
     )
 
     bp = BasePicture(
         header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[fyld, applik],
+        datatype_defs=[signal_a, signal_b],
+        moduletype_defs=[],
         localvariables=[],
         submodules=[],
         modulecode=None,
         moduledef=None,
-        origin_file="LibraryRoot.x",
+        origin_file="LibraryRoot.s",
         origin_lib="ProjectLib",
     )
 
-    analyzer = VariablesAnalyzer(bp)
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
     analyzer.run()
 
     duplication_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.DATATYPE_DUPLICATION]
     assert len(duplication_issues) == 1
-
     issue = duplication_issues[0]
-    assert issue.module_path == ["BasePicture", "TypeDef:Fyld"]
-    assert issue.variable is not None
-    assert issue.variable.name == "PhaseTimer"
-    assert issue.variable.datatype_text == "Timer"
-    assert issue.duplicate_count == 2
-    assert issue.duplicate_locations == [
-        DuplicateLocation(
-            module_path=["BasePicture", "TypeDef:Fyld"],
-            role="localvariable",
-            variable_id=VariableId("PhaseTimerCopy"),
-        )
-    ]
+    assert isinstance(issue, NestedRecordCandidateIssue)
+    assert issue.field_names == ("Raw", "Min", "Max")
+    assert issue.record_names == ("SignalA", "SignalB")
 
     summary = VariablesReport(
         basepicture_name=bp.header.name, issues=cast(list[VariableIssue], duplication_issues)
     ).summary()
-    assert "Datatype 'Timer' declared 2 times in BasePicture.TypeDef:Fyld:" in summary
-    assert "+ PhaseTimerCopy (localvariable)" in summary
-    assert "AnyType" not in summary
-    assert "TypeDef:Applik" not in summary
+    assert "Extractable nested record candidates" in summary
+    assert "Fields 'Raw', 'Min', 'Max' repeat in SignalA, SignalB" in summary
+    assert "Extract the group into a nested RECORD" in summary
 
 
 def test_library_target_report_shows_typedef_for_same_lib_different_file_moduletype():
     typedef = ModuleTypeDef(
         name="InfoPanelType",
         moduleparameters=[Variable(name="EnableInteraktion", datatype=ScalarDatatype.BOOLEAN)],
-        localvariables=[],
+        localvariables=[Variable(name="UnusedLocal", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[],
         moduledef=None,
         modulecode=None,
@@ -137,20 +126,27 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
     analyzer.run()
 
+    # A library's module-type parameters are consumed by the programs that
+    # connect them, even when the library itself never touches them.
+    assert not any(
+        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "EnableInteraktion"
+        for issue in analyzer.issues
+    )
     assert any(
         issue.kind is IssueKind.UNUSED
         and issue.variable is not None
-        and issue.variable.name == "EnableInteraktion"
+        and issue.variable.name == "UnusedLocal"
         and issue.module_path == ["BasePicture", "TypeDef:InfoPanelType"]
         for issue in analyzer.issues
     )
 
     summary = VariablesReport(basepicture_name=bp.header.name, issues=analyzer.issues).summary()
     assert "      Moduletype:" in summary
-    assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
+    assert "BasePicture.TypeDef:InfoPanelType :: localvariable UnusedLocal (boolean)" in summary
     assert "      SingleModule:" in summary
-    assert "BasePicture.Y_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
-    assert "BasePicture.X_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
+    assert "EnableInteraktion" not in summary
+    assert "BasePicture.Y_Info_Panel" not in summary
+    assert "BasePicture.X_Info_Panel" not in summary
 
 
 def test_program_target_report_dedupes_root_owned_typedef_instance_findings():

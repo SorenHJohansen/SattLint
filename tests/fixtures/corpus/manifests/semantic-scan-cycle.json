@@ -4,8 +4,8 @@
     "mode": "analyzer-dataflow",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.scan-cycle-stale-read",
-            "semantic.scan-cycle-implicit-new"
+            "dataflow.scan_cycle_stale_read",
+            "dataflow.scan_cycle_implicit_new"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -16,8 +16,8 @@
             "summary.json": {
                 "analyzer_key": "dataflow",
                 "rule_counts": {
-                    "semantic.scan-cycle-stale-read": 1,
-                    "semantic.scan-cycle-implicit-new": 1
+                    "dataflow.scan_cycle_stale_read": 1,
+                    "dataflow.scan_cycle_implicit_new": 1
                 }
             }
         },

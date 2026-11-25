@@ -46,6 +46,7 @@
 ## Key Docs
 
 - `AGENTS_REFERENCE.md` (repo map, quality gates, validation map, core beliefs), `ARCHITECTURE.md`
+- `docs/README.md` (canonical user and architecture documentation index)
 - `.github/instructions/*.md`
 
 ## Critical Invariants

@@ -19,12 +19,14 @@ from typing import Any, cast
 from sattlint.parser_api import (
     Assignment,
     BasePicture,
+    BoolOp,
     FuncCall,
     FuncCallStmt,
     IfStmt,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
+    NotOp,
     Sequence,
     SFCAlternative,
     SFCFork,
@@ -64,6 +66,7 @@ class _SiteAccess:
     kind: str
     site: str
     sequence_key: tuple[str, ...] | None = None
+    active_sequence: tuple[str, ...] | None = None
 
 
 @dataclass(slots=True)
@@ -75,6 +78,7 @@ class _SiteGroup:
     display: str
     actions: dict[_SiteKey, set[str]]
     sites: dict[_SiteKey, set[str]]
+    active_sequences: dict[_SiteKey, tuple[str, ...] | None]
 
 
 def _group_site_accesses(accesses: list[_SiteAccess]) -> list[_SiteGroup]:
@@ -108,25 +112,52 @@ def _group_site_accesses(accesses: list[_SiteAccess]) -> list[_SiteGroup]:
                     display=first_by_key[prefix].symbol_display,
                     actions=defaultdict(set),
                     sites=defaultdict(set),
+                    active_sequences={},
                 )
                 groups[prefix] = group
             site_key: _SiteKey = (access.module_path, access.sequence_key, str(access.continuous_site))
             group.actions[site_key].add(access.kind)
+            group.active_sequences.setdefault(site_key, access.active_sequence)
             if access.site:
                 group.sites[site_key].add(access.site)
 
-    return sorted(groups.values(), key=lambda group: str(group.representative))
+    comparable: dict[tuple[tuple[str, ...], tuple[str, ...]], _SiteGroup] = {}
+    for group in groups.values():
+        key = (group.representative, group.decl_module_path)
+        existing = comparable.get(key)
+        if existing is None:
+            comparable[key] = group
+            continue
+        for site_key, kinds in group.actions.items():
+            existing.actions[site_key] |= kinds
+        for site_key, sites in group.sites.items():
+            existing.sites[site_key] |= sites
+        for site_key, marker in group.active_sequences.items():
+            existing.active_sequences.setdefault(site_key, marker)
+
+    return sorted(comparable.values(), key=lambda group: str(group.representative))
 
 
-def _sites_can_share_a_scan(left: _SiteKey, right: _SiteKey) -> bool:
+def _sites_can_share_a_scan(
+    left: _SiteKey,
+    right: _SiteKey,
+    active_sequences: dict[_SiteKey, tuple[str, ...] | None],
+) -> bool:
     """Whether two write sites can both be active in one scan.
 
-    An equation block is active in every scan. A step site belongs to one
-    sequence, and SattLine runs the steps of a sequence one at a time, so two
-    sites in the same sequence are never compared. Different sequences run
-    concurrently, so their step sites are.
+    An equation block is active in every scan unless its guard names an
+    operation sequence that is not reset. A step site belongs to one sequence,
+    and SattLine runs the steps of a sequence one at a time, so two sites in
+    the same sequence are never compared. Different sequences run concurrently,
+    so their step sites are.
     """
     if left == right:
+        return False
+    left_marker = active_sequences.get(left)
+    right_marker = active_sequences.get(right)
+    if left_marker is not None and right_marker is not None and left_marker != right_marker:
+        # Sibling operation equations guarded by different ``NOT <Seq>.Reset``
+        # flags belong to different operations; only one operation is active.
         return False
     left_sequence = left[1]
     right_sequence = right[1]
@@ -142,13 +173,16 @@ def _ordered_site_keys(site_keys: Iterable[_SiteKey]) -> list[_SiteKey]:
     )
 
 
-def _conflicting_write_sites(actions: dict[_SiteKey, set[str]]) -> list[_SiteKey]:
+def _conflicting_write_sites(
+    actions: dict[_SiteKey, set[str]],
+    active_sequences: dict[_SiteKey, tuple[str, ...] | None],
+) -> list[_SiteKey]:
     """The write sites that share a scan with at least one other write site."""
     write_sites = [site_key for site_key, kinds in actions.items() if _WRITE in kinds]
     participating: set[_SiteKey] = set()
     for index, left in enumerate(write_sites):
         for right in write_sites[index + 1 :]:
-            if _sites_can_share_a_scan(left, right):
+            if _sites_can_share_a_scan(left, right, active_sequences):
                 participating.add(left)
                 participating.add(right)
     return _ordered_site_keys(participating)
@@ -172,7 +206,7 @@ def collect_non_state_multi_site_issues(self: Any) -> None:
         decl_module_path = group.decl_module_path
         actions = group.actions
         sites = group.sites
-        conflicting_sites = _conflicting_write_sites(actions)
+        conflicting_sites = _conflicting_write_sites(actions, group.active_sequences)
         if len(conflicting_sites) < 2:
             continue
 
@@ -308,7 +342,7 @@ def _walk_module_code(
     for equation in modulecode.equationblocks or []:
         label = f"EQ:{getattr(equation, 'name', '<unnamed>')}"
         for statement in equation.code or []:
-            _record_statement(self, statement, context, module_path, label, None, accesses)
+            _record_statement(self, statement, context, module_path, label, None, None, accesses)
     for sequence_index, sequence in enumerate(modulecode.sequences or []):
         sequence_name = getattr(sequence, "name", "<unnamed>")
         sequence_key = (*module_path, f"SQ:{sequence_index}:{sequence_name}")
@@ -349,7 +383,7 @@ def _walk_sequence_nodes(
         if isinstance(node, SFCTransition):
             loop_step = _transition_loop_step_name(nodes, index)
             label = None if loop_step is None else f"STEP:{loop_step}:TRANS:{node.name or '<unnamed>'}"
-            _record_expression(self, node.condition, context, module_path, label, sequence_key, accesses)
+            _record_expression(self, node.condition, context, module_path, label, sequence_key, None, accesses)
             continue
         if isinstance(node, SFCAlternative | SFCParallel):
             for branch in node.branches or []:
@@ -378,7 +412,7 @@ def _walk_step(
     ):
         label = f"{base}:{phase}" if (phase == "ACTIVE" or direct_self_loop) else None
         for statement in statements:
-            _record_statement(self, statement, context, module_path, label, sequence_key, accesses)
+            _record_statement(self, statement, context, module_path, label, sequence_key, None, accesses)
 
 
 def _step_has_direct_self_loop(nodes: SequenceABC[object], index: int) -> bool:
@@ -424,30 +458,82 @@ def _record_statement(
     module_path: list[str],
     continuous_site: str | None,
     sequence_key: tuple[str, ...] | None,
+    active_sequence: tuple[str, ...] | None,
     accesses: list[_SiteAccess],
 ) -> None:
     if isinstance(statement, IfStmt):
         for condition, branch_statements in statement.branches:
-            _record_expression(self, condition, context, module_path, continuous_site, sequence_key, accesses)
+            _record_expression(
+                self, condition, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+            )
+            branch_active = active_sequence or _active_sequence_from_condition(condition, module_path)
             for branch_statement in branch_statements:
-                _record_statement(self, branch_statement, context, module_path, continuous_site, sequence_key, accesses)
+                _record_statement(
+                    self, branch_statement, context, module_path, continuous_site, sequence_key, branch_active, accesses
+                )
         for else_statement in statement.else_block or ():
-            _record_statement(self, else_statement, context, module_path, continuous_site, sequence_key, accesses)
+            _record_statement(
+                self, else_statement, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+            )
         return
 
     if isinstance(statement, Assignment):
-        _record_expression(self, statement.value, context, module_path, continuous_site, sequence_key, accesses)
-        _record_ref(self, statement.target, _WRITE, context, module_path, continuous_site, sequence_key, accesses)
+        _record_expression(
+            self, statement.value, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+        )
+        _record_ref(
+            self,
+            statement.target,
+            _WRITE,
+            context,
+            module_path,
+            continuous_site,
+            sequence_key,
+            active_sequence,
+            accesses,
+        )
         return
 
     if isinstance(statement, FuncCallStmt):
         args = _sequence_as_list(statement.call.args)
         _record_call_arguments(
-            self, statement.call.name, args, context, module_path, continuous_site, sequence_key, accesses
+            self,
+            statement.call.name,
+            args,
+            context,
+            module_path,
+            continuous_site,
+            sequence_key,
+            active_sequence,
+            accesses,
         )
         return
 
-    _record_expression(self, statement, context, module_path, continuous_site, sequence_key, accesses)
+    _record_expression(self, statement, context, module_path, continuous_site, sequence_key, active_sequence, accesses)
+
+
+def _active_sequence_from_condition(
+    condition: object,
+    module_path: list[str],
+) -> tuple[str, ...] | None:
+    """Return the operation sequence a ``NOT <Seq>.Reset`` guard activates.
+
+    The marker is qualified by the module path, so two sibling operations that
+    both guard on their own ``PhaseSequence.Reset`` produce different markers
+    and are treated as mutually exclusive.
+    """
+    if isinstance(condition, NotOp):
+        operand = condition.operand
+        if isinstance(operand, VarRef) and operand.name and operand.name.casefold().endswith(".reset"):
+            owner = operand.name.rsplit(".", 1)[0]
+            if owner:
+                return (*module_path, owner.casefold())
+    if isinstance(condition, BoolOp) and str(condition.op).upper() == "AND":
+        for operand in condition.operands:
+            marker = _active_sequence_from_condition(operand, module_path)
+            if marker is not None:
+                return marker
+    return None
 
 
 def _record_call_arguments(
@@ -458,15 +544,20 @@ def _record_call_arguments(
     module_path: list[str],
     continuous_site: str | None,
     sequence_key: tuple[str, ...] | None,
+    active_sequence: tuple[str, ...] | None,
     accesses: list[_SiteAccess],
 ) -> None:
     signature = resolve_call_signature(function_name)
     for index, argument in enumerate(args):
         parameter = signature.parameters[index] if signature is not None and index < len(signature.parameters) else None
         if parameter is None or parameter.is_input:
-            _record_expression(self, argument, context, module_path, continuous_site, sequence_key, accesses)
+            _record_expression(
+                self, argument, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+            )
         if parameter is not None and parameter.is_output:
-            _record_ref(self, argument, _WRITE, context, module_path, continuous_site, sequence_key, accesses)
+            _record_ref(
+                self, argument, _WRITE, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+            )
 
 
 def _record_expression(
@@ -476,6 +567,7 @@ def _record_expression(
     module_path: list[str],
     continuous_site: str | None,
     sequence_key: tuple[str, ...] | None,
+    active_sequence: tuple[str, ...] | None,
     accesses: list[_SiteAccess],
 ) -> None:
     for event in walk(node, prune=lambda current: isinstance(current, FuncCall)):
@@ -489,11 +581,14 @@ def _record_expression(
                 module_path,
                 continuous_site,
                 sequence_key,
+                active_sequence,
                 accesses,
             )
             continue
         if isinstance(current, VarRef):
-            _record_ref(self, current, _READ, context, module_path, continuous_site, sequence_key, accesses)
+            _record_ref(
+                self, current, _READ, context, module_path, continuous_site, sequence_key, active_sequence, accesses
+            )
 
 
 def _record_ref(
@@ -504,6 +599,7 @@ def _record_ref(
     module_path: list[str],
     continuous_site: str | None,
     sequence_key: tuple[str, ...] | None,
+    active_sequence: tuple[str, ...] | None,
     accesses: list[_SiteAccess],
 ) -> None:
     resolved = self._resolve_ref(ref, context)
@@ -529,6 +625,7 @@ def _record_ref(
             kind=kind,
             site=continuous_site or "",
             sequence_key=sequence_key,
+            active_sequence=active_sequence,
         )
     )
 

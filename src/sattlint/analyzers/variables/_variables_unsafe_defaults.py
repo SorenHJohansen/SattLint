@@ -31,6 +31,32 @@ _UNSAFE_DEFAULT_REASONS: dict[str, str] = {
 }
 _DEFAULT_UNSAFE_DEFAULT_REASON = "which starts enabled at startup"
 
+# ``Enable`` alone is too broad: flags that enable an alarm, a message, or a
+# display are safe to default True and activating them is not an equipment
+# hazard. Only an enable flag whose target is not one of these is treated as
+# potentially starting equipment or logic.
+_SAFE_ENABLE_TARGETS = frozenset(
+    {
+        "alarm",
+        "display",
+        "history",
+        "info",
+        "journal",
+        "log",
+        "logging",
+        "message",
+        "msg",
+        "monitor",
+        "monitoring",
+        "statistic",
+        "statistics",
+        "status",
+        "text",
+        "trend",
+        "warning",
+    }
+)
+
 
 def collect_unsafe_default_issues(self: Any) -> None:
     """Append ``IssueKind.UNSAFE_BOOLEAN_DEFAULT`` issues for unsafe True defaults."""
@@ -108,8 +134,11 @@ def _unsafe_default_reason(variable: Variable, tokens: tuple[str, ...]) -> str |
     variable_tokens = _identifier_tokens(variable.name)
     for token in tokens:
         normalized_token = casefold_key(token)
-        if normalized_token in variable_tokens:
-            return _UNSAFE_DEFAULT_REASONS.get(normalized_token, _DEFAULT_UNSAFE_DEFAULT_REASON)
+        if normalized_token not in variable_tokens:
+            continue
+        if normalized_token == "enable" and _SAFE_ENABLE_TARGETS.intersection(variable_tokens):
+            continue
+        return _UNSAFE_DEFAULT_REASONS.get(normalized_token, _DEFAULT_UNSAFE_DEFAULT_REASON)
     return None
 
 

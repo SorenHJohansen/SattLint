@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from rich.style import Style
 
 from sattlint.application.findings import AnalysisFinding
 from sattlint.runs import (
@@ -60,6 +61,28 @@ def _record() -> RunRecord:
             ),
         ),
     )
+
+
+def test_module_navigation_includes_project_level_analyzers() -> None:
+    record = replace(
+        _record(),
+        targets=(),
+        project_analyzers=(
+            RunAnalyzerRecord(
+                key="icf",
+                name="ICF configuration",
+                status="completed",
+                findings=(AnalysisFinding(kind="icf.unresolved_path", message="m", module_path=("Prog",)),),
+            ),
+        ),
+    )
+    tree = results_module._new_results_tree()
+
+    selection = results_module._populate_module_navigation(tree, record)
+
+    assert selection is not None
+    assert selection.target.target_name == "Project"
+    assert tree.root.children[0].label.plain == "Project:Prog"
 
 
 def test_module_navigation_merges_single_child_chains_but_keeps_findings_selectable() -> None:
@@ -670,6 +693,32 @@ def test_results_tree_accents_nodes_that_own_findings() -> None:
     assert intermediate.label.style == "bold #674600"
 
 
+def test_results_tree_disallows_expanding_childless_nodes() -> None:
+    tree = results_module._new_results_tree()
+    results_module._populate_module_navigation(tree, _record())
+
+    root = tree.root.children[0]
+    leaf = root.children[0]
+
+    assert list(leaf.children) == []
+    assert root.allow_expand is True
+    assert leaf.allow_expand is False
+
+
+def test_results_tree_renders_a_dot_for_leaf_nodes() -> None:
+    tree = results_module._new_results_tree()
+    branch = tree.root.add("branch")
+    leaf = branch.add("leaf")
+    results_module._mark_leaf_nodes(tree.root)
+
+    leaf_label = tree.render_label(leaf, Style(), Style()).plain
+    branch_label = tree.render_label(branch, Style(), Style()).plain
+
+    assert leaf_label == "\u2022 leaf"
+    assert branch_label == f"{tree.ICON_NODE}branch"
+    assert tree.get_label_width(leaf) == len("leaf") + 2
+
+
 def test_finding_groups_split_local_variables_and_module_parameters() -> None:
     findings = tuple(
         AnalysisFinding(
@@ -695,6 +744,34 @@ def test_finding_groups_split_local_variables_and_module_parameters() -> None:
     assert "Unused module parameter (1)\n  Param" in report
     assert "Unused local variable (1)\n  Local" in report
     assert "Unused variable (1)\n  Unknown" in report
+
+
+def test_finding_groups_keep_distinct_data_payloads() -> None:
+    findings = (
+        AnalysisFinding(
+            kind="dataflow.dead_overwrite",
+            message="overwritten",
+            module_path=("Root",),
+            data={"site": "EQ:Main", "previous_sites": ["EQ:A"]},
+        ),
+        AnalysisFinding(
+            kind="dataflow.dead_overwrite",
+            message="overwritten",
+            module_path=("Root",),
+            data={"site": "EQ:Main", "previous_sites": ["EQ:B"]},
+        ),
+    )
+    analyzer = RunAnalyzerRecord(
+        key="dataflow",
+        name="Dataflow",
+        status="completed",
+        findings=findings,
+    )
+
+    groups = results_module._finding_groups(analyzer)
+
+    assert len(groups) == 1
+    assert len(groups[0][2]) == 2
 
 
 def test_finding_role_falls_back_to_legacy_issue_message() -> None:

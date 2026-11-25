@@ -24,7 +24,7 @@ from sattlint.parser_api import (
 )
 
 from ...core.call_signatures import resolve_call_signature
-from ...reporting.variables_report import RecordComponentOrderIssue
+from ...reporting.variables_report import IssueKind, RecordComponentOrderIssue
 from ...resolution import AccessKind, resolve_record
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import is_anytype_name
@@ -39,6 +39,7 @@ from ._variable_traversal_objects import (
     _walk_typedef_groupconn,
 )
 from ._variables_access import _reference_library
+from ._variables_contracts import should_collect_issue_kind as _should_collect_issue_kind
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -206,6 +207,8 @@ def _append_record_component_order_issue(
     path: list[str],
 ) -> None:
     if len(args) < 2:
+        return
+    if not _should_collect_issue_kind(self, IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE):
         return
 
     record_ref = _var_name_of(args[0])

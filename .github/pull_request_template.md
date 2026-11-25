@@ -44,8 +44,8 @@ paste commands here
 
 ## Documentation
 
-- [ ] `README.md`, `FEATURE_GUIDE.md`, or `docs/` updated for user-facing
-      changes.
+- [ ] `README.md`, `FEATURE_GUIDE.md`, or the owning page under `docs/` updated
+      for user-facing changes, and new pages linked from `docs/README.md`.
 - [ ] `CHANGELOG.md` has an entry under `[Unreleased]`.
 - [ ] No dash punctuation was added to prose.
 

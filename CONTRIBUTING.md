@@ -44,7 +44,9 @@ For public support boundaries, see [SUPPORT.md](SUPPORT.md). All contributors ar
 5. Open a pull request against `main`. Fill in the PR template with commands run and remaining risks.
 6. A maintainer will review your changes. Expect questions or requests for narrower scope.
 
-For a human-readable CLI reference, see [FEATURE_GUIDE.md](FEATURE_GUIDE.md).
+For the full documentation set, start at [docs/README.md](docs/README.md).
+For a compact headless command reference, see
+[FEATURE_GUIDE.md](FEATURE_GUIDE.md).
 
 ### Getting Help
 
@@ -147,11 +149,17 @@ Run the fast local hygiene gate before pushing:
 python -m pre_commit run --all-files
 ```
 
-The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint`, and
-the standard pre-commit-hooks checks. The `docs` CI job runs the Markdown
-style check and `scripts/check_docs.py`. When you change dependencies in
-`pyproject.toml`, regenerate the lockfile with `uv lock` and commit it with the
-change.
+The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint` and
+`tests`, the documentation checks when Markdown changes, and the standard
+pre-commit-hooks checks. The `docs` CI job runs the Markdown style check and
+`scripts/check_docs.py`; the checker verifies relative links, heading anchors,
+and that every page under `docs/` is linked from `docs/README.md`. When you
+change dependencies in `pyproject.toml`, regenerate the lockfile with
+`uv lock` and commit it with the change.
+
+Documentation rules live in
+[docs/documentation.md](docs/documentation.md). Every behavior change updates
+the page that owns that behavior in the same pull request.
 
 ### Running Tests
 

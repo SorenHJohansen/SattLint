@@ -159,11 +159,11 @@ class CyclomaticComplexityAnalyzer:
         module_path: list[str],
         modulecode: ModuleCode,
     ) -> int:
-        # A module's complexity is the worst scope it contains, not the sum over its
-        # scopes: adding a block's decisions to the module number re-reports the same
-        # code that the block-level finding already covers. The module itself is one
-        # scope with base complexity 1; the other scopes are equation blocks and the
-        # steps of its sequences.
+        # A module's complexity is the worst scope it contains, not the sum over
+        # its scopes. The module-level finding is a rollup: when the worst scope
+        # is an equation block or step, that block is reported on its own and
+        # the module finding identifies which module owns the hot spot. The
+        # module itself is one scope with base complexity 1.
         complexity = 1
         for equation in modulecode.equationblocks or []:
             equation_name = getattr(equation, "name", "") or "<unnamed>"

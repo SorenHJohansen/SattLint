@@ -1,14 +1,15 @@
 """Re-execute analyzer corpus manifests to verify analyzer correctness.
 
 SattLint keeps a corpus of per-analyzer manifests under
-``tests/fixtures/corpus/manifests/analyzer-*.json``. Each manifest pins a
-target ``.s`` fixture plus the finding ids an analyzer is expected to emit (and
-the ids it must never emit), together with the summary counts a stored run would
-report. This harness loads every manifest, runs the matching analyzer over its
-target, and asserts the findings agree with the manifest expectations.
+``tests/fixtures/corpus/manifests``. A manifest is executable when its
+``mode`` starts with ``analyzer-``. Each executable manifest pins a target
+``.s`` fixture plus the finding ids an analyzer is expected to emit (and the
+ids it must never emit), together with the summary counts a stored run would
+report. This harness loads every executable manifest, runs the matching
+analyzer over its target, and asserts the findings agree with the manifest
+expectations.
 
-This is the only harness that executes the analyzer family. The semantic,
-valid, edge, and workspace manifests are schema-checked by
+The semantic, valid, edge, and workspace manifests are schema-checked by
 ``tests/corpus/test_manifest_schema.py`` but have no runner yet.
 """
 
@@ -39,8 +40,10 @@ MANIFESTS_DIR = Path(__file__).resolve().parent / "fixtures" / "corpus" / "manif
 
 def _load_manifests() -> list[tuple[str, dict[str, Any]]]:
     manifests: list[tuple[str, dict[str, Any]]] = []
-    for path in sorted(MANIFESTS_DIR.glob("analyzer-*.json")):
+    for path in sorted(MANIFESTS_DIR.glob("*.json")):
         manifest = json.loads(path.read_text(encoding="utf-8"))
+        if not str(manifest.get("mode", "")).startswith("analyzer-"):
+            continue
         manifests.append((str(manifest["case_id"]), manifest))
     return manifests
 

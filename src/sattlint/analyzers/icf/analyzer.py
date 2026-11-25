@@ -94,6 +94,7 @@ class _LoadedProgram:
 
     base_picture: BasePicture
     moduletype_index: dict[str, list[ModuleTypeDef]] | None
+    unavailable_libraries: frozenset[str] = frozenset()
 
 
 def _entries_by_program(entries: list[ICFEntry]) -> dict[str, list[ICFEntry]]:
@@ -146,6 +147,7 @@ def _load_referenced_program(
         loaded = _LoadedProgram(
             base_picture=merge_project_basepicture(program_bp, graph),
             moduletype_index=_moduletype_index_for(graph),
+            unavailable_libraries=frozenset(graph.unavailable_libraries),
         )
 
     program_cache[key] = loaded
@@ -193,6 +195,7 @@ def _validate_icf_program(
         expected_program=program_name,
         debug=debug,
         moduletype_index=loaded.moduletype_index,
+        unavailable_libraries=loaded.unavailable_libraries,
     )
     return [
         Issue(

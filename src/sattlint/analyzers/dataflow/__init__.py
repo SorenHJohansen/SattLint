@@ -76,6 +76,8 @@ class DataflowAnalyzer(
         self._reported_conflicting_constants: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
+        self._mutated_symbols: set[tuple[str, ...]] = set()
+        self._unmapped_interface_parameter_ids: set[int] = set()
 
     @property
     def issues(self) -> list[Issue]:
@@ -215,6 +217,8 @@ class DataflowAnalyzer(
         if resolved.state_access != "old":
             self._consume_pending_reads(state, resolved)
             self._mark_constant_trace_read(state, resolved.symbol_key)
+        if resolved.state_access == "old":
+            return self._read_old_value(resolved, state)
         value = state.get(resolved.key, UNKNOWN)
         if value is UNKNOWN and resolved.key != resolved.root_key:
             value = state.get(resolved.root_key, UNKNOWN)
@@ -225,6 +229,27 @@ class DataflowAnalyzer(
         if value is INITIALIZED:
             return UNKNOWN
 
+        return value
+
+    def _read_old_value(
+        self,
+        resolved: ResolvedRef,
+        state: StateMap,
+    ) -> ScalarValue | object:
+        """Return a ``:Old`` value only when the symbol is provably untouched.
+
+        ``:Old`` is the value at the start of the scan. Once the analyzed code
+        has written the symbol, or its current value has been invalidated as
+        externally writable, the next scan's ``:Old`` is not the declaration
+        default and must stay unknown.
+        """
+        if resolved.symbol_key in self._mutated_symbols or resolved.symbol_root_key in self._mutated_symbols:
+            return UNKNOWN
+        value = state.get(resolved.key, UNKNOWN)
+        if value is UNKNOWN and resolved.key != resolved.root_key:
+            value = state.get(resolved.root_key, UNKNOWN)
+        if value is UNKNOWN or value is INITIALIZED:
+            return UNKNOWN
         return value
 
     def _resolve_ref(self, expr: Any, context: ScopeContext) -> ResolvedRef | None:

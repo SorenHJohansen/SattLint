@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -697,12 +698,18 @@ __all__ = [
 ]
 
 
-def validate_icf_entries_against_program(
+def _unavailable_dependency_detail(libraries: AbstractSet[str]) -> str:
+    names = ", ".join(sorted(libraries))
+    return f"could not validate because these libraries are unavailable: {names}"
+
+
+def validate_icf_entries_against_program(  # noqa: PLR0915
     base_picture: BasePicture,
     entries: list[ICFEntry],
     expected_program: str,
     debug: bool = False,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    unavailable_libraries: AbstractSet[str] | None = None,
 ) -> ICFValidationReport:
     type_graph = TypeGraph.from_basepicture(base_picture)
     resolution_cache: ModuleTypeResolutionCache = {}
@@ -757,6 +764,16 @@ def validate_icf_entries_against_program(
             resolution_cache=resolution_cache,
         )
         if resolved is None or var is None:
+            if unavailable_libraries:
+                skipped_details.append(
+                    ICFSkippedEntry(
+                        entry=entry,
+                        reason="dependency unavailable",
+                        detail=_unavailable_dependency_detail(unavailable_libraries),
+                    )
+                )
+                skipped += 1
+                continue
             issues.append(
                 ICFValidationIssue(
                     entry=entry,
@@ -789,6 +806,16 @@ def validate_icf_entries_against_program(
             library=resolved.current_library,
         )
         if leaf_datatype is None:
+            if unavailable_libraries:
+                skipped_details.append(
+                    ICFSkippedEntry(
+                        entry=entry,
+                        reason="dependency unavailable",
+                        detail=_unavailable_dependency_detail(unavailable_libraries),
+                    )
+                )
+                skipped += 1
+                continue
             issues.append(
                 ICFValidationIssue(
                     entry=entry,

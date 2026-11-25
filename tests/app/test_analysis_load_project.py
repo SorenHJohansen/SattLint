@@ -97,7 +97,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch: pytest.Mon
     )
     assert saved["key"] == "cache-key"
     assert saved["project"] == (root_bp, graph)
-    assert saved["files"] == {Path("programs/TargetA.s")}
+    assert saved["files"] == {Path("programs/TargetA.s"), Path("programs"), Path("abb")}
 
 
 def test_load_project_runs_when_the_cache_directory_is_unusable(monkeypatch: pytest.MonkeyPatch):

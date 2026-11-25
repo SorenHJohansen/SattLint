@@ -10,6 +10,15 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- A comprehensive documentation set under `docs/`, indexed from
+  `docs/README.md`, covering installation, project files, configuration, the
+  CLI, analyzers, architecture, loading, the analysis pipeline, semantics,
+  caching, run history, Change Review, the interactive UI, development,
+  testing, CI, and troubleshooting.
+- The documentation checker now validates heading anchors, requires every
+  page under `docs/` to be linked from `docs/README.md`, and verifies that the
+  root README points at the documentation index. The same checker runs as a
+  pre-commit hook when Markdown changes.
 - A project file can select its analyzers with a top-level `analyzers = [...]`
   list, so a checked-in project reproduces a run. `--analyzer` still wins over
   the project list, and `sattlint project show` reports the selection.
@@ -173,7 +182,29 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
-- PictureDisplay paths to external `.wmf` and `.emf` assets are skipped
+- Magic-number and record-component-order findings no longer leak into the
+  opt-in datatype-field analyzer, so selecting both analyzers does not
+  duplicate findings.
+- Implicit-latch detection now respects a clear before or after the branch, a
+  branch that ends false, a record field, and a reset in the sequence init
+  step. A flag that is genuinely only set is still reported.
+- Never-cleared alarm findings use the alarm source's condition mapping instead
+  of the variable name, and root globals are merged across modules so a clear
+  in a sibling module counts.
+- Dataflow no longer treats an interactor's `OutVar_` write, a builtin output
+  argument, or a cross-module write to a root global as a constant fact.
+- A step's outgoing transition guard also reaches the first transition of an
+  `ALTERNATIVESEQ` branch, and a forward fork target is not reported as
+  unreachable.
+- Reset contamination is detected in code declared directly on the
+  BasePicture, not only inside submodules and module types.
+- The Results view includes per-run analyzer findings, keeps findings with
+  different payloads in separate rows, and acknowledges them separately.
+- `latest` refuses to fall back to another project's run, old-schema run files
+  are pruned, and clearing acknowledgements reports a failed removal.
+- The analyzer corpus executes manifests by `mode` instead of file-name prefix,
+  rejects duplicate JSON keys and count drift, runs with the cache disabled,
+  and covers the datatype-field and module-type-usage analyzers.
   silently instead of being reported as unresolved, and they no longer emit a
   graphics validation warning.
 - Value-widget bindings (`TextBox_`, `CheckBox_`, `OptBut_`, `ComBut_`) count as
@@ -184,6 +215,23 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   locals and module parameters.
 - Reads in cyclic equation blocks are no longer reported as read-before-write;
   equation-block writes still initialize later step reads.
+- A step's outgoing transition is evaluated before that step's `EXITCODE`, so a
+  reset written on exit no longer makes the guard look permanently false.
+- A `:Old` read is no longer folded to the declaration default after the
+  variable has been written, so a scan-history check is not reported as an
+  always-false condition.
+- A condition is no longer folded to a constant when it reads an unmapped
+  module parameter of a library target, a local a submodule writes through a
+  parameter mapping, or an `OpSave` declaration initializer that only applies to
+  the first start.
+- Reset contamination recognizes a module's own `Reset`/`ResetOld` block, does
+  not treat a sequence whose `.Reset` is externally driven as a reset path, and
+  lets a reset of a record field clear its nested fields.
+- An unused module-type parameter is not reported when the analyzed target is a
+  library, because the connecting program outside the target consumes it.
+- An enable flag that defaults to True is not reported as an unsafe startup
+  default when the thing it enables is an alarm, warning, message, log, or
+  display rather than equipment or logic.
 - Non-state multi-site findings require two write sites that can run in the
   same scan, use canonical module paths, and no longer treat a terminal step as
   a self-loop. Same-cycle reports an invoked parallel node once.

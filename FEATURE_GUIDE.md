@@ -1,8 +1,9 @@
 # SattLint Feature Guide
 
 This guide describes the headless command line surface. It is the reference
-for scripts, CI jobs, and AI agents. For the interactive terminal user
-interface, see [README.md](README.md).
+for scripts, CI jobs, and AI agents. The full documentation set is indexed at
+[docs/README.md](docs/README.md). For the interactive terminal user interface,
+see [README.md](README.md).
 
 Run `sattlint` with no arguments to open the interactive shell. Run
 `sattlint <command>` to stay non-interactive. Headless commands never prompt,
@@ -68,7 +69,7 @@ Runs the selected analyzers against the project targets and reports findings.
 | Option | Effect |
 |---|---|
 | `--project PATH` | Project file or directory |
-| `--analyzer KEY` | Run only this analyzer; repeatable, defaults to all |
+| `--analyzer KEY` | Run only this analyzer; repeatable, overrides the project's `analyzers` list |
 | `--target NAME` | Analyze only this target; repeatable |
 | `--module PREFIX` | Report only findings at or below this module path; repeatable |
 | `--fail-on {any,none}` | Exit 1 when findings exist, or always exit 0; default `any` |

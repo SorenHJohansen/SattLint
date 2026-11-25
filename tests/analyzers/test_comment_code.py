@@ -147,11 +147,12 @@ def test_comment_module_paths_anchor_typedef_owned_code() -> None:
         header=_header("Program"),
         moduletype_defs=[worker],
         submodules=[instance],
+        origin_file="Program.s",
     )
 
     paths = _comment_module_paths(base_picture)
 
-    assert paths[42] == ("Program", "TypeDef:Worker", "Inner")
+    assert paths[("program.s", 42)] == ("Program", "TypeDef:Worker", "Inner")
 
 
 def test_source_base_picture_prefers_unmerged_target_ast() -> None:
@@ -198,7 +199,7 @@ ENDDEF (*BasePicture*);
     report = analyze_comment_code_files(
         [path],
         basepicture_name="Program",
-        module_paths_by_line={7: ("Program", "TypeDef:Worker", "Inner")},
+        module_paths_by_line={("program.s", 7): ("Program", "TypeDef:Worker", "Inner")},
     )
 
     assert len(report.hits) == 1

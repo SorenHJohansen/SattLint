@@ -7,8 +7,23 @@ BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
     ) : MODULEDEFINITION DateCode_ 1
 
+TYPEDEFINITIONS
+   EventDetector1 = MODULEDEFINITION DateCode_ 1
+   MODULEPARAMETERS
+      Tag: string := "";
+      Priority: integer := 0;
+      Condition: boolean := False;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*EventDetector1*);
+
 LOCALVARIABLES
    AlarmTrip: boolean  := False;
+
+SUBMODULES
+   Alarm1 Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : EventDetector1 (Tag => "TRIP", Priority => 1, Condition => AlarmTrip);
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )

@@ -8,6 +8,7 @@ history, and CLI JSON output all consume one consistent shape.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -70,6 +71,25 @@ class AnalysisFinding:
             suggestion=optional_text(payload.get("suggestion")),
             data=data,
         )
+
+
+def _stable_data_repr(value: object) -> str:
+    """A repr that never includes a memory address."""
+    return f"<{type(value).__name__}>"
+
+
+def finding_data_key(finding: AnalysisFinding) -> str:
+    """A stable fingerprint of the finding payload.
+
+    Two findings can share a message and site but carry different detail (for
+    example different previous writes). Collapsing them would keep only the
+    first payload, so the data payload is part of finding identity in both the
+    CLI and the Results pane.
+    """
+    try:
+        return json.dumps(finding.data, sort_keys=True, default=_stable_data_repr, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(finding.data)
 
 
 def optional_text(value: object) -> str | None:
@@ -283,7 +303,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "global_scope_minimization": "Global scope minimization",
     "hidden_global_coupling": "Hidden global coupling",
     "high_fan_in_out": "High fan-in/out",
-    "datatype_duplication": "Datatype duplication",
+    "datatype_duplication": "Extractable nested record",
     "min_max_mapping_mismatch": "Min/Max mapping mismatch",
     "unknown_parameter_target": "Unknown parameter target",
     "string_mapping_mismatch": "String mapping mismatch",
@@ -320,7 +340,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "sfc_missing_initial_step": "Missing initial step at sequence start",
     "sfc_unreachable_sequence_node": "Unreachable sequence node",
     "same_cycle_parallel_read_write_hazard": "Parallel read/write hazard",
-    "dataflow.non_state_multi_site": "Non-state multi-site access",
+    "dataflow.non_state_multi_site": "Non-State multi-site write",
     "picture_display_paths.unresolved": "Unresolved PictureDisplay path",
     "picture_display_paths.above_base": "PictureDisplay path above base picture",
     "icf.program_mismatch": "ICF program mismatch",
@@ -355,5 +375,6 @@ def kind_human_label(kind: str) -> str:
 __all__ = [
     "AnalysisFinding",
     "extract_report_findings",
+    "finding_data_key",
     "kind_human_label",
 ]

@@ -1,20 +1,22 @@
 {
-    "case_id": "semantic-unexpected-submodule-type",
-    "target_file": "../semantic/workspace/UnexpectedSubmoduleType.py",
-    "mode": "workspace",
-    "load_strategy": "python-factory",
+    "case_id": "analyzer-datatype-fields-unused",
+    "target_file": "../semantic/analyzer/UnusedDatatypeField.s",
+    "mode": "analyzer-datatype-fields",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unexpected-submodule-type"
+            "unused_datatype_field"
         ],
         "artifact_fragments": {
             "status.json": {
                 "execution_status": "ok",
-                "missing_dependency_count": 0
+                "missing_dependency_count": 0,
+                "analyzer_key": "datatype-fields"
             },
             "summary.json": {
+                "analyzer_key": "datatype-fields",
+                "finding_count": 1,
                 "rule_counts": {
-                    "semantic.unexpected-submodule-type": 1
+                    "unused_datatype_field": 1
                 }
             }
         },

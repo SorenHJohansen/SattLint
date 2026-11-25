@@ -237,12 +237,26 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         *,
         path_debug: PathCollectionDebug | None = None,
     ) -> None:
-        sequences = list(modulecode.sequences or [])
-        if not sequences:
+        if not modulecode.sequences:
+            return
+
+        module_reset = ResetContaminationAnalyzer._module_reset_ref(modulecode, env)
+        if module_reset is not None:
+            reset_ref_cf, reset_old_cf = module_reset
+            ResetContaminationAnalyzer._check_reset_paths(
+                modulecode,
+                env,
+                path,
+                issues,
+                reset_ref_cf=reset_ref_cf,
+                reset_old_cf=reset_old_cf,
+                sequence_name="",
+                path_debug=path_debug,
+            )
             return
 
         var_refs = ResetContaminationAnalyzer._collect_var_refs(modulecode)
-        for seq in sequences:
+        for seq in modulecode.sequences or []:
             seq_name = getattr(seq, "name", "")
             if not seq_name:
                 continue
@@ -252,51 +266,98 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                 continue
 
             reset_old_vars = ResetContaminationAnalyzer._collect_reset_old_vars(modulecode, reset_ref_cf)
-            reset_old_cf = {name.casefold() for name in reset_old_vars}
-            path_states = collect_paths_in_modulecode(
+            ResetContaminationAnalyzer._check_reset_paths(
                 modulecode,
                 env,
-                reset_ref_cf,
-                reset_old_cf,
+                path,
+                issues,
+                reset_ref_cf=reset_ref_cf,
+                reset_old_cf={name.casefold() for name in reset_old_vars},
+                sequence_name=seq_name,
                 path_debug=path_debug,
             )
-            if path_debug is not None:
-                path_debug.emit(
-                    "modulecode-path-summary",
-                    module_path=path,
-                    sequence_name=seq_name,
-                    path_count=len(path_states),
-                    reset_path_count=sum(1 for state in path_states if state.reset_state == "reset"),
-                    run_write_count=sum(len(state.run_writes) for state in path_states),
-                )
 
-            run_writes: WriteMap = {}
-            for state in path_states:
-                run_writes.update(state.run_writes)
+    @staticmethod
+    def _module_reset_ref(
+        modulecode: ModuleCode,
+        env: dict[str, Variable],
+    ) -> tuple[str, set[str]] | None:
+        """Return the module's own reset input and its delayed companion.
 
-            if not run_writes:
+        Modules commonly reset their state in ``IF Reset AND NOT ResetOld``
+        rather than through the sequence's ``.Reset`` property. The input is a
+        module parameter, so its name is the only stable link to the reset
+        block; the companion assignment is what proves the block is edge
+        guarded.
+        """
+        if env.get("reset") is None:
+            return None
+        reset_old_vars = ResetContaminationAnalyzer._collect_reset_old_vars(modulecode, "reset")
+        if not reset_old_vars:
+            return None
+        return "reset", {name.casefold() for name in reset_old_vars}
+
+    @staticmethod
+    def _check_reset_paths(
+        modulecode: ModuleCode,
+        env: dict[str, Variable],
+        path: list[str],
+        issues: list[VariableIssue],
+        *,
+        reset_ref_cf: str,
+        reset_old_cf: set[str],
+        sequence_name: str,
+        path_debug: PathCollectionDebug | None = None,
+    ) -> None:
+        path_states = collect_paths_in_modulecode(
+            modulecode,
+            env,
+            reset_ref_cf,
+            reset_old_cf,
+            path_debug=path_debug,
+        )
+        if path_debug is not None:
+            path_debug.emit(
+                "modulecode-path-summary",
+                module_path=path,
+                sequence_name=sequence_name,
+                path_count=len(path_states),
+                reset_path_count=sum(1 for state in path_states if state.reset_state == "reset"),
+                run_write_count=sum(len(state.run_writes) for state in path_states),
+            )
+
+        reset_paths = [state for state in path_states if state.reset_state == "reset"]
+        if not reset_paths:
+            # A ``Seq.Reset`` that is only assigned is driven by external logic;
+            # this module does not contain the reset path that would clear its
+            # state, so there is nothing here to judge.
+            return
+
+        run_writes: WriteMap = {}
+        for state in path_states:
+            run_writes.update(state.run_writes)
+
+        if not run_writes:
+            return
+
+        for key, (var, field_path) in sorted(run_writes.items(), key=lambda item: (item[0][0], item[0][1])):
+            var_key, _field_key = key
+            if var_key in reset_old_cf:
+                continue
+            if all(path_covers_write(state.reset_writes, key) for state in reset_paths):
                 continue
 
-            reset_paths = [state for state in path_states if state.reset_state == "reset"]
-
-            for key, (var, field_path) in sorted(run_writes.items(), key=lambda item: (item[0][0], item[0][1])):
-                var_key, _field_key = key
-                if var_key in reset_old_cf:
-                    continue
-                if reset_paths and all(path_covers_write(state.reset_writes, key) for state in reset_paths):
-                    continue
-
-                issues.append(
-                    ResetContaminationIssue(
-                        module_path=path.copy(),
-                        variable=var,
-                        role=DECLARATION_ROLE_LOCAL_VARIABLE,
-                        declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
-                        field_path=field_path or None,
-                        sequence_name=seq_name,
-                        reset_variable=VariableId(reset_ref),
-                    )
+            issues.append(
+                ResetContaminationIssue(
+                    module_path=path.copy(),
+                    variable=var,
+                    role=DECLARATION_ROLE_LOCAL_VARIABLE,
+                    declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
+                    field_path=field_path or None,
+                    sequence_name=sequence_name,
+                    reset_variable=VariableId(reset_ref_cf),
                 )
+            )
 
     @staticmethod
     def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
@@ -349,6 +410,10 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
         self._active_typedef_keys = set()
         path_debug = PathCollectionDebug(enabled=debug, trace_fn=trace_fn)
         reset_check = partial(self._check_for_modulecode, path_debug=path_debug)
+
+        if self.bp.modulecode is not None and self._should_analyze_path(self.root_path, limit_to_module_path):
+            env = self._build_local_env(self.bp, None, self.bp.localvariables, shared_artifacts=shared_artifacts)
+            reset_check(self.bp.modulecode, env, self.root_path, issues)
 
         for mod in self.bp.submodules or []:
             self._collect_from_module(

@@ -181,14 +181,14 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch: pytes
     assert saved_bp == ("bp-fresh", "TargetA")
     assert getattr(saved_graph, "source_files", None) == {Path("programs/TargetA.s")}
     assert saved_graph.analysis_cache_key == "cache-key"
-    assert saved_graph.analysis_manifest_files == frozenset({Path("programs/TargetA.s")})
+    assert saved_graph.analysis_manifest_files == frozenset({Path("programs/TargetA.s"), Path("programs"), Path("abb")})
     assert len(loader_calls) == 1
     assert len(save_calls) == 1
     assert save_calls[0][0] == "cache-key"
     saved_project, cached_graph = cast(tuple[NamedObject, object], save_calls[0][1]["project"])
     assert saved_project.header.name == "TargetA"
     assert getattr(cached_graph, "source_files", None) == {Path("programs/TargetA.s")}
-    assert save_calls[0][1]["files"] == {Path("programs/TargetA.s")}
+    assert save_calls[0][1]["files"] == {Path("programs/TargetA.s"), Path("programs"), Path("abb")}
 
 
 def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkeypatch: pytest.MonkeyPatch):
@@ -500,7 +500,7 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
             "cache-key",
             {
                 "project": (root_bp, saved_graph),
-                "files": {code_path, deps_path, graphics_path},
+                "files": {code_path, deps_path, graphics_path, programs_dir, abb_dir},
             },
         )
     ]

@@ -1,10 +1,10 @@
 {
-    "case_id": "semantic-sequence-unreachable",
-    "target_file": "../semantic/analyzer/SequenceUnreachable.s",
+    "case_id": "analyzer-sfc-duplicate-guard",
+    "target_file": "../valid/UnCompressedFullGrammar.s",
     "mode": "analyzer-sfc",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.duplicate-transition-guard"
+            "sfc_duplicate_transition_guard"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,8 +14,9 @@
             },
             "summary.json": {
                 "analyzer_key": "sfc",
+                "finding_count": 4,
                 "rule_counts": {
-                    "semantic.duplicate-transition-guard": 1
+                    "sfc_duplicate_transition_guard": 4
                 }
             }
         },

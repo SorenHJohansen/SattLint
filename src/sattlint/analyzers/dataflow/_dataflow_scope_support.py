@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, cast
 
-from sattlint.parser_api import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable, VarRef
+from sattlint.parser_api import (
+    FrameModule,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    SingleModule,
+    Variable,
+    VarRef,
+)
 
 from ...resolution.common import varname_base
 from ...resolution.scope import ScopeContext
@@ -20,8 +29,9 @@ class DataflowScopeSupportMixin:
         current_library: str | None,
         parent_context: ScopeContext | None,
         moduleparameter_keys: frozenset[str] = frozenset(),
+        children: Iterable[SingleModule | FrameModule | ModuleTypeInstance] = (),
     ) -> ScopeContext:
-        return ScopeContext(
+        context = ScopeContext(
             env={casefold_key(variable.name): variable for variable in variables},
             param_mappings=param_mappings,
             module_path=module_path.copy(),
@@ -30,6 +40,41 @@ class DataflowScopeSupportMixin:
             current_library=current_library,
             parent_context=parent_context,
         )
+        context.submodule_mapped_source_keys.update(self._child_mapped_source_keys(children, context))
+        if self._analyzed_target_is_library:
+            mapped_names = param_mappings.keys()
+            self._unmapped_interface_parameter_ids.update(
+                id(variable)
+                for variable in variables
+                if casefold_key(variable.name) in moduleparameter_keys
+                and casefold_key(variable.name) not in mapped_names
+            )
+        return context
+
+    def _child_mapped_source_keys(
+        self: Any,
+        children: Iterable[SingleModule | FrameModule | ModuleTypeInstance],
+        context: ScopeContext,
+    ) -> set[tuple[str, ...]]:
+        """Symbol keys a direct child can write through its parameter mappings."""
+        keys: set[tuple[str, ...]] = set()
+        for child in children:
+            mappings = cast(list[ParameterMapping], getattr(child, "parametermappings", None) or [])
+            for mapping in mappings:
+                if mapping.is_source_global:
+                    continue
+                source = mapping.source
+                if isinstance(source, VarRef):
+                    full_source = source.name
+                else:
+                    continue
+                if not full_source:
+                    continue
+                variable, field_path, decl_path, _display_path = context.resolve_variable(full_source)
+                if variable is None:
+                    continue
+                keys.add(self._state_key(decl_path, variable.name, field_path))
+        return keys
 
     def _iter_root_typedefs(self: Any) -> list[ModuleTypeDef]:
         moduletype_defs = cast(list[ModuleTypeDef] | None, getattr(self.bp, "moduletype_defs", None))
@@ -57,6 +102,7 @@ class DataflowScopeSupportMixin:
             moduleparameter_keys=frozenset(
                 casefold_key(variable.name) for variable in moduletype.moduleparameters or []
             ),
+            children=moduletype.submodules or [],
         )
         return context, self._seed_state({}, module_path, variables)
 
@@ -76,6 +122,7 @@ class DataflowScopeSupportMixin:
             current_library=parent_context.current_library,
             parent_context=parent_context,
             moduleparameter_keys=frozenset(casefold_key(variable.name) for variable in mod.moduleparameters or []),
+            children=mod.submodules or [],
         )
 
     def _build_typedef_context(
@@ -97,6 +144,7 @@ class DataflowScopeSupportMixin:
             moduleparameter_keys=frozenset(
                 casefold_key(variable.name) for variable in moduletype.moduleparameters or []
             ),
+            children=moduletype.submodules or [],
         )
 
     def _build_parameter_mappings(

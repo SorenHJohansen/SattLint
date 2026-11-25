@@ -43,12 +43,14 @@ Manifest shape:
 
 Execution:
 
-- `tests/test_corpus_analyzers.py` loads every `manifests/analyzer-*.json` file,
-  runs the named analyzer over the target, and asserts the finding ids and
-  summary counts against the expectation.
+- `tests/test_corpus_analyzers.py` loads every manifest whose `mode` starts
+  with `analyzer-`, runs the named analyzer over the target, and asserts the
+  finding ids and summary counts against the expectation.
 - `tests/corpus/test_manifest_schema.py` validates every manifest under
-  `manifests/`: it parses, declares the required fields, names an existing
-  target, and resolves every analyzer key it declares. It does not run
+  `manifests/`: it parses (rejecting duplicate JSON keys), declares the
+  required fields, names an existing target, resolves every analyzer key it
+  declares, rejects duplicate expected/forbidden ids, and requires
+  `finding_count == sum(rule_counts)` when both are present. It does not run
   analyzers.
 - Analyzer manifests may point at `semantic/analyzer/`, `semantic/shared/`,
   `valid/`, or a specialized fixture tree such as
