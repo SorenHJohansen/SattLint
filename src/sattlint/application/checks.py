@@ -228,6 +228,7 @@ def collect_run_checks_result(
         profiler=profiler,
         target_is_library_fn=resolved_target_is_library,
         emit_line=emit_line,
+        build_module_tree=persist_run,
     )
     try:
         load_started_at = perf_counter()

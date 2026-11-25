@@ -23,6 +23,7 @@ from sattlint.application import (
     checks as checks_application,
 )
 from sattlint.application import (
+    checks_execution,
     checks_records,
 )
 from sattlint.application import (
@@ -831,6 +832,53 @@ def test_run_checks_passes_analysis_settings_to_the_report_cache_key(monkeypatch
     )
 
     assert captured == [{"fan_in_out_threshold": 7}]
+
+
+def test_module_tree_is_built_only_for_a_run_that_gets_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
+    built: list[str] = []
+
+    def fake_snapshot(_bp: object, _graph: object, _target: str) -> SimpleNamespace:
+        built.append(_target)
+        return SimpleNamespace(name=_target)
+
+    monkeypatch.setattr(checks_execution, "snapshot_module_tree", fake_snapshot)
+    monkeypatch.setattr(checks_records, "get_runs_dir_or_none", lambda: None)
+
+    def run(persist: bool) -> None:
+        checks_application.collect_run_checks_result(
+            cast(ConfigDict, DEFAULT_CONFIG.copy()),
+            ["state-inference"],
+            iter_loaded_projects_fn=cast(
+                Any,
+                lambda *_args, **_kwargs: iter(
+                    [
+                        (
+                            "TargetA",
+                            BasePicture(
+                                header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+                            ),
+                            AnalysisGraphStub(),
+                        )
+                    ]
+                ),
+            ),
+            get_enabled_analyzers_fn=lambda: [
+                SimpleNamespace(
+                    key="state-inference",
+                    name="State inference",
+                    run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+                )
+            ],
+            target_is_library_fn=lambda *_args, **_kwargs: False,
+            self_check_fn=lambda _cfg: True,
+            persist_run=persist,
+        )
+
+    run(False)
+    assert built == []
+
+    run(True)
+    assert built == ["TargetA"]
 
 
 def test_collect_run_checks_result_records_loader_failures_as_text():

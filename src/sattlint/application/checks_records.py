@@ -90,6 +90,31 @@ def snapshot_module_tree(base_picture: BasePicture, graph: ProjectGraph, target_
         if all(definition is not existing for existing in bucket):
             bucket.append(definition)
 
+    # A module type is resolved once per (name, library, file) instead of once per
+    # instance: the same instance type recurs throughout a project's tree, and the
+    # strict resolution is O(defined types) per call.
+    resolved_types: dict[tuple[str, str, str], ModuleTypeDef | None] = {}
+
+    def resolve_type(module: ModuleTypeInstance, library: str | None, source_file: str | None) -> ModuleTypeDef | None:
+        cache_key = (
+            module.moduletype_name.casefold(),
+            (library or "").casefold(),
+            (source_file or "").casefold(),
+        )
+        if cache_key in resolved_types:
+            return resolved_types[cache_key]
+        definition: ModuleTypeDef | None = None
+        with suppress(ValueError):
+            definition = resolve_moduletype_def_strict(
+                base_picture,
+                module.moduletype_name,
+                current_library=library,
+                current_file=source_file,
+                moduletype_index=definitions,
+            )
+        resolved_types[cache_key] = definition
+        return definition
+
     def children_of(
         modules: list[SingleModule | FrameModule | ModuleTypeInstance],
         library: str | None,
@@ -99,15 +124,7 @@ def snapshot_module_tree(base_picture: BasePicture, graph: ProjectGraph, target_
         children: list[RunModuleRecord] = []
         for module in modules:
             if isinstance(module, ModuleTypeInstance):
-                definition = None
-                with suppress(ValueError):
-                    definition = resolve_moduletype_def_strict(
-                        base_picture,
-                        module.moduletype_name,
-                        current_library=library,
-                        current_file=source_file,
-                        moduletype_index=definitions,
-                    )
+                definition = resolve_type(module, library, source_file)
                 nested: tuple[RunModuleRecord, ...] = ()
                 type_label = module.moduletype_name
                 if definition is not None:

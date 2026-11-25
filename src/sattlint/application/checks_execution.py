@@ -58,6 +58,9 @@ class TargetExecution:
     profiler: profiling_module.ProfileRecorder
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool]
     emit_line: Callable[[str], None]
+    # The module tree only feeds a persisted run record's navigation tree, so a run
+    # that will not be stored must not pay to build it.
+    build_module_tree: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,7 +318,7 @@ def execute_target(
     is_library = execution.target_is_library_fn(execution.cfg, project_bp, graph)
     module_tree = (
         snapshot_module_tree(project_bp, graph, target_name)
-        if isinstance(cast(object, project_bp), BasePicture)
+        if execution.build_module_tree and isinstance(cast(object, project_bp), BasePicture)
         else None
     )
     context = build_analysis_context(
