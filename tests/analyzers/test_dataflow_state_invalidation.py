@@ -103,3 +103,11 @@ def test_batch_invalidation_with_no_keys_shares_the_state() -> None:
     state = _state()
 
     assert mixin._invalidate_symbols(state, []) is state
+
+
+def test_an_empty_key_never_clears_the_state() -> None:
+    """A symbol key always names a variable, so an empty key is not a wildcard."""
+    mixin = _DataflowStateMixin()
+    state = _state()
+
+    assert mixin._invalidate_symbols(state, [()]) is state
