@@ -416,6 +416,28 @@ def _instantiated_moduletype_names(node: object) -> set[str]:
     }
 
 
+def _has_sequences(self: VariablesAnalyzer, node: object, seen: set[str] | None = None) -> bool:
+    """Whether *node* or anything it instantiates carries SFC sequences."""
+    visited: set[str] = set() if seen is None else set(seen)
+    code = getattr(node, "modulecode", None)
+    if getattr(code, "sequences", None):
+        return True
+    index = cast(dict[str, tuple[ModuleTypeDef, ...]], getattr(self, "typedef_index", None) or {})
+    for child in cast(list[object], getattr(node, "submodules", None) or []):
+        if isinstance(child, ModuleTypeInstance):
+            key = child.moduletype_name.casefold()
+            if key in visited:
+                continue
+            visited.add(key)
+            for resolved in index.get(key, ()):
+                if _has_sequences(self, resolved, visited):
+                    return True
+            continue
+        if _has_sequences(self, child, visited):
+            return True
+    return False
+
+
 def _consumer_moduletype_names(self: VariablesAnalyzer) -> set[str] | None:
     """The dependency module types that can reach the analyzed library's data.
 
@@ -511,6 +533,7 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     self._param_mapping_issue_indexes = {}
     self.context_builder.issues = temp_issues
     consumers = _consumer_moduletype_names(self)
+    collect_secure_candidates = _should_collect_issue_kind(self, IssueKind.SECURE_CANDIDATE)
     try:
         for moduletype in self.bp.moduletype_defs or []:
             if self._is_from_root_origin(
@@ -518,7 +541,13 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
                 getattr(moduletype, "origin_lib", None),
             ):
                 continue
-            if consumers is not None and moduletype.name.casefold() not in consumers:
+            # Secure-candidate facts are recorded from step and transition code,
+            # so an SFC type is walked even when nothing reaches it.
+            if (
+                consumers is not None
+                and moduletype.name.casefold() not in consumers
+                and not (collect_secure_candidates and _has_sequences(self, moduletype))
+            ):
                 continue
             _maybe_update_status(self, f"scanning dependency typedef {moduletype.name}")
             td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
