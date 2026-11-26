@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -216,6 +217,140 @@ def test_run_textual_shell_passes_app_config_without_startup_refresh(monkeypatch
     assert seen["main_run"] is True
     assert "ensure_ast_cache_fn" in seen
     assert callable(seen["ensure_ast_cache_fn"])
+
+
+@pytest.mark.parametrize(
+    ("stdin_is_tty", "stdout_is_tty", "expected"),
+    [
+        (True, True, True),
+        (False, True, False),
+        (True, False, False),
+        (False, False, False),
+    ],
+)
+def test_interactive_terminal_available_requires_both_streams(
+    monkeypatch: pytest.MonkeyPatch,
+    stdin_is_tty: bool,
+    stdout_is_tty: bool,
+    expected: bool,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: stdin_is_tty))
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(isatty=lambda: stdout_is_tty))
+
+    assert app.interactive_terminal_available() is expected
+
+
+def test_interactive_terminal_available_treats_a_missing_stream_as_non_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", None)
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(isatty=lambda: True))
+
+    assert app.interactive_terminal_available() is False
+
+
+def test_interactive_terminal_available_ignores_a_stream_whose_isatty_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_on_closed_stream() -> bool:
+        raise ValueError("I/O operation on closed file")
+
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=_raise_on_closed_stream))
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(isatty=lambda: True))
+
+    assert app.interactive_terminal_available() is False
+
+
+@pytest.mark.parametrize(
+    ("stdin_is_tty", "stdout_is_tty"),
+    [
+        (False, True),
+        (True, False),
+        (False, False),
+    ],
+)
+def test_main_exits_two_without_starting_the_shell_on_a_piped_stream(
+    monkeypatch: pytest.MonkeyPatch,
+    stdin_is_tty: bool,
+    stdout_is_tty: bool,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: stdin_is_tty))
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(isatty=lambda: stdout_is_tty))
+    messages: list[str] = []
+
+    exit_code = app.main(
+        [],
+        run_cli_fn=lambda _argv: pytest.fail("run_cli should not run without argv"),
+        load_config_fn=lambda _path: pytest.fail("config must not load without a terminal"),
+        apply_debug_fn=lambda _cfg: pytest.fail("debug setup must not run without a terminal"),
+        emit_output_fn=messages.append,
+        pause_fn=lambda: pytest.fail("startup must not pause without a terminal"),
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop must not start"),
+    )
+
+    assert exit_code == 2
+    assert messages
+
+
+def test_main_explains_the_terminal_requirement_with_usage_text() -> None:
+    messages: list[str] = []
+
+    exit_code = app.main(
+        [],
+        is_interactive_fn=lambda: False,
+        load_config_fn=lambda _path: pytest.fail("config must not load without a terminal"),
+        apply_debug_fn=lambda _cfg: pytest.fail("debug setup must not run without a terminal"),
+        emit_output_fn=lambda message: messages.append(str(message)),
+        pause_fn=lambda: pytest.fail("startup must not pause without a terminal"),
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop must not start"),
+    )
+
+    assert exit_code == 2
+    assert len(messages) == 2
+    usage_text, explanation = messages
+    assert usage_text.startswith("usage: sattlint")
+    assert "analyze" in usage_text
+    assert "needs a terminal" in explanation
+    assert "sattlint analyze --project" in explanation
+    assert "\x1b" not in "".join(messages)
+
+
+def test_main_still_routes_argv_to_the_headless_cli_without_a_terminal() -> None:
+    seen: list[list[str]] = []
+
+    exit_code = app.main(
+        ["analyze", "--project", "demo.slproj"],
+        is_interactive_fn=lambda: False,
+        run_cli_fn=lambda argv: seen.append(list(argv)) or 7,
+        load_config_fn=lambda _path: pytest.fail("config must not load for CLI argv"),
+        apply_debug_fn=lambda _cfg: pytest.fail("debug setup must not run for CLI argv"),
+        emit_output_fn=lambda *_args: pytest.fail("piped argv must not print usage"),
+        pause_fn=lambda: pytest.fail("CLI argv must not pause"),
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop must not start"),
+    )
+
+    assert exit_code == 7
+    assert seen == [["analyze", "--project", "demo.slproj"]]
+
+
+def test_main_launches_the_shell_when_both_streams_are_terminals() -> None:
+    sessions: list[dict[str, Any]] = []
+
+    exit_code = app.main(
+        [],
+        is_interactive_fn=lambda: True,
+        load_config_fn=lambda _path: (typed_cfg({"debug": False}), False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        run_main_loop_fn=lambda cfg, **kwargs: sessions.append({"cfg": cfg, **kwargs}),
+    )
+
+    assert exit_code == 0
+    assert len(sessions) == 1
+    assert sessions[0]["cfg"] == {"debug": False}
 
 
 def test_resolve_interactive_ui_mode_requires_textual(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -570,6 +570,7 @@ def test_main_pauses_when_initial_ast_check_fails(monkeypatch: pytest.MonkeyPatc
         load_config_fn=lambda *_: (cast(ConfigDict, cfg), False),
         apply_debug_fn=lambda *_: None,
         pause_fn=lambda: pytest.fail("textual startup should not pause before launching"),
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: calls.append("session"),
     )
 

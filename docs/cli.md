@@ -1,6 +1,7 @@
 # CLI Reference
 
-Running `sattlint` with no arguments opens the interactive shell. Running
+Running `sattlint` with no arguments opens the interactive shell when stdin and
+stdout are terminals, and exits 2 with the usage otherwise. Running
 `sattlint <command>` uses the headless CLI. Headless commands never prompt,
 write data to stdout, write diagnostics to stderr, and return a documented exit
 code.

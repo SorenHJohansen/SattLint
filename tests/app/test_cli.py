@@ -55,6 +55,7 @@ def test_startup_main_configures_logging_for_the_interactive_session(
         resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: None,
         summarize_targets_fn=lambda _cfg: "targets",
         save_config_fn=lambda _path, _cfg: None,
@@ -78,6 +79,7 @@ def test_startup_main_defaults_plain_interactive_session_to_textual() -> None:
         resolve_interactive_ui_mode_fn=lambda _cfg, override: seen.update({"resolved_override": override}) or "textual",
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
             {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
         ),
@@ -108,6 +110,7 @@ def test_startup_main_textual_launch_skips_terminal_preflight_for_targets() -> N
         resolve_interactive_ui_mode_fn=lambda _cfg, _override: "textual",
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: pytest.fail("textual startup should not pause for AST cache preflight"),
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
             {"main_loop_cfg": dict(local_cfg), "main_loop_kwargs": kwargs}
         ),
@@ -132,6 +135,7 @@ def test_startup_main_warns_and_pauses_for_default_config() -> None:
         apply_debug_fn=lambda local_cfg: seen.update({"debug_cfg": local_cfg}),
         emit_output_fn=lambda message: seen.update({"message": message}),
         pause_fn=lambda: seen.update({"paused": cast(int, seen["paused"]) + 1}),
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
             {"main_loop_cfg": local_cfg, "main_loop_kwargs": kwargs}
         ),
@@ -161,6 +165,7 @@ def test_startup_main_handles_quit_app_error() -> None:
         apply_debug_fn=lambda _cfg: None,
         emit_output_fn=lambda *_args: None,
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(QuitSignalError()),
         summarize_targets_fn=lambda _cfg: "targets",
         save_config_fn=lambda _path, _cfg: None,
@@ -184,6 +189,7 @@ def test_startup_main_reports_unreadable_config_without_traceback() -> None:
         apply_debug_fn=lambda _cfg: None,
         emit_output_fn=lambda message: messages.append(str(message)),
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("the interactive loop must not start"),
         summarize_targets_fn=lambda _cfg: "targets",
         save_config_fn=lambda _path, _cfg: None,
@@ -208,6 +214,7 @@ def test_startup_main_reports_unavailable_ui_mode_without_traceback() -> None:
         ),
         emit_output_fn=lambda message: messages.append(str(message)),
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("the interactive loop must not start"),
         summarize_targets_fn=lambda _cfg: "targets",
         save_config_fn=lambda _path, _cfg: None,
@@ -289,6 +296,7 @@ def test_startup_reports_an_unresolvable_config_directory_as_a_user_error(
         apply_debug_fn=lambda _cfg: None,
         emit_output_fn=lambda *args: messages.append(str(args[0])),
         pause_fn=lambda: None,
+        is_interactive_fn=lambda: True,
         run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run"),
         summarize_targets_fn=lambda _cfg: "targets",
         save_config_fn=lambda _path, _cfg: None,

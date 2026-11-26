@@ -1,8 +1,11 @@
 # Interactive UI
 
-Run `sattlint` with no arguments to open the interactive shell. The shell is
-built with Textual and is the primary surface for configuring a project, running
-analyzers, browsing results, and generating a Change Review.
+Run `sattlint` with no arguments, from a terminal, to open the interactive
+shell. The shell is built with Textual and is the primary surface for
+configuring a project, running analyzers, browsing results, and generating a
+Change Review. When stdin or stdout is not a terminal, a bare `sattlint` prints
+the usage and exits 2 instead of starting the shell, so a script must name a
+headless command.
 
 The headless CLI is documented in [CLI reference](cli.md). Both surfaces share
 the same application layer, so they produce the same findings and run records.

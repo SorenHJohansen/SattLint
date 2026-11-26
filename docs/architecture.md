@@ -92,8 +92,10 @@ flowchart LR
     Adapter --> Parser["sattline-parser"]
 ```
 
-- `sattlint` with no arguments loads the user configuration, configures logging,
-  checks that Textual is available, and starts the shell.
+- `sattlint` with no arguments requires a terminal on stdin and stdout, then
+  loads the user configuration, configures logging, checks that Textual is
+  available, and starts the shell. Without a terminal it prints the usage and
+  exits 2.
 - `sattlint <command>` parses arguments first. Errors are reported as stable CLI
   error envelopes; the interactive shell is never started.
 - `python -m sattlint` delegates to the same CLI entry point.

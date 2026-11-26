@@ -174,6 +174,34 @@ def build_cli_parser() -> argparse.ArgumentParser:
     return _build_cli_parser()
 
 
+def _stream_is_tty(stream: Any) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def interactive_terminal_available() -> bool:
+    """Return whether the interactive shell's input and output are terminals.
+
+    The Textual shell can only drive a real terminal. A pipe, a redirected
+    file, or a closed stdin leaves it waiting forever or writing escape
+    sequences into a non-terminal stream.
+    """
+    return _stream_is_tty(sys.stdin) and _stream_is_tty(sys.stdout)
+
+
+def _interactive_unavailable_text() -> str:
+    return (
+        "sattlint: the interactive shell needs a terminal on stdin and stdout. "
+        "Run a headless command instead, for example: "
+        "sattlint analyze --project path/to/project.slproj"
+    )
+
+
 def _run_cli(argv: list[str]) -> int:
     return cli_entry.run_cli(argv)
 
@@ -188,6 +216,8 @@ def main(
     resolve_interactive_ui_mode_fn: Callable[[ConfigDict, str | None], str] | None = resolve_interactive_ui_mode,
     emit_output_fn: Callable[..., None] = console_module.print_output,
     pause_fn: Callable[[], None] = pause,
+    is_interactive_fn: Callable[[], bool] = interactive_terminal_available,
+    build_parser_fn: Callable[[], argparse.ArgumentParser] = build_cli_parser,
     run_main_loop_fn: Callable[..., None] | None = None,
     summarize_targets_fn: Callable[[ConfigDict], str] = summarize_targets,
     save_config_fn: Callable[[Path, ConfigDict], None] = config_module.save_config,
@@ -196,6 +226,14 @@ def main(
     cli_args = [] if argv is None else argv
     if cli_args:
         return run_cli_fn(cli_args)
+
+    # The Textual shell needs a real terminal on both ends. Without this gate a
+    # piped invocation hangs waiting for input or writes escape sequences into
+    # a non-terminal stdout, so report the usage and the headless alternative.
+    if not is_interactive_fn():
+        emit_output_fn(build_parser_fn().format_help().rstrip())
+        emit_output_fn(_interactive_unavailable_text())
+        return 2
 
     # The interactive shell owns diagnostics; headless commands keep stderr
     # reserved for their machine-readable channel. Without this the module
