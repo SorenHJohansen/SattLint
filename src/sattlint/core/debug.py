@@ -1,8 +1,8 @@
 """CLI-independent debug utilities.
 
 Tiny debug helpers shared across layers. These are primitives, not
-orchestration: one reads the config debug flag, the other logs the active
-exception with its traceback.
+orchestration: one reads the config debug flag, one logs the active exception
+with its traceback, and one reports a failed load without a traceback.
 """
 
 from __future__ import annotations
@@ -18,3 +18,22 @@ def debug_enabled(cfg: ConfigDict) -> bool:
 
 def log_debug_exception(message: str, *, logger: logging.Logger) -> None:
     logger.exception(message)
+
+
+def log_load_failure(
+    message: str,
+    *,
+    exc: BaseException,
+    logger: logging.Logger,
+    debug: bool,
+) -> None:
+    """Report a failed load, with a traceback only when debug is enabled.
+
+    A normal run gets one debug-level line, so a broken target never prints a
+    full traceback into the terminal. Debug mode keeps the traceback for the
+    developer.
+    """
+    if debug:
+        logger.exception(message)
+        return
+    logger.debug("%s: %s", message, exc)

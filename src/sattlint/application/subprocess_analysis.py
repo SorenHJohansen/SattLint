@@ -31,6 +31,7 @@ from ..config.string_capacities import StringCapacitiesDict, standard_string_cap
 from ..config.types import AnalysisConfig, ConfigDict, ConfigMode
 from ..core.progress import ProgressCallback, parse_progress_line
 from ..project.io import save_project
+from ..project.support import LoadFailureKind
 from ..project.types import DEFAULT_PROJECT_DICT, ProjectDict
 from .cancellation import (
     AnalysisCancellation,
@@ -138,6 +139,75 @@ def _read_run_id(output_path: Path) -> str | None:
     return None
 
 
+_FAILURE_KINDS: tuple[LoadFailureKind, ...] = ("load", "read", "parse")
+
+
+def _failure_kind(value: object) -> LoadFailureKind:
+    if isinstance(value, str) and value in _FAILURE_KINDS:
+        return value
+    return "load"
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _target_failure_from_record(record: object) -> TargetLoadFailure | None:
+    if not isinstance(record, Mapping):
+        return None
+    mapping = cast(Mapping[object, object], record)
+    target = mapping.get("target")
+    message = mapping.get("message")
+    if not isinstance(target, str) or not target.strip() or not isinstance(message, str):
+        return None
+    return TargetLoadFailure(
+        target_name=target,
+        message=message,
+        kind=_failure_kind(mapping.get("kind")),
+        path=_optional_str(mapping.get("path")),
+        line=_optional_int(mapping.get("line")),
+        column=_optional_int(mapping.get("column")),
+    )
+
+
+def _read_partial_failures(output_path: Path) -> tuple[TargetLoadFailure, ...] | None:
+    """Read the per-target failures a partial child run wrote.
+
+    A partial run writes its NDJSON envelope first and exits 2. An error
+    envelope goes to stderr and the output file is absent or empty, so anything
+    that is not a readable envelope with a non-empty failures list is not a
+    partial result.
+    """
+    try:
+        with output_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                text = line.strip()
+                if not text:
+                    continue
+                payload: object = json.loads(text)
+                if not isinstance(payload, Mapping):
+                    return None
+                mapping = cast(Mapping[object, object], payload)
+                if mapping.get("record_type") != _RUN_ID_RECORD_TYPE:
+                    return None
+                raw_failures = mapping.get("failures")
+                if not isinstance(raw_failures, list):
+                    return None
+                failures = tuple(
+                    failure
+                    for record in cast(list[object], raw_failures)
+                    if (failure := _target_failure_from_record(record)) is not None
+                )
+                return failures or None
+    except (OSError, json.JSONDecodeError):
+        return None
+    return None
+
+
 def _temporary_project(cfg: ConfigDict, selected_keys: Sequence[str]) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory(prefix="sattlint-analysis-")
     project_path = Path(directory.name) / ".slproj"
@@ -230,6 +300,12 @@ def run_checks_result_in_subprocess(
             return ChecksRunResult(output_lines=tuple(lines), run_id=_read_run_id(output_path))
         if (cancellation is not None and cancellation.cancelled) or return_code == 130:
             return ChecksRunResult(output_lines=tuple(lines), cancelled=True)
+        partial_failures = _read_partial_failures(output_path) if return_code == 2 else None
+        if partial_failures is not None:
+            # The child analyzed at least one target and reported the others as
+            # load failures. Its run was deliberately not saved, so there is no
+            # run id to return.
+            return ChecksRunResult(output_lines=tuple(lines), failures=partial_failures)
         return ChecksRunResult(
             output_lines=tuple(lines),
             failures=(TargetLoadFailure(target_name="analysis", message=f"Child process exited with {return_code}."),),

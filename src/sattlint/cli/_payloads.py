@@ -6,7 +6,7 @@ checked by Pyright instead of being assembled from untyped dicts.
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from ..analyzers.catalog import AnalyzerMetadataDict
 from ..config.string_capacities import StringCapacitiesDict
@@ -128,6 +128,17 @@ class AnalyzeProject(TypedDict):
     targets: list[str]
 
 
+class TargetLoadFailurePayload(TypedDict):
+    """One target the loader could not prepare for analysis."""
+
+    target: str
+    kind: str
+    message: str
+    path: str | None
+    line: int | None
+    column: int | None
+
+
 class AnalyzePayload(TypedDict):
     schema_version: int
     command: str
@@ -137,6 +148,10 @@ class AnalyzePayload(TypedDict):
     selected_analyzers: list[str]
     summary: AnalyzeSummary
     findings: list[FindingPayload]
+    # Present only when some targets loaded and some failed. The run is a
+    # partial result, is not stored in run history, and exits 2.
+    failures: NotRequired[list[TargetLoadFailurePayload]]
+    failed_targets: NotRequired[int]
 
 
 class FindingsFilters(TypedDict):
@@ -188,4 +203,5 @@ __all__ = [
     "ProjectShowPayload",
     "RunPayload",
     "ShowPayload",
+    "TargetLoadFailurePayload",
 ]

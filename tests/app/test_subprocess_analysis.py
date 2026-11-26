@@ -23,7 +23,7 @@ import pytest
 from sattlint.application import cancellation as cancellation_module
 from sattlint.application import subprocess_analysis as subprocess_analysis_module
 from sattlint.application.cancellation import AnalysisCancellation
-from sattlint.application.checks_results import ChecksRunResult
+from sattlint.application.checks_results import ChecksRunResult, TargetLoadFailure
 from sattlint.application.subprocess_analysis import run_checks_result_in_subprocess
 from sattlint.config.defaults import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
@@ -119,6 +119,106 @@ def test_subprocess_run_forwards_progress_records_and_keeps_them_out_of_output(
     ]
     assert getattr(events[1], "target_name", "") == "TargetA"
     assert not any("sattlint-progress" in line for line in result.output_lines)
+
+
+def test_partial_child_exit_surfaces_per_target_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = {
+        "schema_version": 1,
+        "command": "analyze",
+        "record_type": "envelope",
+        "run_id": None,
+        "failures": [
+            {
+                "target": "Bad",
+                "kind": "read",
+                "message": "Could not read /tmp/Bad.s for target 'Bad': Permission denied.",
+                "path": "/tmp/Bad.s",
+                "line": None,
+                "column": None,
+            },
+            {
+                "target": "Broken",
+                "kind": "parse",
+                "message": "Broken: failed to parse Broken.s",
+                "path": "/tmp/Broken.s",
+                "line": 4,
+                "column": 2,
+            },
+        ],
+        "failed_targets": 2,
+    }
+
+    def command(*, output_path: Path, **_kwargs: object) -> list[str]:
+        script = (
+            "import json\n"
+            f"open({str(output_path)!r}, 'w', encoding='utf-8').write(json.dumps({envelope!r}) + '\\n')\n"
+            "raise SystemExit(2)\n"
+        )
+        return [sys.executable, "-c", script]
+
+    monkeypatch.setattr(subprocess_analysis_module, "_analyze_command", command)
+
+    result = run_checks_result_in_subprocess(
+        _analysis_cfg(),
+        ["comment-code"],
+        project_path=str(tmp_path / "project.slproj"),
+    )
+
+    assert result.cancelled is False
+    assert result.run_id is None
+    assert result.failures == (
+        TargetLoadFailure(
+            target_name="Bad",
+            message="Could not read /tmp/Bad.s for target 'Bad': Permission denied.",
+            kind="read",
+            path="/tmp/Bad.s",
+        ),
+        TargetLoadFailure(
+            target_name="Broken",
+            message="Broken: failed to parse Broken.s",
+            kind="parse",
+            path="/tmp/Broken.s",
+            line=4,
+            column=2,
+        ),
+    )
+
+
+def test_non_partial_child_exit_keeps_the_generic_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error_envelope = {
+        "schema_version": 1,
+        "command": "error",
+        "error": {
+            "code": "target_load_failed",
+            "message": "Analysis stopped because 1 target(s) could not be loaded.",
+            "details": {"Bad": "could not be loaded"},
+        },
+    }
+
+    def command(*, output_path: Path, **_kwargs: object) -> list[str]:
+        script = (
+            "import json\n"
+            f"open({str(output_path)!r}, 'w', encoding='utf-8').write(json.dumps({error_envelope!r}) + '\\n')\n"
+            "raise SystemExit(2)\n"
+        )
+        return [sys.executable, "-c", script]
+
+    monkeypatch.setattr(subprocess_analysis_module, "_analyze_command", command)
+
+    result = run_checks_result_in_subprocess(
+        _analysis_cfg(),
+        ["comment-code"],
+        project_path=str(tmp_path / "project.slproj"),
+    )
+
+    assert result.run_id is None
+    assert result.failures == (TargetLoadFailure(target_name="analysis", message="Child process exited with 2."),)
 
 
 def _analysis_cfg() -> ConfigDict:

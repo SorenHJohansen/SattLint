@@ -313,6 +313,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- A run where one target fails to load now reports the successful targets'
+  findings and marks the failed target instead of discarding the whole result.
+  The command exits 2, the partial run is not saved to history, failure reports
+  are capped at 12 entries per section, an unreadable file is reported as a read
+  error, and parser positions reach the machine-readable diagnostic.
 - The analysis child process no longer imports modules from the analyzed
   project directory, so a project file named like the package cannot run code
   inside it.

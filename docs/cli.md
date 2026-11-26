@@ -142,11 +142,25 @@ that stay unused instead.
 
 ### Output behavior on failure
 
-If a target cannot be loaded, an analyzer raises, or the self-check fails, the
-command writes diagnostics to stderr, removes any previous `--output` file, and
-returns exit code `2`. A cancelled run returns `130` and also removes the
-stale output file. This prevents a pipeline from archiving an old result as if
-it were fresh.
+If one or more targets cannot be loaded but at least one target succeeds, the
+command still writes the successful targets' findings, adds a `failures` array
+and a `failed_targets` count to the document, marks the failed targets in the
+text summary, and returns exit code `2`. A partial run is never written to run
+history, so `findings --run latest` cannot present it as a complete result.
+
+Each failure entry names the target, its `kind` (`load`, `read`, or `parse`),
+a message, and the file, line, and column when the parser reported them; absent
+positions are `null`. An unreadable file is reported as a `read` failure with
+its path, not as a parse failure. Failure lists are capped at 12 entries and the
+remainder is summarized as a count.
+
+If every target fails, an analyzer raises, or the self-check fails, the command
+writes diagnostics to stderr, removes any previous `--output` file, and returns
+exit code `2`. A cancelled run returns `130` and also removes the stale output
+file. This prevents a pipeline from archiving an old result as if it were fresh.
+
+`--quiet` suppresses the unknown-project-key warning and the human summary, but
+never the final error line.
 
 ## `sattlint findings`
 
@@ -230,6 +244,8 @@ error with exit code `2`.
 - Every document carries a `command` field.
 - Errors use a separate error envelope on stderr with an `error` object
   containing a stable code, a message, and details.
+- A partial analyze document adds a `failures` array and a `failed_targets`
+  count. Successful runs keep the same shape without those fields.
 
 ### NDJSON
 

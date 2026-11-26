@@ -17,7 +17,7 @@ from ..analyzers.catalog import (
     get_selectable_analyzer_keys,
 )
 from ..application.analyze import collect_checks_result, no_analyzer_selection_message
-from ..application.checks import ChecksRunResult, build_run_record
+from ..application.checks import ChecksRunResult, TargetLoadFailure, build_run_record
 from ..application.findings import kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
@@ -28,7 +28,7 @@ from ..core.progress import (
 )
 from ..project.io import ProjectAmbiguousError, discover_project_result
 from ..project.models import SattLintProjectFile
-from ..project.support import TargetLoadError
+from ..project.support import TARGET_FAILURE_DETAIL_LIMIT, TargetLoadError, get_analyzed_targets
 from ..runs import RunRecord
 from ._findings import (
     FindingFilters,
@@ -64,8 +64,9 @@ from ._payloads import (
     ProjectInfo,
     ProjectShowPayload,
     ShowPayload,
+    TargetLoadFailurePayload,
 )
-from ._project import effective_project_config, project_payload, resolve_project_file
+from ._project import drain_config_warnings, effective_project_config, project_payload, resolve_project_file
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +176,7 @@ def _resolve_project(raw: str | None) -> SattLintProjectFile:
 def command_project_show(args: argparse.Namespace) -> int:
     project = _resolve_project(args.project)
     options = _output_options(args)
+    _drain_quiet_warnings(options)
     project_info = project_payload(project, quiet=options.quiet)
     payload: ProjectShowPayload = {
         "schema_version": SCHEMA_VERSION,
@@ -338,6 +340,67 @@ def _capture_run(
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
 
 
+def _configured_target_count(cfg: ConfigDict) -> int:
+    return len(get_analyzed_targets(cfg))
+
+
+def _is_partial_run(result: ChecksRunResult, configured_targets: int) -> bool:
+    """True when at least one target loaded and not every target failed.
+
+    Fewer than one loaded target is still an error: there is nothing to report,
+    so the command must not present an empty list as a result. A failure count
+    that covers every configured target is also an error, because the run never
+    produced a usable analysis.
+    """
+    analyzed = sum(1 for target in result.targets if not target.is_pseudo)
+    if analyzed < 1:
+        return False
+    return len(result.failures) < configured_targets
+
+
+def _failure_payload(failure: TargetLoadFailure) -> TargetLoadFailurePayload:
+    return {
+        "target": failure.target_name,
+        "kind": failure.kind,
+        "message": failure.message,
+        "path": failure.path,
+        "line": failure.line,
+        "column": failure.column,
+    }
+
+
+def _bounded_failures(failures: tuple[TargetLoadFailure, ...]) -> list[TargetLoadFailurePayload]:
+    return [_failure_payload(failure) for failure in failures[:TARGET_FAILURE_DETAIL_LIMIT]]
+
+
+def _target_load_error(failures: tuple[TargetLoadFailure, ...]) -> CliError:
+    shown = failures[:TARGET_FAILURE_DETAIL_LIMIT]
+    omitted = len(failures) - len(shown)
+    names = ", ".join(failure.target_name for failure in shown)
+    if omitted:
+        names = f"{names}, ... and {omitted} more"
+    details: dict[str, object] = {failure.target_name: failure.message for failure in shown}
+    if omitted:
+        details["omitted"] = f"{omitted} more target(s)"
+    return CliError(
+        f"Analysis stopped because {len(failures)} target(s) could not be loaded: {names}. "
+        "Fix the reported problems, then rerun.",
+        code="target_load_failed",
+        exit_code=2,
+        details=details,
+    )
+
+
+def _drain_quiet_warnings(options: _OutputOptions) -> None:
+    """Drop collected warnings when the caller asked for quiet output.
+
+    The unknown-project-key warnings are written by the CLI entry point after a
+    command returns, so a quiet command has to discard them before that point.
+    """
+    if options.quiet:
+        drain_config_warnings()
+
+
 def stderr_progress_writer() -> ProgressCallback:
     """Write one progress record per line, flushed so a parent can read it live."""
 
@@ -357,6 +420,7 @@ def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: st
 def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = _resolve_project(options.project)
+    _drain_quiet_warnings(options.output)
     cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
     keys = _resolve_analyzer_keys(options.analyzers or project.analyzers)
     _require_configured_targets(cfg)
@@ -383,17 +447,14 @@ def command_analyze(args: argparse.Namespace) -> int:
             exit_code=2,
             details={"requested": list(keys)},
         )
+    partial_failures: tuple[TargetLoadFailure, ...] = ()
     if result.failures:
-        _discard_output_file(options.output)
-        if options.output.output_format == "text":
-            _write_diagnostics(result, options)
-        failed = ", ".join(failure.target_name for failure in result.failures)
-        raise CliError(
-            f"Analysis stopped because {len(result.failures)} target(s) could not be loaded: {failed}",
-            code="target_load_failed",
-            exit_code=2,
-            details={failure.target_name: failure.message for failure in result.failures},
-        )
+        if not _is_partial_run(result, _configured_target_count(cfg)):
+            _discard_output_file(options.output)
+            if options.output.output_format == "text":
+                _write_diagnostics(result, options)
+            raise _target_load_error(result.failures)
+        partial_failures = result.failures
     if not result.targets:
         _discard_output_file(options.output)
         if options.output.output_format == "text":
@@ -442,7 +503,12 @@ def command_analyze(args: argparse.Namespace) -> int:
         "summary": summary,
         "findings": [finding_payload(finding) for finding in findings],
     }
+    if partial_failures:
+        payload["failures"] = _bounded_failures(partial_failures)
+        payload["failed_targets"] = len(partial_failures)
     _emit_findings(options.output, payload=payload, findings=findings, text_lines=_analyze_text(payload))
+    if partial_failures:
+        return 2
     if options.fail_on_findings and findings:
         return 1
     return 0
@@ -462,6 +528,17 @@ def _analyze_text(payload: AnalyzePayload) -> list[str]:
         f"Targets: {summary.get('targets', 0)}  Analyzers: {summary.get('analyzers', 0)}  "
         f"Findings: {summary['findings']}",
     ]
+    failed_total = payload.get("failed_targets", 0)
+    if failed_total:
+        lines.append(f"Failed targets ({failed_total}):")
+        for failure in payload.get("failures", []):
+            message_lines = failure["message"].splitlines() or [""]
+            lines.append(f"  - {failure['target']} ({failure['kind']}): {message_lines[0]}")
+            lines.extend(f"    {line}" for line in message_lines[1:])
+        omitted = failed_total - len(payload.get("failures", []))
+        if omitted:
+            lines.append(f"  - ... and {omitted} more")
+        lines.append("Fix the failed targets, then rerun. The other targets' results above are complete.")
     lines.extend(_finding_line(finding) for finding in payload["findings"])
     return lines
 
@@ -511,6 +588,7 @@ def command_findings(args: argparse.Namespace) -> int:
     if requested_analyzers:
         requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers))
     selector, project_path = _run_scope(args)
+    _drain_quiet_warnings(options)
     record = resolve_run(selector, project_path=project_path, require_project_scope=True)
     filters = FindingFilters(
         targets=tuple(str(value) for value in args.target),
@@ -585,6 +663,7 @@ def _findings_text(payload: FindingsPayload) -> list[str]:
 def command_show(args: argparse.Namespace) -> int:
     options = _output_options(args)
     selector, project_path = _run_scope(args)
+    _drain_quiet_warnings(options)
     record = resolve_run(selector, project_path=project_path, require_project_scope=True)
     finding_id = str(args.finding_id)
     match = next((finding for finding in flat_findings(record) if finding.id == finding_id), None)

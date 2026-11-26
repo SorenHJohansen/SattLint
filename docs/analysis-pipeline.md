@@ -72,8 +72,12 @@ For every configured target, the project application loads a target:
 4. The graph records failures, warnings, unavailable libraries, and timings.
 
 A target that cannot be loaded is recorded as a load failure. The run continues
-to other targets so the user sees every failure; the headless analyze command
-then fails as a whole when any selected target failed to load.
+to other targets so the user sees every failure. When at least one target loads,
+the headless analyze command writes the successful targets' findings, marks the
+failed targets, and exits `2`; a run with any target failure is not saved to
+history. When no target loads, the command reports the failure instead of a
+partial document. The failure report is capped at 12 entries per list, and an
+unreadable file is reported as a read failure rather than a parse failure.
 
 The loop releases each target graph before loading the next one so two complete
 projects are not held at the same time.

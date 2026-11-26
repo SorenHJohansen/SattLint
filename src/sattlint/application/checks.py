@@ -28,6 +28,7 @@ from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPha
 from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
+from ..project.support import LoadFailureDetail
 from . import checks_execution, checks_records
 from . import output as output_module
 from . import project as project_application
@@ -63,7 +64,7 @@ def _iter_loaded_projects(
     cfg: ConfigDict,
     *,
     refresh_ast: bool = False,
-    failure_sink: Callable[[str, str], None] | None = None,
+    failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
     progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
@@ -327,7 +328,10 @@ def collect_run_checks_result(  # noqa: PLR0915 - the run keeps its phase state 
         selected_analyzers=selected_analyzer_keys,
         failures=load_failures.snapshot(),
     )
-    if persist_run:
+    if persist_run and not result.failures:
+        # A run with unloaded targets is not a completed analysis. Keeping it
+        # out of history stops ``findings --run latest`` from presenting a
+        # partial run as the newest complete one.
         stored = checks_records.persist_run_result(
             result,
             cfg,

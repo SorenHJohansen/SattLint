@@ -184,7 +184,8 @@ SattLint distinguishes policy from language rules:
 - An analyzer failure is isolated and recorded; it does not abort the whole run
   unless the command considers analyzer failure fatal.
 - A target load failure is recorded, and an unmatched target makes the headless
-  analyze command fail with exit code `2`.
+  analyze command exit `2`. When other targets loaded, their findings are still
+  reported and the failed targets are marked, but the partial run is not saved.
 
 Failures are explicit. There are no silent fallbacks that turn a broken project
 into a partial analysis result.

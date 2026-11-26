@@ -189,6 +189,12 @@ The project loader uses `ASTCache` through the cache bridge:
 - an incomplete graph with unavailable libraries or load failures is not saved;
 - a cache write failure is logged and the run continues.
 
+A failed load reports a bounded set of details: each list is capped at 12
+entries and the remainder is stated as a count. The typed failure record names
+the target, distinguishes a resolution failure from an unreadable file and a
+parse failure, and carries the file, line, and column when the parser supplied
+them.
+
 A cache is an optimization. An unusable cache directory degrades to an uncached
 load instead of stopping the run.
 

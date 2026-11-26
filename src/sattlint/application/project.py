@@ -24,6 +24,7 @@ from ..models.project_graph import ProjectGraph
 from ..project import loading as analysis_loading_module
 from ..project import support as support_module
 from ..project.loading import is_within_directory
+from ..project.support import LoadFailureDetail
 from ..utils.casefolding import unit_equal, unit_key
 
 ASTCache = cache_module.ASTCache
@@ -104,7 +105,7 @@ def _iter_loaded_projects(
     refresh_ast: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
-    failure_sink: Callable[[str, str], None] | None = None,
+    failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
     progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
@@ -125,7 +126,7 @@ def iter_loaded_projects(
     refresh_ast: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
-    failure_sink: Callable[[str, str], None] | None = None,
+    failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
     progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:

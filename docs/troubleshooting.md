@@ -118,6 +118,16 @@ dependency or the parser diagnostic that stopped it. Enable debug logging for
 more detail, then rerun the focused load. If the failure is in the grammar or
 parser-owned syntax, report it to the `sattline-parser` project.
 
+When other targets loaded, the command still reports their findings and marks
+the failed target, then exits `2` without saving the partial run. A failure
+reported as a read error names the file and its path, and the fix is usually a
+missing file, a directory in its place, or a permission problem. A parse
+failure carries the parser's line and column when it reported one.
+
+Failure lists are capped at 12 entries per section and the remainder is shown
+as a count, so a broken dependency graph does not turn one error into pages of
+output.
+
 ### Results look outdated
 
 - The AST cache is validated against file manifests; changing a source file or a

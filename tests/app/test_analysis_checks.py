@@ -39,6 +39,7 @@ from sattlint.core.progress import AnalysisProgressEvent, ProgressPhase
 from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading as project_loading_module
+from sattlint.project.support import LoadFailureDetail
 from sattlint.reporting import target_report as analysis_reporting_module
 from sattlint.runs import load_run
 from tests.helpers import AnalysisGraphStub, named_object
@@ -888,13 +889,13 @@ def test_collect_run_checks_result_records_loader_failures_as_text():
     def iterator(
         _cfg: ConfigDict,
         *,
-        failure_sink: Callable[[str, str], None] | None = None,
+        failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
         emit_output_fn: Callable[..., None] | None = None,
         **_kwargs: object,
     ):
         assert failure_sink is not None
         assert emit_output_fn is not None
-        failure_sink("Broken", "root failed")
+        failure_sink("Broken", LoadFailureDetail("root failed"))
         emit_output_fn(RuntimeError("boom"))
         return iter(())
 

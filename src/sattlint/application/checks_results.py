@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ..core.timings import NamedTimings, PhaseTiming, TimingBottleneck
+from ..project.support import LoadFailureDetail, LoadFailureKind
 from ..runs import RunModuleRecord
 from .findings import AnalysisFinding
 
@@ -53,6 +54,10 @@ class ChecksTargetResult:
 class TargetLoadFailure:
     target_name: str
     message: str
+    kind: LoadFailureKind = "load"
+    path: str | None = None
+    line: int | None = None
+    column: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,8 +97,17 @@ class LoadFailureLog:
 
     entries: list[TargetLoadFailure] = field(default_factory=list[TargetLoadFailure])
 
-    def record(self, target_name: str, message: str) -> None:
-        self.entries.append(TargetLoadFailure(target_name=target_name, message=message))
+    def record(self, target_name: str, detail: LoadFailureDetail) -> None:
+        self.entries.append(
+            TargetLoadFailure(
+                target_name=target_name,
+                message=detail.message,
+                kind=detail.kind,
+                path=detail.path,
+                line=detail.line,
+                column=detail.column,
+            )
+        )
 
     def snapshot(self) -> tuple[TargetLoadFailure, ...]:
         return tuple(self.entries)

@@ -77,7 +77,7 @@ def test_iter_loaded_projects_skips_failed_targets(
     failures: list[tuple[str, str]] = []
     projects = list(
         project_application._iter_loaded_projects(
-            cast(ConfigDict, cfg), failure_sink=lambda name, message: failures.append((name, message))
+            cast(ConfigDict, cfg), failure_sink=lambda name, detail: failures.append((name, detail.message))
         )
     )
 

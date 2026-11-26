@@ -18,7 +18,7 @@ from sattlint.parser_api import (
 
 from .. import cache as cache_module
 from ..config.types import ConfigDict
-from ..core.debug import log_debug_exception
+from ..core.debug import debug_enabled, log_load_failure
 from ..core.memory import release_unused_memory
 from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPhase
 from ..core.syntax import CodeMode, normalize_code_mode
@@ -44,7 +44,7 @@ from .parser_adapter import (
     load_parser_projects,
     read_dependency_names,
 )
-from .support import configured_icf_files
+from .support import LoadFailureDetail, configured_icf_files, describe_load_failure
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
@@ -56,7 +56,7 @@ def iter_loaded_projects(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     emit_output_fn: Callable[..., None],
-    failure_sink: Callable[[str, str], None] | None = None,
+    failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
     progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
     target_names = require_analyzed_targets_fn(cfg)
@@ -79,12 +79,18 @@ def iter_loaded_projects(
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(f"Failed to load analysis target {target_name!r}", logger=log)
+            detail = describe_load_failure(target_name, exc)
+            log_load_failure(
+                f"Failed to load analysis target {target_name!r}",
+                exc=exc,
+                logger=log,
+                debug=debug_enabled(cfg),
+            )
             if failure_sink is not None:
-                failure_sink(target_name, str(exc))
+                failure_sink(target_name, detail)
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
-            emit_output_fn(str(exc))
+            emit_output_fn(detail.message)
             if progress_fn is not None:
                 # A failed target still finishes: the status bar must move past
                 # it instead of counting it as outstanding work forever.
@@ -709,7 +715,12 @@ def ensure_ast_cache(
             )
             emit_output_fn("✔ AST cache updated")
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
-            log_debug_exception(f"Failed to rebuild AST cache for {target_name!r}", logger=log)
+            log_load_failure(
+                f"Failed to rebuild AST cache for {target_name!r}",
+                exc=exc,
+                logger=log,
+                debug=debug_enabled(cfg),
+            )
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False
 
