@@ -328,10 +328,9 @@ def collect_run_checks_result(  # noqa: PLR0915 - the run keeps its phase state 
         selected_analyzers=selected_analyzer_keys,
         failures=load_failures.snapshot(),
     )
-    if persist_run and not result.failures:
-        # A run with unloaded targets is not a completed analysis. Keeping it
-        # out of history stops ``findings --run latest`` from presenting a
-        # partial run as the newest complete one.
+    if persist_run:
+        # ``persist_run_result`` keeps a cancelled run or a run with unloaded
+        # targets out of history; that rule lives in one place.
         stored = checks_records.persist_run_result(
             result,
             cfg,

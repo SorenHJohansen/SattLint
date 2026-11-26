@@ -172,9 +172,12 @@ into shared output.
 
 ### `findings` cannot find the run
 
-- A run is stored only when run history is enabled and `--no-save` was not
-  passed.
-- `--run latest` uses the newest stored run.
+- A run is stored only when run history is enabled, `--no-save` was not passed,
+  and every selected target loaded.
+- `--run latest` uses the newest stored run for the project discovered from the
+  current directory, or named with `--project`.
+- Without a discoverable project, `latest` is refused; pass `--project` or an
+  explicit run ID.
 - A run ID prefix must be unique.
 - A corrupt run record is ignored rather than partially read.
 

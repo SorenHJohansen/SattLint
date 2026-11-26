@@ -25,6 +25,7 @@ from sattlint.config.types import ConfigDict
 from sattlint.core.debug import log_load_failure
 from sattlint.project.loading import iter_loaded_projects
 from sattlint.project.support import TARGET_FAILURE_DETAIL_LIMIT, LoadFailureDetail, TargetLoadError
+from sattlint.runs.io import runs_dir_location
 
 _PROGRAM = """"Syntax version 2.23, date: 2026-02-02-11:05:04.749 N"
 "Original file date: ---"
@@ -179,7 +180,6 @@ def test_failure_report_caps_every_list_and_states_the_remainder() -> None:
 def test_mixed_targets_keep_the_successful_findings_and_leave_no_run(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
-    _isolated_home: Path,
 ) -> None:
     programs = tmp_path / "programs"
     _write_program(programs, "Good")
@@ -197,7 +197,7 @@ def test_mixed_targets_keep_the_successful_findings_and_leave_no_run(
     assert "Fix the failed targets, then rerun." in out
     assert "=== Target: Bad ===" in err
     assert "Bad: missing code file for 'Missing'" in err
-    assert not (_isolated_home / "sattlint" / "runs").exists()
+    assert not runs_dir_location().exists()
 
     # The failed run is not the newest stored run, because it was never stored.
     code = run_cli(["findings", "--run", "latest", "--project", str(project), "--format", "json"])
@@ -259,7 +259,10 @@ def test_unreadable_target_is_reported_as_a_read_error(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    if os.geteuid() == 0:
+    geteuid = cast(Callable[[], int] | None, getattr(os, "geteuid", None))
+    if geteuid is None:
+        pytest.skip("the platform does not expose file modes this way")
+    if geteuid() == 0:
         pytest.skip("root can read a file with mode 000")
     programs = tmp_path / "programs"
     _write_program(programs, "Good")

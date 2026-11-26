@@ -98,6 +98,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Project discovery prefers a literal `.slproj` and otherwise accepts the only
+  `*.slproj` file in the nearest ancestor directory. Two or more named files is
+  an error that lists the candidates and asks for `--project`, and an explicit
+  `--project` skips discovery. `findings` and `show` resolve `latest` within the
+  discovered project and refuse the lookup when no project is found.
 - `sattlint analyze` runs per-target analyzers in order by default. Pass
   `--jobs 0` to pick a worker count from the CPU count, or `--jobs N` for an
   explicit number of forked workers.

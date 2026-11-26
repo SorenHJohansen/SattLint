@@ -576,7 +576,7 @@ def _run_scope(args: argparse.Namespace) -> tuple[str, str | None]:
     it neither needs discovery nor fails because discovery is ambiguous.
     """
     selector = str(args.run)
-    raw_project = getattr(args, "project", None)
+    raw_project = args.project
     if raw_project is None and selector.strip().casefold() != _LATEST_SELECTOR:
         return selector, None
     return selector, _scoped_project_path(raw_project)

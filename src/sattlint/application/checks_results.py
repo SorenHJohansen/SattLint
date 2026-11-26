@@ -75,6 +75,16 @@ class ChecksRunResult:
     cancelled: bool = False
     run_id: str | None = None
     failures: tuple[TargetLoadFailure, ...] = ()
+    #: Total failed targets when the stored failure list was capped for output.
+    #: ``None`` means the list is complete.
+    failed_target_count: int | None = None
+
+    @property
+    def total_failed_targets(self) -> int:
+        """The true failed-target count, even when ``failures`` was truncated."""
+        if self.failed_target_count is None:
+            return len(self.failures)
+        return max(self.failed_target_count, len(self.failures))
 
     @property
     def analyzer_failures(self) -> tuple[AnalyzerFailure, ...]:

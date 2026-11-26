@@ -78,11 +78,12 @@ reported in the session output and does not silently disappear. The UI runs the
 analysis in a short-lived child process, then loads the stored run record, so
 repeated runs do not accumulate parsed project graphs in the shell process.
 
-Cancelling stops the child and the analyzer workers it forked; the app does not
-wait for the current analyzer to finish. A cancelled run is discarded; a run
-that had already finished saving when the cancel arrived can still appear in
-Results. Quit also cancels a running analysis before leaving, so the shell never
-waits on an analyzer. Other actions such as Change Review also stop being waited
+Cancelling stops the child and, when a run opted into the worker pool with
+`--jobs`, the analyzer workers it forked; the app does not wait for the current
+analyzer to finish. A cancelled run is discarded; a run that had already
+finished saving when the cancel arrived can still appear in Results. Quit also
+cancels a running analysis before leaving, so the shell never waits on an
+analyzer. Other actions such as Change Review also stop being waited
 on when the app quits, so a review that was still being written can be left
 partially finished.
 

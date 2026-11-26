@@ -133,6 +133,22 @@ def discover_project(start: Path | None = None) -> Path | None:
     return discover_project_result(start).selected_path()
 
 
+def select_project_in_directory(directory: Path) -> Path | None:
+    """Apply the same candidate rule to one directory an explicit path names.
+
+    Returns the chosen file, ``None`` when the directory holds none, and raises
+    ``ProjectAmbiguousError`` when several named files compete. Discovery and
+    an explicit directory therefore agree on the same directory.
+    """
+    candidates = _project_candidates(directory)
+    return ProjectDiscovery(
+        searched_from=directory,
+        directory=directory,
+        candidates=candidates,
+        selected=_choose_candidate(candidates),
+    ).selected_path()
+
+
 def load_project(path: Path) -> SattLintProjectFile:
     """Load a .slproj file and return an ``SattLintProjectFile``.
 
@@ -312,4 +328,5 @@ __all__ = [
     "init_project",
     "load_project",
     "save_project",
+    "select_project_in_directory",
 ]

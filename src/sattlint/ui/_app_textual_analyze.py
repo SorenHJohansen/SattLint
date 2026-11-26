@@ -518,7 +518,8 @@ def _execute_analyzers(
         problems: list[str] = []
         if failures:
             names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
-            problems.append(f"{len(failures)} target(s) could not be loaded ({names})")
+            total = getattr(result, "total_failed_targets", len(failures))
+            problems.append(f"{total} target(s) could not be loaded ({names})")
         if analyzer_failures:
             names = ", ".join(str(getattr(failure, "analyzer_name", "")) for failure in analyzer_failures)
             problems.append(f"{len(analyzer_failures)} analyzer(s) failed ({names})")

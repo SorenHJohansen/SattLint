@@ -21,6 +21,7 @@ from sattlint.project.io import (
     init_project,
     load_project,
     save_project,
+    select_project_in_directory,
 )
 from sattlint.project.loading import cache_manifest_files
 from sattlint.project.models import SattLintProjectFile
@@ -124,6 +125,25 @@ def test_discover_project_result_reports_nothing_found(tmp_path: Path) -> None:
     assert result.candidates == ()
     assert not result.is_ambiguous
     assert discover_project(tmp_path) is None
+
+
+def test_select_project_in_directory_follows_the_discovery_rule(tmp_path: Path) -> None:
+    assert select_project_in_directory(tmp_path) is None
+
+    named = tmp_path / "app.slproj"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    assert select_project_in_directory(tmp_path) == named
+
+    literal = tmp_path / SLPROJ_FILENAME
+    literal.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    assert select_project_in_directory(tmp_path) == literal
+
+    literal.unlink()
+    (tmp_path / "other.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    with pytest.raises(ProjectAmbiguousError) as raised:
+        select_project_in_directory(tmp_path)
+    assert str(named) in str(raised.value)
+    assert str(tmp_path / "other.slproj") in str(raised.value)
 
 
 def test_load_project_roundtrip(tmp_path: Path) -> None:

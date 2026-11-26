@@ -57,7 +57,7 @@ A file can be syntactically valid but semantically broken:
 
 ## CLI And Testing
 
-- The installed `sattlint` console script targets `sattlint.cli.startup:cli`. With arguments it dispatches the headless commands (`project show`, `analyzers list`, `analyze`, `findings`, `show`); with no arguments it opens the Textual interactive shell.
+- The installed `sattlint` console script targets `sattlint.cli.startup:cli`. With arguments it dispatches the headless commands (`project show`, `analyzers list`, `analyze`, `findings`, `show`); with no arguments it opens the Textual interactive shell when stdin and stdout are terminals, and otherwise prints the usage and exits 2.
 - SattLint does not do project validation; strict syntax checking belongs to the external `sattline check` command.
 - If you change CLI routing or the interactive shell, keep `tests/app/test_cli*.py` and `tests/app/test_app_textual*.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.

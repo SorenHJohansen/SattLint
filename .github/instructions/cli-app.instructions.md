@@ -6,7 +6,7 @@ applyTo: ["src/sattlint/cli/**", "src/sattlint/config/**", "src/sattlint/applica
 # CLI App
 
 - Keep CLI flags, headless JSON payloads, menu numbering, and prompt flows aligned with tests.
-- Installed `sattlint` must dispatch headless subcommands when given arguments and open the Textual interactive shell when given none.
+- Installed `sattlint` must dispatch headless subcommands when given arguments. With no arguments it opens the Textual interactive shell only when stdin and stdout are terminals, and otherwise prints the usage and exits 2.
 - SattLint has no project-level validation command; project and language validation belong to `sattline-parser`.
 - Prefer repo-venv command paths so CLI behavior matches installed entrypoints.
 - Choose the first focused validation route from [validation map](../../AGENTS_REFERENCE.md#validation-map) and match it to CLI routing versus Textual interactive-shell behavior.

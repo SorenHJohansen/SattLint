@@ -13,6 +13,7 @@ from ..config.defaults import DEFAULT_CONFIG
 from ..config.string_capacities import resolve_string_capacities
 from ..config.types import ConfigDict
 from ..project import SLPROJ_FILENAME, SLPROJ_VERSION, discover_project, load_project
+from ..project.io import ProjectAmbiguousError, select_project_in_directory
 from ..project.models import SattLintProjectFile
 from ..runs import runs_dir_location
 from ._output import CliError
@@ -38,21 +39,22 @@ def resolve_project_file(raw: str | None) -> SattLintProjectFile:
 
     path = Path(raw).expanduser()
     if path.is_dir():
-        candidates = sorted(path.glob(f"*{SLPROJ_FILENAME}"))
-        if not candidates:
+        try:
+            selected = select_project_in_directory(path)
+        except ProjectAmbiguousError as exc:
+            raise CliError(
+                str(exc),
+                code="project_ambiguous",
+                exit_code=2,
+                details={"candidates": [str(candidate) for candidate in exc.candidates]},
+            ) from exc
+        if selected is None:
             raise CliError(
                 f"No {SLPROJ_FILENAME} found in {path}.",
                 code="project_not_found",
                 exit_code=2,
             )
-        if len(candidates) > 1:
-            raise CliError(
-                f"Multiple {SLPROJ_FILENAME} files found in {path}; pass the file explicitly.",
-                code="project_ambiguous",
-                exit_code=2,
-                details={"candidates": [str(candidate) for candidate in candidates]},
-            )
-        return _load_project(candidates[0])
+        return _load_project(selected)
     return _load_project(path)
 
 

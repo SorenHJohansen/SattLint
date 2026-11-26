@@ -80,7 +80,7 @@ context.
 ```mermaid
 flowchart LR
     Start["sattlint command"] --> Startup["cli/startup.py"]
-    Startup -->|"no arguments"| Shell["Textual shell"]
+    Startup -->|"no arguments, terminal"| Shell["Textual shell"]
     Startup -->|"arguments"| Entry["cli/entry.py"]
     Entry --> Commands["cli/commands.py"]
     Commands --> App["application/*"]

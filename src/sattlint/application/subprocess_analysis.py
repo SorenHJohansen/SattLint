@@ -24,6 +24,7 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -174,7 +175,15 @@ def _target_failure_from_record(record: object) -> TargetLoadFailure | None:
     )
 
 
-def _read_partial_failures(output_path: Path) -> tuple[TargetLoadFailure, ...] | None:
+@dataclass(frozen=True, slots=True)
+class _PartialChildFailures:
+    """The per-target failures a partial child run wrote, plus the true count."""
+
+    failures: tuple[TargetLoadFailure, ...]
+    failed_targets: int
+
+
+def _read_partial_failures(output_path: Path) -> _PartialChildFailures | None:
     """Read the per-target failures a partial child run wrote.
 
     A partial run writes its NDJSON envelope first and exits 2. An error
@@ -202,7 +211,14 @@ def _read_partial_failures(output_path: Path) -> tuple[TargetLoadFailure, ...] |
                     for record in cast(list[object], raw_failures)
                     if (failure := _target_failure_from_record(record)) is not None
                 )
-                return failures or None
+                if not failures:
+                    return None
+                raw_count = mapping.get("failed_targets")
+                failed_targets = _optional_int(raw_count)
+                return _PartialChildFailures(
+                    failures=failures,
+                    failed_targets=len(failures) if failed_targets is None else max(failed_targets, len(failures)),
+                )
     except (OSError, json.JSONDecodeError):
         return None
     return None
@@ -305,7 +321,11 @@ def run_checks_result_in_subprocess(
             # The child analyzed at least one target and reported the others as
             # load failures. Its run was deliberately not saved, so there is no
             # run id to return.
-            return ChecksRunResult(output_lines=tuple(lines), failures=partial_failures)
+            return ChecksRunResult(
+                output_lines=tuple(lines),
+                failures=partial_failures.failures,
+                failed_target_count=partial_failures.failed_targets,
+            )
         return ChecksRunResult(
             output_lines=tuple(lines),
             failures=(TargetLoadFailure(target_name="analysis", message=f"Child process exited with {return_code}."),),

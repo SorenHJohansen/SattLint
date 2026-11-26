@@ -10,6 +10,7 @@ from typing import Literal, NotRequired, TypedDict
 
 from ..analyzers.catalog import AnalyzerMetadataDict
 from ..config.string_capacities import StringCapacitiesDict
+from ..project.support import LoadFailureKind
 
 type GroupBy = Literal["none", "module", "analyzer", "kind"]
 
@@ -132,7 +133,7 @@ class TargetLoadFailurePayload(TypedDict):
     """One target the loader could not prepare for analysis."""
 
     target: str
-    kind: str
+    kind: LoadFailureKind
     message: str
     path: str | None
     line: int | None

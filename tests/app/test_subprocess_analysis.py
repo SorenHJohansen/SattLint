@@ -169,6 +169,7 @@ def test_partial_child_exit_surfaces_per_target_failures(
 
     assert result.cancelled is False
     assert result.run_id is None
+    assert result.total_failed_targets == 2
     assert result.failures == (
         TargetLoadFailure(
             target_name="Bad",
@@ -219,6 +220,57 @@ def test_non_partial_child_exit_keeps_the_generic_failure(
 
     assert result.run_id is None
     assert result.failures == (TargetLoadFailure(target_name="analysis", message="Child process exited with 2."),)
+
+
+def test_partial_child_exit_keeps_the_true_failed_target_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capped = [
+        {"target": f"Bad{index}", "kind": "load", "message": f"Bad{index} could not be loaded"} for index in range(12)
+    ]
+    envelope = {
+        "schema_version": 1,
+        "command": "analyze",
+        "record_type": "envelope",
+        "run_id": None,
+        "failures": capped,
+        "failed_targets": 20,
+    }
+
+    def command(*, output_path: Path, **_kwargs: object) -> list[str]:
+        script = (
+            "import json\n"
+            f"open({str(output_path)!r}, 'w', encoding='utf-8').write(json.dumps({envelope!r}) + '\\n')\n"
+            "raise SystemExit(2)\n"
+        )
+        return [sys.executable, "-c", script]
+
+    monkeypatch.setattr(subprocess_analysis_module, "_analyze_command", command)
+
+    result = run_checks_result_in_subprocess(
+        _analysis_cfg(),
+        ["comment-code"],
+        project_path=str(tmp_path / "project.slproj"),
+    )
+
+    assert len(result.failures) == 12
+    assert result.total_failed_targets == 20
+
+
+def test_a_malformed_child_envelope_is_not_a_partial_result(tmp_path: Path) -> None:
+    output = tmp_path / "out.ndjson"
+    output.write_text("{not json\n", encoding="utf-8")
+    assert subprocess_analysis_module._read_partial_failures(output) is None
+
+    output.write_text('{"record_type": "finding"}\n', encoding="utf-8")
+    assert subprocess_analysis_module._read_partial_failures(output) is None
+
+    output.write_text(
+        '{"record_type": "envelope", "failures": [{"target": "", "message": 3}]}\n',
+        encoding="utf-8",
+    )
+    assert subprocess_analysis_module._read_partial_failures(output) is None
 
 
 def _analysis_cfg() -> ConfigDict:
