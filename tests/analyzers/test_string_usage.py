@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from sattline_parser import parse_source_text
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
@@ -188,7 +187,13 @@ def test_insertstring_overflow_is_reported_with_its_site() -> None:
     assert issue.data["site"] == "equation block 'Main'"
 
 
-def test_overflow_from_a_value_written_across_a_module_boundary_is_kept() -> None:
+def test_a_value_written_in_another_module_is_not_followed() -> None:
+    """The analyzers only claim lengths the source states in place.
+
+    Following a value through a parameter mapping needs a whole-program fixed
+    point, which is what made these analyzers take minutes on a real project.
+    The trade is deliberate: a length that needs that analysis is not reported.
+    """
     child = _child(
         parameters=[Variable(name="WideIn", datatype=ScalarDatatype.STRING)],
         code=[Assignment(target=_varref("WideIn"), value="x" * 20)],
@@ -205,29 +210,7 @@ def test_overflow_from_a_value_written_across_a_module_boundary_is_kept() -> Non
 
     report = analyze_string_capacity(bp, string_capacities=STANDARD_STRING_CAPACITIES)
 
-    assert _capacity_kinds(report) == ["string_capacity.assignment_overflow"]
-
-
-def test_incomplete_length_analysis_is_reported_in_the_note(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("sattlint.analyzers.string_usage._length._MAX_PASSES", 1)
-    child = _child(
-        parameters=[Variable(name="WideIn", datatype=ScalarDatatype.STRING)],
-        code=[Assignment(target=_varref("WideIn"), value="x" * 20)],
-        mappings=[_mapping("WideIn", "Wide")],
-    )
-    bp = _base_picture(
-        variables=[
-            Variable(name="Wide", datatype=ScalarDatatype.STRING),
-            Variable(name="Target", datatype=ScalarDatatype.IDENTSTRING),
-        ],
-        code=[Assignment(target=_varref("Target"), value=_varref("Wide"))],
-        submodules=[child],
-    )
-
-    report = analyze_string_capacity(bp, string_capacities=STANDARD_STRING_CAPACITIES)
-
-    assert report.note is not None
-    assert "may be incomplete" in report.note
+    assert _capacity_kinds(report) == []
 
 
 def test_putblanks_overflow_is_reported() -> None:

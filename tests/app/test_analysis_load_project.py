@@ -532,11 +532,11 @@ def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monke
         _cfg: ConfigDict,
         target_name: str | None = None,
         *,
-        use_cache: bool = True,
+        refresh_ast: bool = False,
         collect_stage_timings: bool = False,
         **_kwargs: object,
     ) -> tuple[BasePicture, ProjectGraph]:
-        seen.append((target_name, use_cache, collect_stage_timings))
+        seen.append((target_name, refresh_ast, collect_stage_timings))
         return cast(tuple[BasePicture, ProjectGraph], (named_object(target_name or "Unknown"), AnalysisGraphStub()))
 
     monkeypatch.setattr(project_application, "emit_output", lambda *_args, **_kwargs: None)
@@ -544,14 +544,14 @@ def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monke
     results = list(
         project_application.iter_loaded_projects(
             cast(ConfigDict, {"analyzed_programs_and_libraries": ["TargetA"], "debug": True}),
-            use_cache=False,
+            refresh_ast=True,
             require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
             load_project_fn=fake_load_project,
         )
     )
 
     assert [target_name for target_name, _bp, _graph in results] == ["TargetA"]
-    assert seen == [("TargetA", False, True)]
+    assert seen == [("TargetA", True, True)]
 
 
 def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch: pytest.MonkeyPatch):
@@ -580,9 +580,9 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
             return cache_state[key][2]
 
     def fake_load_project(
-        _cfg: ConfigDict, *, target_name: str, use_cache: bool, **_kwargs: object
+        _cfg: ConfigDict, *, target_name: str, refresh_ast: bool, **_kwargs: object
     ) -> tuple[BasePicture, ProjectGraph]:
-        load_calls.append((target_name, use_cache))
+        load_calls.append((target_name, refresh_ast))
         if target_name == "TargetE":
             raise RuntimeError("boom")
         return cast(tuple[BasePicture, ProjectGraph], (SimpleNamespace(), SimpleNamespace()))
@@ -600,10 +600,10 @@ def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch
 
     assert ok is False
     assert load_calls == [
-        ("TargetB", False),
-        ("TargetC", False),
-        ("TargetD", False),
-        ("TargetE", False),
+        ("TargetB", True),
+        ("TargetC", True),
+        ("TargetD", True),
+        ("TargetE", True),
     ]
     assert any("AST cache OK" in line for line in lines)
     assert any("AST cache stale; rebuilding" in line for line in lines)
@@ -788,7 +788,9 @@ def test_load_project_drops_stale_stage_timings_on_a_cache_hit(monkeypatch: pyte
     assert graph.graphics_load_timings == {}
 
 
-def test_the_parser_cache_follows_the_run_cache_switch(monkeypatch: pytest.MonkeyPatch):
+def test_a_refresh_rebuilds_the_graph_but_keeps_the_verified_parser_cache(
+    monkeypatch: pytest.MonkeyPatch,
+):
     root_bp = named_object("TargetA", origin_file="TargetA.s")
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
@@ -796,13 +798,15 @@ def test_the_parser_cache_follows_the_run_cache_switch(monkeypatch: pytest.Monke
         warnings=[],
         source_files={Path("programs/TargetA.s")},
     )
-    seen: list[Path | None] = []
+    parser_cache_dirs: list[Path | None] = []
+    graph_cache_loads: list[str] = []
 
     class FakeCache:
         def __init__(self, cache_dir: Path) -> None:
             self.cache_dir = cache_dir
 
-        def load_validated(self, _key: str) -> None:
+        def load_validated(self, key: str) -> None:
+            graph_cache_loads.append(key)
             return None
 
         def manifest_paths(self, _key: str) -> frozenset[Path]:
@@ -817,7 +821,7 @@ def test_the_parser_cache_follows_the_run_cache_switch(monkeypatch: pytest.Monke
         parser_cache_dir: Path | None = None,
         **_kwargs: object,
     ) -> SimpleNamespace:
-        seen.append(parser_cache_dir)
+        parser_cache_dirs.append(parser_cache_dir)
         return SimpleNamespace()
 
     monkeypatch.setattr(project_application, "ASTCache", FakeCache)
@@ -842,13 +846,17 @@ def test_the_parser_cache_follows_the_run_cache_switch(monkeypatch: pytest.Monke
         cfg,
         cache_key_for_target_fn=lambda _cfg, _target: "key",
         get_cache_dir_fn=lambda: Path("cache-dir"),
-        use_cache=True,
+        refresh_ast=False,
     )
     project_application.load_project(
         cfg,
         cache_key_for_target_fn=lambda _cfg, _target: "key",
         get_cache_dir_fn=lambda: Path("cache-dir"),
-        use_cache=False,
+        refresh_ast=True,
     )
 
-    assert seen == [Path("cache-dir"), None]
+    # A refresh rebuilds SattLint's own graph entry, so only the first load reads it.
+    assert graph_cache_loads == ["key"]
+    # The parser's per-file caches are verified against the source bytes, so a
+    # refresh keeps them: re-parsing would be waste, not safety.
+    assert parser_cache_dirs == [Path("cache-dir"), Path("cache-dir")]

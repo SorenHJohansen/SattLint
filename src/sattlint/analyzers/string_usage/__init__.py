@@ -23,8 +23,8 @@ from ._checks import (
     collect_literal_findings,
     collect_rightsizing_findings,
 )
-from ._length import LengthAnalyzer, OverflowFact
-from ._model import SlotTypes, StringUsageFinding, dedupe_findings
+from ._literal_flow import analyze_literal_flow
+from ._model import OverflowFact, SlotTypes, StringUsageFinding, dedupe_findings
 
 if TYPE_CHECKING:
     from ...models.project_graph import ProjectGraph
@@ -54,12 +54,12 @@ def analyze_string_capacity(
     types = _types(base_picture, string_capacities)
     engine = _engine(base_picture, capacities=string_capacities, graph=graph)
     contexts = engine.module_contexts()
-    length_result = LengthAnalyzer(types=types).analyze(contexts)
+    flow = analyze_literal_flow(contexts, types=types)
     findings = [
         *collect_literal_findings(contexts, types=types),
-        *[_overflow_finding(fact) for fact in length_result.overflow_facts],
+        *[_overflow_finding(fact) for fact in flow.facts],
     ]
-    return _report(base_picture, findings, incomplete=length_result.incomplete)
+    return _report(base_picture, findings)
 
 
 def analyze_string_style(
@@ -72,17 +72,17 @@ def analyze_string_style(
     engine = _engine(base_picture, capacities=string_capacities, graph=graph)
     contexts = engine.module_contexts()
     declarations = collect_declarations(contexts, types=types)
-    length_result = LengthAnalyzer(types=types).analyze(contexts)
+    flow = analyze_literal_flow(contexts, types=types)
     findings = [
         *collect_copy_findings(engine.execution_contexts(), types=types),
         *collect_rightsizing_findings(
             contexts,
             types=types,
             declarations=declarations,
-            length_result=length_result,
+            flow=flow,
         ),
     ]
-    return _report(base_picture, findings, incomplete=length_result.incomplete)
+    return _report(base_picture, findings)
 
 
 def _overflow_finding(fact: OverflowFact) -> StringUsageFinding:
@@ -121,8 +121,6 @@ def _overflow_finding(fact: OverflowFact) -> StringUsageFinding:
 def _report(
     base_picture: BasePicture,
     findings: list[StringUsageFinding],
-    *,
-    incomplete: bool,
 ) -> SimpleReport:
     issues = [
         Issue(
@@ -135,7 +133,4 @@ def _report(
         )
         for finding in dedupe_findings(findings)
     ]
-    note = None
-    if incomplete:
-        note = "The string length analysis did not settle within its pass budget; findings may be incomplete."
-    return SimpleReport(name=base_picture.header.name, issues=issues, note=note)
+    return SimpleReport(name=base_picture.header.name, issues=issues)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from sattlint.parser_api import Assignment, FuncCallStmt, ModuleTypeDef, ScalarDatatype
+from sattlint.parser_api import Assignment, FuncCallStmt, ScalarDatatype
 
 from ...config.string_capacities import StringCapacities
 from .._string_models import StringSlot, StringSlotKey
@@ -18,8 +18,8 @@ from ..string_contexts import (
     resolve_string_slot,
     resolve_string_target,
 )
-from ._length import LengthAnalysisResult
-from ._model import SlotTypes, StringUsageFinding, dedupe_findings, display_path
+from ._literal_flow import LiteralFlowResult
+from ._model import SlotTypes, StringUsageFinding, dedupe_findings, display_path, statement_path
 
 _DATATYPE_LABELS: tuple[tuple[ScalarDatatype, str], ...] = (
     (ScalarDatatype.IDENTSTRING, "identstring"),
@@ -124,19 +124,12 @@ def collect_literal_findings(
                     datatype=datatype_label(types.datatype(target)),
                     capacity=capacity,
                     length=len(statement.value),
-                    module_path=_statement_path(context),
+                    module_path=statement_path(context),
                     site=site,
                     is_initializer=False,
                 )
             )
     return dedupe_findings(findings)
-
-
-def _statement_path(context: StringModuleContext) -> tuple[str, ...]:
-    path = display_path(context.path)
-    if isinstance(context.node, ModuleTypeDef):
-        return (*path[:1], context.node.name)
-    return path
 
 
 def _literal_finding(
@@ -235,7 +228,7 @@ def collect_rightsizing_findings(
     *,
     types: SlotTypes,
     declarations: dict[StringSlotKey, Declaration],
-    length_result: LengthAnalysisResult,
+    flow: LiteralFlowResult,
 ) -> list[StringUsageFinding]:
     findings: list[StringUsageFinding] = []
     for key, declaration in declarations.items():
@@ -244,11 +237,12 @@ def collect_rightsizing_findings(
         module_path = key.module_path
         if len(module_path) <= 1:
             continue
-        value = length_result.state.strings.get(key)
-        if value is None or not value.written or not value.known or not value.lengths:
+        # Only a slot whose every write is a known literal can be narrowed: a
+        # value this pass could not read might not fit the smaller datatype.
+        if key in flow.tainted:
             continue
-        observed = max(value.lengths)
-        if observed <= 0:
+        observed = flow.observed.get(key)
+        if observed is None or observed <= 0:
             continue
         declared = types.datatype(declaration.slot)
         declared_capacity = types.capacity(declaration.slot)

@@ -34,6 +34,7 @@ __all__ = [
     "ASTCache",
     "AnalysisReportCache",
     "CacheManager",
+    "CacheManifest",
     "CachePruneResult",
     "CacheableReport",
     "build_analysis_report_cache",
@@ -48,12 +49,17 @@ __all__ = [
     "prune_cache_dir",
 ]
 
-CACHE_VERSION = 17  # Bump when cached AST semantics or attached graphics companion record shapes change.
+#: One manifest entry: the modification instant, the size, and the SHA-256 of the
+#: exact bytes the cached payload was built from.
+type CacheManifest = dict[str, tuple[int, int, str]]
+
+CACHE_VERSION = (
+    18  # Bump when cached AST semantics, manifest entries, or attached graphics companion record shapes change.
+)
 _legacy_migration_attempted = False
-# Bumped to 6 so entries written before reports were projected are pruned instead of
-# replayed: they are still readable, but each one costs seconds to unpickle for
-# evidence no consumer restores.
-ANALYSIS_REPORT_CACHE_VERSION = 6
+# Bumped to 7 with the content-digest manifest: entries from before it cannot
+# prove which bytes produced their report, so they are pruned instead of replayed.
+ANALYSIS_REPORT_CACHE_VERSION = 7
 #: A parsed project graph is tens to hundreds of megabytes and every distinct
 #: directory setting and target produces its own entry, so abandoned
 #: configurations would otherwise accumulate without limit. The least recently
@@ -158,41 +164,76 @@ def _matches_stat_snapshot(path: Path, *, mtime_ns: object, size: object) -> boo
     return stat_result.st_mtime_ns == mtime_ns and stat_result.st_size == size
 
 
-def _snapshot_manifest(files: Iterable[Path]) -> dict[str, tuple[int, int]] | None:
-    manifest: dict[str, tuple[int, int]] = {}
+def _source_digest(path: Path) -> str | None:
+    """SHA-256 of the bytes on disk, or of a directory's entry names.
+
+    A manifest records the ICF directory itself so a newly added file
+    invalidates the entry. A directory has no bytes to hash, so its digest
+    covers the sorted names it holds: adding or removing an entry changes it.
+    """
+    try:
+        if path.is_dir():
+            return hashlib.sha256("\0".join(sorted(entry.name for entry in path.iterdir())).encode()).hexdigest()
+        raw_bytes = path.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(raw_bytes).hexdigest()
+
+
+def _matches_source_identity(path: Path, *, mtime_ns: object, size: object, digest: object) -> bool:
+    """Whether *path* still holds the revision a manifest entry describes.
+
+    ``(mtime_ns, size)`` is the cheap filter; a match is confirmed by hashing
+    the current bytes, so an edit that keeps the size and lands inside the
+    filesystem's modification granularity is still a miss.
+    """
+    if not isinstance(mtime_ns, int) or not isinstance(size, int) or not isinstance(digest, str):
+        return False
+    stat_result = _safe_stat(path)
+    if stat_result is None or stat_result.st_mtime_ns != mtime_ns or stat_result.st_size != size:
+        return False
+    current_digest = _source_digest(path)
+    return current_digest is not None and hmac.compare_digest(current_digest, digest)
+
+
+def _snapshot_manifest(files: Iterable[Path]) -> CacheManifest | None:
+    manifest: CacheManifest = {}
     for path in files:
         stat_result = _safe_stat(path)
         if stat_result is None:
             return None
-        manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size)
+        digest = _source_digest(path)
+        if digest is None:
+            return None
+        manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size, digest)
     # Nothing to validate against means nothing can ever go stale, so an empty
     # file set is not a cache entry at all.
     return manifest or None
 
 
-def _load_manifest_payload(path: Path) -> dict[str, tuple[int, int]] | None:
+def _load_manifest_payload(path: Path) -> CacheManifest | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
             loaded = json.load(handle)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
 
     if not isinstance(loaded, dict):
         return None
 
-    manifest: dict[str, tuple[int, int]] = {}
+    manifest: CacheManifest = {}
     for raw_path, raw_meta in cast(dict[object, object], loaded).items():
         if not isinstance(raw_path, str):
             return None
         if not isinstance(raw_meta, list | tuple):
             return None
         meta_values = cast(list[object] | tuple[object, ...], raw_meta)
-        if len(meta_values) != 2:
+        if len(meta_values) != 3:
             return None
-        mtime, size = meta_values
-        if not isinstance(mtime, int) or not isinstance(size, int):
+        mtime, size, digest = meta_values
+        if not isinstance(mtime, int) or not isinstance(size, int) or not isinstance(digest, str):
             return None
-        manifest[raw_path] = (mtime, size)
+        manifest[raw_path] = (mtime, size, digest)
 
     return manifest
 
@@ -200,16 +241,16 @@ def _load_manifest_payload(path: Path) -> dict[str, tuple[int, int]] | None:
 def _validate_manifest(files: object) -> bool:
     if not isinstance(files, dict):
         return False
-    for path_str, manifest in cast(dict[object, object], files).items():
+    for path_str, entry in cast(dict[object, object], files).items():
         if not isinstance(path_str, str):
             return False
-        if not isinstance(manifest, tuple):
+        if not isinstance(entry, tuple):
             return False
-        manifest_tuple = cast(tuple[object, ...], manifest)
-        if len(manifest_tuple) != 2:
+        entry_values = cast(tuple[object, ...], entry)
+        if len(entry_values) != 3:
             return False
-        mtime, size = manifest_tuple
-        if not _matches_stat_snapshot(Path(path_str), mtime_ns=mtime, size=size):
+        mtime_ns, size, digest = entry_values
+        if not _matches_source_identity(Path(path_str), mtime_ns=mtime_ns, size=size, digest=digest):
             return False
 
     return True
@@ -339,7 +380,7 @@ def _remove_file(path: Path) -> bool:
     return True
 
 
-def _save_manifest_payload(path: Path, manifest: Mapping[str, tuple[int, int]]) -> None:
+def _save_manifest_payload(path: Path, manifest: CacheManifest) -> None:
     """Write a manifest atomically, owner-only, like the payload it describes."""
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -497,6 +538,7 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "variables": "2026-11-25-latch-and-gating",
     "datatype-fields": "2026-11-25-latch-and-gating",
     "moduletype-usage": "2026-11-21-consumer-closure",
+    "module-layout": "2026-11-26-grid-origo-visibility",
     "picture-display-paths": "2026-11-25-stable-string-pass",
     "icf": "2026-11-25-partial-project",
     "dataflow": "2026-11-25-sfc-guard-and-state",

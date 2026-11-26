@@ -371,6 +371,106 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
         )
 
 
+def _declared_datatype_names(node: object) -> set[str]:
+    names: set[str] = set()
+    for variable in [
+        *cast(list[Variable], getattr(node, "moduleparameters", None) or []),
+        *cast(list[Variable], getattr(node, "localvariables", None) or []),
+    ]:
+        datatype = variable.datatype
+        if isinstance(datatype, str) and datatype:
+            names.add(datatype.casefold())
+    return names
+
+
+def _instantiated_moduletype_names(node: object) -> set[str]:
+    return {
+        child.moduletype_name.casefold()
+        for child in cast(list[object], getattr(node, "submodules", None) or [])
+        if isinstance(child, ModuleTypeInstance)
+    }
+
+
+def _consumer_moduletype_names(self: VariablesAnalyzer) -> set[str] | None:
+    """The dependency module types that can reach the analyzed library's data.
+
+    The sweep after the root traversal exists to find out-of-origin consumers,
+    but the merged view also carries every library that merely sits beside the
+    analyzed one. Walking all of those records usage nothing can consume and
+    costs most of the analysis. A consumer is found instead by what it can
+    reach: a declaration of the analyzed origin, a record type whose fields do,
+    or another consumer it instantiates. ``None`` means the view declares
+    nothing to reach, so the sweep keeps its exhaustive behaviour.
+    """
+    datatype_defs = cast(list[object], getattr(self.bp, "datatype_defs", None) or [])
+    moduletype_defs = self.bp.moduletype_defs or []
+    root_datatypes = {
+        str(getattr(datatype, "name", "")).casefold()
+        for datatype in datatype_defs
+        if self._is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+    }
+    root_moduletypes = {
+        moduletype.name.casefold()
+        for moduletype in moduletype_defs
+        if self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        )
+    }
+    if not root_datatypes and not root_moduletypes:
+        return None
+
+    reaching_datatypes = set(root_datatypes)
+    dependency_datatypes = [
+        datatype
+        for datatype in datatype_defs
+        if not self._is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for datatype in dependency_datatypes:
+            name = str(getattr(datatype, "name", "")).casefold()
+            if name in reaching_datatypes:
+                continue
+            if _declared_datatype_names(datatype) & reaching_datatypes:
+                reaching_datatypes.add(name)
+                changed = True
+
+    dependency_types = [
+        moduletype
+        for moduletype in moduletype_defs
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        )
+    ]
+    instantiated: dict[str, set[str]] = {}
+    consumers: set[str] = set()
+    for moduletype in dependency_types:
+        name = moduletype.name.casefold()
+        children = _instantiated_moduletype_names(moduletype)
+        instantiated[name] = children
+        if (_declared_datatype_names(moduletype) & reaching_datatypes) or (children & root_moduletypes):
+            consumers.add(name)
+    changed = True
+    while changed:
+        changed = False
+        for name, children in instantiated.items():
+            if name in consumers:
+                continue
+            if children & consumers:
+                consumers.add(name)
+                changed = True
+    return consumers
+
+
 def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     if self._limit_to_module_path is not None:
         return
@@ -385,12 +485,15 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     self._issues = temp_issues
     self._param_mapping_issue_indexes = {}
     self.context_builder.issues = temp_issues
+    consumers = _consumer_moduletype_names(self)
     try:
         for moduletype in self.bp.moduletype_defs or []:
             if self._is_from_root_origin(
                 getattr(moduletype, "origin_file", None),
                 getattr(moduletype, "origin_lib", None),
             ):
+                continue
+            if consumers is not None and moduletype.name.casefold() not in consumers:
                 continue
             _maybe_update_status(self, f"scanning dependency typedef {moduletype.name}")
             td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]

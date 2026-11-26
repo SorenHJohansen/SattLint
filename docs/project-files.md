@@ -35,6 +35,8 @@ cyclomatic_module_threshold = 20
 cyclomatic_step_threshold = 10
 cyclomatic_equation_block_threshold = 10
 fan_in_out_threshold = 3
+module_grid = 0.02
+module_grid_tolerance = 0.00001
 unsafe_default_tokens = ["bypass", "enable"]
 ```
 

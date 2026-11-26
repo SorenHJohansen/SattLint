@@ -49,7 +49,7 @@ LoadedProject = tuple[str, BasePicture, ProjectGraph]
 def iter_loaded_projects(
     cfg: ConfigDict,
     *,
-    use_cache: bool,
+    refresh_ast: bool,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     emit_output_fn: Callable[..., None],
@@ -60,7 +60,7 @@ def iter_loaded_projects(
             project_bp, graph = load_project_fn(
                 cfg,
                 target_name=target_name,
-                use_cache=use_cache,
+                refresh_ast=refresh_ast,
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except (OSError, RuntimeError, ValueError, ProjectLoadError) as exc:
@@ -274,7 +274,7 @@ def load_project(  # noqa: PLR0915
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
-    use_cache: bool,
+    refresh_ast: bool = False,
     refresh_mode: str = "full",
     collect_stage_timings: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
@@ -304,7 +304,11 @@ def load_project(  # noqa: PLR0915
         return project_bp
 
     key = cache_key_for_target_fn(cfg, selected_target)
-    if use_cache and cache is not None:
+    # ``refresh_ast`` rebuilds this target's parsed project graph instead of
+    # trusting the cached one. Only this layer is bypassed: the parser's
+    # per-file caches are verified against the source bytes, so re-parsing them
+    # would be pure waste. The analysis report cache has its own switch.
+    if not refresh_ast and cache is not None:
         cached = cache.load_validated(key)
         payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
         cached_project = payload_map.get("project") if payload_map is not None else None
@@ -352,9 +356,10 @@ def load_project(  # noqa: PLR0915
         status_update_fn=status_update_fn,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
         graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
-        # A run that asked for no cache must not leave or read parser-side state
-        # either, so the parser cache follows the same switch as the AST cache.
-        parser_cache_dir=cache_dir if use_cache else None,
+        # Always on. The parser verifies every entry against the source bytes it
+        # was parsed from, so a hit is never stale and skipping it can only cost
+        # a re-parse. A graph rebuild below still reuses these per-file parses.
+        parser_cache_dir=cache_dir,
     )
     lib_names: dict[str, str] = {}
     graph = _load_parser_graph(
@@ -443,7 +448,7 @@ def load_project_with_live_status(
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
-    use_cache: bool,
+    refresh_ast: bool = False,
     refresh_mode: str,
     collect_stage_timings: bool,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
@@ -458,7 +463,7 @@ def load_project_with_live_status(
         run_fn=lambda status_update_fn: load_project(
             cfg,
             target_name=target_name,
-            use_cache=use_cache,
+            refresh_ast=refresh_ast,
             refresh_mode=refresh_mode,
             collect_stage_timings=collect_stage_timings,
             require_analyzed_targets_fn=require_analyzed_targets_fn,
@@ -477,7 +482,13 @@ def load_program_ast(
     *,
     status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
-    binding = build_parser_binding(cfg, status_update_fn=status_update_fn)
+    # The parser's per-file cache verifies every entry against the source bytes,
+    # so a program the ICF per-run pass loads again is parsed at most once.
+    binding = build_parser_binding(
+        cfg,
+        status_update_fn=status_update_fn,
+        parser_cache_dir=cache_module.get_cache_dir_or_none(),
+    )
 
     lib_names: dict[str, str] = {}
     graph = _load_parser_graph(
@@ -658,7 +669,7 @@ def ensure_ast_cache(
             load_project_fn(
                 cfg,
                 target_name=target_name,
-                use_cache=False,
+                refresh_ast=True,
                 status_update_fn=emit_output_fn,
             )
             emit_output_fn("✔ AST cache updated")

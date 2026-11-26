@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, cast
@@ -13,13 +13,11 @@ from sattlint.parser_api import BasePicture
 from ..analyzers import catalog as analysis_catalog_module
 from ..analyzers import dispatch as analysis_dispatch_module
 from ..analyzers.framework import (
-    AnalysisContext,
     AnalysisSharedArtifacts,
     AnalyzerSpec,
     SimpleReport,
     build_analysis_context,
 )
-from ..analyzers.shared.instance_paths import rewrite_typedef_paths
 from ..cache import AnalysisReportCache
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
@@ -27,9 +25,8 @@ from ..core.debug import debug_enabled
 from ..core.terminal import flush_stdout
 from ..core.timings import NamedTimings, PhaseTiming, TimingBottleneck
 from ..models.project_graph import ProjectGraph
-from ..project import cache as report_cache_module
 from ..project import loading as project_loading_module
-from ..reporting.target_report import normalize_report_target_name
+from . import analyzer_workers
 from . import output as output_module
 from .checks_records import snapshot_module_tree
 from .checks_results import ChecksAnalyzerResult, ChecksTargetResult
@@ -42,6 +39,7 @@ __all__ = [
     "execute_target",
     "get_enabled_analyzers",
     "partition_analyzers",
+    "resolve_job_count",
     "run_per_run_analyzer",
 ]
 
@@ -61,6 +59,9 @@ class TargetExecution:
     # The module tree only feeds a persisted run record's navigation tree, so a run
     # that will not be stored must not pay to build it.
     build_module_tree: bool = True
+    # None means "pick a worker count from the analyzer count and the CPU count";
+    # 1 keeps every analyzer in this process.
+    jobs: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,20 +81,17 @@ def get_enabled_analyzers() -> list[Any]:
 
 
 def _analyzer_failure_message(name: str, exc: Exception, *, debug: bool) -> str:
-    """Describe a failed analyzer without putting internals in shared output.
-
-    The exception text can carry internal paths, values, and local names, and
-    the summary reaches run history, CI logs, and the UI. In a normal run the
-    message names the exception type only; ``debug`` keeps the full text for
-    the person diagnosing the failure.
-    """
-    if debug:
-        return f"{name} failed: {exc}"
-    return f"{name} failed: {type(exc).__name__}"
+    """Describe a failed analyzer without putting internals in shared output."""
+    return analyzer_workers.analyzer_failure_message(name, exc, debug=debug)
 
 
 def _analysis_status_text(target_name: str, spec: AnalyzerSpec) -> str:
     return f"Analyzing {target_name}: {spec.name} ({spec.key})"
+
+
+def resolve_job_count(requested: int | None, analyzer_count: int) -> int:
+    """The number of workers one target's analyzer loop will use."""
+    return analyzer_workers.resolve_job_count(requested, analyzer_count)
 
 
 def _profile_analyzers_enabled() -> bool:
@@ -167,39 +165,28 @@ def partition_analyzers(analyzers: list[AnalyzerSpec]) -> tuple[list[AnalyzerSpe
     return per_target, per_run
 
 
-def _rewrite_typedef_issue_paths(report: object, base_picture: BasePicture) -> None:
-    for attr in ("issues", "hits"):
-        items = getattr(report, attr, None)
-        if isinstance(items, list):
-            setattr(report, attr, rewrite_typedef_paths(cast(list[object], items), base_picture))
-
-
 def _run_target_analyzer(
+    run: analyzer_workers.AnalyzerRun,
     spec: AnalyzerSpec,
-    target_name: str,
-    context: AnalysisContext,
-    graph: ProjectGraph,
     execution: TargetExecution,
     analyzer_timings_ms: dict[str, float],
     analyzer_phase_timings_ms: dict[str, tuple[PhaseTiming, ...]],
+    *,
+    compute_fn: Callable[[], analyzer_workers.AnalyzerJobResult],
 ) -> AnalyzerExecution:
+    """Run one analyzer, print its section, and record its timing.
+
+    ``compute_fn`` either runs the analyzer here or waits for a worker's result,
+    so the printed output and the recorded timings stay identical in both modes.
+    """
     execution.emit_line(f"\n=== {spec.name} ({spec.key}) ===")
     flush_stdout()
     analyzer_started_at = perf_counter()
     try:
-        report = output_module.run_with_live_status(
-            _analysis_status_text(target_name, spec),
-            lambda spec=spec, context=context, graph=graph: report_cache_module.run_with_analysis_report_cache(
-                graph,
-                report_cache=execution.report_cache,
-                analyzer_cache_key=spec.key,
-                run_fn=lambda spec=spec, context=context: analysis_dispatch_module.run_registry_analyzer(spec, context),
-                compute_analysis_report_cache_key_fn=execution.report_cache_key,
-            ),
-        )
+        job = output_module.run_with_live_status(_analysis_status_text(run.target_name, spec), compute_fn)
     except Exception as exc:  # noqa: BLE001 - report and keep the run going
         analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
-        message = _analyzer_failure_message(spec.name, exc, debug=debug_enabled(execution.cfg))
+        message = _analyzer_failure_message(str(spec.name), exc, debug=debug_enabled(execution.cfg))
         execution.emit_line(f"❌ {message}")
         return AnalyzerExecution(
             result=ChecksAnalyzerResult(
@@ -222,28 +209,74 @@ def _run_target_analyzer(
             ),
             cancelled=True,
         )
-    analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
-    _rewrite_typedef_issue_paths(report, context.base_picture)
-    phase_timings_ms = profiling_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
-    if phase_timings_ms:
-        analyzer_phase_timings_ms[spec.key] = phase_timings_ms
-    report = normalize_report_target_name(report, target_name)
-    summary_text = report.summary()
-    findings = extract_report_findings(report, default_name=target_name)
-    execution.emit_line(summary_text)
-    return AnalyzerExecution(
-        result=ChecksAnalyzerResult(
-            key=spec.key,
-            name=str(spec.name),
-            status="completed",
-            summary=summary_text,
-            report_kind=type(report).__name__,
-            issue_count=len(findings),
-            findings=findings,
-            duration_ms=analyzer_timings_ms[spec.key],
-            phase_timings_ms=phase_timings_ms,
-        )
+    for line in job.output_lines:
+        execution.emit_line(line)
+    if job.result.duration_ms is not None:
+        analyzer_timings_ms[spec.key] = job.result.duration_ms
+    if job.phase_timings_ms:
+        analyzer_phase_timings_ms[spec.key] = job.phase_timings_ms
+    if job.result.summary is not None:
+        execution.emit_line(job.result.summary)
+    return AnalyzerExecution(result=job.result)
+
+
+def _next_pooled_job(
+    pending: Generator[tuple[analyzer_workers.AnalyzerJobResult, ...]],
+    completed: dict[str, analyzer_workers.AnalyzerJobResult],
+    key: str,
+) -> analyzer_workers.AnalyzerJobResult:
+    """Wait for one key's result, buffering the analyzers that finish earlier."""
+    while key not in completed:
+        try:
+            group = next(pending)
+        except StopIteration:
+            raise RuntimeError(f"The analyzer workers ended without a result for {key!r}.") from None
+        for job in group:
+            completed[job.key] = job
+    return completed.pop(key)
+
+
+def _iter_analyzer_executions(
+    run: analyzer_workers.AnalyzerRun,
+    specs: tuple[AnalyzerSpec, ...],
+    execution: TargetExecution,
+    analyzer_timings_ms: dict[str, float],
+    analyzer_phase_timings_ms: dict[str, tuple[PhaseTiming, ...]],
+    jobs: int,
+) -> Generator[AnalyzerExecution]:
+    """Yield one execution per analyzer, in the declared analyzer order."""
+    if jobs <= 1:
+        for spec in specs:
+            yield _run_target_analyzer(
+                run,
+                spec,
+                execution,
+                analyzer_timings_ms,
+                analyzer_phase_timings_ms,
+                compute_fn=lambda spec=spec: analyzer_workers.analyze_job(run, spec.key),
+            )
+        return
+
+    pending = analyzer_workers.run_jobs_pooled(
+        run,
+        analyzer_workers.analyzer_jobs(tuple(spec.key for spec in specs)),
+        jobs,
     )
+    completed: dict[str, analyzer_workers.AnalyzerJobResult] = {}
+    try:
+        for spec in specs:
+            yield _run_target_analyzer(
+                run,
+                spec,
+                execution,
+                analyzer_timings_ms,
+                analyzer_phase_timings_ms,
+                compute_fn=lambda spec=spec: _next_pooled_job(pending, completed, spec.key),
+            )
+    finally:
+        # A cancelled run stops consuming here; closing the generator terminates
+        # the workers instead of leaving them running the rest of the queue.
+        pending.close()
 
 
 def _analyzer_phase_bottleneck(
@@ -271,10 +304,12 @@ def _target_profiler_payload(
     graphics_timings_ms: NamedTimings,
     analyzer_bottleneck: TimingBottleneck | None,
     analyzer_phase_bottleneck: TimingBottleneck | None,
+    job_count: int,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "selected_analyzers": [spec.key for spec in execution.analyzers],
         "analyzer_timings_ms": dict(analyzer_timings_ms),
+        "jobs": job_count,
     }
     if stage_timings_ms:
         payload["stage_timings_ms"] = stage_timings_ms.to_dict()
@@ -331,41 +366,61 @@ def execute_target(
     )
     execution.emit_line(f"\n=== Target: {target_name} ===")
     flush_stdout()
-    for spec in execution.per_target_analyzers:
-        outcome = _run_target_analyzer(
-            spec,
-            target_name,
-            context,
-            graph,
-            execution,
-            analyzer_timings_ms,
-            analyzer_phase_timings_ms,
-        )
-        target_analyzers.append(outcome.result)
-        if not outcome.cancelled:
-            continue
-        execution.profiler.emit(
-            operation="checks",
-            target_name=target_name,
-            duration_ms=(perf_counter() - target_started_at) * 1000,
-            cancelled=True,
-            payload={
-                "selected_analyzers": [selected.key for selected in execution.analyzers],
-                "analyzer_timings_ms": dict(analyzer_timings_ms),
-            },
-        )
-        return TargetRunOutcome(
-            target=ChecksTargetResult(
+    run = analyzer_workers.AnalyzerRun(
+        cfg=execution.cfg,
+        target_name=target_name,
+        context=context,
+        graph=graph,
+        report_cache=execution.report_cache,
+        report_cache_key=execution.report_cache_key,
+        specs={spec.key: spec for spec in execution.per_target_analyzers},
+    )
+    job_count = resolve_job_count(execution.jobs, len(execution.per_target_analyzers))
+    if job_count > 1 and not analyzer_workers.pooling_supported():
+        # Platforms without fork cannot share the loaded graph, so the analyzer
+        # loop stays in-process instead of reloading the project per worker.
+        job_count = 1
+    if job_count > 1:
+        run_count = len(execution.per_target_analyzers)
+        execution.emit_line(f"Running {run_count} analyzers across {job_count} worker processes")
+    executions = _iter_analyzer_executions(
+        run,
+        execution.per_target_analyzers,
+        execution,
+        analyzer_timings_ms,
+        analyzer_phase_timings_ms,
+        job_count,
+    )
+    try:
+        for outcome in executions:
+            target_analyzers.append(outcome.result)
+            if not outcome.cancelled:
+                continue
+            execution.profiler.emit(
+                operation="checks",
                 target_name=target_name,
-                is_library=is_library,
-                analyzers=tuple(target_analyzers),
-                module=module_tree,
-                stage_timings_ms=stage_timings_ms or None,
-                graphics_timings_ms=graphics_timings_ms or None,
-                load_duration_ms=load_duration_ms,
-            ),
-            cancelled=True,
-        )
+                duration_ms=(perf_counter() - target_started_at) * 1000,
+                cancelled=True,
+                payload={
+                    "selected_analyzers": [selected.key for selected in execution.analyzers],
+                    "analyzer_timings_ms": dict(analyzer_timings_ms),
+                    "jobs": job_count,
+                },
+            )
+            return TargetRunOutcome(
+                target=ChecksTargetResult(
+                    target_name=target_name,
+                    is_library=is_library,
+                    analyzers=tuple(target_analyzers),
+                    module=module_tree,
+                    stage_timings_ms=stage_timings_ms or None,
+                    graphics_timings_ms=graphics_timings_ms or None,
+                    load_duration_ms=load_duration_ms,
+                ),
+                cancelled=True,
+            )
+    finally:
+        executions.close()
     analyzer_bottleneck = profiling_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
     analyzer_phase_bottleneck = _analyzer_phase_bottleneck(analyzer_phase_timings_ms)
     execution.profiler.emit(
@@ -381,6 +436,7 @@ def execute_target(
             graphics_timings_ms,
             analyzer_bottleneck,
             analyzer_phase_bottleneck,
+            job_count,
         ),
     )
     shared_artifact_profile: str | None = None

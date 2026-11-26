@@ -85,8 +85,10 @@ Runs the selected analyzers against the project targets.
 | `--target NAME` | Analyze only this target; repeatable. Names must be configured. |
 | `--module PREFIX` | Report only findings at or below this module path; repeatable. |
 | `--fail-on {any,none}` | Exit `1` when findings exist, or always exit `0`; default `any`. |
-| `--no-cache` | Skip the analysis report cache for this run. |
+| `--no-cache` | Ignore stored analyzer reports for this run. The parsed project graph is still reused. |
 | `--no-save` | Do not store the run in run history. |
+| `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
+| `--jobs N` | Run per-target analyzers in `N` forked worker processes; `0` (default) picks a count from the CPU count. |
 | `--format {json,ndjson,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
 | `--quiet` | Suppress progress and diagnostics on stderr. |

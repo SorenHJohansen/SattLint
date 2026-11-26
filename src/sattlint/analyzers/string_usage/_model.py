@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sattlint.parser_api import ScalarDatatype, resolve_variable_field_datatype
+from sattlint.parser_api import ModuleTypeDef, ScalarDatatype, resolve_variable_field_datatype
 
 from ...config.string_capacities import StringCapacities
 from ...resolution import AmbiguousRecordError, TypeGraph
 from .._string_models import StringSlot
 from ..shared._string_capacity import capacity_for_datatype, is_string_datatype
+from ..string_contexts import StringModuleContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,31 @@ class StringUsageFinding:
     suggestion: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class OverflowFact:
+    """A write whose length is known and exceeds the target's capacity."""
+
+    module_path: tuple[str, ...]
+    site: str
+    operation: str
+    target: str
+    capacity: int
+    length: int
+    source: str | None = None
+
+
+def statement_path(context: StringModuleContext) -> tuple[str, ...]:
+    """The module path a statement in *context* is reported against.
+
+    A module type's declarations are reported once at the declaration path, not
+    once per instance, so instance contexts resolve to the same location.
+    """
+    path = display_path(context.path)
+    if isinstance(context.node, ModuleTypeDef):
+        return (*path[:1], context.node.name)
+    return path
+
+
 def display_path(path: tuple[str, ...]) -> tuple[str, ...]:
     """Drop the internal module type-root prefix from a user-facing path."""
     return tuple(segment.removeprefix("TypeDef:") for segment in path)
@@ -60,4 +86,11 @@ def dedupe_findings(findings: Iterable[StringUsageFinding]) -> list[StringUsageF
     return sorted(unique.values(), key=lambda item: (item.module_path, item.site, item.kind, item.message))
 
 
-__all__ = ["SlotTypes", "StringUsageFinding", "dedupe_findings", "display_path"]
+__all__ = [
+    "OverflowFact",
+    "SlotTypes",
+    "StringUsageFinding",
+    "dedupe_findings",
+    "display_path",
+    "statement_path",
+]

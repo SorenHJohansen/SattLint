@@ -63,6 +63,16 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="module-layout",
+            delivery_scope="single-file",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/analyzers/test_module_layout.py",
+                "tests/analyzers/suites/test_registry_catalog.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="picture-display-paths",
             delivery_scope="workspace",
             implementation_bucket="workspace-navigation",

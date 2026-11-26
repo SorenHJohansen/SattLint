@@ -67,6 +67,7 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
     monkeypatch.setattr(registry_module, "analyze_same_cycle", _record("same-cycle"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
     monkeypatch.setattr(registry_module, "analyze_datatype_fields", _record("datatype-fields"))
+    monkeypatch.setattr(registry_module, "analyze_module_layout", _record("module-layout"))
     monkeypatch.setattr(registry_module, "analyze_moduletype_usage", _record("moduletype-usage"))
     monkeypatch.setattr(registry_module, "analyze_icf_configuration", _record("icf"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
@@ -98,6 +99,7 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
         "dataflow",
         "comment-code",
         "datatype-fields",
+        "module-layout",
         "moduletype-usage",
         "icf",
         "string-capacity",

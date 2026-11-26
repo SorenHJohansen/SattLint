@@ -95,7 +95,7 @@ def target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGr
 def _iter_loaded_projects(
     cfg: ConfigDict,
     *,
-    use_cache: bool = True,
+    refresh_ast: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
     failure_sink: Callable[[str, str], None] | None = None,
@@ -103,7 +103,7 @@ def _iter_loaded_projects(
 ) -> Iterator[LoadedProject]:
     return analysis_loading_module.iter_loaded_projects(
         cfg,
-        use_cache=use_cache,
+        refresh_ast=refresh_ast,
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         load_project_fn=load_project if load_project_fn is None else load_project_fn,
         emit_output_fn=emit_output if emit_output_fn is None else emit_output_fn,
@@ -114,7 +114,7 @@ def _iter_loaded_projects(
 def iter_loaded_projects(
     cfg: ConfigDict,
     *,
-    use_cache: bool = True,
+    refresh_ast: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
     failure_sink: Callable[[str, str], None] | None = None,
@@ -122,7 +122,7 @@ def iter_loaded_projects(
 ) -> Iterator[LoadedProject]:
     return _iter_loaded_projects(
         cfg,
-        use_cache=use_cache,
+        refresh_ast=refresh_ast,
         require_analyzed_targets_fn=require_analyzed_targets_fn,
         load_project_fn=load_project_fn,
         failure_sink=failure_sink,
@@ -134,7 +134,7 @@ def load_project(
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
-    use_cache: bool = True,
+    refresh_ast: bool = False,
     refresh_mode: str = "full",
     collect_stage_timings: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
@@ -147,7 +147,7 @@ def load_project(
         return analysis_loading_module.load_project(
             cfg,
             target_name=target_name,
-            use_cache=use_cache,
+            refresh_ast=refresh_ast,
             refresh_mode=refresh_mode,
             collect_stage_timings=collect_stage_timings,
             require_analyzed_targets_fn=require_analyzed_targets_fn,
@@ -160,7 +160,7 @@ def load_project(
     return analysis_loading_module.load_project_with_live_status(
         cfg,
         target_name=target_name,
-        use_cache=use_cache,
+        refresh_ast=refresh_ast,
         refresh_mode=refresh_mode,
         collect_stage_timings=collect_stage_timings,
         require_analyzed_targets_fn=require_analyzed_targets_fn,

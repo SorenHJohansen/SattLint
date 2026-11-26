@@ -216,7 +216,7 @@ def test_iter_loaded_projects_emits_debug_load_summary_when_debug_enabled(monkey
     loaded = list(
         project_application.iter_loaded_projects(
             cast(ConfigDict, {"debug": True}),
-            use_cache=False,
+            refresh_ast=True,
             require_analyzed_targets_fn=lambda _cfg: ["TargetA"],
             load_project_fn=cast(
                 Callable[..., tuple[BasePicture, ProjectGraph]], lambda _cfg, **_kwargs: (project_bp, graph)
@@ -375,7 +375,7 @@ def test_load_project_ast_only_refresh_skips_project_merge_and_save(monkeypatch:
                 "analyzed_programs_and_libraries": ["TargetA"],
             },
         ),
-        use_cache=False,
+        refresh_ast=True,
         refresh_mode="ast-only",
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
         get_cache_dir_fn=lambda: Path("cache-dir"),
@@ -629,7 +629,7 @@ def test_load_project_parses_portable_mini_project(tmp_path: Path):
 
     project_bp, graph = project_application.load_project(
         cast(ConfigDict, context["cfg"]),
-        use_cache=False,
+        refresh_ast=True,
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",
     )
 
@@ -1082,7 +1082,7 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
     def fake_load_project(
         _cfg: ConfigDict,
         target_name: str | None = None,
-        use_cache: bool = True,
+        refresh_ast: bool = False,
         **_kwargs: object,
     ) -> tuple[BasePicture, ProjectGraph]:
         resolved_target = target_name or ""
@@ -1140,7 +1140,7 @@ def test_ensure_ast_cache_logs_debug_traceback_on_rebuild_failure(
     def fail_load_project(
         _cfg: ConfigDict,
         target_name: str | None = None,
-        use_cache: bool = True,
+        refresh_ast: bool = False,
         **_kwargs: object,
     ) -> tuple[BasePicture, ProjectGraph]:
         raise RuntimeError("boom")
@@ -1306,13 +1306,12 @@ def test_load_project_library_target_resolves_origin_and_finds_unused(tmp_path: 
         "other_lib_dirs": [str(lib_dir)],
         "analyzed_programs_and_libraries": [target_name],
         "mode": "draft",
-        "use_cache": False,
         "debug": False,
     }
 
     project_bp, graph = project_application.load_project(
         cast(ConfigDict, cfg),
-        use_cache=False,
+        refresh_ast=True,
         get_cache_dir_fn=lambda: tmp_path / "cache-dir",
     )
 

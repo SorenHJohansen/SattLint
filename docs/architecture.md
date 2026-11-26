@@ -109,6 +109,8 @@ The application layer is the seam shared by both surfaces:
   iteration, per-run analyzers, cancellation, and run persistence.
 - `application/checks_execution.py` owns one target's analyzer loop, report
   cache lookup, analyzer failure isolation, and timing collection.
+- `application/analyzer_workers.py` runs one analyzer and, when a target selects
+  several, spreads them across forked workers that inherit the loaded graph.
 - `application/checks_results.py` defines typed target and run results.
 - `application/findings.py` normalizes heterogeneous report issues into the
   single finding model.

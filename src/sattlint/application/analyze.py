@@ -47,7 +47,9 @@ def run_checks(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     project_path: str = "",
+    jobs: int | None = None,
     emit_output: Callable[[str], None] | None = None,
 ) -> None:
     checks_module.run_checks(
@@ -57,7 +59,9 @@ def run_checks(
         get_enabled_analyzers_fn=_get_selectable_analyzers,
         target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
+        refresh_ast=refresh_ast,
         project_path=project_path,
+        jobs=jobs,
         emit_output=emit_output,
     )
 
@@ -67,7 +71,9 @@ def run_checks_result(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     project_path: str = "",
+    jobs: int | None = None,
     emit_output: Callable[[str], None] | None = None,
 ) -> checks_module.ChecksRunResult:
     return checks_module.run_checks_result(
@@ -77,7 +83,9 @@ def run_checks_result(
         get_enabled_analyzers_fn=_get_selectable_analyzers,
         target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
+        refresh_ast=refresh_ast,
         project_path=project_path,
+        jobs=jobs,
         emit_output=emit_output,
     )
 
@@ -87,8 +95,10 @@ def collect_checks_result(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     persist_run: bool = True,
     project_path: str = "",
+    jobs: int | None = None,
     emit_output: Callable[[str], None] | None = None,
 ) -> checks_module.ChecksRunResult:
     """Run checks without emitting the human-readable report to stdout."""
@@ -99,7 +109,9 @@ def collect_checks_result(
         get_enabled_analyzers_fn=_get_selectable_analyzers,
         target_is_library_fn=project_application.target_is_library,
         use_cache=use_cache,
+        refresh_ast=refresh_ast,
         persist_run=persist_run,
         project_path=project_path,
+        jobs=jobs,
         emit_output=emit_output,
     )

@@ -38,7 +38,7 @@ class ASTCache:
     def has_payload(self, key: str) -> bool:
         return self._path(key).exists()
 
-    def load_manifest(self, key: str) -> dict[str, tuple[int, int]] | None:
+    def load_manifest(self, key: str) -> cache_module.CacheManifest | None:
         return cache_module._load_manifest_payload(self._manifest_path(key))
 
     def has_manifest(self, key: str) -> bool:

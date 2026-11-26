@@ -112,6 +112,8 @@ class ExactStringInferenceEngine:
         self._moduletype_index = _candidate_moduletype_index(base_picture, graph)
         self._contexts_by_path: dict[tuple[str, ...], StringModuleContext] = {}
         self._execution_contexts: list[StringModuleContext] = []
+        # Every module type the tree resolves, keyed by declaration identity.
+        self._resolved_typedefs: dict[tuple[str, str, str], ModuleTypeDef] = {}
         if self.debug:
             log.debug(
                 "string-inference: building module context tree for root=%s (typedefs=%d)",
@@ -120,16 +122,36 @@ class ExactStringInferenceEngine:
             )
         self._root_context = self._build_basepicture_context()
         self._collect_contexts(self._root_context)
-        for moduletype in self.base_picture.moduletype_defs or []:
-            self._collect_contexts(self._build_typedef_root_context(moduletype))
+        self._build_reachable_typedef_roots()
         if self.debug:
             log.debug(
-                "string-inference: context tree built; %d contexts, %d executable",
+                "string-inference: context tree built; %d contexts, %d executable, %d instantiated types",
                 len(self._contexts_by_path),
                 len(self._execution_contexts),
+                len(self._resolved_typedefs),
             )
         self._initial_state = self._build_initial_state()
         self._solved_state: _AbstractState | None = None
+
+    def _build_reachable_typedef_roots(self) -> None:
+        """Add a declaration-path context for every type the tree instantiates.
+
+        The merged project view carries every module type of every dependency
+        library, and a large project has thousands. Expanding all of them used to
+        produce hundreds of thousands of contexts for a tree that instantiates a
+        few dozen types, and the length analysis then walked all of them on every
+        fixpoint pass. A type the analyzed tree never instantiates has no module
+        path to report against, so only reachable types get a root. Expanding one
+        can reach further types, so this repeats until nothing new appears.
+        """
+        built: set[tuple[str, str, str]] = set()
+        while True:
+            pending = [moduletype for identity, moduletype in self._resolved_typedefs.items() if identity not in built]
+            if not pending:
+                return
+            for moduletype in pending:
+                built.add(_typedef_identity(moduletype))
+                self._collect_contexts(self._build_typedef_root_context(moduletype))
 
     def infer(self, reference: str, *, module_path: tuple[str, ...] | list[str]) -> StringInferenceResult:
         self._ensure_solved()
@@ -290,6 +312,7 @@ class ExactStringInferenceEngine:
             )
             return StringModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
 
+        self._resolved_typedefs.setdefault(_typedef_identity(resolved_typedef), resolved_typedef)
         scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
         self._context_build_depth += 1
         if self.debug:
@@ -819,6 +842,14 @@ def _candidate_moduletype_index(
         seen.add(identity)
         index.setdefault(moduletype.name.casefold(), []).append(moduletype)
     return {key: tuple(value) for key, value in index.items()}
+
+
+def _typedef_identity(moduletype: ModuleTypeDef) -> tuple[str, str, str]:
+    return (
+        moduletype.name.casefold(),
+        (moduletype.origin_lib or "").casefold(),
+        (moduletype.origin_file or "").casefold(),
+    )
 
 
 def _resolve_typedef_for_instance(

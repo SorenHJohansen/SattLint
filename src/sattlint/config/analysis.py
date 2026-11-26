@@ -7,6 +7,7 @@ loose dict lookups.
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any, cast
 
 DEFAULT_UNSAFE_DEFAULT_TOKENS = ("bypass", "enable")
@@ -16,6 +17,13 @@ DEFAULT_CYCLOMATIC_STEP_THRESHOLD = 10
 DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD = 10
 
 DEFAULT_FAN_IN_OUT_THRESHOLD = 3
+
+#: The drawing grid a module uses when it writes no ``Grid`` clause.
+DEFAULT_MODULE_GRID = 0.02
+#: Distance below which a value counts as sitting exactly on the grid.
+#: Serialized sources write coordinates with up to six decimals, so the
+#: tolerance absorbs that rounding without hiding a real off-grid value.
+DEFAULT_MODULE_GRID_TOLERANCE = 1e-5
 
 
 def _analysis_section(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -67,10 +75,29 @@ def cyclomatic_equation_block_threshold(config: dict[str, Any] | None) -> int:
     )
 
 
+def _positive_float(value: object, default: float) -> float:
+    if isinstance(value, int | float) and not isinstance(value, bool) and isfinite(value) and value > 0:
+        return float(value)
+    return default
+
+
 def fan_in_out_threshold(config: dict[str, Any] | None) -> int:
     return _positive_int(
         _analysis_section(config).get("fan_in_out_threshold"),
         DEFAULT_FAN_IN_OUT_THRESHOLD,
+    )
+
+
+def module_grid(config: dict[str, Any] | None) -> float:
+    """The drawing grid used when a module writes no ``Grid`` clause."""
+    return _positive_float(_analysis_section(config).get("module_grid"), DEFAULT_MODULE_GRID)
+
+
+def module_grid_tolerance(config: dict[str, Any] | None) -> float:
+    """The distance below which a value counts as sitting exactly on the grid."""
+    return _positive_float(
+        _analysis_section(config).get("module_grid_tolerance"),
+        DEFAULT_MODULE_GRID_TOLERANCE,
     )
 
 
@@ -79,10 +106,14 @@ __all__ = [
     "DEFAULT_CYCLOMATIC_MODULE_THRESHOLD",
     "DEFAULT_CYCLOMATIC_STEP_THRESHOLD",
     "DEFAULT_FAN_IN_OUT_THRESHOLD",
+    "DEFAULT_MODULE_GRID",
+    "DEFAULT_MODULE_GRID_TOLERANCE",
     "DEFAULT_UNSAFE_DEFAULT_TOKENS",
     "cyclomatic_equation_block_threshold",
     "cyclomatic_module_threshold",
     "cyclomatic_step_threshold",
     "fan_in_out_threshold",
+    "module_grid",
+    "module_grid_tolerance",
     "unsafe_default_tokens",
 ]

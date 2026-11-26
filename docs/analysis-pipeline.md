@@ -115,6 +115,42 @@ A report-cache hit reuses the stored report without re-running the analyzer.
 The cache key covers the project cache key, the analyzer key, the analyzer's
 version marker, and the effective analyzer settings.
 
+### Parallel analyzer execution
+
+Analyzers are pure Python, so a thread cannot overlap two of them: the
+interpreter lock serializes them anyway. Processes can overlap. When a target
+selects more than one analyzer, `execute_target` forks a worker pool after the
+graph is loaded:
+
+- the parent loads the target once and forks afterwards, so the workers inherit
+  the parsed graph copy-on-write instead of loading or pickling it again;
+- each worker runs one analyzer at a time and returns a plain result record;
+- analyzers that share work are grouped into one job so the second one reuses
+  what the first published instead of recomputing it (`variables` and
+  `datatype-fields`);
+- the parent drains the results in selection order, so the printed sections and
+  the stored run record stay deterministic even though the analyzers finish out
+  of order;
+- anything an analyzer prints is captured in its worker and printed with that
+  analyzer's section;
+- a worker that raises returns a failure record instead of taking the pool down;
+- cancelling the run terminates the workers immediately.
+
+The worker count comes from `--jobs`; `0` (the default) picks a count from the
+analyzer count and the CPU count, capped at a small number because a run is
+bounded by its slowest analyzer. `--jobs 1` keeps every analyzer in one process.
+
+Two properties of the design are worth knowing:
+
+- Analyzers may reuse another analyzer's shared artifacts as an optimization
+  (the `variables` collector publishes views for derived analyzers). Each worker
+  starts from the state the parent had at fork time, so a worker recomputes what
+  it needs instead of reading a sibling worker's memory. That costs time, never
+  correctness: every analyzer can run standalone.
+- Platforms without the `fork` start method keep the single-process loop. A
+  spawned worker would reload the project graph per worker, which costs more
+  than the analyzers it saves.
+
 ## 7. Failure isolation
 
 A per-target analyzer that raises is recorded as failed:

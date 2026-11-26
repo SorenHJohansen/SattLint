@@ -61,13 +61,13 @@ LoadedProject = project_application.LoadedProject
 def _iter_loaded_projects(
     cfg: ConfigDict,
     *,
-    use_cache: bool = True,
+    refresh_ast: bool = False,
     failure_sink: Callable[[str, str], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
 ) -> Iterator[LoadedProject]:
     return project_application.iter_loaded_projects(
         cfg,
-        use_cache=use_cache,
+        refresh_ast=refresh_ast,
         failure_sink=failure_sink,
         emit_output_fn=project_application.emit_output if emit_output_fn is None else emit_output_fn,
     )
@@ -130,8 +130,10 @@ def collect_run_checks_result(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     persist_run: bool = False,
     project_path: str = "",
+    jobs: int | None = None,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -212,7 +214,7 @@ def collect_run_checks_result(
     loaded_projects = (
         resolved_iter_loaded_projects(
             cfg,
-            use_cache=use_cache,
+            refresh_ast=refresh_ast,
             failure_sink=load_failures.record,
             emit_output_fn=emit_line,
         )
@@ -229,6 +231,7 @@ def collect_run_checks_result(
         target_is_library_fn=resolved_target_is_library,
         emit_line=emit_line,
         build_module_tree=persist_run,
+        jobs=jobs,
     )
     try:
         load_started_at = perf_counter()
@@ -289,8 +292,10 @@ def run_checks_result(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     persist_run: bool = True,
     project_path: str = "",
+    jobs: int | None = None,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -302,8 +307,10 @@ def run_checks_result(
         cfg,
         selected_keys,
         use_cache=use_cache,
+        refresh_ast=refresh_ast,
         persist_run=persist_run,
         project_path=project_path,
+        jobs=jobs,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,
@@ -317,7 +324,9 @@ def run_checks(
     selected_keys: list[str] | None,
     *,
     use_cache: bool = True,
+    refresh_ast: bool = False,
     project_path: str = "",
+    jobs: int | None = None,
     iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     get_enabled_analyzers_fn: Callable[[], list[Any]] | None = None,
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
@@ -329,8 +338,10 @@ def run_checks(
         cfg,
         selected_keys,
         use_cache=use_cache,
+        refresh_ast=refresh_ast,
         persist_run=True,
         project_path=project_path,
+        jobs=jobs,
         iter_loaded_projects_fn=iter_loaded_projects_fn,
         get_enabled_analyzers_fn=get_enabled_analyzers_fn,
         target_is_library_fn=target_is_library_fn,

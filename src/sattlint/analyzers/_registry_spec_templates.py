@@ -181,6 +181,43 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             context_kwargs=("analysis_context", "analyzed_target_is_library"),
         ),
         AnalyzerSpecTemplate(
+            key="module-layout",
+            name="Module layout",
+            description=(
+                "Checks that each module's clipping rectangle and placement follow the "
+                "drawing grid, and that drawn objects stay inside the visible area.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Invalid clipping bounds - the rectangle has no area.\n"
+                "  Example: both corners are written at the same point.\n"
+                "\n"
+                "- Origin not centered or at the bottom-left - the module's local origin "
+                "is somewhere else in its clipping rectangle.\n"
+                "  Example: clipping bounds (-1.0, -1.0) to (1.0, 1.66) place the origin "
+                "neither in the middle nor in a corner.\n"
+                "\n"
+                "- Size off grid - a clipping width, height, or placed module size is not "
+                "a multiple of the drawing grid.\n"
+                "  Example: a module placed 0.27 wide on a 0.02 grid.\n"
+                "\n"
+                "- Placement off grid - a module's position is not aligned to the grid of "
+                "the module that contains it.\n"
+                "  Example: a module placed at x = 0.05 on a 0.02 grid.\n"
+                "\n"
+                "- Object outside clipping bounds - a graphics or interactor object lies "
+                "entirely outside its module's clipping rectangle.\n"
+                "  Example: a text object drawn below the visible area.\n"
+                "\n"
+                "A module uses its own written Grid clause when it has one; otherwise the "
+                "configured default applies. Geometry driven by variables is skipped, "
+                "because its written numbers are not the drawn values."
+            ),
+            analyzer_attr="analyze_module_layout",
+            category="heuristic",
+            context_kwargs=("config", "analyzed_target_is_library"),
+        ),
+        AnalyzerSpecTemplate(
             key="picture-display-paths",
             name="PictureDisplay paths",
             description=(

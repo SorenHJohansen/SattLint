@@ -124,8 +124,9 @@ parser-owned syntax, report it to the `sattline-parser` project.
   companion file invalidates the entry.
 - The analysis report cache also depends on analyzer settings and analyzer
   behavior versions.
-- If a cache entry is corrupt or unavailable, delete the cache directory or run
-  with `--no-cache` to bypass the report cache for one run.
+- If a stored analyzer report is suspect, delete the cache directory or run
+  with `--no-cache` to ignore reports for one run. Add `--refresh-ast` only
+  when the parsed project graph itself is suspect.
 - In the UI, opening a project refreshes the parsed project; rerun the analysis
   after a large change.
 
@@ -227,7 +228,9 @@ Analysis is CPU-bound. To understand a slow run:
 - inspect the profiling log under the cache directory;
 - compare the target load stages with analyzer durations;
 - try a focused analyzer selection to isolate the cost;
-- run with `--no-cache` once to distinguish cache validation from analysis.
+- run with `--no-cache` once to tell a stale analyzer report from an analyzer
+  that is genuinely slow, and with `--refresh-ast` only if the parsed graph is
+  in question.
 
 A first run is slower because it builds the cache. Later runs reuse the parsed
 project graph when its manifest is still valid.

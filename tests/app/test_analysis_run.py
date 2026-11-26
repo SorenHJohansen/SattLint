@@ -27,7 +27,7 @@ def test_iter_loaded_projects_skips_failed_targets(
         _cfg: ConfigDict,
         target_name: str | None = None,
         *,
-        use_cache: bool = True,
+        refresh_ast: bool = False,
         collect_stage_timings: bool = False,
     ) -> tuple[object, AnalysisGraphStub]:
         if target_name == "Broken":

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from copy import deepcopy
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
@@ -32,6 +33,8 @@ VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
         "cyclomatic_step_threshold",
         "cyclomatic_equation_block_threshold",
         "fan_in_out_threshold",
+        "module_grid",
+        "module_grid_tolerance",
     }
 )
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
@@ -447,6 +450,23 @@ def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidat
                 ConfigValidationError(
                     key_path=f"analysis.{threshold_key}",
                     message=f"analysis.{threshold_key} must be a positive integer",
+                )
+            )
+
+    for float_key in ("module_grid", "module_grid_tolerance"):
+        float_value = analysis.get(float_key)
+        if float_value is None:
+            continue
+        if (
+            not isinstance(float_value, int | float)
+            or isinstance(float_value, bool)
+            or not isfinite(float_value)
+            or float_value <= 0
+        ):
+            errors.append(
+                ConfigValidationError(
+                    key_path=f"analysis.{float_key}",
+                    message=f"analysis.{float_key} must be a positive number",
                 )
             )
 

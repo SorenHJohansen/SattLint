@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from math import inf, nan
 from pathlib import Path
 from typing import ClassVar, cast
 
@@ -144,6 +145,64 @@ def test_validate_config_rejects_the_retired_spec_compliance_section():
 
     assert result.passed is False
     assert {error.key_path for error in result.errors} == {"analysis.spec_compliance"}
+
+
+def test_validate_config_reports_invalid_module_layout_values():
+    result = config_module.validate_config(
+        cast(
+            ConfigDict,
+            {
+                "analysis": {
+                    "module_grid": 0,
+                    "module_grid_tolerance": "wide",
+                    "module_grid_extra": 1,
+                }
+            },
+        )
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.module_grid",
+        "analysis.module_grid_tolerance",
+        "analysis.module_grid_extra",
+    }
+
+
+def test_validate_config_rejects_non_finite_module_layout_values():
+    result = config_module.validate_config(
+        cast(
+            ConfigDict,
+            {
+                "analysis": {
+                    "module_grid": inf,
+                    "module_grid_tolerance": nan,
+                }
+            },
+        )
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.module_grid",
+        "analysis.module_grid_tolerance",
+    }
+
+
+def test_validate_config_accepts_valid_module_layout_values():
+    result = config_module.validate_config(
+        cast(
+            ConfigDict,
+            {
+                "analysis": {
+                    "module_grid": 0.01,
+                    "module_grid_tolerance": 0.0001,
+                }
+            },
+        )
+    )
+
+    assert result.passed is True
 
 
 def test_validate_config_reports_invalid_analysis_knob_shapes():

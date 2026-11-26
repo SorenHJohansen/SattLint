@@ -44,6 +44,7 @@ The category is metadata, not a severity. A finding is a finding.
 | `variables` | Variable issues | correctness | per target |
 | `datatype-fields` | Datatype field usage | correctness | per target |
 | `moduletype-usage` | Module-type usage | correctness | per target |
+| `module-layout` | Module layout | heuristic | per target |
 | `picture-display-paths` | PictureDisplay paths | correctness | per target |
 | `icf` | ICF configuration | correctness | per run |
 | `sfc` | SFC checks | correctness | per target |
@@ -96,35 +97,36 @@ Checks string values against the capacity of the datatype that stores them.
 
 - A literal initializer or assignment is reported when it is longer than the
   declared capacity.
-- An assignment from another string is reported when its known value is longer
-  than the target capacity.
+- An assignment from a variable is reported when that variable's value is a
+  literal written earlier in the same module.
 - A string procedure is reported when it writes more characters than the target
-  can hold. The value-tracking procedures include `ClearString`, `SetStringPos`,
-  `CutString`, `PutBlanks`, `InsertString`, `Concatenate`, `ExtractString`,
-  `CopyString`, `CopyStringNoSort`, `IntegerToString`, and `RealToString`.
-  `CopyVariable` and `CopyVarNoSort` are tracked when both operands are strings.
-  National-case transforms are treated as unknown writes because the result
-  length depends on the locale.
+  can hold. The modelled procedures are `PutBlanks`, `InsertString`,
+  `Concatenate`, `ExtractString`, `CopyString`, `CopyVariable`, `CopyVarNoSort`,
+  and `IntegerToString`; each needs its length-determining arguments to be
+  literals or known locals.
 
-The analyzer tracks only lengths and cursor positions, never the text, so a
-module with many string operations stays cheap. A finding is emitted only when
-every operand length is known from a literal, initializer, parameter mapping, or
-a modelled procedure. An unknown input is never guessed. When the values do not
-settle within the pass budget, the report carries a note that the findings may be
-incomplete.
+The analysis is deliberately literal-only. A value is known when it is a literal,
+or when a local's writes in the same module are literals; nothing is carried
+across a module boundary, a parameter mapping, or a branch, and there is no
+fixed point. That keeps one module's cost proportional to its own statements.
+
+The trade is worth knowing: a length that only a whole-program analysis could
+know is not reported. For example, a value written in one module and read in
+another, or a length that depends on a procedure's cursor arithmetic, is left
+alone rather than guessed.
 
 ## String style
 
 Key: `string-style`
 
-Suggests a more precise string datatype or procedure when every observed value
-is known. The analyzer is a suggestion set and is selected separately from the
-capacity checks.
+Suggests a more precise string datatype or procedure. The analyzer is a
+suggestion set and is selected separately from the capacity checks.
 
-- A local string variable is reported when every value it receives fits a
-  smaller string datatype. Module parameters, root-level globals, constants, and
-  record fields are not reported, because the caller or another unit may rely on
-  the wider contract.
+- A local string variable is reported when every literal it receives in its own
+  module fits a smaller string datatype. A variable that receives a value the
+  analysis cannot read is not suggested, because that value might not fit.
+  Module parameters, root-level globals, constants, and record fields are not
+  reported, because the caller or another unit may rely on the wider contract.
 - `CopyVariable` and `CopyVarNoSort` are reported when both operands are
   strings, with the matching string-specific procedure in the message.
   `CopyVariable` sorts like `CopyString`, but its third argument is a status
@@ -166,6 +168,35 @@ unit and the declaring unit has no consumer. Definitions marked private are
 never reported. The message names the declaring unit.
 
 This is a workspace-wide check and is selected deliberately.
+
+## Module layout
+
+Key: `module-layout`
+
+Checks each module's clipping rectangle, its placement, and the objects drawn
+inside it.
+
+- An empty clipping rectangle has no area and is reported.
+- A module's local origin must sit at the center of its clipping rectangle
+  (bounds symmetric around zero) or at its bottom-left corner (bounds starting
+  at zero). Any other origin position is reported.
+- Clipping widths and heights must be multiples of the module's own grid,
+  written as the `Grid` clause or taken from the configured default.
+- A module's position and placed size must be aligned to the grid of the module
+  that contains it.
+- A graphics or interactor object that lies entirely outside its module's
+  clipping rectangle is reported. An object that touches or crosses an edge is
+  not reported, because only a fully hidden object is a defect.
+
+Module types declared beside the analyzed unit are checked the same way. A
+module type referenced from another library is not descended into; its own unit
+owns those findings.
+
+Geometry whose value comes from a variable input or a computed expression is
+skipped rather than judged from its literal fallback value. That covers
+clipping corners, invocation coordinates, and object coordinates. An output
+binding or a literal-only tail leaves the written coordinate in place, so it is
+still checked.
 
 ## PictureDisplay paths
 

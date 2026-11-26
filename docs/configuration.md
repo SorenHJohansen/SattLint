@@ -120,12 +120,17 @@ configuration and in a project file. Project values win.
 | `cyclomatic_step_threshold` | `10` | Cyclomatic complexity: an SFC step. |
 | `cyclomatic_equation_block_threshold` | `10` | Cyclomatic complexity: an equation block. |
 | `fan_in_out_threshold` | `3` | Variable analysis: high fan-in or fan-out of a root-level variable. |
+| `module_grid` | `0.02` | Module layout: drawing grid used when a module writes no `Grid` clause. |
+| `module_grid_tolerance` | `0.00001` | Module layout: distance below which a value counts as exactly on the grid. The same distance decides when an object is fully outside a clipping rectangle. |
 
 Rules:
 
 - An empty list for `unsafe_default_tokens` is treated as the default list.
 - A threshold must be a positive integer; an invalid value falls back to the
   default when read, and configuration validation reports it as an error.
+- A module-layout distance must be a finite positive number; an invalid value
+  falls back to the default when read, and configuration validation reports it
+  as an error.
 - The analyzer settings are part of the analysis report cache key. Changing one
   invalidates cached analyzer reports even though the parsed project is
   unchanged.
@@ -158,7 +163,8 @@ Configuration validation has two levels.
 - `run_history.limit` and `output.retention_lines` must be positive integers;
 - `review.output_dir` must be a path string;
 - every string capacity must be a positive integer;
-- every analyzer threshold must be a positive integer.
+- every analyzer threshold must be a positive integer;
+- a module-layout distance must be a finite positive number.
 
 **Filesystem validation** checks configured paths and targets:
 

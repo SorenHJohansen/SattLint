@@ -17,8 +17,12 @@ class TopLevelConfigField:
 TOP_LEVEL_CONFIG_FIELDS: dict[str, TopLevelConfigField] = {
     "analyzed_programs_and_libraries": TopLevelConfigField(
         [],
-        "Names of program or library units to analyze.",
-        affects_project_cache=True,
+        (
+            "Names of program or library units to analyze. Selecting a different list does not change "
+            "a target's parsed graph: the cache key names that target explicitly, so a filtered run "
+            "reuses the same entry."
+        ),
+        affects_project_cache=False,
     ),
     "mode": TopLevelConfigField(
         "official", "Controls whether official or draft file extensions are resolved.", affects_project_cache=True

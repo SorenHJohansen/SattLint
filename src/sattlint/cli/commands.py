@@ -76,8 +76,10 @@ class _AnalyzeOptions:
     targets: tuple[str, ...]
     modules: tuple[str, ...]
     use_cache: bool
+    refresh_ast: bool
     persist_run: bool
     fail_on_findings: bool
+    jobs: int | None
 
 
 def _output_options(args: argparse.Namespace) -> _OutputOptions:
@@ -133,8 +135,10 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
         targets=tuple(str(value) for value in args.target),
         modules=tuple(str(value) for value in args.module),
         use_cache=not bool(args.no_cache),
+        refresh_ast=bool(args.refresh_ast),
         persist_run=not bool(args.no_save),
         fail_on_findings=str(args.fail_on) == "any",
+        jobs=None if int(args.jobs) == 0 else int(args.jobs),
     )
 
 
@@ -283,16 +287,20 @@ def _capture_run(
     keys: list[str] | None,
     *,
     use_cache: bool,
+    refresh_ast: bool,
     persist_run: bool,
     project_path: str,
+    jobs: int | None,
 ) -> ChecksRunResult:
     try:
         return collect_checks_result(
             cfg,
             keys,
             use_cache=use_cache,
+            refresh_ast=refresh_ast,
             persist_run=persist_run,
             project_path=project_path,
+            jobs=jobs,
         )
     except TargetLoadError as exc:
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
@@ -316,8 +324,10 @@ def command_analyze(args: argparse.Namespace) -> int:
         cfg,
         keys,
         use_cache=options.use_cache,
+        refresh_ast=options.refresh_ast,
         persist_run=options.persist_run,
         project_path=project_path,
+        jobs=options.jobs,
     )
     if result.cancelled:
         _discard_output_file(options.output)

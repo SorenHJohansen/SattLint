@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import stat
 from pathlib import Path
 
@@ -196,3 +198,56 @@ def test_legacy_cache_migration_moves_the_signing_key_with_the_payloads(
 
     assert not (destination / cache_module._PICKLE_HMAC_KEY_NAME).exists()
     assert (tmp_path / "moved-key").read_bytes() == b"legacy-key"
+
+
+def test_ast_cache_rejects_a_same_size_edit_that_preserves_the_modification_time(tmp_path: Path) -> None:
+    """The digest decides, not the stat snapshot.
+
+    A rewrite that keeps the byte count and restores the exact modification
+    instant is invisible to ``(mtime_ns, size)``. The parser proves freshness by
+    hashing the bytes, and the graph cache must hold the same line.
+    """
+    source = _source(tmp_path)
+    original_stat = source.stat()
+    cache = ASTCache(tmp_path / "caches")
+    cache.save("key", project={"generation": 1}, files=[source])
+    assert cache.load_validated("key") is not None
+
+    source.write_text("y := 2;", encoding="utf-8")
+    assert source.stat().st_size == original_stat.st_size
+    os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    assert source.stat().st_mtime_ns == original_stat.st_mtime_ns
+
+    assert cache.load_validated("key") is None
+
+
+def test_the_report_cache_rejects_a_same_size_edit_that_preserves_the_modification_time(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    original_stat = source.stat()
+    cache = AnalysisReportCache(tmp_path / "caches")
+    assert cache.save("key", report={"report": "old"}, files=[source]) is True
+    payload = cache.load("key")
+    assert payload is not None and cache.validate(payload) is True
+
+    source.write_text("y := 2;", encoding="utf-8")
+    os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+
+    assert cache.validate(payload) is False
+
+
+def test_a_manifest_from_before_the_content_digest_is_not_trusted(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    stat_result = source.stat()
+    cache = ASTCache(tmp_path / "caches")
+    cache.save("key", project={"generation": 1}, files=[source])
+
+    manifest_path = cache.cache_dir / "key.manifest.json"
+    manifest_path.write_text(
+        json.dumps({str(source): [stat_result.st_mtime_ns, stat_result.st_size]}),
+        encoding="utf-8",
+    )
+
+    assert cache.load_manifest("key") is None
+    assert cache.load_validated("key") is None

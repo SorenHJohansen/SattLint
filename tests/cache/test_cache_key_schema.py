@@ -79,3 +79,18 @@ def test_report_cache_key_carries_the_same_schema_and_parser_version(monkeypatch
 def test_cache_key_schema_version_is_explicit() -> None:
     assert isinstance(cache_module.CACHE_KEY_SCHEMA_VERSION, int)
     assert cache_module.CACHE_KEY_SCHEMA_VERSION >= 1
+
+
+def test_cache_key_ignores_the_configured_target_list(tmp_path: Path) -> None:
+    """A target's parsed graph does not depend on the other selected targets.
+
+    Keeping the list in the key made a `--target` run rebuild entries the full
+    run had just written, which cost a full re-parse of every ICF program.
+    """
+    program_dir = str(tmp_path / "program")
+    one_target = _cfg(program_dir=program_dir, analyzed_programs_and_libraries=["Demo"])
+    two_targets = _cfg(program_dir=program_dir, analyzed_programs_and_libraries=["Demo", "Other"])
+
+    assert cache_module.compute_cache_key(one_target, analysis_target="Demo") == cache_module.compute_cache_key(
+        two_targets, analysis_target="Demo"
+    )

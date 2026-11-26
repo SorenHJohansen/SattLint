@@ -45,6 +45,8 @@ class AnalysisConfig(TypedDict):
     cyclomatic_step_threshold: int
     cyclomatic_equation_block_threshold: int
     fan_in_out_threshold: int
+    module_grid: float
+    module_grid_tolerance: float
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
@@ -53,6 +55,8 @@ class AnalysisConfigOverride(TypedDict, total=False):
     cyclomatic_step_threshold: int
     cyclomatic_equation_block_threshold: int
     fan_in_out_threshold: int
+    module_grid: float
+    module_grid_tolerance: float
 
 
 class ConfigDict(TypedDict):

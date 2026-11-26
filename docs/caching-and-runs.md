@@ -34,8 +34,10 @@ flowchart LR
 The AST cache stores a validated loaded project graph for one target.
 
 - The key is derived from the parser version, the analysis target, and every
-  configuration key that affects loading: targets, mode, roots, and string
-  capacities.
+  configuration key that affects loading: mode, roots, and string capacities.
+  The configured target list is not part of it: a target's parsed graph does not
+  depend on which other targets were selected, so filtering a run with
+  `--target` reuses the same entries.
 - The payload is a signed pickle containing the root picture and project graph.
 - The manifest is a JSON snapshot of every file that contributed to the load:
   source files, graphics companions, distribution companions, dependency
@@ -64,6 +66,16 @@ The analysis report cache stores one analyzer report per target and analyzer.
 The semantic foundation is not persisted. It holds references to parser objects
 from one specific parse, so restoring it from disk would create identity
 mismatches. Reusing the parsed ASTs is the supported cold-start saving.
+
+### Parser per-file cache
+
+Below both of these sits the parser's own per-file cache. SattLint always
+enables it, for parsing and for a graph rebuild alike, because a hit cannot be
+stale: the parser filters on the file's modification time and size and then
+confirms the entry with a SHA-256 digest of the exact bytes that were parsed.
+The entry namespace also covers the parser version, the grammar fingerprint,
+the parser stack versions, and every file the parser ships. A rebuild therefore
+re-resolves and re-indexes the project without re-parsing unchanged files.
 
 ## Cache safety
 
@@ -105,7 +117,15 @@ another generation. It does not delete a valid entry just because it is old;
 freshness is decided by the manifest.
 
 The interactive shell exposes cache maintenance through its application flows.
-The headless CLI exposes cache behavior through `--no-cache` on `analyze`.
+The headless CLI exposes two separate switches on `analyze`, one per decision:
+
+- `--no-cache` ignores stored analyzer reports and re-runs every analyzer. The
+  parsed project graph is still reused.
+- `--refresh-ast` rebuilds each target's parsed project graph. The parser's
+  per-file cache is still reused, so only resolution and indexing are redone.
+
+Neither switch changes which files are read: the parser verifies every cached
+parse against the source bytes.
 
 ## Run history
 

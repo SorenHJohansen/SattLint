@@ -1,6 +1,8 @@
 # pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 import json
+import multiprocessing
 import os
+import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from types import SimpleNamespace, TracebackType
@@ -914,11 +916,38 @@ def test_collect_run_checks_result_records_loader_failures_as_text():
     assert "\n".join(result.output_lines).endswith("boom")
 
 
-def test_collect_run_checks_result_forwards_use_cache_to_project_loading(monkeypatch: pytest.MonkeyPatch):
+def test_collect_run_checks_result_forwards_refresh_ast_to_project_loading(monkeypatch: pytest.MonkeyPatch):
     seen: list[bool] = []
 
-    def iterator(_cfg: ConfigDict, *, use_cache: bool = True, **_kwargs: object):
-        seen.append(use_cache)
+    def iterator(_cfg: ConfigDict, *, refresh_ast: bool = False, **_kwargs: object):
+        seen.append(refresh_ast)
+        return iter(())
+
+    checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["state-inference"],
+        refresh_ast=True,
+        iter_loaded_projects_fn=cast(Callable[..., Iterator[LoadedProject]], iterator),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    assert seen == [True]
+
+
+def test_disabling_the_report_cache_leaves_the_parsed_graph_cached(monkeypatch: pytest.MonkeyPatch):
+    """``--no-cache`` discards analyzer reports, not the parsed project graph."""
+    seen: list[bool] = []
+
+    def iterator(_cfg: ConfigDict, *, refresh_ast: bool = False, **_kwargs: object):
+        seen.append(refresh_ast)
         return iter(())
 
     checks_application.collect_run_checks_result(
@@ -1230,6 +1259,7 @@ def test_collect_run_checks_result_returns_the_partial_target_when_an_analyzer_i
         cast(ConfigDict, DEFAULT_CONFIG.copy()),
         ["first", "second"],
         use_cache=False,
+        jobs=1,
         iter_loaded_projects_fn=cast(
             Any,
             lambda *_args, **_kwargs: iter(
@@ -1450,3 +1480,167 @@ def test_run_record_keeps_the_target_load_duration() -> None:
     load_duration_ms = record.targets[0].load_duration_ms
     assert load_duration_ms is not None
     assert load_duration_ms >= 0.0
+
+
+def _order_probe_analyzers(delays: dict[str, float]) -> Callable[[], list[SimpleNamespace]]:
+    def make(key: str) -> SimpleNamespace:
+        def run(_context: object) -> SimpleNamespace:
+            time.sleep(delays[key])
+            return SimpleNamespace(issues=[], summary=lambda: f"{key} summary")
+
+        return SimpleNamespace(key=key, name=key.title(), run=run)
+
+    return lambda: [make(key) for key in delays]
+
+
+def _run_order_probe(delays: dict[str, float], *, jobs: int | None) -> Any:
+    return checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        list(delays),
+        use_cache=False,
+        jobs=jobs,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
+            ),
+        ),
+        get_enabled_analyzers_fn=_order_probe_analyzers(delays),
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+
+def _analysis_lines(lines: Iterable[str]) -> list[str]:
+    return [line for line in lines if "Running" not in line or "worker processes" not in line]
+
+
+@pytest.mark.skipif(
+    "fork" not in multiprocessing.get_all_start_methods(),
+    reason="the worker pool needs the fork start method",
+)
+def test_parallel_run_keeps_the_sequential_output_order() -> None:
+    delays = {"slow": 0.2, "medium": 0.1, "fast": 0.0}
+
+    sequential = _run_order_probe(delays, jobs=1)
+    parallel = _run_order_probe(delays, jobs=3)
+
+    assert _analysis_lines(parallel.output_lines) == _analysis_lines(sequential.output_lines)
+    assert [analyzer.key for analyzer in parallel.targets[0].analyzers] == ["slow", "medium", "fast"]
+    assert [analyzer.key for analyzer in sequential.targets[0].analyzers] == ["slow", "medium", "fast"]
+
+
+@pytest.mark.skipif(
+    "fork" not in multiprocessing.get_all_start_methods(),
+    reason="the worker pool needs the fork start method",
+)
+def test_parallel_run_announces_the_worker_count() -> None:
+    result = _run_order_probe({"first": 0.0, "second": 0.0}, jobs=2)
+
+    assert any("Running 2 analyzers across 2 worker processes" in line for line in result.output_lines)
+
+
+def test_parallel_pool_is_skipped_when_the_platform_cannot_fork(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(checks_execution.analyzer_workers, "pooling_supported", lambda: False)
+
+    result = _run_order_probe({"first": 0.0, "second": 0.0}, jobs=2)
+
+    assert not any("worker processes" in line for line in result.output_lines)
+    assert [analyzer.key for analyzer in result.targets[0].analyzers] == ["first", "second"]
+
+
+def test_parallel_run_records_the_effective_worker_count_in_the_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
+    monkeypatch.setenv("SATTLINT_PROFILE", "1")
+    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
+
+    checks_application.run_checks(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["first", "second"],
+        jobs=2,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))]
+            ),
+        ),
+        get_enabled_analyzers_fn=_order_probe_analyzers({"first": 0.0, "second": 0.0}),
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    events = [json.loads(line) for line in (tmp_path / "profile.jsonl").read_text(encoding="utf-8").splitlines()]
+
+    assert events[0]["payload"]["jobs"] == 2
+
+
+def test_sequential_run_records_a_single_worker_in_the_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(output_module, "emit_output", lambda _message: None)
+    monkeypatch.setenv("SATTLINT_PROFILE", "1")
+    monkeypatch.setattr(profiling_module, "profiling_log_path", lambda: tmp_path / "profile.jsonl")
+
+    checks_application.run_checks(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["first", "second"],
+        jobs=1,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))]
+            ),
+        ),
+        get_enabled_analyzers_fn=_order_probe_analyzers({"first": 0.0, "second": 0.0}),
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    events = [json.loads(line) for line in (tmp_path / "profile.jsonl").read_text(encoding="utf-8").splitlines()]
+
+    assert events[0]["payload"]["jobs"] == 1
+
+
+@pytest.mark.skipif(
+    "fork" not in multiprocessing.get_all_start_methods(),
+    reason="the worker pool needs the fork start method",
+)
+def test_parallel_run_overlaps_analyzer_execution(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+
+    def analyzer(key: str) -> Callable[[], SimpleNamespace]:
+        def make() -> SimpleNamespace:
+            def run(_context: object) -> SimpleNamespace:
+                started_at = time.time()
+                time.sleep(0.3)
+                trace_path.open("a", encoding="utf-8").write(
+                    json.dumps({"key": key, "start": started_at, "end": time.time()}) + "\n"
+                )
+                return SimpleNamespace(issues=[], summary=lambda: f"{key} summary")
+
+            return SimpleNamespace(key=key, name=key.title(), run=run)
+
+        return make
+
+    checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["first", "second", "third"],
+        use_cache=False,
+        jobs=3,
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="TargetA")), AnalysisGraphStub())]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [analyzer(key)() for key in ("first", "second", "third")],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+    )
+
+    spans = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    assert len(spans) == 3
+
+    latest_start = max(span["start"] for span in spans)
+    earliest_end = min(span["end"] for span in spans)
+    assert latest_start < earliest_end, f"analyzer spans did not overlap: {spans}"

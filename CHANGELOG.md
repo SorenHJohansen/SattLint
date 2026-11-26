@@ -22,6 +22,18 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - A project file can select its analyzers with a top-level `analyzers = [...]`
   list, so a checked-in project reproduces a run. `--analyzer` still wins over
   the project list, and `sattlint project show` reports the selection.
+- Per-target analyzers run in a forked worker pool when a target selects more
+  than one, with `sattlint analyze --jobs N` controlling the worker count. The
+  parent loads the target once and the workers inherit that graph, so a run is
+  no longer limited to one core while printing the same sections in the same
+  order. Analyzers that share work run as one job: `datatype-fields` reuses the
+  views `variables` publishes instead of repeating the variable traversal.
+- The variable analyzer only sweeps dependency module types that can reach the
+  analyzed library's declarations, instead of walking every module type in the
+  merged view. On a large project that is 54 types instead of 1879 and turns
+  the dominant phase from 16 seconds into 50 milliseconds.
+- `sattlint analyze --refresh-ast` rebuilds each target's parsed project graph
+  while still reusing the parser's per-file cache.
 - `findings` text grouping prints analyzer and finding labels instead of
   machine identifiers, and NDJSON output starts with an envelope record that
   carries the run, filters, summary, and groups.
@@ -34,18 +46,29 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   its findings without collapsing the tree.
   A module that owns findings turns green once every finding it owns is
   acknowledged, and the color follows each acknowledgement toggle.
-- Two opt-in string analyzers. `string-capacity` reports literal initializers
-  and assignments that exceed a declared string capacity, and string procedures
-  that would write more characters into their target than it can hold.
-  `string-style` suggests a narrower string datatype when every observed value
-  fits, and names the string-specific copy procedure when a generic copy is used
-  between strings. The capacity checks track lengths and cursor positions only,
-  never the text, and report only when every operand length is known.
+- Two opt-in string analyzers. `string-capacity` reports literal initializers,
+  assignments, parameter mappings, and string-procedure writes that exceed a
+  declared string capacity. `string-style` suggests a narrower string datatype
+  when every literal a local receives fits, and names the string-specific copy
+  procedure when a generic copy is used between strings. Both resolve only
+  literals and same-module locals: no value is carried across a module boundary
+  or a branch, so a module costs its own statements instead of a whole-program
+  fixed point.
 - The SFC analyzer reports a fork that jumps back to the step it belongs to,
   and a fork that targets an element in another sequence.
+- A `module-layout` analyzer. It checks that each module's clipping rectangle
+  has area and an origin at the center or bottom-left corner, that clipping and
+  placed module sizes follow the drawing grid, that placement is aligned to the
+  containing module's grid, and that no graphics or interactor object sits
+  entirely outside the visible area. Geometry driven by variables is skipped.
 
 ### Changed
 
+- `sattlint analyze --no-cache` now means what it always documented: ignore
+  stored analyzer reports. It no longer discards the parsed project graph or the
+  parser's per-file cache, which made a one-target run re-parse for over two
+  minutes where a cached load takes seconds. Rebuilding the graph is now an
+  explicit `--refresh-ast`.
 - Project files are version 2 and must declare a top-level
   `[string_capacities]` table with `identstring`, `tagstring`, `string`,
   `linestring`, and `maxstring` as positive integers. A missing table, a

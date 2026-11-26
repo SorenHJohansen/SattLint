@@ -35,6 +35,7 @@ _LAZY_ANALYZER_EXPORTS: dict[str, tuple[str, str]] = {
     "analyze_dataflow": ("sattlint.analyzers.dataflow", "analyze_dataflow"),
     "analyze_datatype_fields": ("sattlint.analyzers.datatype_fields", "analyze_datatype_fields"),
     "analyze_icf_configuration": ("sattlint.analyzers.icf.analyzer", "analyze_icf_configuration"),
+    "analyze_module_layout": ("sattlint.analyzers.module_layout", "analyze_module_layout"),
     "analyze_moduletype_usage": ("sattlint.analyzers.moduletype_usage", "analyze_moduletype_usage"),
     "analyze_picture_display_paths": ("sattlint.analyzers.picture_display_paths", "analyze_picture_display_paths"),
     "analyze_same_cycle": ("sattlint.analyzers.same_cycle", "analyze_same_cycle"),

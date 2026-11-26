@@ -120,8 +120,20 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
         metavar="PREFIX",
         help="Only report findings at or below this module path; repeatable.",
     )
-    parser.add_argument("--no-cache", action="store_true", help="Disable the analysis cache for this run.")
+    parser.add_argument("--no-cache", action="store_true", help="Ignore stored analyzer reports for this run.")
+    parser.add_argument(
+        "--refresh-ast",
+        action="store_true",
+        help="Rebuild each target's parsed project graph instead of reusing the cached one.",
+    )
     parser.add_argument("--no-save", action="store_true", help="Do not save the run to run history.")
+    parser.add_argument(
+        "--jobs",
+        type=_non_negative_int,
+        default=0,
+        metavar="N",
+        help="Run per-target analyzers in N forked worker processes; 0 picks a count from the CPU count.",
+    )
     parser.add_argument(
         "--fail-on",
         choices=("any", "none"),

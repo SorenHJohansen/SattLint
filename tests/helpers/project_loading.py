@@ -22,14 +22,14 @@ def load_target_project(
     *,
     abb_lib_dir: Path | None = None,
     mode: ConfigMode = "draft",
-    use_cache: bool = False,
+    refresh_ast: bool = True,
 ) -> tuple[BasePicture, ProjectGraph]:
     """Load ``target_path`` through the production loader and return its view.
 
     The returned base picture is the merged project view, exactly what the
-    analysis pipeline hands to the analyzers. The cache is disabled by default
-    so a corpus result cannot depend on a developer's stale ``~/.cache/sattlint``
-    entry.
+    analysis pipeline hands to the analyzers. The parsed graph is rebuilt by
+    default so a corpus result cannot depend on a developer's stale
+    ``~/.cache/sattlint`` entry.
     """
     cfg: dict[str, object] = {
         "program_dir": target_path.parent,
@@ -42,6 +42,6 @@ def load_target_project(
     return project_application.load_project(
         cast(ConfigDict, cfg),
         target_path.stem,
-        use_cache=use_cache,
+        refresh_ast=refresh_ast,
         status_update_fn=lambda _line: None,
     )

@@ -489,6 +489,55 @@ def test_analyze_cli_analyzer_overrides_the_project_list(
     capsys.readouterr()
 
 
+def test_analyze_no_cache_keeps_the_parsed_graph(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """``--no-cache`` discards analyzer reports; it must not force a re-parse."""
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    seen: dict[str, object] = {}
+
+    def _collect(_cfg: object, _keys: object, **kwargs: object) -> ChecksRunResult:
+        seen.update(kwargs)
+        return result
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _collect)
+
+    code = run_cli(["analyze", "--project", str(project), "--no-cache", "--format", "json", "--fail-on", "none"])
+
+    assert code == 0
+    assert seen["use_cache"] is False
+    assert seen["refresh_ast"] is False
+    capsys.readouterr()
+
+
+def test_analyze_refresh_ast_rebuilds_the_parsed_graph(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "programs").mkdir()
+    project = _write_project(tmp_path)
+    result = _checks_result(_finding(module_path=("Demo", "A")))
+    seen: dict[str, object] = {}
+
+    def _collect(_cfg: object, _keys: object, **kwargs: object) -> ChecksRunResult:
+        seen.update(kwargs)
+        return result
+
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _collect)
+
+    code = run_cli(["analyze", "--project", str(project), "--refresh-ast", "--format", "json", "--fail-on", "none"])
+
+    assert code == 0
+    assert seen["refresh_ast"] is True
+    assert seen["use_cache"] is True
+    capsys.readouterr()
+
+
 def test_parser_rejects_review_subcommand() -> None:
     with pytest.raises(CliError):
         build_cli_parser().parse_args(["review"])
