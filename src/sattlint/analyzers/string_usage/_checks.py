@@ -204,7 +204,7 @@ def collect_copy_findings(
                 StringUsageFinding(
                     kind="string_style.generic_copy",
                     message=message,
-                    module_path=display_path(context.path),
+                    module_path=statement_path(context),
                     site=site,
                     details=(
                         ("operation", statement.call.name),

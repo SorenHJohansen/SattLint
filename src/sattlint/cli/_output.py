@@ -47,7 +47,7 @@ def error_payload(error: CliError) -> ErrorPayload:
     }
 
 
-def _write_stream(stream: Any, text: str) -> None:
+def write_stream(stream: Any, text: str) -> None:
     """Write through a text stream without failing on a legacy code page.
 
     ``PYTHONIOENCODING=ascii`` and legacy Windows consoles raise
@@ -81,7 +81,7 @@ def _resolve_output_path(output: Path) -> Path:
 
 def _write_text(text: str, output: Path | None) -> None:
     if output is None:
-        _write_stream(sys.stdout, text)
+        write_stream(sys.stdout, text)
         return
     resolved = _resolve_output_path(output)
     try:
@@ -107,7 +107,7 @@ def emit_ndjson(records: Iterable[Mapping[str, object]], *, output: Path | None 
     """
     if output is None:
         for record in records:
-            _write_stream(sys.stdout, encode_json_record(record))
+            write_stream(sys.stdout, encode_json_record(record))
         return
 
     resolved = _resolve_output_path(output)
@@ -134,11 +134,11 @@ def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
 
 def emit_error(error: CliError, *, output_format: str) -> None:
     if output_format in {"json", "ndjson"}:
-        _write_stream(sys.stderr, encode_json_document(error_payload(error)))
+        write_stream(sys.stderr, encode_json_document(error_payload(error)))
         return
-    _write_stream(sys.stderr, f"sattlint: {error.message}\n")
+    write_stream(sys.stderr, f"sattlint: {error.message}\n")
     for key, value in error.details.items():
-        _write_stream(sys.stderr, f"  {key}: {value}\n")
+        write_stream(sys.stderr, f"  {key}: {value}\n")
 
 
 def output_path(value: str | None) -> Path | None:

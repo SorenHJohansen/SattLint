@@ -20,6 +20,7 @@ from sattlint.application import (
 from sattlint.cache import ASTCache
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
+from sattlint.core.progress import AnalysisProgressEvent, ProgressPhase
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading as analysis_loading_module
 from sattlint.project.loader_config import LoadStageTimingSink
@@ -552,6 +553,41 @@ def test_iter_loaded_projects_passes_collect_stage_timings_to_load_project(monke
 
     assert [target_name for target_name, _bp, _graph in results] == ["TargetA"]
     assert seen == [("TargetA", True, True)]
+
+
+def test_iter_loaded_projects_reports_loading_progress_for_every_target(monkeypatch: pytest.MonkeyPatch):
+    events: list[AnalysisProgressEvent] = []
+
+    def fake_load_project(
+        _cfg: ConfigDict,
+        target_name: str | None = None,
+        **_kwargs: object,
+    ) -> tuple[BasePicture, ProjectGraph]:
+        if target_name == "Broken":
+            raise RuntimeError("boom")
+        return cast(
+            tuple[BasePicture, ProjectGraph],
+            (named_object(target_name or "Unknown"), AnalysisGraphStub(unavailable_libraries=set())),
+        )
+
+    monkeypatch.setattr(project_application, "emit_output", lambda *_args, **_kwargs: None)
+
+    results = list(
+        project_application.iter_loaded_projects(
+            cast(ConfigDict, {"analyzed_programs_and_libraries": ["TargetA", "Broken", "TargetB"]}),
+            require_analyzed_targets_fn=lambda _cfg: ["TargetA", "Broken", "TargetB"],
+            load_project_fn=fake_load_project,
+            progress_fn=events.append,
+        )
+    )
+
+    assert [target_name for target_name, _bp, _graph in results] == ["TargetA", "TargetB"]
+    assert [(event.phase, event.target_index, event.target_total, event.target_name) for event in events] == [
+        (ProgressPhase.LOADING, 1, 3, "TargetA"),
+        (ProgressPhase.LOADING, 2, 3, "Broken"),
+        (ProgressPhase.TARGET_COMPLETE, 2, 3, "Broken"),
+        (ProgressPhase.LOADING, 3, 3, "TargetB"),
+    ]
 
 
 def test_ensure_ast_cache_covers_cache_hit_stale_missing_and_failure(monkeypatch: pytest.MonkeyPatch):

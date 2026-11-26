@@ -19,6 +19,7 @@ from sattlint.parser_api import BasePicture
 from .. import cache as cache_module
 from .. import console as console_module
 from ..config.types import ConfigDict
+from ..core.progress import ProgressCallback
 from ..models.project_graph import ProjectGraph
 from ..project import loading as analysis_loading_module
 from ..project import support as support_module
@@ -33,6 +34,11 @@ LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
     return support_module.get_analyzed_targets(cfg)
+
+
+def get_analyzed_targets(cfg: ConfigDict) -> list[str]:
+    """The configured targets, after case-insensitive de-duplication."""
+    return _get_analyzed_targets(cfg)
 
 
 def _require_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -100,6 +106,7 @@ def _iter_loaded_projects(
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
     failure_sink: Callable[[str, str], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
+    progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
     return analysis_loading_module.iter_loaded_projects(
         cfg,
@@ -108,6 +115,7 @@ def _iter_loaded_projects(
         load_project_fn=load_project if load_project_fn is None else load_project_fn,
         emit_output_fn=emit_output if emit_output_fn is None else emit_output_fn,
         failure_sink=failure_sink,
+        progress_fn=progress_fn,
     )
 
 
@@ -119,6 +127,7 @@ def iter_loaded_projects(
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
     failure_sink: Callable[[str, str], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
+    progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
     return _iter_loaded_projects(
         cfg,
@@ -127,6 +136,7 @@ def iter_loaded_projects(
         load_project_fn=load_project_fn,
         failure_sink=failure_sink,
         emit_output_fn=emit_output_fn,
+        progress_fn=progress_fn,
     )
 
 

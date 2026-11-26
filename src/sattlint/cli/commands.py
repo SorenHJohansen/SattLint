@@ -21,6 +21,11 @@ from ..application.checks import ChecksRunResult, build_run_record
 from ..application.findings import kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
+from ..core.progress import (
+    AnalysisProgressEvent,
+    ProgressCallback,
+    encode_progress_line,
+)
 from ..project.io import discover_project
 from ..project.support import TargetLoadError
 from ..runs import RunRecord
@@ -42,6 +47,7 @@ from ._output import (
     emit_ndjson,
     emit_text,
     output_path,
+    write_stream,
 )
 from ._payloads import (
     AnalyzePayload,
@@ -80,6 +86,7 @@ class _AnalyzeOptions:
     persist_run: bool
     fail_on_findings: bool
     jobs: int | None
+    progress: bool
 
 
 def _output_options(args: argparse.Namespace) -> _OutputOptions:
@@ -139,6 +146,7 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
         persist_run=not bool(args.no_save),
         fail_on_findings=str(args.fail_on) == "any",
         jobs=None if int(args.jobs) == 0 else int(args.jobs),
+        progress=bool(args.progress),
     )
 
 
@@ -291,6 +299,7 @@ def _capture_run(
     persist_run: bool,
     project_path: str,
     jobs: int | None,
+    progress: ProgressCallback | None = None,
 ) -> ChecksRunResult:
     try:
         return collect_checks_result(
@@ -301,9 +310,19 @@ def _capture_run(
             persist_run=persist_run,
             project_path=project_path,
             jobs=jobs,
+            progress=progress,
         )
     except TargetLoadError as exc:
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
+
+
+def stderr_progress_writer() -> ProgressCallback:
+    """Write one progress record per line, flushed so a parent can read it live."""
+
+    def write(event: AnalysisProgressEvent) -> None:
+        write_stream(sys.stderr, f"{encode_progress_line(event)}\n")
+
+    return write
 
 
 def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: str) -> RunRecord:
@@ -328,6 +347,7 @@ def command_analyze(args: argparse.Namespace) -> int:
         persist_run=options.persist_run,
         project_path=project_path,
         jobs=options.jobs,
+        progress=stderr_progress_writer() if options.progress and not options.output.quiet else None,
     )
     if result.cancelled:
         _discard_output_file(options.output)

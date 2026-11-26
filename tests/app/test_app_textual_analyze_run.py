@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from sattlint import ui as app_textual
+from sattlint.core.progress import AnalysisProgressEvent, ProgressPhase
 from sattlint.project.io import init_project
 from sattlint.ui import _app_textual_setup as app_textual_setup_module
 from tests.helpers.app_textual_support import (
@@ -553,6 +554,37 @@ def test_textual_execute_analyzers_streams_runner_output(monkeypatch: pytest.Mon
 
     assert "target header from the runner" in streamed
     assert streamed[-1] == "Selected analyzers completed."
+
+
+def test_textual_execute_analyzers_forwards_progress_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    applied: list[AnalysisProgressEvent] = []
+
+    def _handler(_cfg: object, _keys: object, *, progress: object = None) -> SimpleNamespace:
+        assert callable(progress)
+        progress(
+            AnalysisProgressEvent(
+                phase=ProgressPhase.LOADING,
+                target_total=1,
+                target_index=1,
+                target_name="TargetA",
+            )
+        )
+        return SimpleNamespace(failures=(), analyzer_failures=(), cancelled=False, run_id=None)
+
+    app_instance = make_textual_app(analysis_handlers={"run_checks_result": _handler})
+    monkeypatch.setattr(app_instance, "_apply_analysis_progress", applied.append)
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda _text: None)
+    monkeypatch.setattr(
+        app_instance,
+        "_call_on_ui",
+        lambda callback, *args, **kwargs: callback(*args, **kwargs),
+    )
+    monkeypatch.setattr(app_instance, "_finish_analysis_run", lambda _result: None)
+
+    app_instance._execute_analyzers(("alpha-analyzer",))
+
+    assert [event.phase for event in applied] == [ProgressPhase.LOADING]
+    assert applied[0].target_name == "TargetA"
 
 
 def test_textual_finish_analysis_run_reports_a_run_without_stored_history(

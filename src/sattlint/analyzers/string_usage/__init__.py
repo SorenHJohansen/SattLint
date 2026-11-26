@@ -9,6 +9,7 @@ analyzer key it wants.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from sattlint.parser_api import BasePicture
@@ -16,6 +17,7 @@ from sattlint.parser_api import BasePicture
 from ...config.string_capacities import StringCapacities
 from ...resolution import TypeGraph
 from ..framework import Issue, SimpleReport
+from ..string_contexts import AnalysisOriginScope, StringModuleContext, is_in_analyzed_origin
 from ..string_inference import ExactStringInferenceEngine
 from ._checks import (
     collect_copy_findings,
@@ -41,8 +43,42 @@ def _engine(
     *,
     capacities: StringCapacities,
     graph: ProjectGraph | None,
+    analyzed_target_is_library: bool,
 ) -> ExactStringInferenceEngine:
-    return ExactStringInferenceEngine(base_picture, capacities=capacities, graph=graph)
+    return ExactStringInferenceEngine(
+        base_picture,
+        capacities=capacities,
+        graph=graph,
+        origin_scope=AnalysisOriginScope(
+            origin_file=getattr(base_picture, "origin_file", None),
+            origin_lib=getattr(base_picture, "origin_lib", None),
+            analyzed_target_is_library=analyzed_target_is_library,
+        ),
+    )
+
+
+def _scoped_contexts(
+    base_picture: BasePicture,
+    contexts: Iterable[StringModuleContext],
+    *,
+    analyzed_target_is_library: bool,
+) -> tuple[StringModuleContext, ...]:
+    """The contexts that declare code in the analyzed unit.
+
+    The merged project view carries every module type of every dependency
+    library, and a target's own tree instantiates many of them. Reporting a
+    dependency type's string code would attribute it to a unit the run does not
+    analyze, so only contexts that belong to the analyzed origin are checked.
+    """
+    return tuple(
+        context
+        for context in contexts
+        if is_in_analyzed_origin(
+            context,
+            base_picture,
+            analyzed_target_is_library=analyzed_target_is_library,
+        )
+    )
 
 
 def analyze_string_capacity(
@@ -50,10 +86,20 @@ def analyze_string_capacity(
     *,
     string_capacities: StringCapacities,
     graph: ProjectGraph | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     types = _types(base_picture, string_capacities)
-    engine = _engine(base_picture, capacities=string_capacities, graph=graph)
-    contexts = engine.module_contexts()
+    engine = _engine(
+        base_picture,
+        capacities=string_capacities,
+        graph=graph,
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
+    contexts = _scoped_contexts(
+        base_picture,
+        engine.module_contexts(),
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
     flow = analyze_literal_flow(contexts, types=types)
     findings = [
         *collect_literal_findings(contexts, types=types),
@@ -67,14 +113,31 @@ def analyze_string_style(
     *,
     string_capacities: StringCapacities,
     graph: ProjectGraph | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     types = _types(base_picture, string_capacities)
-    engine = _engine(base_picture, capacities=string_capacities, graph=graph)
-    contexts = engine.module_contexts()
+    engine = _engine(
+        base_picture,
+        capacities=string_capacities,
+        graph=graph,
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
+    contexts = _scoped_contexts(
+        base_picture,
+        engine.module_contexts(),
+        analyzed_target_is_library=analyzed_target_is_library,
+    )
     declarations = collect_declarations(contexts, types=types)
     flow = analyze_literal_flow(contexts, types=types)
     findings = [
-        *collect_copy_findings(engine.execution_contexts(), types=types),
+        *collect_copy_findings(
+            _scoped_contexts(
+                base_picture,
+                engine.execution_contexts(),
+                analyzed_target_is_library=analyzed_target_is_library,
+            ),
+            types=types,
+        ),
         *collect_rightsizing_findings(
             contexts,
             types=types,

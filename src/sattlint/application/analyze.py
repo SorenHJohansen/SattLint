@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from ..analyzers import catalog as analysis_catalog_module
 from ..config.types import ConfigDict
+from ..core.progress import ProgressCallback
 from . import checks as checks_module
 from . import project as project_application
 
@@ -100,6 +101,7 @@ def collect_checks_result(
     project_path: str = "",
     jobs: int | None = None,
     emit_output: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> checks_module.ChecksRunResult:
     """Run checks without emitting the human-readable report to stdout."""
     return checks_module.collect_run_checks_result(
@@ -114,4 +116,5 @@ def collect_checks_result(
         project_path=project_path,
         jobs=jobs,
         emit_output=emit_output,
+        progress=progress,
     )

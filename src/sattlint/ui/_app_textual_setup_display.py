@@ -115,9 +115,6 @@ def _status_text(self: Any) -> str:
             parts.append(f"{target_count} targets configured")
     if bool(getattr(self, "_dirty", False)):
         parts.append("Unsaved changes")
-    active_job_text = self._active_job_text()
-    if active_job_text is not None:
-        parts.append(f"Running: {active_job_text}")
     return "   ·   ".join(parts)
 
 

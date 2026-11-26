@@ -23,6 +23,7 @@ from typing import cast
 
 from ..config.string_capacities import StringCapacitiesDict, standard_string_capacities_dict
 from ..config.types import AnalysisConfig, ConfigDict, ConfigMode
+from ..core.progress import ProgressCallback, parse_progress_line
 from ..project.io import save_project
 from ..project.types import DEFAULT_PROJECT_DICT, ProjectDict
 from .cancellation import (
@@ -96,6 +97,7 @@ def _analyze_command(
         str(output_path),
         "--fail-on",
         "none",
+        "--progress",
     ]
     for key in selected_keys:
         command.extend(("--analyzer", str(key)))
@@ -138,18 +140,22 @@ def run_checks_result_in_subprocess(
     *,
     project_path: str = "",
     emit_output: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
     cancellation: AnalysisCancellation | None = None,
 ) -> ChecksRunResult:
     """Run the checks pipeline in a child process and return its run id.
 
     The child writes the same run-history record an in-process run would, so
     the Results view needs no separate result shape. Output lines are streamed
-    from the child's stderr as they arrive.
+    from the child's stderr as they arrive; the child's progress records are
+    parsed out of that stream, forwarded to ``progress``, and never shown as
+    diagnostics.
 
     ``cancellation`` stops the child (and the analyzer workers it forked) as
     soon as it is set. The reader keeps draining the stream to EOF so a child
     that is still writing cannot block on a full pipe; the collected lines are
-    kept for diagnostics, but no line is emitted after cancellation.
+    kept for diagnostics, but no line or progress event is emitted after
+    cancellation.
     """
     if cancellation is not None and cancellation.cancelled:
         # A quit can land between starting the action and this spawn; do not
@@ -190,6 +196,11 @@ def run_checks_result_in_subprocess(
             for raw_line in process.stderr:
                 text = raw_line.rstrip("\r\n")
                 if not text:
+                    continue
+                event = parse_progress_line(text)
+                if event is not None:
+                    if progress is not None and (cancellation is None or not cancellation.cancelled):
+                        progress(event)
                     continue
                 lines.append(text)
                 if cancellation is None or not cancellation.cancelled:

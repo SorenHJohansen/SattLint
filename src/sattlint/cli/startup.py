@@ -37,6 +37,7 @@ from ..core.interaction import (
     prompt as core_prompt,
 )
 from ..core.logging import apply_debug, configure_logging
+from ..core.progress import ProgressCallback
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
@@ -108,6 +109,7 @@ def _run_checks_result_in_subprocess(
     *,
     project_path: str = "",
     emit_output: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
     cancellation: AnalysisCancellation | None = None,
 ) -> Any:
     """Keep the interactive app off the analysis heap.
@@ -123,6 +125,7 @@ def _run_checks_result_in_subprocess(
         selected_keys,
         project_path=project_path,
         emit_output=emit_output,
+        progress=progress,
         cancellation=cancellation,
     )
 

@@ -22,6 +22,7 @@ from sattlint.parser_api import (
 from ..resolution.common import varname_full
 from ..resolution.scope import ScopeContext
 from ._string_models import StringSlot, StringSlotKey
+from .shared.variable_utils import matches_root_origin
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,45 @@ class StringModuleContext:
     node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance
     literal_bindings: tuple[LiteralBinding, ...]
     nested: tuple[StringModuleContext, ...] = ()
+    #: The file and library that own this module's declarations. Inline modules
+    #: inherit their parent's origin; an instance takes the origin of the module
+    #: type it expands, so a dependency type stays out of the analyzed unit.
+    origin_file: str | None = None
+    origin_lib: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisOriginScope:
+    """The unit a run analyzes, as the file and library that own its code."""
+
+    origin_file: str | None
+    origin_lib: str | None
+    analyzed_target_is_library: bool = False
+
+    def includes(self, origin_file: str | None, origin_lib: str | None) -> bool:
+        return matches_root_origin(
+            origin_file,
+            self.origin_file,
+            analyzed_target_is_library=self.analyzed_target_is_library,
+            origin_lib=origin_lib,
+            root_origin_lib=self.origin_lib,
+        )
+
+
+def is_in_analyzed_origin(
+    context: StringModuleContext,
+    base_picture: BasePicture,
+    *,
+    analyzed_target_is_library: bool = False,
+) -> bool:
+    """Whether *context* declares code in the unit being analyzed."""
+    return matches_root_origin(
+        context.origin_file,
+        getattr(base_picture, "origin_file", None),
+        analyzed_target_is_library=analyzed_target_is_library,
+        origin_lib=context.origin_lib,
+        root_origin_lib=getattr(base_picture, "origin_lib", None),
+    )
 
 
 def module_code(
@@ -85,9 +125,11 @@ def resolve_string_target(scope: ScopeContext, arg: object) -> StringSlot | None
 
 
 __all__ = [
+    "AnalysisOriginScope",
     "LiteralBinding",
     "StringModuleContext",
     "declared_variables",
+    "is_in_analyzed_origin",
     "module_code",
     "resolve_string_slot",
     "resolve_string_target",

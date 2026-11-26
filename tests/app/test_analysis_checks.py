@@ -35,6 +35,7 @@ from sattlint.application.project import LoadedProject
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 from sattlint.core import profiling as profiling_module
+from sattlint.core.progress import AnalysisProgressEvent, ProgressPhase
 from sattlint.core.timings import PhaseTiming
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project import loading as project_loading_module
@@ -1644,3 +1645,71 @@ def test_parallel_run_overlaps_analyzer_execution(tmp_path: Path) -> None:
     latest_start = max(span["start"] for span in spans)
     earliest_end = min(span["end"] for span in spans)
     assert latest_start < earliest_end, f"analyzer spans did not overlap: {spans}"
+
+
+def test_collect_run_checks_result_reports_target_and_analyzer_progress() -> None:
+    events: list[AnalysisProgressEvent] = []
+
+    def _projects(*_args: object, **_kwargs: object) -> Iterator[tuple[str, Any, Any]]:
+        yield ("TargetA", named_object("TargetA"), AnalysisGraphStub(unavailable_libraries=set()))
+        yield ("TargetB", named_object("TargetB"), AnalysisGraphStub(unavailable_libraries=set()))
+
+    checks_application.collect_run_checks_result(
+        cast(
+            ConfigDict,
+            DEFAULT_CONFIG.copy() | {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
+        ),
+        ["state-inference"],
+        iter_loaded_projects_fn=cast(Any, _projects),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state-inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+        progress=events.append,
+    )
+
+    assert [event.phase for event in events] == [
+        ProgressPhase.START,
+        ProgressPhase.ANALYZING,
+        ProgressPhase.TARGET_COMPLETE,
+        ProgressPhase.ANALYZING,
+        ProgressPhase.TARGET_COMPLETE,
+    ]
+    assert events[0].target_total == 2
+    assert events[0].analyzer_total == 1
+    assert (events[1].target_name, events[1].analyzer_index, events[1].analyzer_total) == ("TargetA", 1, 1)
+    assert (events[2].target_index, events[2].target_name) == (1, "TargetA")
+    assert (events[4].target_index, events[4].target_name) == (2, "TargetB")
+
+
+def test_collect_run_checks_result_reports_project_wide_progress() -> None:
+    events: list[AnalysisProgressEvent] = []
+
+    checks_application.collect_run_checks_result(
+        cast(ConfigDict, DEFAULT_CONFIG.copy()),
+        ["duplicate-code"],
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter(())),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="duplicate-code",
+                name="Duplicate code",
+                scope="per-run",
+                run=lambda _context: SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        self_check_fn=lambda _cfg: True,
+        progress=events.append,
+    )
+
+    assert [event.phase for event in events] == [ProgressPhase.START, ProgressPhase.ANALYZING]
+    assert events[0].target_total == 0
+    assert events[0].project_wide_total == 1
+    assert events[1].project_wide is True
+    assert (events[1].analyzer_index, events[1].analyzer_total) == (1, 0)
+    assert events[1].analyzer_name == "Duplicate code"

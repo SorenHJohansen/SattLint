@@ -27,6 +27,7 @@ from sattlint.application.checks import (
 from sattlint.application.findings import AnalysisFinding
 from sattlint.cli import _findings as findings_module
 from sattlint.cli import _output as output_module
+from sattlint.cli import commands as commands_module
 from sattlint.cli import entry as entry_module
 from sattlint.cli._findings import (
     FindingFilters,
@@ -39,6 +40,7 @@ from sattlint.cli._output import CliError
 from sattlint.cli._project import project_payload
 from sattlint.cli.entry import build_cli_parser, run_cli
 from sattlint.config.types import ConfigDict
+from sattlint.core.progress import AnalysisProgressEvent, ProgressPhase, parse_progress_line
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.io import load_project
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
@@ -1465,3 +1467,35 @@ def test_usage_error_fallback_uses_the_last_format_flag(capsys: pytest.CaptureFi
 
     assert code == 2
     assert capsys.readouterr().err.startswith("sattlint: ")
+
+
+def test_analyze_progress_flag_is_parsed() -> None:
+    args = build_cli_parser().parse_args(["analyze", "--progress", "--analyzer", "variables"])
+
+    assert args.progress is True
+
+
+def test_analyze_progress_writer_emits_a_parseable_record(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    writer = commands_module.stderr_progress_writer()
+    writer(
+        AnalysisProgressEvent(
+            phase=ProgressPhase.LOADING,
+            target_total=2,
+            target_index=1,
+            target_name="Demo",
+        )
+    )
+
+    captured = capsys.readouterr()
+    event = parse_progress_line(captured.err.strip())
+
+    assert captured.out == ""
+    assert event is not None
+    assert (event.phase, event.target_index, event.target_total, event.target_name) == (
+        ProgressPhase.LOADING,
+        1,
+        2,
+        "Demo",
+    )

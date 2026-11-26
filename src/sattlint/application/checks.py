@@ -24,6 +24,7 @@ from ..cache import AnalysisReportCache, compute_analysis_report_cache_key, get_
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
+from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPhase
 from ..core.terminal import flush_stdout
 from ..models.project_graph import ProjectGraph
 from ..project import cache as report_cache_module
@@ -64,12 +65,14 @@ def _iter_loaded_projects(
     refresh_ast: bool = False,
     failure_sink: Callable[[str, str], None] | None = None,
     emit_output_fn: Callable[..., None] | None = None,
+    progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
     return project_application.iter_loaded_projects(
         cfg,
         refresh_ast=refresh_ast,
         failure_sink=failure_sink,
         emit_output_fn=project_application.emit_output if emit_output_fn is None else emit_output_fn,
+        progress_fn=progress_fn,
     )
 
 
@@ -106,13 +109,27 @@ def _iter_per_run_analyzer_results(
     analyzers: list[AnalyzerSpec],
     cfg: ConfigDict,
     emit_line: Callable[[str], None],
+    *,
+    progress: ProgressCallback | None = None,
 ) -> Iterator[ChecksTargetResult]:
     """Yield each per-run result as soon as it finishes.
 
     A cancellation in a later analyzer must keep the results already produced,
     so the caller appends as it iterates instead of receiving one final tuple.
     """
-    for per_run_spec in analyzers:
+    analyzer_total = len(analyzers)
+    for analyzer_index, per_run_spec in enumerate(analyzers, start=1):
+        if progress is not None:
+            progress(
+                AnalysisProgressEvent(
+                    phase=ProgressPhase.ANALYZING,
+                    project_wide_total=analyzer_total,
+                    analyzer_index=analyzer_index,
+                    analyzer_name=str(getattr(per_run_spec, "name", per_run_spec.key)),
+                    analyzer_key=per_run_spec.key,
+                    project_wide=True,
+                )
+            )
         per_run_result = run_per_run_analyzer(per_run_spec, cfg)
         emit_line(f"\n=== {per_run_result.name} ({per_run_result.key}) ===")
         if per_run_result.summary:
@@ -125,7 +142,7 @@ def _iter_per_run_analyzer_results(
         )
 
 
-def collect_run_checks_result(
+def collect_run_checks_result(  # noqa: PLR0915 - the run keeps its phase state in one place
     cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
@@ -139,6 +156,7 @@ def collect_run_checks_result(
     target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     self_check_fn: Callable[[ConfigDict], bool] | None = None,
     emit_output: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> ChecksRunResult:
     resolved_iter_loaded_projects = (
         _iter_loaded_projects if iter_loaded_projects_fn is None else iter_loaded_projects_fn
@@ -201,6 +219,16 @@ def collect_run_checks_result(
 
     emit_line("\n--- Running checks ---")
     flush_stdout()
+    target_total = len(project_application.get_analyzed_targets(cfg)) if per_target_analyzers else 0
+    if progress is not None:
+        progress(
+            AnalysisProgressEvent(
+                phase=ProgressPhase.START,
+                target_total=target_total,
+                analyzer_total=len(per_target_analyzers),
+                project_wide_total=len(per_run_analyzers),
+            )
+        )
     report_cache = report_cache_module.create_analysis_report_cache(
         cfg,
         use_cache=use_cache,
@@ -211,16 +239,23 @@ def collect_run_checks_result(
     profiler = profiling_module.create_profiler()
     # A per-run-only selection has no per-target analyzer, so loading the
     # project would pay the full parse cost for nothing.
-    loaded_projects = (
-        resolved_iter_loaded_projects(
+    if per_target_analyzers and progress is not None:
+        loaded_projects = resolved_iter_loaded_projects(
+            cfg,
+            refresh_ast=refresh_ast,
+            failure_sink=load_failures.record,
+            emit_output_fn=emit_line,
+            progress_fn=progress,
+        )
+    elif per_target_analyzers:
+        loaded_projects = resolved_iter_loaded_projects(
             cfg,
             refresh_ast=refresh_ast,
             failure_sink=load_failures.record,
             emit_output_fn=emit_line,
         )
-        if per_target_analyzers
-        else ()
-    )
+    else:
+        loaded_projects = ()
     execution = TargetExecution(
         cfg=cfg,
         analyzers=tuple(analyzers),
@@ -232,10 +267,11 @@ def collect_run_checks_result(
         emit_line=emit_line,
         build_module_tree=persist_run,
         jobs=jobs,
+        progress=progress,
     )
     try:
         load_started_at = perf_counter()
-        for target_name, project_bp, graph in loaded_projects:
+        for completed_targets, (target_name, project_bp, graph) in enumerate(loaded_projects, start=1):
             load_duration_ms = round((perf_counter() - load_started_at) * 1000, 3)
             outcome = execute_target(
                 target_name,
@@ -245,6 +281,17 @@ def collect_run_checks_result(
                 load_duration_ms=load_duration_ms,
             )
             target_results.append(outcome.target)
+            if progress is not None and not outcome.cancelled:
+                progress(
+                    AnalysisProgressEvent(
+                        phase=ProgressPhase.TARGET_COMPLETE,
+                        target_total=target_total,
+                        analyzer_total=len(per_target_analyzers),
+                        project_wide_total=len(per_run_analyzers),
+                        target_index=completed_targets,
+                        target_name=target_name,
+                    )
+                )
             # Drop the graph before the iterator loads the next target. The
             # loader generator clears its own reference as well, so the next
             # load does not hold two full project graphs at once.
@@ -258,7 +305,12 @@ def collect_run_checks_result(
                     failures=load_failures.snapshot(),
                 )
             load_started_at = perf_counter()
-        for per_run_result in _iter_per_run_analyzer_results(per_run_analyzers, cfg, emit_line):
+        for per_run_result in _iter_per_run_analyzer_results(
+            per_run_analyzers,
+            cfg,
+            emit_line,
+            progress=progress,
+        ):
             target_results.append(per_run_result)
     except KeyboardInterrupt:
         return build_run_result(

@@ -56,6 +56,7 @@ def test_textual_top_chrome_removes_banner_and_mounts_summary_strip() -> None:
 
             assert len(list(app_instance.query("#shell-banner"))) == 0
             assert len(list(app_instance.query("#status-summary"))) == 1
+            assert len(list(app_instance.query("#status-progress"))) == 1
             assert app_instance.query_one("#status-project") is not None
             assert app_instance.query_one("#nav-tab-analyze") is not None
 

@@ -22,6 +22,7 @@ from ..cache import AnalysisReportCache
 from ..config.types import ConfigDict
 from ..core import profiling as profiling_module
 from ..core.debug import debug_enabled
+from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPhase
 from ..core.terminal import flush_stdout
 from ..core.timings import NamedTimings, PhaseTiming, TimingBottleneck
 from ..models.project_graph import ProjectGraph
@@ -62,6 +63,7 @@ class TargetExecution:
     # None means "pick a worker count from the analyzer count and the CPU count";
     # 1 keeps every analyzer in this process.
     jobs: int | None = None
+    progress: ProgressCallback | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +174,8 @@ def _run_target_analyzer(
     analyzer_timings_ms: dict[str, float],
     analyzer_phase_timings_ms: dict[str, tuple[PhaseTiming, ...]],
     *,
+    analyzer_index: int,
+    analyzer_total: int,
     compute_fn: Callable[[], analyzer_workers.AnalyzerJobResult],
 ) -> AnalyzerExecution:
     """Run one analyzer, print its section, and record its timing.
@@ -179,6 +183,17 @@ def _run_target_analyzer(
     ``compute_fn`` either runs the analyzer here or waits for a worker's result,
     so the printed output and the recorded timings stay identical in both modes.
     """
+    if execution.progress is not None:
+        execution.progress(
+            AnalysisProgressEvent(
+                phase=ProgressPhase.ANALYZING,
+                target_name=run.target_name,
+                analyzer_index=analyzer_index,
+                analyzer_total=analyzer_total,
+                analyzer_name=str(spec.name),
+                analyzer_key=spec.key,
+            )
+        )
     execution.emit_line(f"\n=== {spec.name} ({spec.key}) ===")
     flush_stdout()
     analyzer_started_at = perf_counter()
@@ -245,14 +260,17 @@ def _iter_analyzer_executions(
     jobs: int,
 ) -> Generator[AnalyzerExecution]:
     """Yield one execution per analyzer, in the declared analyzer order."""
+    analyzer_total = len(specs)
     if jobs <= 1:
-        for spec in specs:
+        for analyzer_index, spec in enumerate(specs, start=1):
             yield _run_target_analyzer(
                 run,
                 spec,
                 execution,
                 analyzer_timings_ms,
                 analyzer_phase_timings_ms,
+                analyzer_index=analyzer_index,
+                analyzer_total=analyzer_total,
                 compute_fn=lambda spec=spec: analyzer_workers.analyze_job(run, spec.key),
             )
         return
@@ -264,13 +282,15 @@ def _iter_analyzer_executions(
     )
     completed: dict[str, analyzer_workers.AnalyzerJobResult] = {}
     try:
-        for spec in specs:
+        for analyzer_index, spec in enumerate(specs, start=1):
             yield _run_target_analyzer(
                 run,
                 spec,
                 execution,
                 analyzer_timings_ms,
                 analyzer_phase_timings_ms,
+                analyzer_index=analyzer_index,
+                analyzer_total=analyzer_total,
                 compute_fn=lambda spec=spec: _next_pooled_job(pending, completed, spec.key),
             )
     finally:

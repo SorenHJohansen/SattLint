@@ -76,6 +76,7 @@ def _advance_output_title_spinner(self: Any) -> None:
         return
     frame_index = int(getattr(self, "_output_title_spinner_frame_index", 0)) + 1
     self._output_title_spinner_frame_index = frame_index
+    self._refresh_status_progress()
     try:
         self.query_one("#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
     except _TEXTUAL_QUERY_ERRORS:

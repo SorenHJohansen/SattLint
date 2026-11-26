@@ -89,6 +89,7 @@ Runs the selected analyzers against the project targets.
 | `--no-save` | Do not store the run in run history. |
 | `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
 | `--jobs N` | Run per-target analyzers in `N` forked worker processes; `0` (default) picks a count from the CPU count. |
+| `--progress` | Emit machine-readable progress records on stderr while the run is in progress. |
 | `--format {json,ndjson,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
 | `--quiet` | Suppress progress and diagnostics on stderr. |
@@ -103,6 +104,12 @@ Selection rules:
 - Selection is exact. Nothing is added, removed, reordered, or replaced.
 - Targets are matched case-insensitively against configured target names.
 - An empty filter value is a usage error.
+
+Progress records carry a `sattlint-progress ` prefix followed by one JSON object
+per line. Each record names the phase (`start`, `loading`, `analyzing`, or
+`target-complete`) plus the target and analyzer positions, so a supervising
+process can show live progress without parsing human diagnostics. `--quiet`
+suppresses them together with the rest of the stderr output.
 
 ```bash
 sattlint analyze --project app.slproj

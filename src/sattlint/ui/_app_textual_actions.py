@@ -321,6 +321,7 @@ def _refresh_summary(self: Any) -> None:
             root = getattr(project, "root", None)
             project_name = str(getattr(root, "name", "") or "").strip()
     project_widget.update(project_name or "No configuration")
+    self._refresh_status_progress()
     try:
         summary_widget = self.query_one("#status-summary", _TEXTUAL_STATIC)
     except _TEXTUAL_QUERY_ERRORS:
@@ -516,6 +517,7 @@ def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bo
     self._cancel_requested = False
     self._active_job_label = None
     self._active_job_started_at = None
+    self._reset_analysis_progress()
     if clear_dirty_on_success:
         self._dirty = False
     else:
@@ -749,6 +751,7 @@ def _start_action(
     self._cancel_requested = False
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
+    self._reset_analysis_progress()
     self._set_active_action(action_id)
     self._refresh_summary()
     self._refresh_shell_state()

@@ -10,6 +10,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- The shell's status bar now reports live analysis progress: percentage
+  complete, an estimated time left, the target and analyzer currently running,
+  and elapsed time, next to the open project's name and its configured target
+  count. The analysis child process emits typed progress records on stderr,
+  which the shell parses; `sattlint analyze --progress` exposes the same stream
+  to scripts.
 - The Analyze view can cancel a running analysis with **Cancel run** or `Esc`.
   The analysis child process is stopped together with the analyzer workers it
   forked, and the run is discarded unless it had already finished saving. Quit
@@ -51,7 +57,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   its findings without collapsing the tree.
   A module that owns findings turns green once every finding it owns is
   acknowledged, and the color follows each acknowledgement toggle.
-- Two opt-in string analyzers. `string-capacity` reports literal initializers,
+- Two opt-in string analyzers, both scoped to the analyzed unit: module types
+  from dependency libraries are not walked even when the analyzed tree
+  instantiates them, so a finding never describes code this project does not
+  own. `string-capacity` reports literal initializers,
   assignments, parameter mappings, and string-procedure writes that exceed a
   declared string capacity. `string-style` suggests a narrower string datatype
   when every literal a local receives fits, and names the string-specific copy

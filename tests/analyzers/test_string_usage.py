@@ -53,14 +53,20 @@ def _base_picture(
     variables: list[Variable] | None = None,
     code: list[CodeItem] | None = None,
     submodules: list[SingleModule | FrameModule | ModuleTypeInstance] | None = None,
+    moduletype_defs: list[ModuleTypeDef] | None = None,
+    origin_file: str | None = None,
+    origin_lib: str | None = None,
 ) -> BasePicture:
     return BasePicture(
         header=_hdr("Root"),
         name="Root",
         localvariables=variables or [],
         submodules=submodules or [],
+        moduletype_defs=moduletype_defs or [],
         moduledef=ModuleDef(),
         modulecode=ModuleCode(equationblocks=[_equation(code)]) if code is not None else None,
+        origin_file=origin_file,
+        origin_lib=origin_lib,
     )
 
 
@@ -599,3 +605,55 @@ def test_sfc_step_literal_overflow_is_reported_from_parsed_source() -> None:
     assert _capacity_kinds(report) == ["string_capacity.literal_overflow"]
     assert report.issues[0].data is not None
     assert report.issues[0].data["site"] == "sequence 'OpSeq' step 'Init' ENTER"
+
+
+def _copy_typedef(name: str, *, origin_file: str, origin_lib: str) -> ModuleTypeDef:
+    return ModuleTypeDef(
+        name=name,
+        localvariables=[
+            Variable(name="Source", datatype=ScalarDatatype.IDENTSTRING),
+            Variable(name="Target", datatype=ScalarDatatype.IDENTSTRING),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
+        ],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(
+            equationblocks=[_equation([_call("CopyVariable", _varref("Source"), _varref("Target"), _varref("Status"))])]
+        ),
+        origin_file=origin_file,
+        origin_lib=origin_lib,
+    )
+
+
+def test_a_module_type_of_another_unit_is_not_reported() -> None:
+    """The tree instantiates dependency types; they are not the analyzed unit."""
+    bp = _base_picture(
+        origin_file="Unit.s",
+        origin_lib="UnitLib",
+        moduletype_defs=[_copy_typedef("ForeignType", origin_file="ForeignLib.s", origin_lib="ForeignLib")],
+        submodules=[ModuleTypeInstance(header=_hdr("Instance"), moduletype_name="ForeignType")],
+    )
+
+    report = analyze_string_style(
+        bp,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        analyzed_target_is_library=True,
+    )
+
+    assert _style_kinds(report) == []
+
+
+def test_a_module_type_of_the_analyzed_unit_is_reported() -> None:
+    bp = _base_picture(
+        origin_file="Unit.s",
+        origin_lib="UnitLib",
+        moduletype_defs=[_copy_typedef("OwnType", origin_file="Unit.s", origin_lib="UnitLib")],
+        submodules=[ModuleTypeInstance(header=_hdr("Instance"), moduletype_name="OwnType")],
+    )
+
+    report = analyze_string_style(
+        bp,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        analyzed_target_is_library=True,
+    )
+
+    assert _style_kinds(report) == ["string_style.generic_copy"]

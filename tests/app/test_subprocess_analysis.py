@@ -7,11 +7,13 @@ parsed project graphs or analyzer indexes that produced it.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import cast
@@ -25,6 +27,7 @@ from sattlint.application.checks_results import ChecksRunResult
 from sattlint.application.subprocess_analysis import run_checks_result_in_subprocess
 from sattlint.config.defaults import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
+from sattlint.core.progress import ProgressPhase
 from sattlint.runs import load_run
 
 
@@ -60,6 +63,66 @@ def test_subprocess_run_streams_output_and_returns_a_saved_run(
     record = load_run(result.run_id, runs_dir=tmp_path / "cache" / "sattlint" / "runs")
     assert record is not None
     assert [target.target_name for target in record.targets] == ["MinimalProgram"]
+
+
+def test_subprocess_run_forwards_progress_records_and_keeps_them_out_of_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def progress_line(payload: Mapping[str, object]) -> str:
+        return "sattlint-progress " + json.dumps(payload, separators=(",", ":"))
+
+    start = {
+        "schema_version": 1,
+        "record_type": "progress",
+        "phase": "start",
+        "target_total": 1,
+        "analyzer_total": 1,
+        "project_wide_total": 0,
+        "target_index": 0,
+        "target_name": "",
+        "analyzer_index": 0,
+        "analyzer_name": "",
+        "analyzer_key": "",
+        "project_wide": False,
+    }
+    loading = {
+        **start,
+        "phase": "loading",
+        "target_index": 1,
+        "target_name": "TargetA",
+    }
+    script = (
+        "import sys\n"
+        f"sys.stderr.write({progress_line(start)!r} + '\\n')\n"
+        "sys.stderr.write('human line\\n')\n"
+        f"sys.stderr.write({progress_line(loading)!r} + '\\n')\n"
+        "sys.stderr.flush()\n"
+    )
+
+    def command(**_kwargs: object) -> list[str]:
+        return [sys.executable, "-c", script]
+
+    monkeypatch.setattr(subprocess_analysis_module, "_analyze_command", command)
+
+    emitted: list[str] = []
+    events: list[object] = []
+    result = run_checks_result_in_subprocess(
+        _analysis_cfg(),
+        ["comment-code"],
+        project_path=str(tmp_path / "project.slproj"),
+        emit_output=emitted.append,
+        progress=events.append,
+    )
+
+    assert emitted == ["human line"]
+    assert list(result.output_lines) == ["human line"]
+    assert [getattr(event, "phase", None) for event in events] == [
+        ProgressPhase.START,
+        ProgressPhase.LOADING,
+    ]
+    assert getattr(events[1], "target_name", "") == "TargetA"
+    assert not any("sattlint-progress" in line for line in result.output_lines)
 
 
 def _analysis_cfg() -> ConfigDict:

@@ -717,8 +717,16 @@
             text-style: bold;
         }
 
-        #status-summary {
+        #status-progress {
             width: 1fr;
+            padding: 0 2;
+            color: #16323b;
+            content-align: left middle;
+        }
+
+        #status-summary {
+            width: auto;
+            max-width: 45%;
             padding: 0 2;
             color: #58787e;
             content-align: right middle;

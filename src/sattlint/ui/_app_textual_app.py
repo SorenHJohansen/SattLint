@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 from ..config.types import ConfigDict
 from ._app_textual_actions import _TextualActionsMixin
 from ._app_textual_analyze import _TextualAnalyzeMixin
+from ._app_textual_progress import _TextualProgressMixin
 from ._app_textual_results import _TextualResultsMixin
 from ._app_textual_settings import _TextualSettingsMixin
 from ._app_textual_setup import _TextualSetupMixin
@@ -72,6 +73,7 @@ if _TEXTUAL_APP is not None:
         _TextualSetupMixin,
         _TextualActionsMixin,
         _TextualAnalyzeMixin,
+        _TextualProgressMixin,
         _TextualSettingsMixin,
         _TextualResultsMixin,
         _TEXTUAL_APP,
@@ -157,6 +159,7 @@ if _TEXTUAL_APP is not None:
             self._session_output_dropped_line_count = 0
             self._pending_error_target_name: str | None = None
             self._last_output_target_name: str | None = None
+            self._analysis_progress: Any | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_VERTICAL(id="top-bar"):
@@ -398,6 +401,7 @@ if _TEXTUAL_APP is not None:
                     pass
             with _TEXTUAL_HORIZONTAL(id="status-bar"):
                 yield _TEXTUAL_STATIC("", id="status-project")
+                yield _TEXTUAL_STATIC("", id="status-progress")
                 yield _TEXTUAL_STATIC("", id="status-summary", classes="summary-strip")
             yield _TEXTUAL_FOOTER()
 

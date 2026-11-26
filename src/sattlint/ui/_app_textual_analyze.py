@@ -502,6 +502,10 @@ def _execute_analyzers(
         # Stream each reported line as the runner produces it instead of
         # replaying a buffered transcript after the run.
         handler_kwargs["emit_output"] = self._emit_output_from_thread
+    if "progress" in handler_parameters:
+        # Progress arrives on the worker thread; marshal it to the UI thread
+        # before it touches the status bar state.
+        handler_kwargs["progress"] = self._receive_analysis_progress
     if cancellation is not None and "cancellation" in handler_parameters:
         handler_kwargs["cancellation"] = cancellation
     result = handler(cfg, list(selected_keys), **handler_kwargs)

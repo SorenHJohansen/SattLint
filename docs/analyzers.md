@@ -112,6 +112,11 @@ or when a local's writes in the same module are literals; nothing is carried
 across a module boundary, a parameter mapping, or a branch, and there is no
 fixed point. That keeps one module's cost proportional to its own statements.
 
+Both checks stay inside the analyzed unit. The merged project view carries the
+module types of every dependency library, and the analyzed tree instantiates
+many of them, but a finding there would describe code this project does not
+own. A module type outside the analyzed origin is therefore never walked.
+
 The trade is worth knowing: a length that only a whole-program analysis could
 know is not reported. For example, a value written in one module and read in
 another, or a length that depends on a procedure's cursor arithmetic, is left
@@ -129,6 +134,8 @@ suggestion set and is selected separately from the capacity checks.
   analysis cannot read is not suggested, because that value might not fit.
   Module parameters, root-level globals, constants, and record fields are not
   reported, because the caller or another unit may rely on the wider contract.
+- Only the analyzed unit is checked: module types from dependency libraries are
+  instantiated by the tree but their code is not reported.
 - `CopyVariable` and `CopyVarNoSort` are reported when both operands are
   strings, with the matching string-specific procedure in the message.
   `CopyVariable` sorts like `CopyString`, but its third argument is a status

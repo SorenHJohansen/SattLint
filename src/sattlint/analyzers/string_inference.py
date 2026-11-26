@@ -71,6 +71,7 @@ from ._string_operations import (
 from .shared._string_capacity import capacity_for_datatype
 from .shared.statement_sites import iter_statement_sites
 from .string_contexts import (
+    AnalysisOriginScope,
     LiteralBinding,
     StringModuleContext,
     declared_variables,
@@ -97,6 +98,7 @@ class ExactStringInferenceEngine:
         *,
         capacities: StringCapacities,
         graph: ProjectGraph | None = None,
+        origin_scope: AnalysisOriginScope | None = None,
         progress_callback: Callable[[str], None] | None = None,
         debug: bool = False,
     ):
@@ -104,6 +106,10 @@ class ExactStringInferenceEngine:
         self.graph = graph
         self.debug = debug
         self._capacities = capacities
+        #: When set, module types outside the analyzed unit are not walked or
+        #: expanded. Their instance keeps a scope for name resolution, but no
+        #: code, so a dependency's declarations never reach the checks.
+        self._origin_scope = origin_scope
         self._context_build_depth = 0
         self._context_build_limit_reported = False
         self._progress_callback: Callable[[str], None] = (
@@ -226,6 +232,8 @@ class ExactStringInferenceEngine:
             scope=root_scope,
             node=self.base_picture,
             literal_bindings=(),
+            origin_file=getattr(self.base_picture, "origin_file", None),
+            origin_lib=getattr(self.base_picture, "origin_lib", None),
         )
         root.nested = tuple(self._build_child_context(root, child) for child in self.base_picture.submodules or [])
         return root
@@ -251,6 +259,8 @@ class ExactStringInferenceEngine:
             scope=scope,
             node=moduletype,
             literal_bindings=(),
+            origin_file=getattr(moduletype, "origin_file", None),
+            origin_lib=getattr(moduletype, "origin_lib", None),
         )
         context.nested = tuple(self._build_child_context(context, child) for child in moduletype.submodules or [])
         return context
@@ -268,6 +278,8 @@ class ExactStringInferenceEngine:
                 scope=scope,
                 node=child,
                 literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
             )
             context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
@@ -289,7 +301,14 @@ class ExactStringInferenceEngine:
                 current_library=parent.scope.current_library,
                 parent_context=parent.scope,
             )
-            context = StringModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
+            context = StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=(),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
+            )
             context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
             )
@@ -310,7 +329,30 @@ class ExactStringInferenceEngine:
                 current_library=parent.scope.current_library,
                 parent_context=parent.scope,
             )
-            return StringModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
+            return StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=(),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
+            )
+
+        if self._origin_scope is not None and not self._origin_scope.includes(
+            getattr(resolved_typedef, "origin_file", None),
+            getattr(resolved_typedef, "origin_lib", None),
+        ):
+            # Keep the instance's scope so a mapping in the analyzed unit still
+            # resolves, but do not walk the foreign body.
+            scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
+            return StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=getattr(resolved_typedef, "origin_file", None),
+                origin_lib=getattr(resolved_typedef, "origin_lib", None),
+            )
 
         self._resolved_typedefs.setdefault(_typedef_identity(resolved_typedef), resolved_typedef)
         scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
@@ -340,6 +382,8 @@ class ExactStringInferenceEngine:
                 scope=scope,
                 node=resolved_typedef,
                 literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=getattr(resolved_typedef, "origin_file", None),
+                origin_lib=getattr(resolved_typedef, "origin_lib", None),
             )
 
         context = StringModuleContext(
@@ -347,6 +391,8 @@ class ExactStringInferenceEngine:
             scope=scope,
             node=resolved_typedef,
             literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+            origin_file=getattr(resolved_typedef, "origin_file", None),
+            origin_lib=getattr(resolved_typedef, "origin_lib", None),
         )
         context.nested = tuple(
             self._build_child_context(context, grandchild) for grandchild in resolved_typedef.submodules or []

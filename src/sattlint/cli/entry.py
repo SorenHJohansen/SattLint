@@ -140,6 +140,11 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
         default="any",
         help="Exit 1 when findings are reported (any) or always exit 0 (none).",
     )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Emit machine-readable progress records on stderr while the run is in progress.",
+    )
     _add_output_args(parser, formats=("json", "ndjson", "text"))
 
 

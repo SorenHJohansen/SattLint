@@ -20,6 +20,7 @@ from .. import cache as cache_module
 from ..config.types import ConfigDict
 from ..core.debug import log_debug_exception
 from ..core.memory import release_unused_memory
+from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPhase
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
@@ -54,8 +55,20 @@ def iter_loaded_projects(
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
     emit_output_fn: Callable[..., None],
     failure_sink: Callable[[str, str], None] | None = None,
+    progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
-    for target_name in require_analyzed_targets_fn(cfg):
+    target_names = require_analyzed_targets_fn(cfg)
+    target_total = len(target_names)
+    for target_index, target_name in enumerate(target_names, start=1):
+        if progress_fn is not None:
+            progress_fn(
+                AnalysisProgressEvent(
+                    phase=ProgressPhase.LOADING,
+                    target_total=target_total,
+                    target_index=target_index,
+                    target_name=target_name,
+                )
+            )
         try:
             project_bp, graph = load_project_fn(
                 cfg,
@@ -70,6 +83,17 @@ def iter_loaded_projects(
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
             emit_output_fn(str(exc))
+            if progress_fn is not None:
+                # A failed target still finishes: the status bar must move past
+                # it instead of counting it as outstanding work forever.
+                progress_fn(
+                    AnalysisProgressEvent(
+                        phase=ProgressPhase.TARGET_COMPLETE,
+                        target_total=target_total,
+                        target_index=target_index,
+                        target_name=target_name,
+                    )
+                )
             continue
         _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
         yield target_name, project_bp, graph

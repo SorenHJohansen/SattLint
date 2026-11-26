@@ -37,6 +37,23 @@ Switch views with `Ctrl+1` through `Ctrl+5`, the navigation tabs, or the menu.
 The footer shows the active bindings. `Ctrl+C` copies the current output, and
 `Tab` / `Shift+Tab` move focus between controls.
 
+## Status bar
+
+The status bar sits above the footer and has three segments:
+
+- the open project's name, or `No configuration`;
+- live work: during an analysis it shows percentage complete, an estimated
+  time left, the current target and analyzer, and elapsed time; other jobs show
+  their label and elapsed time;
+- project state: the configured target count and whether there are unsaved
+  changes.
+
+The analysis percentage advances per analyzer step, so it holds at `0%` while
+the first target is loading. The time-left estimate averages the targets that
+already finished and falls back to the fraction of the current target's
+analyzers while the first target is still running. It reads `estimating…` until
+it has something to measure, and it can move when analyzers differ in cost.
+
 ## Analyze view
 
 The Analyze view lists the selectable analyzers from the registry.
