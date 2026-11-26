@@ -56,7 +56,9 @@ The analysis report cache stores one analyzer report per target and analyzer.
 - The key combines the project cache key, the analyzer key, the analyzer's
   version marker, and the effective analyzer settings.
 - The analyzer version marker changes when that analyzer's behavior changes, so
-  an upgrade does not replay an old report.
+  an upgrade does not replay an old report. A test pins a digest of each
+  analyzer's implementation, so editing one without bumping its marker fails
+  the suite instead of shipping a stale cache.
 - The payload includes the report and a file manifest; the manifest is
   validated before the report is used.
 - The cache is stored under a directory named for the report schema version and

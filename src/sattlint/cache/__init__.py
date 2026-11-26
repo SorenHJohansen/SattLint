@@ -535,17 +535,17 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-25-file-line-ownership",
     "cyclomatic-complexity": "2026-11-21-worst-scope",
     "sfc": "2026-11-26-fork-targets",
-    "variables": "2026-11-26-secure-candidates",
-    "datatype-fields": "2026-11-26-secure-candidates",
+    "variables": "2026-11-26-sweep-keeps-findings",
+    "datatype-fields": "2026-11-26-sweep-keeps-findings",
     "moduletype-usage": "2026-11-21-consumer-closure",
     "module-layout": "2026-11-26-grid-origo-visibility",
     "picture-display-paths": "2026-11-25-stable-string-pass",
     "icf": "2026-11-25-partial-project",
     "dataflow": "2026-11-25-sfc-guard-and-state",
-    "same-cycle": "2026-11-21-instance-dedupe",
+    "same-cycle": "2026-11-26-sweep-keeps-findings",
     "alarm-integrity": "2026-11-25-structural-never-cleared",
-    "string-capacity": "2026-11-25-length-only",
-    "string-style": "2026-11-25-length-only",
+    "string-capacity": "2026-11-26-analyzed-origin",
+    "string-style": "2026-11-26-analyzed-origin",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol
