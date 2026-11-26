@@ -136,9 +136,10 @@ graph is loaded:
 - a worker that raises returns a failure record instead of taking the pool down;
 - cancelling the run terminates the workers immediately.
 
-The worker count comes from `--jobs`; `0` (the default) picks a count from the
+The worker count comes from `--jobs`. The default is `1`, which keeps every
+analyzer in one process and runs them in order. `--jobs 0` picks a count from the
 analyzer count and the CPU count, capped at a small number because a run is
-bounded by its slowest analyzer. `--jobs 1` keeps every analyzer in one process.
+bounded by its slowest analyzer, and `--jobs N` selects N workers.
 
 Two properties of the design are worth knowing:
 

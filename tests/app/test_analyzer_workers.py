@@ -15,6 +15,7 @@ import pytest
 from sattlint.analyzers import dispatch as analysis_dispatch_module
 from sattlint.analyzers.framework import AnalysisContext, AnalyzerSpec, Issue
 from sattlint.application import analyzer_workers
+from sattlint.cli.entry import build_cli_parser
 from sattlint.config import DEFAULT_CONFIG
 from sattlint.config.types import ConfigDict
 from sattlint.core.timings import PhaseTiming
@@ -76,6 +77,28 @@ def test_resolve_job_count_keeps_a_single_analyzer_in_process() -> None:
     assert analyzer_workers.resolve_job_count(None, 0) == 1
     assert analyzer_workers.resolve_job_count(None, 1) == 1
     assert analyzer_workers.resolve_job_count(8, 1) == 1
+
+
+def test_resolve_job_count_keeps_a_sequential_request_at_one_worker() -> None:
+    assert analyzer_workers.resolve_job_count(1, 13) == 1
+
+
+def test_cli_jobs_defaults_to_one_worker() -> None:
+    args = build_cli_parser().parse_args(["analyze"])
+
+    assert args.jobs == 1
+
+
+def test_cli_jobs_zero_requests_the_automatic_count() -> None:
+    args = build_cli_parser().parse_args(["analyze", "--jobs", "0"])
+
+    assert args.jobs == 0
+
+
+def test_cli_jobs_honors_an_explicit_positive_request() -> None:
+    args = build_cli_parser().parse_args(["analyze", "--jobs", "4"])
+
+    assert args.jobs == 4
 
 
 def test_resolve_job_count_defaults_to_a_bounded_worker_count(

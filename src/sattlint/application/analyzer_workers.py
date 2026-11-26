@@ -207,7 +207,12 @@ def pooling_supported() -> bool:
 
 
 def resolve_job_count(requested: int | None, analyzer_count: int) -> int:
-    """Return the number of workers a target's analyzer loop should use."""
+    """Return the number of workers a target's analyzer loop should use.
+
+    ``None`` and ``0`` both mean automatic: pick a bounded count from the CPU
+    count. The CLI maps ``--jobs 0`` to ``None``, and its own default is ``1``,
+    so a plain run stays sequential without reaching the automatic branch.
+    """
     if requested is not None and requested < 0:
         raise ValueError("The worker count cannot be negative.")
     if analyzer_count <= 1:

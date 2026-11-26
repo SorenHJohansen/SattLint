@@ -1,9 +1,10 @@
 """Headless CLI parser and dispatch.
 
-``sattlint`` with no arguments still launches the Textual shell. Every subcommand
-here is non-interactive, writes machine-readable data to stdout, and never
-prompts. The parser is intentionally small: project inspection, analysis, and
-querying stored runs.
+``sattlint`` with no arguments launches the Textual shell when stdin and stdout
+are terminals; otherwise it prints the usage and exits 2. Every subcommand here
+is non-interactive, writes machine-readable data to stdout, and never prompts.
+The parser is intentionally small: project inspection, analysis, and querying
+stored runs.
 """
 
 from __future__ import annotations
@@ -130,9 +131,12 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
     parser.add_argument(
         "--jobs",
         type=_non_negative_int,
-        default=0,
+        default=1,
         metavar="N",
-        help="Run per-target analyzers in N forked worker processes; 0 picks a count from the CPU count.",
+        help=(
+            "Run per-target analyzers in N forked worker processes; 1 runs them in order, "
+            "0 picks a count from the CPU count."
+        ),
     )
     parser.add_argument(
         "--fail-on",

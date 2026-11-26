@@ -89,7 +89,7 @@ Runs the selected analyzers against the project targets.
 | `--no-cache` | Ignore stored analyzer reports for this run. The parsed project graph is still reused. |
 | `--no-save` | Do not store the run in run history. |
 | `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
-| `--jobs N` | Run per-target analyzers in `N` forked worker processes; `0` (default) picks a count from the CPU count. |
+| `--jobs N` | Run per-target analyzers in `N` forked worker processes; `1` (default) runs them in order, `0` picks a count from the CPU count. |
 | `--progress` | Emit machine-readable progress records on stderr while the run is in progress. |
 | `--format {json,ndjson,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
