@@ -59,13 +59,13 @@ def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> N
     expected fingerprint and tags in this test.
     """
     assert _variable_issue_layout_fingerprint() == "5a9a47422408ce18"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-26-sweep-keeps-findings"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-26-sweep-keeps-findings"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["same-cycle"] == "2026-11-26-sweep-keeps-findings"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["same-cycle"] == "2026-11-26-language-identity"
     # The string checks changed twice (literal-only analysis, analyzed-origin
     # scope). A stale report would replay the old, out-of-scope findings.
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-capacity"] == "2026-11-26-analyzed-origin"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-style"] == "2026-11-26-analyzed-origin"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-capacity"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-style"] == "2026-11-26-language-identity"
 
 
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:

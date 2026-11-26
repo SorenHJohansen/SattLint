@@ -1391,7 +1391,7 @@ def test_load_program_asts_parses_the_batch_once_and_reuses_the_cache(monkeypatc
 
     expected_key = cache_mod.compute_cache_key(
         cfg,
-        analysis_target="icf-program-batch::programa|programb",
+        analysis_target="icf-program-batch::PROGRAMA|PROGRAMB",
     )
     assert asts == {"ProgramA": program_a, "ProgramB": program_b}
     assert loaded_graph is graph

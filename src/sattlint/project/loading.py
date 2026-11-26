@@ -24,7 +24,7 @@ from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPha
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
-from ..utils.casefolding import unit_equal, unit_key
+from ..utils.casefolding import unit_key
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,

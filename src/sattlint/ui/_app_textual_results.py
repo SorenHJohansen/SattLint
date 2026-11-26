@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.style import Style
@@ -88,7 +89,6 @@ _DECLARATION_ROLE_ORDER: tuple[str, ...] = (
     DECLARATION_ROLE_MODULE_PARAMETER,
     DECLARATION_ROLE_LOCAL_VARIABLE,
 )
-_LEGACY_DECLARATION_ROLE_RE = re.compile(r"^\[[^\]]+\]\s+(localvariable|moduleparameter)\s+'")
 
 
 def _new_results_tree() -> Any:
@@ -169,16 +169,11 @@ def _site_label(finding: AnalysisFinding) -> str | None:
 
 
 def _finding_declaration_role(finding: AnalysisFinding) -> str | None:
-    """The declaration kind a finding belongs to, when the run recorded it.
-
-    Runs stored before the field existed carry the role only in the message
-    produced by the variable issue text helper, so fall back to that shape.
-    """
+    """The declaration kind a finding belongs to, when the run recorded it."""
     role = finding.data.get("declaration_role")
     if isinstance(role, str) and role in _DECLARATION_ROLE_LABELS:
         return role
-    match = _LEGACY_DECLARATION_ROLE_RE.match(finding.message)
-    return match.group(1) if match is not None else None
+    return None
 
 
 def _declaration_role_sort_key(role: str | None) -> int:
@@ -851,19 +846,36 @@ def _current_project_path(self: Any) -> str:
     return "" if raw_path is None else str(raw_path)
 
 
+def _project_path_key(path_text: str) -> str:
+    """A project path key that ignores separators, relative roots, and case.
+
+    A stored run may report ``C:/work/a.slproj`` while the open project is
+    ``C:\\work\\a.slproj``; both name one file. Resolving first folds relative
+    and absolute spellings together and uses the platform separator, then the
+    key is casefolded because a case-insensitive filesystem may report a
+    different spelling.
+    """
+    if not path_text.strip():
+        return ""
+    path = Path(path_text).expanduser()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    return str(resolved).casefold()
+
+
 def _results_run_summaries(self: Any) -> tuple[RunSummary, ...]:
     """Stored runs that belong to the open project file.
 
     A run stored before the project path was recorded cannot be attributed to a
     project, so it is not listed. Its record stays on disk until it ages out.
-    Paths are compared case-insensitively because a stored run may come from a
-    case-insensitive filesystem that reported a different spelling.
     """
     project_path = self._current_project_path()
     if not project_path:
         return ()
-    project_key = project_path.casefold()
-    return tuple(summary for summary in list_runs() if summary.project_path.casefold() == project_key)
+    project_key = _project_path_key(str(project_path))
+    return tuple(summary for summary in list_runs() if _project_path_key(summary.project_path) == project_key)
 
 
 def _apply_results_list_index(list_view: Any, index: int) -> None:

@@ -35,7 +35,14 @@ def test_subprocess_run_streams_output_and_returns_a_saved_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    if os.name == "nt":
+        cache_base = tmp_path / "appdata"
+        monkeypatch.setenv("APPDATA", str(cache_base))
+        runs_dir = cache_base / "sattlint" / "cache" / "runs"
+    else:
+        cache_base = tmp_path / "cache"
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_base))
+        runs_dir = cache_base / "sattlint" / "runs"
     fixture_dir = Path(__file__).resolve().parents[1] / "fixtures" / "corpus" / "valid"
     cfg = cast(
         ConfigDict,
@@ -58,9 +65,10 @@ def test_subprocess_run_streams_output_and_returns_a_saved_run(
     assert result.run_id is not None
     assert any("MinimalProgram" in line for line in lines)
 
-    # The child resolves XDG_CACHE_HOME itself; the test fixture patches the
-    # parent's resolver to a different path, so point at the child's directory.
-    record = load_run(result.run_id, runs_dir=tmp_path / "cache" / "sattlint" / "runs")
+    # The child resolves the platform cache base itself; the test fixture
+    # patches the parent's resolver to a different path, so point at the
+    # child's directory.
+    record = load_run(result.run_id, runs_dir=runs_dir)
     assert record is not None
     assert [target.target_name for target in record.targets] == ["MinimalProgram"]
 

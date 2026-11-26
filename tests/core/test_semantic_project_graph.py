@@ -45,8 +45,8 @@ def test_datatype_defs_keep_same_name_records_from_different_libraries() -> None
         library_name="LibraryB",
     )
 
-    first_indexed = graph.datatype_defs[("librarya", "headerrecord", "first.s")]
-    second_indexed = graph.datatype_defs[("libraryb", "headerrecord", "second.s")]
+    first_indexed = graph.datatype_defs[("LIBRARYA", "HEADERRECORD", "FIRST.S")]
+    second_indexed = graph.datatype_defs[("LIBRARYB", "HEADERRECORD", "SECOND.S")]
     assert (first_indexed.name, first_indexed.origin_lib) == ("HeaderRecord", "LibraryA")
     assert (second_indexed.name, second_indexed.origin_lib) == ("HEADERRECORD", "LibraryB")
     # Provenance is attached to a copy, not written back into the parser node.
@@ -62,5 +62,5 @@ def test_datatype_defs_last_definition_wins_for_the_same_origin() -> None:
     graph.index_from_basepic(_picture("First", first), source_path=Path("Shared.s"), library_name="LibraryA")
     graph.index_from_basepic(_picture("Second", second), source_path=Path("Shared.s"), library_name="LibraryA")
 
-    assert list(graph.datatype_defs) == [("librarya", "headerrecord", "shared.s")]
-    assert graph.datatype_defs[("librarya", "headerrecord", "shared.s")].name == "HEADERRECORD"
+    assert list(graph.datatype_defs) == [("LIBRARYA", "HEADERRECORD", "SHARED.S")]
+    assert graph.datatype_defs[("LIBRARYA", "HEADERRECORD", "SHARED.S")].name == "HEADERRECORD"

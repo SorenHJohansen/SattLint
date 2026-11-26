@@ -6,6 +6,7 @@ import argparse
 import io
 import json
 import logging
+import os
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -1185,20 +1186,30 @@ def test_json_error_envelope_uses_the_document_formatting(capsys: pytest.Capture
 
 
 def test_project_payload_reports_paths_without_creating_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    blocked_cache = tmp_path / "blocked-cache"
-    blocked_cache.write_text("not a directory", encoding="utf-8")
-    blocked_config = tmp_path / "blocked-config"
-    blocked_config.write_text("not a directory", encoding="utf-8")
-    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked_cache))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked_config))
+    if os.name == "nt":
+        # Windows keeps both the cache and the user config under %APPDATA%.
+        blocked = tmp_path / "blocked"
+        blocked.write_text("not a directory", encoding="utf-8")
+        monkeypatch.setenv("APPDATA", str(blocked))
+        expected_cache = blocked / "sattlint" / "cache"
+        expected_review = blocked / "sattlint" / "change-review"
+    else:
+        blocked_cache = tmp_path / "blocked-cache"
+        blocked_cache.write_text("not a directory", encoding="utf-8")
+        blocked_config = tmp_path / "blocked-config"
+        blocked_config.write_text("not a directory", encoding="utf-8")
+        monkeypatch.setenv("XDG_CACHE_HOME", str(blocked_cache))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked_config))
+        expected_cache = blocked_cache / "sattlint"
+        expected_review = blocked_config / "sattlint" / "change-review"
     monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
 
     project = load_project(_write_project(tmp_path))
     payload = project_payload(project)
 
-    assert payload["cache_dir"] == str(blocked_cache / "sattlint")
-    assert payload["runs_dir"] == str(blocked_cache / "sattlint" / "runs")
-    assert payload["review_output_dir"] == str(blocked_config / "sattlint" / "change-review")
+    assert Path(payload["cache_dir"]) == expected_cache
+    assert Path(payload["runs_dir"]) == expected_cache / "runs"
+    assert Path(payload["review_output_dir"]) == expected_review
     assert payload["config"]["exists"] is False
     assert payload["string_capacities"]["string"] == 40
 

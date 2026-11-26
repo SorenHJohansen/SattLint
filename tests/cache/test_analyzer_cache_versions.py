@@ -54,48 +54,51 @@ def _is_wiring(path: Path) -> bool:
 #: one the failure message reports.
 PINS: dict[str, tuple[str, str]] = {
     "alarm-integrity": (
-        "2026-11-25-structural-never-cleared",
-        "7ddf8355946bd3d5e4b382ffbcf0bfcdbc39f69db2c7f9efa58c5c984a2be39d",
+        "2026-11-26-language-identity",
+        "481e47d82f01321defff82864632d3fce0cd9af38f29a69f700c8c36372e93f9",
     ),
     "comment-code": (
         "2026-11-25-file-line-ownership",
         "8d05d49511f9c8dda96310005792829c44919e8aaa5236791ed2cc797502d72e",
     ),
     "cyclomatic-complexity": (
-        "2026-11-21-worst-scope",
-        "d2277e844005e006f5e5c848e3cb12f70b9e51560e777a6b248a280db4a7e1f0",
+        "2026-11-26-language-identity",
+        "eaa213d36a7d6221a5937b2c2118e137300df85e6b4b961d9f69d795d543d69a",
     ),
-    "dataflow": ("2026-11-25-sfc-guard-and-state", "614a5a8e5eda532804c7ab7b2c5701306e631b5ed2d9915dfbd2f78eebd5314b"),
+    "dataflow": ("2026-11-26-language-identity", "d6d18b35afdb8f36afbbadb526eb00e49932380b7124f24a077a814804bedda4"),
     "datatype-fields": (
-        "2026-11-26-sweep-keeps-findings",
-        "417d31ef0c9b51ba5ae2dc9b3b7a045483684990e6dcf6652ac6bb2e93b61fee",
+        "2026-11-26-language-identity",
+        "54e6aa724cbbe86dfadfb3e70ce7ce28121c9315abc4e40625182636c74bde4d",
     ),
     "icf": ("2026-11-25-partial-project", "b57a15fb535e1a1d8a6990ab24e3b4cd0f305675f8e95b5183fe1afc465d7844"),
     "module-layout": (
-        "2026-11-26-grid-origo-visibility",
-        "b8ee532feff0def2ed8a068a8115b9eb777c6385ed2014862f8aaf922197a752",
+        "2026-11-26-language-identity",
+        "edc32d620ca001cfbd6e56b9b128eeb986ac31651c53051eefeca4654140f12d",
     ),
     "moduletype-usage": (
-        "2026-11-21-consumer-closure",
-        "d03db7cb4e19b2c61fc4fd61006b6f892c3fba6a62e9622825216ec8b1ca6133",
+        "2026-11-26-language-identity",
+        "645fc93d08d5bbea648783375f0b84d1a58738f9e90f23f93b8c4ba18df2b373",
     ),
     "picture-display-paths": (
         "2026-11-25-stable-string-pass",
         "098f64db66b810fce9dede5e7205a2f8c14837ea5cef1c8ec6810c8b381e21bc",
     ),
     "same-cycle": (
-        "2026-11-26-sweep-keeps-findings",
-        "394162a16007af43e2bc5d12de03064bea8da2ca2be2f87cb9fe7003b76b7744",
+        "2026-11-26-language-identity",
+        "16d2ff5425420d71d3fad31d3496761f2a61c602f0b63518aafa593baf81567a",
     ),
-    "sfc": ("2026-11-26-fork-targets", "dfca64ae045ca499d2bc8c26cca60602b0f9a84c25f7a972f9652446f5018376"),
+    "sfc": ("2026-11-26-language-identity", "5f97ac17c04491319dfe067dd0105b7bc92af5c5b98a496c9733a7628306fa9b"),
     "string-capacity": (
-        "2026-11-26-analyzed-origin",
-        "beeb51cc17ac37adc7cea687c9fc29c84e69338e96762fa56ef6dfecf8c541fd",
+        "2026-11-26-language-identity",
+        "cd4ac0799e7acd467b006b1ba184096b9596182d0928d8a58dddf56745259fd0",
     ),
-    "string-style": ("2026-11-26-analyzed-origin", "beeb51cc17ac37adc7cea687c9fc29c84e69338e96762fa56ef6dfecf8c541fd"),
+    "string-style": (
+        "2026-11-26-language-identity",
+        "cd4ac0799e7acd467b006b1ba184096b9596182d0928d8a58dddf56745259fd0",
+    ),
     "variables": (
-        "2026-11-26-sweep-keeps-findings",
-        "fac2f32f8bc14b3e97871db425f0f553c72523e0a69c69be1ee977f4780bb6e0",
+        "2026-11-26-language-identity",
+        "a6cab84c7775da1920e1de25325a400300120370e6cb76c7d36305cc2c6578ee",
     ),
 }
 

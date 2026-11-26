@@ -12,14 +12,16 @@ from sattlint.analyzers import dispatch as dispatch_module
 from sattlint.analyzers import registry as registry_module
 
 
-def test_canonicalize_analyzer_key_maps_legacy_aliases() -> None:
-    assert registry_module.canonicalize_analyzer_key("same_cycle") == "same-cycle"
-    assert registry_module.canonicalize_analyzer_key("SAME_CYCLE") == "same-cycle"
+def test_canonicalize_analyzer_key_folds_case() -> None:
+    assert registry_module.canonicalize_analyzer_key("VARIABLES") == "variables"
     assert registry_module.canonicalize_analyzer_key("variables") == "variables"
 
 
 def test_canonicalize_analyzer_keys_strips_and_canonicalizes() -> None:
-    assert registry_module.canonicalize_analyzer_keys([" variables ", " SAME_CYCLE "]) == ("variables", "same-cycle")
+    assert registry_module.canonicalize_analyzer_keys([" variables ", " DATATYPE-FIELDS "]) == (
+        "variables",
+        "datatype-fields",
+    )
 
 
 def test_importing_the_registry_does_not_import_analyzers_or_the_loader() -> None:
@@ -47,30 +49,9 @@ def test_selectable_analyzers_are_keyed_by_canonical_keys() -> None:
     assert all(registry_module.canonicalize_analyzer_key(spec.key) == spec.key for spec in analyzers)
 
 
-def test_registry_analyzer_spec_lookup_accepts_legacy_aliases() -> None:
-    spec = dispatch_module.get_registry_analyzer_spec("same_cycle")
-
-    assert spec.key == "same-cycle"
-
-
-def test_registry_analyzer_spec_lookup_accepts_uppercase_alias() -> None:
-    spec = dispatch_module.get_registry_analyzer_spec("SAME_CYCLE")
-
-    assert spec.key == "same-cycle"
-
-
 def test_registry_analyzer_spec_lookup_unknown_key_raises() -> None:
     with pytest.raises(KeyError, match="no-such-analyzer"):
         dispatch_module.get_registry_analyzer_spec("no-such-analyzer")
-
-
-def test_cli_dispatch_selection_canonicalizes_legacy_alias_keys() -> None:
-    analyzers = dispatch_module.get_cli_dispatch_analyzers(
-        selected_keys=("same_cycle",),
-        get_enabled_analyzers_fn=registry_module.get_enabled_analyzers,
-    )
-
-    assert [spec.key for spec in analyzers] == ["same-cycle"]
 
 
 def test_internal_requirement_maps_use_canonical_keys() -> None:

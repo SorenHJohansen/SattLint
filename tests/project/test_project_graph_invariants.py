@@ -120,11 +120,11 @@ def test_record_missing_library_controllib_is_missing_like_any_other(graph: Proj
     assert any("Missing code file for 'ControlLib'" in message for message in graph.missing)
 
 
-def test_library_dependencies_edges_are_casefolded_and_deterministic(graph: ProjectGraph) -> None:
+def test_library_dependencies_edges_use_language_identity(graph: ProjectGraph) -> None:
     graph.add_library_dependencies("ProgramA", ["LibB", "libc"])
     graph.add_library_dependencies("PROGRAMA", ["LibB"])
 
-    assert graph.library_dependencies["programa"] == {"libb", "libc"}
+    assert graph.library_dependencies["PROGRAMA"] == {"LIBB", "LIBC"}
 
 
 def test_root_origin_is_distinct_for_programs_that_share_the_basepicture_header(graph: ProjectGraph) -> None:

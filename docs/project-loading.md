@@ -49,9 +49,11 @@ The binding contains:
 - optional status and timing sinks;
 - the string capacities.
 
-The parser receives a hermetic load (`cache_dir=None`) so its own program-level
-cache does not become a second hidden state that SattLint cannot invalidate.
-SattLint caches the resulting project graph instead.
+The parser may keep its own per-file lookup and AST caches under the project
+cache root. It refuses a directory it cannot prove private to the user and
+falls back to an in-memory load, so the parser cache is an optimization rather
+than a correctness dependency. SattLint separately caches the resulting project
+graph and analyzer reports.
 
 ## Load sequence
 

@@ -727,7 +727,7 @@ def test_textual_make_project_relative_keeps_empty_paths_empty(tmp_path: Path) -
     assert app_textual_actions_module._make_project_relative("   ", project_dir) == ""
     assert app_textual_actions_module._make_project_relative("relative/dir", project_dir) == "relative/dir"
     assert app_textual_actions_module._make_project_relative(str(project_dir / "icf"), project_dir) == "icf"
-    assert app_textual_actions_module._make_project_relative(str(elsewhere), project_dir) == str(elsewhere)
+    assert app_textual_actions_module._make_project_relative(str(elsewhere), project_dir) == elsewhere.as_posix()
 
 
 def test_textual_add_target_from_path_does_not_reannounce_an_unchanged_folder(

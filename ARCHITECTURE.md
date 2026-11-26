@@ -152,7 +152,7 @@ dependency names via `parser_adapter.find_dependency_path`/`read_dependency_name
 flowchart LR
 Loading["loader_config.build_parser_binding<br/>+ loading.load_project / load_program_ast"]
     Adapter["parser_adapter.py<br/>load_parser_project,<br/>convert_project_into_graph"]
-    Parser["sattline-parser project layer<br/>SattLineProject.load(cache_dir=None)<br/>discovery, resolution, parse"]
+    Parser["sattline-parser project layer<br/>SattLineProject.load(cache_dir=&lt;private root&gt;)<br/>discovery, resolution, parse"]
     Graph["ProjectGraph<br/>(analysis index + timings)"]
     SattLint["sattlint caches<br/>ASTCache / AnalysisReportCache"]
 
@@ -199,7 +199,8 @@ Two special cases worth knowing before changing anything:
 
 - Parser core ships as the external `sattline-parser` package and does not depend on application layers.
 - All SattLine discovery, `.s/.g/.l/.x/.y/.z` reading, dependency resolution, and parsing happen in
-  `sattline-parser`'s project layer (`SattLineProject.load`, hermetic via `cache_dir=None`); SattLint
+  `sattline-parser`'s project layer (`SattLineProject.load`, with an optional parser-owned cache
+  root that it disables unless the directory is provably private); SattLint
   routes every load through `loader_config.build_parser_binding` + `src/sattlint/project/parser_adapter.py`
   (`load_parser_project`/`convert_project_into_graph`), then translates diagnostics and indexes into `ProjectGraph`.
   Cache ownership is split: the parser owns its per-file lookup/AST caches

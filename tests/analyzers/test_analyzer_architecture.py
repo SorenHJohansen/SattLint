@@ -46,7 +46,6 @@ from sattlint.analyzers.variables._variables_submodules import VariablesSubmodul
 
 ANALYZER_DIR = Path(__file__).resolve().parents[2] / "src" / "sattlint" / "analyzers"
 KEBAB_CASE_KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LEGACY_UNDERSCORE_ANALYZER_KEYS: frozenset[str] = frozenset()
 EXPLICIT_NON_REGISTRY_ANALYZE_FUNCTIONS = frozenset(
     {
         ("comment_code.py", "analyze_comment_code_files"),
@@ -148,17 +147,11 @@ def _imports_banned_analyzer_boundary(module: ast.Module) -> bool:
     return False
 
 
-def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
-    templates = default_spec_templates()
-    underscore_keys = {template.key for template in templates if "_" in template.key}
-    assert underscore_keys == LEGACY_UNDERSCORE_ANALYZER_KEYS
-
-    invalid_kebab_keys = sorted(
-        template.key
-        for template in templates
-        if template.key not in LEGACY_UNDERSCORE_ANALYZER_KEYS and not KEBAB_CASE_KEY.fullmatch(template.key)
+def test_registry_keys_are_kebab_case() -> None:
+    invalid_keys = sorted(
+        template.key for template in default_spec_templates() if not KEBAB_CASE_KEY.fullmatch(template.key)
     )
-    assert invalid_kebab_keys == []
+    assert invalid_keys == []
 
 
 def test_public_analyze_functions_are_registry_backed_or_explicit_exceptions() -> None:
@@ -467,18 +460,6 @@ def test_register_analyzer_rejects_a_builtin_key() -> None:
     assert get_registered_plugin_analyzers() == ()
     keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
     assert keys.count("variables") == 1
-
-
-def test_register_analyzer_rejects_a_retired_spelling_of_a_builtin_key() -> None:
-    with pytest.raises(ValueError, match="reserved by a built-in analyzer"):
-
-        @register_analyzer(key="same_cycle")
-        def run(context: AnalysisContext) -> SimpleReport:
-            return SimpleReport(name="shadow")
-
-    assert get_registered_plugin_analyzers() == ()
-    keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
-    assert keys.count("same-cycle") == 1
 
 
 def test_plugin_registered_after_catalog_build_reaches_the_catalog() -> None:

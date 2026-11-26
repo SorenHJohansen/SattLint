@@ -10,6 +10,7 @@ from sattlint.parser_api import BasePicture, ModuleTypeDef, ModuleTypeInstance
 
 from ..models.project_graph import ProjectGraph
 from ..resolution.common import dedupe_moduletype_defs, select_moduletype_def_strict
+from ..utils.casefolding import unit_equal, unit_key
 from .framework import AnalysisContext, Issue, format_report_header
 from .shared._walk_utils import iter_nested_modules
 from .shared.target_origin import build_target_origin_filter_for_basepicture
@@ -44,8 +45,8 @@ def _collect_definitions(
         picture is base_picture
         or (
             base_picture.origin_file is not None
-            and (picture.origin_file or "").casefold() == base_picture.origin_file.casefold()
-            and (picture.origin_lib or "").casefold() == (base_picture.origin_lib or "").casefold()
+            and unit_equal(picture.origin_file or "", base_picture.origin_file)
+            and unit_equal(picture.origin_lib or "", base_picture.origin_lib or "")
         )
         for picture in pictures
     ):
@@ -56,7 +57,7 @@ def _collect_definitions(
     )
     index: dict[str, list[ModuleTypeDef]] = defaultdict(list)
     for definition in definitions:
-        index[definition.name.casefold()].append(definition)
+        index[unit_key(definition.name)].append(definition)
     return pictures, definitions, index
 
 
@@ -81,12 +82,12 @@ def _collect_invocations(
         for module, path in iter_nested_modules(scope.submodules, parent_path=scope_path):
             if not isinstance(module, ModuleTypeInstance):
                 continue
-            if graph is not None and module.moduletype_name.casefold() not in target_type_names:
+            if graph is not None and unit_key(module.moduletype_name) not in target_type_names:
                 continue
             definition = select_moduletype_def_strict(
                 base_picture if isinstance(scope, ModuleTypeDef) else scope,
                 module.moduletype_name,
-                index.get(module.moduletype_name.casefold(), []),
+                index.get(unit_key(module.moduletype_name), []),
                 current_library=scope.origin_lib,
                 current_file=scope.origin_file,
                 unavailable_libraries=None if graph is None else graph.unavailable_libraries,
@@ -95,8 +96,8 @@ def _collect_invocations(
             )
             invocation_key = (
                 id(definition),
-                (scope.origin_lib or "").casefold(),
-                (scope.origin_file or "").casefold(),
+                unit_key(scope.origin_lib or ""),
+                unit_key(scope.origin_file or ""),
                 tuple(path[1:]),
             )
             if invocation_key not in seen:
@@ -119,18 +120,17 @@ def analyze_moduletype_usage(
         analyzed_target_is_library = analyzed_target_is_library or analysis_context.target_is_library
 
     if graph is not None and graph.missing:
-        target_name = (
-            Path(base_picture.origin_file).stem if base_picture.origin_file else base_picture.header.name
-        ).casefold()
+        target_name = Path(base_picture.origin_file).stem if base_picture.origin_file else base_picture.header.name
+        target_name = unit_key(target_name)
         downstream: set[str] = set()
         pending = list(graph.source_dependencies.get(target_name, set()))
         while pending:
-            dependency = pending.pop().casefold()
+            dependency = unit_key(pending.pop())
             if dependency == target_name or dependency in downstream:
                 continue
             downstream.add(dependency)
             pending.extend(graph.source_dependencies.get(dependency, set()))
-        unavailable = {name.casefold() for name in graph.unavailable_libraries}
+        unavailable = {unit_key(name) for name in graph.unavailable_libraries}
         if graph.failures or not unavailable or not unavailable.issubset(downstream):
             raise ValueError("Module-type usage is incomplete because consumer source could not be loaded.")
 
@@ -139,7 +139,7 @@ def analyze_moduletype_usage(
     is_target_definition = build_target_origin_filter_for_basepicture(
         base_picture, analyzed_target_is_library=analyzed_target_is_library
     )
-    target_type_names = {definition.name.casefold() for definition in definitions if is_target_definition(definition)}
+    target_type_names = {unit_key(definition.name) for definition in definitions if is_target_definition(definition)}
     invocations = _collect_invocations(
         base_picture,
         graph,
@@ -164,7 +164,7 @@ def analyze_moduletype_usage(
         # Any invocation outside the declaring unit is a real use, wherever it
         # lives. A single such use is enough; the consumer set is not guaranteed
         # to be complete, so absence of more proof is not evidence.
-        if any((use.source_file or "").casefold() != declaring_file.casefold() for use in uses):
+        if any(not unit_equal(use.source_file or "", declaring_file) for use in uses):
             continue
         # In-file use says nothing about whether the declaring unit publishes
         # the type. A library instantiating its own type proves only that the
@@ -181,12 +181,12 @@ def _consumer_units(graph: ProjectGraph | None) -> dict[str, set[str]]:
     consumers: dict[str, set[str]] = defaultdict(set)
     if graph is None:
         return consumers
-    for unit, dependencies in graph.source_dependencies.items():
-        unit_key = unit.casefold()
+    for source, dependencies in graph.source_dependencies.items():
+        source_key = unit_key(source)
         for dependency in dependencies:
-            dependency_key = dependency.casefold()
-            if dependency_key != unit_key:
-                consumers[dependency_key].add(unit_key)
+            dependency_key = unit_key(dependency)
+            if dependency_key != source_key:
+                consumers[dependency_key].add(source_key)
     return consumers
 
 
@@ -198,7 +198,7 @@ def _declaring_unit_key(definition: ModuleTypeDef) -> str:
     without a source file has no unit identity the edges can match.
     """
     if definition.origin_file:
-        return Path(definition.origin_file).stem.casefold()
+        return unit_key(Path(definition.origin_file).stem)
     return ""
 
 

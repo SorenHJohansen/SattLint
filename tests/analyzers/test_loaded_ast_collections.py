@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import cast
 
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.engine import CodeMode, load_project_graph, merge_project_basepicture
 from sattlint.parser_api import BasePicture
+from tests.helpers.project_loading import load_target_project
 
 FIXTURE = (
     Path(__file__).resolve().parent.parent / "fixtures" / "corpus" / "semantic" / "analyzer" / "TestStringsDisplay.s"
@@ -20,16 +20,8 @@ FIXTURE = (
 
 
 def _loaded_base_picture() -> BasePicture:
-    cfg: dict[str, object] = {
-        "program_dir": FIXTURE.parent,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": FIXTURE.parent,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-    _, root_bp, graph = load_project_graph(cfg, FIXTURE.stem, strict=False)
-    assert root_bp is not None
-    return merge_project_basepicture(graph.ast_by_name[FIXTURE.stem], graph)
+    base_picture, _graph = load_target_project(FIXTURE)
+    return base_picture
 
 
 def test_loaded_collections_are_tuples() -> None:

@@ -805,7 +805,7 @@ def test_finding_groups_keep_distinct_data_payloads() -> None:
     assert len(groups[0][2]) == 2
 
 
-def test_finding_role_falls_back_to_legacy_issue_message() -> None:
+def test_finding_role_without_recorded_data_has_no_group() -> None:
     finding = AnalysisFinding(
         kind="unused",
         message="[Root] localvariable  'Legacy' (integer)",
@@ -813,7 +813,7 @@ def test_finding_role_falls_back_to_legacy_issue_message() -> None:
         data={"context": "Legacy"},
     )
 
-    assert results_module._finding_declaration_role(finding) == "localvariable"
+    assert results_module._finding_declaration_role(finding) is None
 
 
 def test_acknowledged_finding_is_marked_without_changing_counts() -> None:

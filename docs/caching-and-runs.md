@@ -12,8 +12,8 @@ unavailable.
 | Linux | `$XDG_CACHE_HOME/sattlint`, or `~/.cache/sattlint` |
 | Windows | `%APPDATA%\sattlint\cache` |
 
-The directory is created on demand. A legacy Linux cache stored under the
-configuration directory is migrated once per process.
+The directory is created on demand. Nothing is read from or migrated out of an
+older cache location.
 
 ## Two caches
 

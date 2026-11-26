@@ -15,9 +15,6 @@ from sattlint.cache.classes import AnalysisReportCache, ASTCache
 from sattlint.cache.manager import _CACHE_MANAGER_LIMIT, _CACHE_MANAGERS, get_cache_manager
 from sattlint.runs import RunRecord, save_run
 
-# Captured before the shared fixture isolates the cache location per test.
-_REAL_GET_CACHE_DIR = cache_module.get_cache_dir
-
 
 def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
@@ -136,68 +133,12 @@ def test_ast_cache_clear_tolerates_missing_artifacts(tmp_path: Path) -> None:
     assert cache.has_cache_artifact("key") is False
 
 
-def test_legacy_cache_migration_runs_once_per_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[Path] = []
-    monkeypatch.setattr(cache_module, "_legacy_migration_attempted", False)
-    monkeypatch.setattr(cache_module, "_migrate_legacy_cache_dir", calls.append)
-    monkeypatch.setattr(cache_module, "cache_dir_location", lambda: tmp_path / "cache")
-
-    _REAL_GET_CACHE_DIR()
-    _REAL_GET_CACHE_DIR()
-
-    assert calls == [tmp_path / "cache"]
-
-
-def test_legacy_cache_migration_finishes_when_a_destination_name_collides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    legacy = tmp_path / "legacy"
-    destination = tmp_path / "cache"
-    (legacy / "nested").mkdir(parents=True)
-    (legacy / "shared.pickle").write_bytes(b"legacy")
-    (legacy / "nested" / "moved.pickle").write_bytes(b"moved")
-    (legacy / "nested" / "shared.pickle").write_bytes(b"legacy-nested")
-    destination.mkdir()
-    (destination / "shared.pickle").write_bytes(b"current")
-    (destination / "nested").mkdir()
-    (destination / "nested" / "shared.pickle").write_bytes(b"current-nested")
-
-    monkeypatch.setattr(cache_module, "_legacy_cache_dir", lambda: legacy)
-    cache_module._migrate_legacy_cache_dir(destination)
-
-    # A collision must not leave the legacy tree behind: an unfinished tree is
-    # walked again on every later run.
-    assert not legacy.exists()
-    assert (destination / "shared.pickle").read_bytes() == b"current"
-    assert (destination / "nested" / "shared.pickle").read_bytes() == b"current-nested"
-    assert (destination / "nested" / "moved.pickle").read_bytes() == b"moved"
-
-
 def test_cache_manager_memo_stays_bounded(tmp_path: Path) -> None:
     _CACHE_MANAGERS.clear()
     for index in range(_CACHE_MANAGER_LIMIT + 3):
         get_cache_manager(tmp_path / f"cache-{index}")
 
     assert len(_CACHE_MANAGERS) == _CACHE_MANAGER_LIMIT
-
-
-def test_legacy_cache_migration_moves_the_signing_key_with_the_payloads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    legacy = tmp_path / "legacy"
-    destination = tmp_path / "cache"
-    legacy.mkdir()
-    (legacy / "entry.pickle").write_bytes(b"signed")
-    (legacy / cache_module._PICKLE_HMAC_KEY_NAME).write_bytes(b"legacy-key")
-    destination.mkdir()
-
-    monkeypatch.setattr(cache_module, "_legacy_cache_dir", lambda: legacy)
-    monkeypatch.setattr(cache_module, "_pickle_hmac_key_path", lambda: tmp_path / "moved-key")
-
-    cache_module._migrate_legacy_cache_dir(destination)
-
-    assert not (destination / cache_module._PICKLE_HMAC_KEY_NAME).exists()
-    assert (tmp_path / "moved-key").read_bytes() == b"legacy-key"
 
 
 def test_ast_cache_rejects_a_same_size_edit_that_preserves_the_modification_time(tmp_path: Path) -> None:

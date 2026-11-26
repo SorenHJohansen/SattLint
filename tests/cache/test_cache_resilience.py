@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import cast
 
@@ -24,6 +25,14 @@ def _blocked_cache_dir(tmp_path: Path) -> Path:
     blocked = tmp_path / "blocked-cache"
     blocked.write_text("not a directory", encoding="utf-8")
     return blocked
+
+
+def _set_cache_base_env(monkeypatch: pytest.MonkeyPatch, blocked: Path) -> None:
+    """Point the platform's cache base at a file, not the POSIX default."""
+    if os.name == "nt":
+        monkeypatch.setenv("APPDATA", str(blocked))
+    else:
+        monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
 
 
 def test_create_analysis_report_cache_returns_none_for_unusable_directory(tmp_path: Path) -> None:
@@ -57,7 +66,7 @@ def test_get_cache_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, mon
     monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
     monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
+    _set_cache_base_env(monkeypatch, blocked)
 
     assert cache_module.get_cache_dir_or_none() is None
 
@@ -67,6 +76,6 @@ def test_get_runs_dir_or_none_returns_none_when_mkdir_fails(tmp_path: Path, monk
     monkeypatch.setattr(cache_module, "cache_dir_location", _REAL_CACHE_DIR_LOCATION)
     monkeypatch.setattr(cache_module, "get_cache_dir", _REAL_GET_CACHE_DIR)
     monkeypatch.setattr(cache_module, "get_cache_dir_or_none", _REAL_GET_CACHE_DIR_OR_NONE)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(blocked))
+    _set_cache_base_env(monkeypatch, blocked)
 
     assert runs_module.get_runs_dir_or_none() is None

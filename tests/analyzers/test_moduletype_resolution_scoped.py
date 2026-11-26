@@ -137,7 +137,7 @@ def test_private_definition_is_not_visible_from_another_unit():
         "Stop_Drain",
         current_library="ProjectLib",
         current_file="KaHAXDiluteLib.s",
-        source_dependencies={"kahaxdilutelib": ["KaHAXModullLib"]},
+        source_dependencies={"KAHAXDILUTELIB": ["KaHAXModullLib"]},
     )
 
     assert resolved is public
@@ -159,7 +159,7 @@ def test_source_dependencies_narrow_same_library_duplicates():
         current_library="ProjectLib",
         current_file="KaHAXDiluteLib.s",
         library_dependencies={"projectlib": ["kahaxmodulllib"]},
-        source_dependencies={"kahaxdilutelib": ["kahaxmodulllib"]},
+        source_dependencies={"KAHAXDILUTELIB": ["kahaxmodulllib"]},
     )
 
     assert resolved is second
@@ -479,7 +479,7 @@ def test_analyze_variables_derives_library_dependencies_from_graph(monkeypatch: 
 
     analyze_variables(bp, analysis_context=context)
 
-    assert captured["library_dependencies"] == {"applib": {"lib2"}}
+    assert captured["library_dependencies"] == {"APPLIB": {"LIB2"}}
 
 
 def test_missing_moduletype_lists_only_the_candidates_the_lookup_considered():

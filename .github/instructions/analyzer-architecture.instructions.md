@@ -5,7 +5,7 @@ applyTo: ["src/sattlint/analyzers/**", "tests/analyzers/**"]
 ---
 # Analyzer Architecture
 
-- Registry-facing analyzer keys are canonical kebab-case. If a legacy underscore spelling must remain selectable during a migration, add a compatibility alias at the registry selection seam instead of reintroducing underscore keys into new specs.
+- Registry-facing analyzer keys are canonical kebab-case. Retired spellings are not aliases: a renamed key is a new key, and old runs remain readable without making the old key selectable.
 - Public `analyze_*` functions under `src/sattlint/analyzers/` are reserved for registry-backed analyzers. Reporting or debugging helpers should use names such as `report_*` or `debug_*`, and any surviving non-registry `analyze_*` helper must be called out explicitly in the architecture tests.
 - Do not mix `from sattlint.analyzers...` imports with sibling `from .` analyzer-package imports in the same analyzer module. Keep analyzer-package imports relative within the package.
 - Before adding a new recursive module walk or root-origin comparison helper, search for the analyzer-owned shared seam first and extend that seam unless a focused test-backed exception requires a local implementation.

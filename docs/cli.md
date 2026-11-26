@@ -105,7 +105,7 @@ Selection rules:
 - Targets are matched case-insensitively against configured target names.
 - An empty filter value is a usage error.
 
-Progress records carry a `sattlint-progress ` prefix followed by one JSON object
+Progress records carry a `sattlint-progress` prefix followed by a space and one JSON object
 per line. Each record names the phase (`start`, `loading`, `analyzing`, or
 `target-complete`) plus the target and analyzer positions, so a supervising
 process can show live progress without parsing human diagnostics. `--quiet`

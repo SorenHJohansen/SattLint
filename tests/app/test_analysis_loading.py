@@ -27,7 +27,7 @@ from sattlint.project import loading_support as loading_support_module
 from sattlint.project import (
     support as support_module,
 )
-from sattlint.project.parser_adapter import CircularDependencyError, ParserProjectBinding
+from sattlint.project.parser_adapter import ParserProjectBinding
 from tests.helpers import AnalysisGraphStub, named_object
 
 
@@ -355,7 +355,7 @@ def test_record_project_load_failure_names_the_program_message_and_dependency():
         ProjectLoadError("Dep", "missing code file", dependency="Dep"),
     )
 
-    failure = graph.failures["consumer"]
+    failure = graph.failures["CONSUMER"]
     assert failure.name == "Consumer"
     assert failure.line is None
     assert failure.column is None

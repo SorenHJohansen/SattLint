@@ -9,7 +9,6 @@ import json
 import os
 import pickle
 import secrets
-import shutil
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -56,7 +55,6 @@ type CacheManifest = dict[str, tuple[int, int, str]]
 CACHE_VERSION = (
     18  # Bump when cached AST semantics, manifest entries, or attached graphics companion record shapes change.
 )
-_legacy_migration_attempted = False
 # Bumped to 7 with the content-digest manifest: entries from before it cannot
 # prove which bytes produced their report, so they are pruned instead of replayed.
 ANALYSIS_REPORT_CACHE_VERSION = 7
@@ -395,94 +393,8 @@ def _save_manifest_payload(path: Path, manifest: CacheManifest) -> None:
         raise
 
 
-def _legacy_cache_dir() -> Path:
-    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg_config_home) if xdg_config_home is not None else Path.home() / ".config"
-    return base / "sattlint" / "cache"
-
-
-def _discard_cache_entry(path: Path) -> None:
-    """Remove one legacy cache entry that the destination already owns."""
-    if path.is_dir():
-        try:
-            shutil.rmtree(path)
-        except OSError:
-            return
-        return
-    _remove_file(path)
-
-
-def _merge_cache_directories(source: Path, destination: Path) -> None:
-    """Move every entry of *source* into *destination*, resolving name collisions.
-
-    Cache payloads are content-addressed, so a name that exists in both trees is
-    the same logical entry: the destination copy wins and the source copy is
-    discarded. Consuming the collision is what lets the caller finish the
-    migration; leaving the source entry behind kept the legacy tree alive and
-    every later run walked it again.
-    """
-    for child in source.iterdir():
-        target = destination / child.name
-        if not target.exists():
-            shutil.move(str(child), str(target))
-            continue
-        if child.is_dir() and target.is_dir():
-            _merge_cache_directories(child, target)
-            try:
-                child.rmdir()
-            except OSError:
-                continue
-            continue
-        _discard_cache_entry(child)
-
-
-def _relocate_legacy_hmac_key(cache_dir: Path) -> None:
-    """Move a key file found inside a migrated tree to the key location.
-
-    Payloads signed with the legacy key stay readable only while the key
-    moves with them. A key left inside the cache tree would protect nothing
-    and would survive as an entry that no reader prunes.
-    """
-    legacy_key = cache_dir / _PICKLE_HMAC_KEY_NAME
-    if not legacy_key.exists():
-        return
-    key_path = _pickle_hmac_key_path()
-    if key_path.exists():
-        _remove_file(legacy_key)
-        return
-    key_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        shutil.move(str(legacy_key), str(key_path))
-    except OSError:
-        _remove_file(legacy_key)
-
-
-def _migrate_legacy_cache_dir(cache_dir: Path) -> None:
-    legacy_cache_dir = _legacy_cache_dir()
-    if legacy_cache_dir == cache_dir or not legacy_cache_dir.exists():
-        return
-
-    cache_dir.parent.mkdir(parents=True, exist_ok=True)
-    if not cache_dir.exists():
-        try:
-            legacy_cache_dir.rename(cache_dir)
-        except OSError:
-            pass
-        else:
-            _relocate_legacy_hmac_key(cache_dir)
-            return
-
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    _merge_cache_directories(legacy_cache_dir, cache_dir)
-    _relocate_legacy_hmac_key(cache_dir)
-    try:
-        legacy_cache_dir.rmdir()
-    except OSError:
-        return
-
-
 def cache_dir_location() -> Path:
-    """The cache directory path without creating or migrating it."""
+    """The cache directory path without creating it."""
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         base = Path(appdata) if appdata is not None else Path.home() / "AppData" / "Roaming"
@@ -493,14 +405,7 @@ def cache_dir_location() -> Path:
 
 
 def get_cache_dir() -> Path:
-    global _legacy_migration_attempted
-
     cache_dir = cache_dir_location()
-    if os.name != "nt" and not _legacy_migration_attempted:
-        # The old layout is migrated once per process: a lookup should not walk
-        # and move a legacy tree on every cache access.
-        _legacy_migration_attempted = True
-        _migrate_legacy_cache_dir(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -533,19 +438,19 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 CACHE_KEY_SCHEMA_VERSION = 2
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-25-file-line-ownership",
-    "cyclomatic-complexity": "2026-11-21-worst-scope",
-    "sfc": "2026-11-26-fork-targets",
-    "variables": "2026-11-26-sweep-keeps-findings",
-    "datatype-fields": "2026-11-26-sweep-keeps-findings",
-    "moduletype-usage": "2026-11-21-consumer-closure",
-    "module-layout": "2026-11-26-grid-origo-visibility",
+    "cyclomatic-complexity": "2026-11-26-language-identity",
+    "sfc": "2026-11-26-language-identity",
+    "variables": "2026-11-26-language-identity",
+    "datatype-fields": "2026-11-26-language-identity",
+    "moduletype-usage": "2026-11-26-language-identity",
+    "module-layout": "2026-11-26-language-identity",
     "picture-display-paths": "2026-11-25-stable-string-pass",
     "icf": "2026-11-25-partial-project",
-    "dataflow": "2026-11-25-sfc-guard-and-state",
-    "same-cycle": "2026-11-26-sweep-keeps-findings",
-    "alarm-integrity": "2026-11-25-structural-never-cleared",
-    "string-capacity": "2026-11-26-analyzed-origin",
-    "string-style": "2026-11-26-analyzed-origin",
+    "dataflow": "2026-11-26-language-identity",
+    "same-cycle": "2026-11-26-language-identity",
+    "alarm-integrity": "2026-11-26-language-identity",
+    "string-capacity": "2026-11-26-language-identity",
+    "string-style": "2026-11-26-language-identity",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol

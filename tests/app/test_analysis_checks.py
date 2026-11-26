@@ -1180,40 +1180,6 @@ def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch: pytest.Mo
     assert pauses == ["pause"]
 
 
-def test_run_checks_accepts_legacy_underscore_analyzer_key(monkeypatch: pytest.MonkeyPatch):
-    lines: list[str] = []
-
-    monkeypatch.setattr(output_module, "emit_output", lambda message: lines.append(message))
-
-    checks_application.run_checks(
-        cast(ConfigDict, DEFAULT_CONFIG.copy()),
-        ["same_cycle"],
-        iter_loaded_projects_fn=cast(
-            Any,
-            lambda *_args, **_kwargs: iter(
-                [
-                    (
-                        "TargetA",
-                        named_object("TargetA"),
-                        AnalysisGraphStub(),
-                    )
-                ]
-            ),
-        ),
-        get_enabled_analyzers_fn=lambda: [
-            SimpleNamespace(
-                key="same-cycle",
-                name="Same-cycle hazards",
-                run=lambda _context: SimpleNamespace(summary=lambda: "same-cycle summary"),
-            )
-        ],
-        target_is_library_fn=lambda *_args, **_kwargs: False,
-        pause_fn=None,
-    )
-
-    assert any("Same-cycle hazards (same-cycle)" in line for line in lines)
-
-
 def test_run_checks_result_returns_structured_result_and_persists_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1574,7 +1540,10 @@ def test_parallel_run_records_the_effective_worker_count_in_the_profile(
 
     events = [json.loads(line) for line in (tmp_path / "profile.jsonl").read_text(encoding="utf-8").splitlines()]
 
-    assert events[0]["payload"]["jobs"] == 2
+    # A platform without a fork start method falls back to one worker, so the
+    # profile records the effective count, not the requested one.
+    expected_jobs = 2 if checks_execution.analyzer_workers.pooling_supported() else 1
+    assert events[0]["payload"]["jobs"] == expected_jobs
 
 
 def test_sequential_run_records_a_single_worker_in_the_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

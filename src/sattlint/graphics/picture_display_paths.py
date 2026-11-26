@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from sattlint.parser_api import BasePicture
 
 from ..analyzers.string_inference import ExactStringInferenceEngine
-from ..utils.casefolding import unit_equal, unit_key
 from ..config.string_capacities import StringCapacities
+from ..utils.casefolding import unit_equal, unit_key
 from .picture_display_runtime import (
     RuntimeModuleNode,
     RuntimeTree,

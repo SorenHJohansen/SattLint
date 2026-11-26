@@ -24,6 +24,7 @@ from sattlint.application.findings import extract_report_findings, kind_human_la
 from sattlint.config import DEFAULT_CONFIG, ConfigDict
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.loading_support import _include_reverse_library_consumers
+from sattlint.utils.casefolding import unit_key
 
 
 def _header(name: str) -> ModuleHeader:
@@ -109,7 +110,7 @@ def test_same_library_duplicate_type_names_resolve_by_declaring_file() -> None:
         origin_lib="ProjectLib",
     )
     graph = ProjectGraph(ast_by_name={"DiluteLib": library, "CIPXLib": consumer})
-    graph.source_dependencies["cipxlib"] = {"modullib"}
+    graph.source_dependencies["CIPXLIB"] = {"MODULLIB"}
 
     report = analyze_moduletype_usage(
         library,
@@ -132,7 +133,7 @@ def test_module_type_usage_suppresses_an_in_file_only_type_with_a_consumer(
     consumer = _picture("Consumer", definitions=[], instances=[])
     graph = ProjectGraph(
         ast_by_name={"EquipmentLib": library, "Consumer": consumer},
-        source_dependencies={"consumer": {"equipmentlib"}},
+        source_dependencies={"CONSUMER": {"EQUIPMENTLIB"}},
     )
 
     report = analyze_moduletype_usage(
@@ -194,7 +195,7 @@ def test_module_type_usage_keeps_same_named_library_types_separate() -> None:
     consumer = _picture("Consumer", definitions=[], instances=[_instance("OtherEquipment")])
     graph = ProjectGraph(
         ast_by_name={"EquipmentLib": library, "OtherLib": other_library, "Consumer": consumer},
-        library_dependencies={"consumer": {"otherlib"}},
+        library_dependencies={"CONSUMER": {"OTHERLIB"}},
     )
 
     report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
@@ -228,7 +229,7 @@ def test_module_type_usage_counts_invocations_in_another_units_type_body() -> No
     consumer_library = _picture("ConsumerLib", definitions=[wrapper], instances=[])
     graph = ProjectGraph(
         ast_by_name={"EquipmentLib": library, "ConsumerLib": consumer_library},
-        source_dependencies={"consumerlib": {"equipmentlib"}},
+        source_dependencies={"CONSUMERLIB": {"EQUIPMENTLIB"}},
     )
 
     report = analyze_moduletype_usage(library, AnalysisContext(library, graph, target_is_library=True))
@@ -294,8 +295,8 @@ def test_module_type_usage_ignores_missing_downstream_source() -> None:
     )
     graph = ProjectGraph(
         ast_by_name={"EquipmentLib": library, "ConfigurationLib": dependency},
-        source_dependencies={"equipmentlib": {"configurationlib"}, "configurationlib": {"controllib"}},
-        unavailable_libraries={"controllib"},
+        source_dependencies={"EQUIPMENTLIB": {"CONFIGURATIONLIB"}, "CONFIGURATIONLIB": {"CONTROLLIB"}},
+        unavailable_libraries={"CONTROLLIB"},
         missing=["Dependent source is unavailable"],
     )
 
@@ -307,8 +308,8 @@ def test_module_type_usage_ignores_missing_downstream_source() -> None:
 def test_module_type_usage_still_rejects_missing_consumer_source() -> None:
     library = _picture()
     graph = ProjectGraph(
-        source_dependencies={"consumer": {"equipmentlib"}},
-        unavailable_libraries={"consumer"},
+        source_dependencies={"CONSUMER": {"EQUIPMENTLIB"}},
+        unavailable_libraries={"CONSUMER"},
         missing=["Consumer source is unavailable"],
     )
 
@@ -373,8 +374,8 @@ def test_module_type_usage_loads_transitive_consumers_including_the_abb_root(
             assert directory is not None
             visits.append((name, directory))
             deps_path = directory / f"{name}{suffix}"
-            graph.source_dependencies[name.casefold()] = {
-                line.strip().casefold() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()
+            graph.source_dependencies[unit_key(name)] = {
+                unit_key(line.strip()) for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()
             }
             graph.ast_by_name[name] = _picture(name, definitions=[], instances=[])
 

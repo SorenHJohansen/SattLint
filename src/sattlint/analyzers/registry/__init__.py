@@ -10,7 +10,6 @@ from typing import TypedDict
 from .._registry_specs import build_default_analyzers
 from ..framework import AnalyzerSpec
 from ..plugin import (
-    LEGACY_ANALYZER_KEY_ALIASES,
     get_plugin_registry_generation,
     get_registered_plugin_analyzers,
     register_analyzer,
@@ -129,7 +128,7 @@ class AnalyzerCatalog:
 
 
 def canonicalize_analyzer_key(key: str) -> str:
-    return LEGACY_ANALYZER_KEY_ALIASES.get(key.casefold(), key.casefold())
+    return key.casefold()
 
 
 def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:

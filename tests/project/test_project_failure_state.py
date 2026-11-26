@@ -13,7 +13,7 @@ def test_record_project_failure_keeps_the_detail_on_the_typed_record() -> None:
 
     record_project_failure(graph, "Program", RuntimeError("unexpected token"))
 
-    failure = graph.failures["program"]
+    failure = graph.failures["PROGRAM"]
     assert failure.name == "Program"
     assert failure.detail == "unexpected token"
 
