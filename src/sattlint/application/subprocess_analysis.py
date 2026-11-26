@@ -6,6 +6,12 @@ resident after a run. The interactive app is long-lived, so an in-process run
 leaves it holding hundreds of megabytes it no longer uses. A child process
 returns all of that memory to the OS when it exits, while the saved run record
 gives the app the same result it would have produced in-process.
+
+The child never imports from the directory it runs in. It is started with
+``-P`` (and ``PYTHONSAFEPATH=1`` in its environment), so the working directory
+stays off ``sys.path``. A SattLine project may sit next to a file named like the
+package, and importing that file would run project code inside the analysis
+process.
 """
 
 from __future__ import annotations
@@ -86,6 +92,11 @@ def _analyze_command(
 ) -> list[str]:
     command = [
         sys.executable,
+        # Keep the working directory off the child's ``sys.path``. The child may
+        # run inside the analyzed project, where a project file named like the
+        # package would otherwise shadow the real one. ``-I`` would also drop
+        # PYTHONPATH and user site-packages, which the child may need.
+        "-P",
         "-m",
         ANALYZE_MODULE,
         "analyze",
@@ -173,7 +184,14 @@ def run_checks_result_in_subprocess(
             temporary, resolved_project = _temporary_project(cfg, selected_keys)
         # The child's status text and findings are Unicode. Force both ends to
         # UTF-8 so Windows console code pages cannot corrupt the stream.
-        environment = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        # ``PYTHONSAFEPATH`` is the environment form of ``-P``: it also covers
+        # any interpreter the child starts for itself.
+        environment = {
+            **os.environ,
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONSAFEPATH": "1",
+        }
         process = subprocess.Popen(
             _analyze_command(
                 project_path=resolved_project,

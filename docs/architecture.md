@@ -119,6 +119,9 @@ The application layer is the seam shared by both surfaces:
   configured project for the UI.
 - `application/subprocess_analysis.py` runs an interactive analysis in a
   short-lived child process so the UI does not retain a large analysis heap.
+  The child starts with the interpreter's safe-path mode (`-P` and
+  `PYTHONSAFEPATH=1`), so a module in the analyzed project directory cannot
+  shadow the installed package.
 
 ## Parser boundary
 

@@ -43,19 +43,7 @@ def test_subprocess_run_streams_output_and_returns_a_saved_run(
         cache_base = tmp_path / "cache"
         monkeypatch.setenv("XDG_CACHE_HOME", str(cache_base))
         runs_dir = cache_base / "sattlint" / "runs"
-    fixture_dir = Path(__file__).resolve().parents[1] / "fixtures" / "corpus" / "valid"
-    cfg = cast(
-        ConfigDict,
-        {
-            **deepcopy(DEFAULT_CONFIG),
-            "analyzed_programs_and_libraries": ["MinimalProgram"],
-            "program_dir": str(fixture_dir),
-            "ABB_lib_dir": str(fixture_dir),
-            "icf_dir": "",
-            "other_lib_dirs": [],
-            "mode": "draft",
-        },
-    )
+    cfg = _valid_corpus_cfg()
 
     lines: list[str] = []
     result = run_checks_result_in_subprocess(cfg, ["comment-code"], emit_output=lines.append)
@@ -135,6 +123,27 @@ def test_subprocess_run_forwards_progress_records_and_keeps_them_out_of_output(
 
 def _analysis_cfg() -> ConfigDict:
     return cast(ConfigDict, deepcopy(DEFAULT_CONFIG))
+
+
+def _valid_corpus_cfg() -> ConfigDict:
+    fixture_dir = Path(__file__).resolve().parents[1] / "fixtures" / "corpus" / "valid"
+    return cast(
+        ConfigDict,
+        {
+            **deepcopy(DEFAULT_CONFIG),
+            "analyzed_programs_and_libraries": ["MinimalProgram"],
+            "program_dir": str(fixture_dir),
+            "ABB_lib_dir": str(fixture_dir),
+            "icf_dir": "",
+            "other_lib_dirs": [],
+            "mode": "draft",
+        },
+    )
+
+
+def _shadow_module_source(marker: Path) -> str:
+    """Python source that proves it ran by creating ``marker``."""
+    return f"from pathlib import Path\n\nPath({str(marker)!r}).touch()\n"
 
 
 def test_cancelled_subprocess_run_stops_promptly_with_its_worker_tree(
@@ -341,3 +350,81 @@ def test_cancel_requested_before_spawn_never_starts_a_child(
     assert result.cancelled is True
     assert marker.exists() is False
     assert commands == []
+
+
+def test_analyze_command_keeps_the_project_directory_off_sys_path(tmp_path: Path) -> None:
+    command = subprocess_analysis_module._analyze_command(
+        project_path=tmp_path / "project.slproj",
+        output_path=tmp_path / "run.ndjson",
+        selected_keys=["comment-code"],
+    )
+
+    assert command[:4] == [sys.executable, "-P", "-m", subprocess_analysis_module.ANALYZE_MODULE]
+
+
+def test_child_environment_blocks_cwd_imports_even_without_the_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The environment form must hold on its own, not only through ``-P``."""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    marker = project_dir / "shadow-imported"
+    (project_dir / "shadow_module.py").write_text(_shadow_module_source(marker), encoding="utf-8")
+    monkeypatch.chdir(project_dir)
+
+    def command(**_kwargs: object) -> list[str]:
+        # No ``-P`` here: the import can only fail because of the child's
+        # environment.
+        return [sys.executable, "-c", "import shadow_module"]
+
+    monkeypatch.setattr(subprocess_analysis_module, "_analyze_command", command)
+
+    result = run_checks_result_in_subprocess(
+        _analysis_cfg(),
+        ["comment-code"],
+        project_path=str(project_dir / "project.slproj"),
+    )
+
+    assert marker.exists() is False
+    assert any("ModuleNotFoundError" in line for line in result.output_lines)
+
+
+def test_subprocess_run_never_imports_a_shadowing_project_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A project file named like the package must not run inside the child.
+
+    The child inherits the working directory, which can be the analyzed project
+    itself. A control run without the isolation proves that such a file really
+    is imported when the working directory stays on ``sys.path``.
+    """
+    if os.name == "nt":
+        monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    else:
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    project_dir = tmp_path / "shadow-project"
+    project_dir.mkdir()
+    marker = project_dir / "shadow-imported"
+    (project_dir / "sattlint.py").write_text(_shadow_module_source(marker), encoding="utf-8")
+
+    control_env = {key: value for key, value in os.environ.items() if key != "PYTHONSAFEPATH"}
+    control = subprocess.run(
+        [sys.executable, "-m", "sattlint", "--version"],
+        cwd=project_dir,
+        env=control_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert marker.exists() is True, control.stderr
+    marker.unlink()
+
+    monkeypatch.chdir(project_dir)
+    result = run_checks_result_in_subprocess(_valid_corpus_cfg(), ["comment-code"])
+
+    # Checked first: a shadow import replaces the analysis entirely.
+    assert marker.exists() is False
+    assert result.failures == ()
+    assert result.run_id is not None
