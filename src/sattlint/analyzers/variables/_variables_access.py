@@ -47,6 +47,32 @@ def _record_access(
     )
 
 
+def _record_secure_candidate_access(
+    self: VariablesAnalyzer,
+    variable: Variable,
+    field_path: str,
+    decl_module_path: list[str],
+    decl_display: list[str],
+    kind: AccessKind,
+) -> None:
+    """Record the step writes and transition reads the Secure heuristic uses."""
+    facts = getattr(self, "_secure_candidate_facts", None)
+    if facts is None or field_path:
+        return
+    site = _site_str(self)
+    if kind is AccessKind.WRITE and getattr(self, "_secure_in_step", False):
+        step_name = getattr(self, "_secure_step_name", None)
+        if step_name:
+            site = f"{site} > STEP:{step_name}"
+        facts.record_write(variable, decl_module_path, decl_display, site)
+        return
+    if kind is AccessKind.READ and getattr(self, "_secure_in_transition", False):
+        transition_name = getattr(self, "_secure_transition_name", None)
+        if transition_name:
+            site = f"{site} > TRANSITION:{transition_name}"
+        facts.record_transition_read(variable, decl_module_path, decl_display, site)
+
+
 def _mark_ref_access(
     self: VariablesAnalyzer,
     full_ref: str,
@@ -59,7 +85,7 @@ def _mark_ref_access(
     base = full_ref.split(".", 1)[0].casefold()
     local_field_path = full_ref.split(".", 1)[1] if "." in full_ref else ""
     declaration = find_nearest_declaration(context, base)
-    variable, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
+    variable, field_path, decl_module_path, decl_display = context.resolve_variable(full_ref)
 
     # A reference names the declaration nearest to it even when a parameter
     # mapping forwards the value to an outer variable. Resolving through the
@@ -81,6 +107,8 @@ def _mark_ref_access(
 
     if variable is None:
         return
+
+    _record_secure_candidate_access(self, variable, field_path, decl_module_path, decl_display, kind)
 
     if kind is AccessKind.WRITE:
         self.effect_flow_tracker.record_controlled_write(full_ref, context)

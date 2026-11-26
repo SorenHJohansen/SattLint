@@ -13,7 +13,6 @@ import pytest
 from sattlint import ui as app_textual
 from sattlint.project.io import init_project
 from sattlint.ui import _app_textual_setup as app_textual_setup_module
-from sattlint.ui import _app_textual_shared as app_textual_shared_module
 from tests.helpers.app_textual_support import (
     isolate_app_config_path,
     isolate_textual_projects,
@@ -60,9 +59,9 @@ def test_textual_analyze_run_selected_executes_planned_steps_in_catalog_order(
     monkeypatch.setattr(
         app_instance,
         "_start_action",
-        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: (
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False, cancellable=False: (
             launched.append((label, action_id)),
-            action_fn(),
+            action_fn(None),
         ),
     )
     monkeypatch.setattr(app_instance, "_emit_output_from_thread", lambda _text: None)
@@ -130,7 +129,9 @@ def test_textual_analyze_run_selected_surfaces_variable_issue_output_from_real_a
         monkeypatch.setattr(
             app_instance,
             "_start_action",
-            lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: action_fn(),
+            lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False, cancellable=False: (
+                action_fn(None)
+            ),
         )
         monkeypatch.setattr(
             app_instance,
@@ -198,7 +199,7 @@ def test_textual_analyze_running_state_calls_out_output_location() -> None:
 
             assert str(app_instance.query_one("#view-note").renderable) == (
                 "Selected analyses are running. Live output is shown in Session output below. "
-                "Wait for the run to finish before starting another action."
+                "Choose Cancel run (Esc) to stop it, or Quit to stop it and leave."
             )
             assert str(app_instance.query_one("#output-title").renderable) == (
                 "Session output ⠋ - Run selected analyzers in progress"
@@ -349,7 +350,7 @@ def test_textual_analyze_buttons_unlock_after_finish_action() -> None:
     asyncio.run(_run())
 
 
-def test_textual_analyze_view_offers_no_cancel_control() -> None:
+def test_textual_analyze_view_exposes_cancel_for_a_cancellable_run() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
 
@@ -359,16 +360,52 @@ def test_textual_analyze_view_offers_no_cancel_control() -> None:
         async with app_instance.run_test() as pilot:
             await pilot.pause()
 
+            cancel_button = app_instance.query_one("#analyze-cancel-run")
+            assert cancel_button.disabled is True
+
             app_instance._busy = True
             app_instance._active_job_action_id = "action-analyze"
-            app_instance._active_job_label = "Run selected analyses"
+            app_instance._active_job_label = "Run selected analyzers"
+            app_instance._active_cancellation = SimpleNamespace(cancel=lambda **_kwargs: None)
             app_instance._refresh_shell_state()
             await pilot.pause()
 
-            with pytest.raises(app_textual_shared_module._TEXTUAL_QUERY_ERRORS):
-                app_instance.query_one("#analyze-cancel-running")
+            assert cancel_button.disabled is False
+
+            app_instance._cancel_requested = True
+            app_instance._refresh_shell_state()
+            await pilot.pause()
+
+            assert cancel_button.disabled is True
+
+            app_instance._finish_action()
+            await pilot.pause()
+
+            assert cancel_button.disabled is True
 
     asyncio.run(_run())
+
+
+def test_textual_cancel_run_requests_analysis_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    calls: list[dict[str, object]] = []
+    messages: list[str] = []
+    app_instance._busy = True
+    app_instance._active_job_action_id = "action-analyze"
+    app_instance._active_cancellation = SimpleNamespace(cancel=lambda **kwargs: calls.append(kwargs))
+
+    monkeypatch.setattr(app_instance, "_write_output", messages.append)
+    monkeypatch.setattr(app_instance, "_refresh_summary", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_view", lambda: None)
+    monkeypatch.setattr(app_instance, "_refresh_shell_state", lambda: None)
+
+    app_instance.action_cancel_run()
+    # A second press is a no-op; the child is already being stopped.
+    app_instance.action_cancel_run()
+
+    assert calls == [{}]
+    assert app_instance._cancel_requested is True
+    assert messages == ["Cancelling the run. Analyzer workers are being stopped."]
 
 
 def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -396,9 +433,9 @@ def test_textual_analyze_run_selected_reports_missing_handlers(monkeypatch: pyte
     monkeypatch.setattr(
         app_instance,
         "_start_action",
-        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: (
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False, cancellable=False: (
             started.append((label, action_id)),
-            action_fn(),
+            action_fn(None),
         ),
     )
     monkeypatch.setattr(app_instance, "_emit_output_from_thread", record_output)
@@ -476,6 +513,29 @@ def test_textual_execute_analyzers_dispatches_to_run_checks(monkeypatch: pytest.
     assert called == [["alpha-analyzer", "beta-analyzer"]]
 
 
+def test_textual_execute_analyzers_forwards_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
+    received: list[object] = []
+    emitted: list[str] = []
+    finished: list[str] = []
+
+    def _handler(_cfg: object, _keys: object, *, cancellation: object = None) -> SimpleNamespace:
+        received.append(cancellation)
+        return SimpleNamespace(failures=(), analyzer_failures=(), cancelled=True, run_id=None)
+
+    app_instance = make_textual_app(analysis_handlers={"run_checks_result": _handler})
+    token = object()
+
+    monkeypatch.setattr(app_instance, "_emit_output_from_thread", emitted.append)
+    monkeypatch.setattr(app_instance, "_call_on_ui", lambda callback, *args, **kwargs: callback(*args, **kwargs))
+    monkeypatch.setattr(app_instance, "_finish_analysis_run", lambda _result: finished.append("finished"))
+
+    app_instance._execute_analyzers(("alpha-analyzer",), cancellation=token)
+
+    assert received == [token]
+    assert emitted[-1] == "Analysis cancelled."
+    assert finished == []
+
+
 def test_textual_execute_analyzers_streams_runner_output(monkeypatch: pytest.MonkeyPatch) -> None:
     streamed: list[str] = []
 
@@ -533,7 +593,7 @@ def test_textual_execute_analyzers_reports_target_load_failures(monkeypatch: pyt
     ]
 
 
-def test_textual_analyze_running_note_does_not_promise_cancellation() -> None:
+def test_textual_analyze_running_note_offers_cancellation() -> None:
     app_instance = make_textual_app(cfg={"analyzed_programs_and_libraries": ["DemoTarget.s"]})
 
     app_instance._busy = True
@@ -542,5 +602,8 @@ def test_textual_analyze_running_note_does_not_promise_cancellation() -> None:
     note = app_instance._analyze_note_text()
 
     assert "Selected analyses are running." in note
-    assert "Cancel" not in note
-    assert "Ctrl+G" not in note
+    assert "Cancel run (Esc)" in note
+
+    app_instance._cancel_requested = True
+
+    assert "Cancelling the run." in app_instance._analyze_note_text()

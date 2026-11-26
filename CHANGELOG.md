@@ -10,6 +10,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- The Analyze view can cancel a running analysis with **Cancel run** or `Esc`.
+  The analysis child process is stopped together with the analyzer workers it
+  forked, and the run is discarded unless it had already finished saving. Quit
+  also stops a running analysis before leaving, and never waits for an analyzer
+  to finish.
 - A comprehensive documentation set under `docs/`, indexed from
   `docs/README.md`, covering installation, project files, configuration, the
   CLI, analyzers, architecture, loading, the analysis pipeline, semantics,
@@ -56,6 +61,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   fixed point.
 - The SFC analyzer reports a fork that jumps back to the step it belongs to,
   and a fork that targets an element in another sequence.
+- The variable analyzer reports Secure candidates: local numeric or boolean
+  values that are written in a step and later read by a transition guard, so a
+  restart before that transition could lose them. OpSave values are no longer
+  reported as missing a reset; instead, a reset path that writes an OpSave value
+  is reported as reset contamination.
 - A `module-layout` analyzer. It checks that each module's clipping rectangle
   has area and an origin at the center or bottom-left corner, that clipping and
   placed module sizes follow the drawing grid, that placement is aligned to the

@@ -20,6 +20,7 @@ from sattlint.parser_api import (
 )
 
 from ..framework import AnalysisContext, Issue, SimpleReport
+from ..shared.module_code_walk import iter_modulecodes
 from ..shared.target_origin import TargetOriginFilter, build_target_origin_filter_for_basepicture
 from ._sfc_fork_checks import (
     SFC_CROSS_SEQUENCE_FORK_KIND,
@@ -30,7 +31,6 @@ from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
     _format_branch_path,
 )
-from ._sfc_module_walk import iter_sfc_modulecodes
 
 _SFC_REACHABILITY_ISSUE_KINDS = frozenset({"sfc_unreachable_transition", "sfc_unreachable_sequence_node"})
 _SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset({"sfc_duplicate_transition_guard"})
@@ -162,7 +162,7 @@ def collect_sfc_reachability_findings(
 ) -> list[SfcReachabilityFinding]:
     findings: list[SfcReachabilityFinding] = []
 
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+    for module_path, modulecode in iter_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
@@ -177,7 +177,7 @@ def _collect_initial_step_issues(
     moduletype_filter: TargetOriginFilter | None = None,
 ) -> list[Issue]:
     issues: list[Issue] = []
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+    for module_path, modulecode in iter_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
@@ -345,5 +345,5 @@ __all__ = [
     "SfcTerminator",
     "analyze_sfc",
     "collect_sfc_reachability_findings",
-    "iter_sfc_modulecodes",
+    "iter_modulecodes",
 ]

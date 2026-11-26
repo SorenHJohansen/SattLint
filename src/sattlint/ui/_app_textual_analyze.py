@@ -462,10 +462,11 @@ def _run_selected_analyzers(self: Any) -> None:
     project_path = "" if self._project_path is None else str(self._project_path)
     self._start_action(
         "Run selected analyzers",
-        lambda keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
-            keys, cfg=cfg, project_path=project_path
+        lambda cancellation, keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
+            keys, cfg=cfg, project_path=project_path, cancellation=cancellation
         ),
         action_id="action-analyze",
+        cancellable=True,
     )
 
 
@@ -475,6 +476,7 @@ def _execute_analyzers(
     *,
     cfg: Any | None = None,
     project_path: str | None = None,
+    cancellation: Any | None = None,
 ) -> None:
     if cfg is None:
         cfg = self._cfg
@@ -500,12 +502,14 @@ def _execute_analyzers(
         # Stream each reported line as the runner produces it instead of
         # replaying a buffered transcript after the run.
         handler_kwargs["emit_output"] = self._emit_output_from_thread
+    if cancellation is not None and "cancellation" in handler_parameters:
+        handler_kwargs["cancellation"] = cancellation
     result = handler(cfg, list(selected_keys), **handler_kwargs)
     failures = tuple(getattr(result, "failures", ())) if result is not None else ()
     analyzer_failures = tuple(getattr(result, "analyzer_failures", ())) if result is not None else ()
     cancelled = bool(getattr(result, "cancelled", False)) if result is not None else False
     if cancelled:
-        self._emit_output_from_thread("Analysis cancelled. No run was saved.")
+        self._emit_output_from_thread("Analysis cancelled.")
     elif failures or analyzer_failures:
         problems: list[str] = []
         if failures:
@@ -519,8 +523,8 @@ def _execute_analyzers(
         )
     else:
         self._emit_output_from_thread("Selected analyzers completed.")
-    if result is not None:
-        self.call_from_thread(self._finish_analysis_run, result)
+    if result is not None and not cancelled:
+        self._call_on_ui(self._finish_analysis_run, result)
 
 
 def _finish_analysis_run(self: Any, result: Any) -> None:
@@ -624,6 +628,7 @@ if TYPE_CHECKING:
             *,
             cfg: Any | None = None,
             project_path: str | None = None,
+            cancellation: Any | None = None,
         ) -> None: ...
         def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analyzers(self) -> None: ...

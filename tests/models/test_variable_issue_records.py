@@ -24,6 +24,7 @@ from sattlint.models._variable_issues import (
     ReadOnlyNonConstIssue,
     RecordComponentOrderIssue,
     ResetContaminationIssue,
+    SecureCandidateIssue,
     ShadowingIssue,
     StringMappingMismatchIssue,
     UnknownParameterTargetIssue,
@@ -61,6 +62,7 @@ _RECORD_TYPES: tuple[type[VariableIssueBase], ...] = (
     ReadBeforeWriteIssue,
     ResetContaminationIssue,
     ImplicitLatchIssue,
+    SecureCandidateIssue,
 )
 
 

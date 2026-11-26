@@ -25,8 +25,8 @@ from sattlint.parser_api import (
     SFCTransitionSub,
 )
 
+from ..shared.module_code_walk import iter_modulecodes
 from ..shared.target_origin import TargetOriginFilter
-from ._sfc_module_walk import iter_sfc_modulecodes
 
 SFC_SELF_FORK_KIND = "sfc_self_fork"
 SFC_CROSS_SEQUENCE_FORK_KIND = "sfc_cross_sequence_fork"
@@ -71,7 +71,7 @@ def collect_sfc_fork_findings(
     moduletype_filter: TargetOriginFilter | None = None,
 ) -> list[SfcForkFinding]:
     findings: list[SfcForkFinding] = []
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+    for module_path, modulecode in iter_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         registry = _name_registry(modulecode)

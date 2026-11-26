@@ -89,7 +89,7 @@ if _TEXTUAL_APP is not None:
 
         CSS = TEXTUAL_SHELL_CSS
 
-        def __init__(
+        def __init__(  # noqa: PLR0915 - the shell owns a lot of small pieces of session state
             self,
             *,
             cfg: ConfigDict,
@@ -119,6 +119,9 @@ if _TEXTUAL_APP is not None:
             self._quit_app_error = quit_app_error
             self._busy = False
             self._dirty = False
+            self._quitting = False
+            self._active_cancellation = None
+            self._cancel_requested = False
             self._active_view = "analyze"
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
@@ -177,6 +180,12 @@ if _TEXTUAL_APP is not None:
                                                 "Run selected analyses",
                                                 id="analyze-run-selected",
                                                 classes="raised-button toolbar-button",
+                                            )
+                                            yield _TEXTUAL_BUTTON(
+                                                "Cancel run",
+                                                id="analyze-cancel-run",
+                                                classes="raised-button toolbar-button",
+                                                disabled=True,
                                             )
                                         with _TEXTUAL_HORIZONTAL(id="analyze-selection-zone"):
                                             yield _TEXTUAL_BUTTON(

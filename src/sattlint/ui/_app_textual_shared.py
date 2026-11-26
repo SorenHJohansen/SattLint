@@ -18,6 +18,7 @@ APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+3", "show_setup", "Configuration Settings"),
     ("ctrl+4", "show_settings", "App Settings"),
     ("ctrl+5", "show_output", "Output"),
+    ("escape", "cancel_run", "Cancel run"),
     ("ctrl+c", "copy_output", "Copy Output"),
     ("tab", "focus_next_control", "Next"),
     ("shift+tab", "focus_previous_control", "Prev"),

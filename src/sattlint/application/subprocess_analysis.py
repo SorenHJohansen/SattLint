@@ -25,6 +25,11 @@ from ..config.string_capacities import StringCapacitiesDict, standard_string_cap
 from ..config.types import AnalysisConfig, ConfigDict, ConfigMode
 from ..project.io import save_project
 from ..project.types import DEFAULT_PROJECT_DICT, ProjectDict
+from .cancellation import (
+    AnalysisCancellation,
+    process_group_spawn_kwargs,
+    terminate_process_tree,
+)
 from .checks_results import ChecksRunResult, TargetLoadFailure
 
 ANALYZE_MODULE = "sattlint"
@@ -133,18 +138,29 @@ def run_checks_result_in_subprocess(
     *,
     project_path: str = "",
     emit_output: Callable[[str], None] | None = None,
+    cancellation: AnalysisCancellation | None = None,
 ) -> ChecksRunResult:
     """Run the checks pipeline in a child process and return its run id.
 
     The child writes the same run-history record an in-process run would, so
     the Results view needs no separate result shape. Output lines are streamed
     from the child's stderr as they arrive.
+
+    ``cancellation`` stops the child (and the analyzer workers it forked) as
+    soon as it is set. The reader keeps draining the stream to EOF so a child
+    that is still writing cannot block on a full pipe; the collected lines are
+    kept for diagnostics, but no line is emitted after cancellation.
     """
+    if cancellation is not None and cancellation.cancelled:
+        # A quit can land between starting the action and this spawn; do not
+        # create a child nobody is left to track.
+        return ChecksRunResult(output_lines=(), cancelled=True)
     emit: Callable[[str], None] = _ignore_output if emit_output is None else emit_output
     temporary: tempfile.TemporaryDirectory[str] | None = None
     output_fd, output_name = tempfile.mkstemp(prefix="sattlint-analyze-", suffix=".ndjson")
     os.close(output_fd)
     output_path = Path(output_name)
+    process: subprocess.Popen[str] | None = None
     try:
         resolved_project = Path(project_path).expanduser().resolve() if project_path.strip() else None
         if resolved_project is None:
@@ -165,27 +181,38 @@ def run_checks_result_in_subprocess(
             errors="replace",
             bufsize=1,
             env=environment,
+            **process_group_spawn_kwargs(),
         )
+        if cancellation is not None:
+            cancellation.attach(process)
         lines: list[str] = []
         if process.stderr is not None:
             for raw_line in process.stderr:
                 text = raw_line.rstrip("\r\n")
-                if text:
-                    lines.append(text)
+                if not text:
+                    continue
+                lines.append(text)
+                if cancellation is None or not cancellation.cancelled:
                     emit(text)
         return_code = process.wait()
-        run_id = _read_run_id(output_path) if return_code == 0 else None
-        if return_code == 130:
+        if return_code == 0:
+            # A cancel that arrives after the child saved the run loses the race:
+            # the run is complete, so report it instead of discarding it.
+            return ChecksRunResult(output_lines=tuple(lines), run_id=_read_run_id(output_path))
+        if (cancellation is not None and cancellation.cancelled) or return_code == 130:
             return ChecksRunResult(output_lines=tuple(lines), cancelled=True)
-        if return_code != 0:
-            return ChecksRunResult(
-                output_lines=tuple(lines),
-                failures=(
-                    TargetLoadFailure(target_name="analysis", message=f"Child process exited with {return_code}."),
-                ),
-            )
-        return ChecksRunResult(output_lines=tuple(lines), run_id=run_id)
+        return ChecksRunResult(
+            output_lines=tuple(lines),
+            failures=(TargetLoadFailure(target_name="analysis", message=f"Child process exited with {return_code}."),),
+        )
     finally:
+        if process is not None:
+            if cancellation is not None:
+                cancellation.detach(process)
+            if process.poll() is None:
+                terminate_process_tree(process, force=True)
+                with suppress(OSError, subprocess.TimeoutExpired):
+                    process.wait(timeout=2)
         with suppress(OSError):
             output_path.unlink()
         if temporary is not None:

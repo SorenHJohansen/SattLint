@@ -68,7 +68,9 @@ It reports, among other things:
 - variables written but never read;
 - writes whose value never reaches an output;
 - implicit latches;
-- reset contamination;
+- reset contamination, including an OpSave value that a reset path clears;
+- secure candidates: local numeric or boolean values written in a step and
+  read by a transition guard, which a restart before that transition could lose;
 - reads before a write or initialization in the same scope;
 - ignored procedure-status outputs;
 - shadowing between scopes;

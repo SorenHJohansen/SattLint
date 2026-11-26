@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -25,20 +27,20 @@ __all__ = [
 ]
 
 
-def test_textual_start_action_starts_a_managed_worker(monkeypatch: pytest.MonkeyPatch) -> None:
-    created_workers: list[object] = []
+def test_textual_start_action_starts_a_daemon_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    created_threads: list[object] = []
 
-    class FakeWorker:
-        def cancel(self) -> None:
+    class FakeThread:
+        def start(self) -> None:
             return None
 
     class FakeTextualApp(app_textual.SattLintTextualApp):
-        def _start_managed_action_worker(self, _work: Any, *, label: str, action_id: str) -> object:
+        def _start_action_thread(self, _work: Any, *, label: str, action_id: str) -> object:
             assert label == "Run selected analyses"
             assert action_id == "action-analyze"
-            worker = FakeWorker()
-            created_workers.append(worker)
-            return worker
+            thread = FakeThread()
+            created_threads.append(thread)
+            return thread
 
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
@@ -61,8 +63,9 @@ def test_textual_start_action_starts_a_managed_worker(monkeypatch: pytest.Monkey
 
     app_instance._start_action("Run selected analyses", lambda: None, action_id="action-analyze")
 
-    assert len(created_workers) == 1
+    assert len(created_threads) == 1
     assert app_instance._busy is True
+    assert app_instance._active_cancellation is None
 
 
 def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,11 +113,11 @@ def test_textual_schedule_ui_coroutine_tracks_pending_task(monkeypatch: pytest.M
 
 def test_textual_start_action_reports_type_errors_from_action(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeTextualApp(app_textual.SattLintTextualApp):
-        def _start_managed_action_worker(self, work: Any, *, label: str, action_id: str) -> object:
+        def _start_action_thread(self, work: Any, *, label: str, action_id: str) -> object:
             assert label == "Run selected analyses"
             assert action_id == "action-analyze"
             work()
-            return SimpleNamespace(cancel=lambda: None)
+            return SimpleNamespace(start=lambda: None)
 
     app_instance = FakeTextualApp(
         cfg={"analyzed_programs_and_libraries": ["TargetA"]},
@@ -188,7 +191,7 @@ def test_textual_finish_action_clears_dirty_after_success() -> None:
     assert app_instance._dirty is False
 
 
-def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_textual_quit_action_leaves_while_an_action_is_running(monkeypatch: pytest.MonkeyPatch) -> None:
     app_instance = app_textual.SattLintTextualApp(
         cfg={},
         summarize_targets_fn=lambda _cfg: "targets",
@@ -196,17 +199,151 @@ def test_textual_quit_action_respects_busy_guard(monkeypatch: pytest.MonkeyPatch
         config_path=None,
         quit_app_error=RuntimeError,
     )
-    messages: list[str] = []
     exited: list[str] = []
     app_instance._busy = True
 
-    monkeypatch.setattr(app_instance, "_write_output", lambda text: messages.append(text))
     monkeypatch.setattr(app_instance, "exit", lambda: exited.append("exit"))
 
     app_instance._handle_toolbar_action("action-quit")
 
-    assert exited == []
-    assert messages == ["An action is still running. Wait for it to finish before quitting."]
+    assert exited == ["exit"]
+    assert app_instance._quitting is True
+
+
+def test_textual_quit_action_forces_cancellation_before_exiting(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = app_textual.SattLintTextualApp(
+        cfg={},
+        summarize_targets_fn=lambda _cfg: "targets",
+        save_config_fn=lambda _path, _cfg: None,
+        config_path=None,
+        quit_app_error=RuntimeError,
+    )
+    cancelled: list[dict[str, object]] = []
+    exited: list[str] = []
+    app_instance._busy = True
+    app_instance._active_cancellation = SimpleNamespace(cancel=lambda **kwargs: cancelled.append(kwargs))
+
+    monkeypatch.setattr(app_instance, "exit", lambda: exited.append("exit"))
+
+    app_instance._handle_toolbar_action("action-quit")
+
+    assert cancelled == [{"force": True}]
+    assert exited == ["exit"]
+
+
+def test_textual_call_on_ui_drops_callbacks_after_quitting(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    app_instance._quitting = True
+    called: list[str] = []
+
+    monkeypatch.setattr(app_instance, "call_from_thread", lambda *_args, **_kwargs: called.append("called"))
+
+    app_instance._call_on_ui(lambda: None)
+
+    assert called == []
+
+
+def test_textual_call_on_ui_ignores_a_stopped_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("App is not running")
+
+    monkeypatch.setattr(app_instance, "call_from_thread", _raise)
+
+    # The worker must keep unwinding instead of propagating the shutdown error.
+    app_instance._call_on_ui(lambda: None)
+
+
+def test_textual_action_thread_is_a_daemon_the_app_never_joins() -> None:
+    app_instance = make_textual_app()
+    release = threading.Event()
+
+    thread = app_instance._start_action_thread(
+        lambda: release.wait(5),
+        label="Run selected analyzers",
+        action_id="action-analyze",
+    )
+
+    assert thread.daemon is True
+    release.set()
+    thread.join(2)
+    assert not thread.is_alive()
+
+
+def test_textual_action_thread_streams_output_to_the_ui() -> None:
+    async def _run() -> None:
+        app_instance = make_textual_app()
+        done = threading.Event()
+
+        def work() -> None:
+            app_instance._emit_output_from_thread("streamed from the action thread")
+            done.set()
+
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            app_instance._start_action("Streaming action", work, action_id="action-change-review")
+            assert await asyncio.to_thread(done.wait, 5)
+            await pilot.pause()
+            output_text = str(getattr(app_instance.query_one("#output"), "text", ""))
+            assert "streamed from the action thread" in output_text
+
+    asyncio.run(_run())
+
+
+def test_textual_action_quit_routes_through_the_cancelling_quit(monkeypatch: pytest.MonkeyPatch) -> None:
+    app_instance = make_textual_app()
+    calls: list[str] = []
+
+    monkeypatch.setattr(app_instance, "_request_quit_shell", lambda: calls.append("quit"))
+
+    app_instance.action_quit()
+
+    assert calls == ["quit"]
+
+
+def test_textual_ctrl_q_uses_the_cancelling_quit() -> None:
+    async def _run() -> None:
+        app_instance = make_textual_app()
+        calls: list[str] = []
+        app_instance._request_quit_shell = lambda: calls.append("quit")  # type: ignore[method-assign]
+
+        async with app_instance.run_test() as pilot:
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+
+        assert calls == ["quit"]
+
+    asyncio.run(_run())
+
+
+def test_textual_quit_does_not_wait_for_a_running_action() -> None:
+    async def _run() -> None:
+        app_instance = make_textual_app()
+        started = threading.Event()
+        release = threading.Event()
+
+        def work(_cancellation: object) -> None:
+            started.set()
+            release.wait(30)
+
+        began = 0.0
+        async with app_instance.run_test() as pilot:
+            await pilot.pause()
+            app_instance._start_action(
+                "Blocking action",
+                work,
+                action_id="action-analyze",
+                cancellable=True,
+            )
+            assert await asyncio.to_thread(started.wait, 5)
+            began = time.monotonic()
+            app_instance.action_quit()
+
+        release.set()
+        assert time.monotonic() - began < 5
+
+    asyncio.run(_run())
 
 
 def test_textual_write_output_preserves_blank_lines(monkeypatch: pytest.MonkeyPatch) -> None:

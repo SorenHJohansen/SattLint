@@ -46,6 +46,7 @@ The Analyze view lists the selectable analyzers from the registry.
 - **Select all** and **Clear selection** operate on the visible list.
 - A filter narrows the visible analyzers.
 - **Run selected analyses** starts the run.
+- **Cancel run** or `Esc` stops a run in progress.
 - Session output streams into the output pane.
 - **Clear output** clears the session pane, not run history.
 
@@ -56,6 +57,14 @@ During a run the active view shows progress. A failed target or analyzer is
 reported in the session output and does not silently disappear. The UI runs the
 analysis in a short-lived child process, then loads the stored run record, so
 repeated runs do not accumulate parsed project graphs in the shell process.
+
+Cancelling stops the child and the analyzer workers it forked; the app does not
+wait for the current analyzer to finish. A cancelled run is discarded; a run
+that had already finished saving when the cancel arrived can still appear in
+Results. Quit also cancels a running analysis before leaving, so the shell never
+waits on an analyzer. Other actions such as Change Review also stop being waited
+on when the app quits, so a review that was still being written can be left
+partially finished.
 
 ## Results view
 
@@ -135,7 +144,8 @@ the terminal implementation.
 
 - A configuration or project that cannot be loaded is reported in the UI.
 - A failed run leaves already produced results intact and records the failure.
-- A cancelled run keeps produced results and reports cancellation.
+- A cancelled run stops immediately and reports cancellation; a run that had
+  already finished saving can still appear in Results.
 - A modal error view is used for failures that need attention.
 - Plain text is rendered as plain text, so a bracketed message in a path or
   exception cannot be interpreted as markup.

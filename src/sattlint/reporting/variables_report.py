@@ -27,6 +27,7 @@ from ..models._variable_issues import (
     RecordComponentOrderIssue,
     RelatedVariableIssue,
     ResetContaminationIssue,
+    SecureCandidateIssue,
     ShadowingIssue,
     StringMappingMismatchIssue,
     UnknownParameterTargetIssue,
@@ -81,6 +82,7 @@ __all__ = [
     "RecordComponentOrderIssue",
     "RelatedVariableIssue",
     "ResetContaminationIssue",
+    "SecureCandidateIssue",
     "ShadowingIssue",
     "StringMappingMismatchIssue",
     "UnknownParameterTargetIssue",
@@ -106,6 +108,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
     IssueKind.MAGIC_NUMBER,
     IssueKind.RESET_CONTAMINATION,
+    IssueKind.SECURE_CANDIDATE,
     IssueKind.SHADOWING,
     IssueKind.UNSAFE_BOOLEAN_DEFAULT,
     IssueKind.READ_BEFORE_WRITE,
@@ -189,6 +192,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.READ_BEFORE_WRITE: "Read before write",
     IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
+    IssueKind.SECURE_CANDIDATE: "Secure candidates (values used by transitions)",
 }
 
 VariableSectionRenderer = Callable[[list[str], str, list[VariableIssue]], None]
@@ -220,6 +224,7 @@ _SECTION_RENDERERS: dict[IssueKind, VariableSectionRenderer] = {
     IssueKind.READ_BEFORE_WRITE: append_variable_issue_list,
     IssueKind.RESET_CONTAMINATION: append_variable_issue_list,
     IssueKind.IMPLICIT_LATCH: append_variable_issue_list,
+    IssueKind.SECURE_CANDIDATE: append_variable_issue_list,
 }
 
 

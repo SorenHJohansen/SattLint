@@ -182,6 +182,62 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
     ]
 
 
+def _reset_picture(
+    *,
+    run_target: str,
+    reset_target: str,
+    opsave: bool = False,
+    secure: bool = False,
+) -> BasePicture:
+    return BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="Persisted", datatype=ScalarDatatype.INTEGER, opsave=opsave, secure=secure),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=_reset_modulecode(run_target, reset_target),
+        moduledef=None,
+    )
+
+
+def test_opsave_value_is_not_reported_as_missing_reset() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Other", opsave=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [issue.variable.name for issue in issues if isinstance(issue, ResetContaminationIssue)] == []
+
+
+def test_opsave_value_written_on_a_reset_path_is_reported() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Persisted", opsave=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reset_issues = [issue for issue in issues if isinstance(issue, ResetContaminationIssue)]
+    assert len(reset_issues) == 1
+    assert reset_issues[0].variable.name == "Persisted"
+    assert reset_issues[0].role == "OpSave variable is reset"
+    assert reset_issues[0].explanation is not None
+
+
+def test_secure_value_still_requires_a_reset_write() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Other", secure=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reset_issues = [issue for issue in issues if isinstance(issue, ResetContaminationIssue)]
+    assert [issue.variable.name for issue in reset_issues] == ["Persisted"]
+    assert reset_issues[0].role == "localvariable"
+
+
 def test_reset_contamination_detects_root_modulecode_sequence() -> None:
     bp = BasePicture(
         header=_hdr("Root"),

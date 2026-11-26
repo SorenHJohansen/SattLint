@@ -22,6 +22,7 @@ from .. import console as console_module
 from ..application import analyze as analyze_application
 from ..application import change_review as change_review_application
 from ..application import project as project_application
+from ..application.cancellation import AnalysisCancellation
 from ..config.types import ConfigDict
 from ..core.interaction import (
     QuitAppError,
@@ -107,6 +108,7 @@ def _run_checks_result_in_subprocess(
     *,
     project_path: str = "",
     emit_output: Callable[[str], None] | None = None,
+    cancellation: AnalysisCancellation | None = None,
 ) -> Any:
     """Keep the interactive app off the analysis heap.
 
@@ -121,6 +123,7 @@ def _run_checks_result_in_subprocess(
         selected_keys,
         project_path=project_path,
         emit_output=emit_output,
+        cancellation=cancellation,
     )
 
 

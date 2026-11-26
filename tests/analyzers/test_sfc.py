@@ -36,7 +36,7 @@ from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue
 from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes
+from sattlint.analyzers.shared.module_code_walk import iter_modulecodes
 from sattlint.analyzers.variables import analyze_variables
 from sattlint.parser_api import parse_source_text
 
@@ -278,7 +278,7 @@ def test_alternative_branch_terminal_empty_step_after_fork_is_still_reported() -
     assert findings[0].branch_path == (0,)
 
 
-def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
+def test_iter_modulecodes_covers_root_nested_modules_and_typedefs():
     nested_frame = FrameModule(
         header=_hdr("FrameChild"),
         modulecode=ModuleCode(sequences=[], equationblocks=[]),
@@ -303,7 +303,7 @@ def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
         modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
 
-    entries = list(iter_sfc_modulecodes(bp))
+    entries = list(iter_modulecodes(bp))
 
     assert [path for path, _modulecode in entries] == [
         ["Root"],

@@ -61,6 +61,7 @@ from ._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
 from ._variables_contracts import TypedefUsageKey, VariablesContractsMixin
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_execution import VariablesExecutionMixin
+from ._variables_secure_candidates import SecureCandidateFacts
 from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin
 from ._variables_submodules import VariablesSubmodulesMixin
 
@@ -347,6 +348,14 @@ class VariablesAnalyzer(
         )
         self._site_stack: list[str] = []
         self._current_stmt_text: str = ""
+        selected_kinds = getattr(self, "_selected_issue_kinds", None)
+        self._secure_candidate_facts: SecureCandidateFacts | None = (
+            SecureCandidateFacts() if selected_kinds is None or IssueKind.SECURE_CANDIDATE in selected_kinds else None
+        )
+        self._secure_in_step: bool = False
+        self._secure_step_name: str | None = None
+        self._secure_in_transition: bool = False
+        self._secure_transition_name: str | None = None
 
     def _initialize_artifact_state(
         self,

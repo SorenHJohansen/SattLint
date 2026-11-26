@@ -137,7 +137,13 @@ def test_change_review_action_invokes_handler_with_cfg_and_targets() -> None:
     )
     started: dict[str, Any] = {}
 
-    def start_action(label: str, fn: Callable[[], Any], *, action_id: str) -> None:
+    def start_action(
+        label: str,
+        fn: Callable[[], Any],
+        *,
+        action_id: str,
+        cancellable: bool = False,
+    ) -> None:
         started.update(label=label, fn=fn, action_id=action_id)
 
     app_instance._start_action = start_action
@@ -196,8 +202,8 @@ def test_textual_change_review_uses_its_own_action_id(monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         app_instance,
         "_start_action",
-        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False: launched.append(
-            (label, action_id)
+        lambda label, action_fn, *, action_id, marks_dirty=False, clear_dirty_on_success=False, cancellable=False: (
+            launched.append((label, action_id))
         ),
     )
 

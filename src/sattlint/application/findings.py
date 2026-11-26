@@ -300,6 +300,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "write_without_effect": "Write without effect",
     "implicit_latch": "Implicit latch",
     "reset_contamination": "Reset contamination",
+    "secure_candidate": "Secure candidate",
     "global_scope_minimization": "Global scope minimization",
     "hidden_global_coupling": "Hidden global coupling",
     "high_fan_in_out": "High fan-in/out",

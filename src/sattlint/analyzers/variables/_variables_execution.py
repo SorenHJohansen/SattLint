@@ -62,6 +62,7 @@ from ._variables_picture_display_support import (
     record_picture_display_variable_occurrences,
 )
 from ._variables_read_before_write import collect_read_before_write_issues as _collect_read_before_write_issues
+from ._variables_secure_candidates import SecureCandidateFacts
 from ._variables_shadowing import collect_shadowing_issues as _collect_shadowing_issues
 from ._variables_status import has_out_of_origin_consumer as _has_out_of_origin_consumer
 from ._variables_unsafe_defaults import collect_unsafe_default_issues as _collect_unsafe_default_issues
@@ -123,6 +124,7 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.DATATYPE_DUPLICATION,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
+        IssueKind.SECURE_CANDIDATE,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.WRITE_WITHOUT_EFFECT,
         IssueKind.SHADOWING,
@@ -273,6 +275,14 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
         record_locations=getattr(previous_tracker, "record_locations", True),
     )
     _clear_or_set("_site_stack", [])
+    selected_kinds = getattr(self, "_selected_issue_kinds", None)
+    self._secure_candidate_facts = (
+        SecureCandidateFacts() if selected_kinds is None or IssueKind.SECURE_CANDIDATE in selected_kinds else None
+    )
+    self._secure_in_step = False
+    self._secure_step_name = None
+    self._secure_in_transition = False
+    self._secure_transition_name = None
     _clear_or_set("_used_dependency_libraries", set[str]())
     _clear_or_set("used_params_by_typedef", {})
     _clear_or_set("param_reads_by_typedef", {})
@@ -341,6 +351,21 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
         self._trace(
             "implicit-latch-scan",
             added_issue_count=len(self._issues) - issue_count_before_latch,
+        )
+
+    if _should_collect_issue_kind(self, IssueKind.SECURE_CANDIDATE):
+        issue_count_before_secure = len(self._issues)
+        facts = self._secure_candidate_facts
+        if facts is not None:
+            self._issues.extend(
+                facts.build_issues(
+                    self.contexts_by_module_path,
+                    root_library=getattr(self.bp, "origin_lib", None),
+                )
+            )
+        self._trace(
+            "secure-candidate-scan",
+            added_issue_count=len(self._issues) - issue_count_before_secure,
         )
 
     if _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT):

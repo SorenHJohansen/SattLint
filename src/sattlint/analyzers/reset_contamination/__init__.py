@@ -33,7 +33,7 @@ from ..framework import AnalysisSharedArtifacts, BasePictureAnalyzer
 from ..shared.variable_utils import matches_root_origin, same_origin_file_stem
 from ._reset_latching import check_for_modulecode_latching
 from ._reset_path_collection import collect_paths_in_modulecode, path_covers_write
-from ._reset_path_state import PathCollectionDebug, WriteMap
+from ._reset_path_state import PathCollectionDebug, WriteEntry, WriteKey, WriteMap
 
 __all__ = [
     "ResetContaminationAnalyzer",
@@ -344,6 +344,10 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
             var_key, _field_key = key
             if var_key in reset_old_cf:
                 continue
+            if var.opsave:
+                # OpSave values are deliberately kept between runs. Clearing
+                # them on a reset is the defect, reported below.
+                continue
             if all(path_covers_write(state.reset_writes, key) for state in reset_paths):
                 continue
 
@@ -356,6 +360,32 @@ class ResetContaminationAnalyzer(BasePictureAnalyzer):
                     field_path=field_path or None,
                     sequence_name=sequence_name,
                     reset_variable=VariableId(reset_ref_cf),
+                )
+            )
+
+        opsave_resets: dict[WriteKey, WriteEntry] = {}
+        for state in reset_paths:
+            for key, entry in state.reset_writes.items():
+                var, _field_path = entry
+                if var.opsave and not var.const:
+                    opsave_resets.setdefault(key, entry)
+
+        for _key, (var, field_path) in sorted(opsave_resets.items(), key=lambda item: (item[0][0], item[0][1])):
+            issues.append(
+                ResetContaminationIssue(
+                    module_path=path.copy(),
+                    variable=var,
+                    role="OpSave variable is reset",
+                    declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
+                    field_path=field_path or None,
+                    sequence_name=sequence_name,
+                    reset_variable=VariableId(reset_ref_cf),
+                    explanation=(
+                        "The value is marked OpSave so it should survive between runs, but a reset path writes it."
+                    ),
+                    suggestion=(
+                        "Remove the reset write for this value, or clear the OpSave flag if it should be reset."
+                    ),
                 )
             )
 

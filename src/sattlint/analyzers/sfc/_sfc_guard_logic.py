@@ -20,8 +20,8 @@ from sattlint.parser_api import (
 
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
+from ..shared.module_code_walk import iter_modulecodes
 from ..shared.target_origin import TargetOriginFilter
-from ._sfc_module_walk import iter_sfc_modulecodes
 
 GuardLiteral = bool | int | float | str
 
@@ -325,7 +325,7 @@ def _collect_transition_logic_issues(
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 inspect_nodes(node.body, module_path, sequence_name, branch_path)
 
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+    for module_path, modulecode in iter_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:

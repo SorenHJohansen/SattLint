@@ -1,4 +1,4 @@
-"""Shared module-code traversal helpers for SFC analyzers."""
+"""Shared traversal of every module code block in a base picture."""
 
 from __future__ import annotations
 
@@ -13,16 +13,16 @@ from sattlint.parser_api import (
     SingleModule,
 )
 
-from ..shared._walk_utils import iter_nested_modules
-from ..shared.target_origin import TargetOriginFilter
+from ._walk_utils import iter_nested_modules
+from .target_origin import TargetOriginFilter
 
 
-def iter_sfc_modulecodes(
+def iter_modulecodes(
     base_picture: BasePicture,
     *,
     moduletype_filter: TargetOriginFilter | None = None,
 ) -> Iterator[tuple[list[str], ModuleCode | None]]:
-    """Yield (module_path, modulecode) for root, nested modules, and target-origin moduletype defs."""
+    """Yield (module_path, modulecode) for the root, nested modules, and target-origin moduletype defs."""
 
     root_path = [base_picture.header.name]
     yield root_path, base_picture.modulecode
@@ -48,3 +48,6 @@ def _iter_nested_modulecodes(
             yield child_path, module.modulecode
         elif isinstance(module, FrameModule):
             yield child_path, getattr(module, "modulecode", None)
+
+
+__all__ = ["iter_modulecodes"]

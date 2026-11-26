@@ -165,9 +165,14 @@ def _analyze_note_text(self: Any) -> str:
         else " Press / to filter the analyzers."
     )
     if self._busy and self._active_job_action_id == "action-analyze":
+        if bool(getattr(self, "_cancel_requested", False)):
+            return (
+                "Cancelling the run. The analyzer workers are being stopped and the app stays responsive; "
+                "Quit is also available."
+            )
         return (
             "Selected analyses are running. Live output is shown in Session output below. "
-            "Wait for the run to finish before starting another action."
+            "Choose Cancel run (Esc) to stop it, or Quit to stop it and leave."
         )
     if not self._setup_has_targets():
         return f"No analysis targets are configured yet. Add one in Setup first.{filter_suffix}"

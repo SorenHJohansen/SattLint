@@ -40,6 +40,7 @@ __all__ = [
     "RecordComponentOrderIssue",
     "RelatedVariableIssue",
     "ResetContaminationIssue",
+    "SecureCandidateIssue",
     "ShadowingIssue",
     "StringMappingMismatchIssue",
     "UnknownParameterTargetIssue",
@@ -80,6 +81,7 @@ class IssueKind(Enum):
     READ_BEFORE_WRITE = "read_before_write"
     RESET_CONTAMINATION = "reset_contamination"
     IMPLICIT_LATCH = "implicit_latch"
+    SECURE_CANDIDATE = "secure_candidate"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,12 +191,16 @@ _VARIABLE_ISSUE_METADATA: dict[IssueKind, VariableIssueMetadata] = {
         suggestion="Initialize the value at declaration, or write it before the consuming read.",
     ),
     IssueKind.RESET_CONTAMINATION: VariableIssueMetadata(
-        explanation="Partial reset handling can leave stale state behind when the sequence or step is expected to restart cleanly.",
-        suggestion="Write the reset value on every reset path, or centralize the reset assignment in the step or sequence cleanup path.",
+        explanation="Partial reset handling can leave stale state behind when the sequence or step is expected to restart cleanly, or a persisted value can be cleared when it should survive.",
+        suggestion="Write the reset value on every reset path, or centralize the reset assignment in the step or sequence cleanup path; leave OpSave values out of reset writes.",
     ),
     IssueKind.IMPLICIT_LATCH: VariableIssueMetadata(
         explanation="A one-sided TRUE assignment can leave a boolean latched longer than intended when the complementary path never clears it.",
         suggestion="Add the matching FALSE assignment in the ELSE, alternate branch, or step exit path, or document the intentional latch behavior.",
+    ),
+    IssueKind.SECURE_CANDIDATE: VariableIssueMetadata(
+        explanation="The value is written during the sequence and then read by a transition. A controller restart before that transition fires would lose the value, so the process cannot resume from the same point.",
+        suggestion="Review whether the declaration should be Secure so the value survives a controller restart.",
     ),
 }
 
@@ -455,6 +461,8 @@ class ResetContaminationIssue(FieldPathVariableIssue):
     kind: ClassVar[Literal[IssueKind.RESET_CONTAMINATION]] = IssueKind.RESET_CONTAMINATION
     sequence_name: str | None = None
     reset_variable: VariableId | None = None
+    explanation: str | None = None
+    suggestion: str | None = None
 
     def __str__(self) -> str:
         return _variable_issue_text(
@@ -465,6 +473,14 @@ class ResetContaminationIssue(FieldPathVariableIssue):
             sequence_name=self.sequence_name,
             reset_variable=self.reset_variable,
         )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SecureCandidateIssue(FieldPathVariableIssue):
+    kind: ClassVar[Literal[IssueKind.SECURE_CANDIDATE]] = IssueKind.SECURE_CANDIDATE
+    site: str
+    write_sites: tuple[str, ...] = ()
+    transition_sites: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -508,4 +524,5 @@ type VariableIssue = (
     | ReadBeforeWriteIssue
     | ResetContaminationIssue
     | ImplicitLatchIssue
+    | SecureCandidateIssue
 )

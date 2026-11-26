@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
+import threading
 import time
 from collections import deque
 from collections.abc import Mapping
+from concurrent.futures import CancelledError as _FutureCancelledError
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -17,6 +20,7 @@ except ImportError:  # pragma: no cover - optional dependency path
     _RichText = None
 
 from .. import config as config_module
+from ..application.cancellation import AnalysisCancellation
 from ..config.string_capacities import (
     STRING_CAPACITY_KEYS,
     StringCapacitiesDict,
@@ -67,6 +71,8 @@ _NUMBERED_ITEM_RE = re.compile(r"^(?P<indent>\s*)(?P<number>\d+)\.\s+(?P<label>.
 # Marker printed by the shared analysis pipeline right before the exception text of
 # a target that failed to load. The UI surfaces the following output as an error popup.
 _TARGET_LOAD_ERROR_MARKER = "? Failed to load target:"
+
+_LOGGER = logging.getLogger(__name__)
 
 _OUTPUT_ACCENT = "#001ba3"
 _OUTPUT_MUTED = "#24505f"
@@ -456,8 +462,27 @@ def _write_output(self: Any, text: str) -> None:
         self._show_error_modal("Failed to load target", error_message)
 
 
+def _call_on_ui(self: Any, callback: Any, *args: object, **kwargs: object) -> None:
+    """Marshal a worker callback onto the UI thread, or drop it after the exit.
+
+    The analysis runs on a daemon thread that the app does not join, so a quit
+    can land while the worker is still unwinding. Once the event loop is gone
+    ``call_from_thread`` either raises or never runs the callback; in both cases
+    the worker must keep going instead of blocking the process teardown.
+    """
+    if bool(getattr(self, "_quitting", False)):
+        return
+    try:
+        self.call_from_thread(callback, *args, **kwargs)
+    except (_FutureCancelledError, RuntimeError, AttributeError):
+        # The loop stopped between the check above and the marshal, or the
+        # callback itself failed. Either way the worker must not block teardown;
+        # keep the failure visible in the log instead of dropping it silently.
+        _LOGGER.debug("Dropped a UI callback from a worker thread", exc_info=True)
+
+
 def _emit_output_from_thread(self: Any, text: str) -> None:
-    self.call_from_thread(self._write_output, text.rstrip("\n"))
+    self._call_on_ui(self._write_output, text.rstrip("\n"))
 
 
 def _clear_session_output(self: Any) -> None:
@@ -487,6 +512,8 @@ def _clear_output_and_refocus(self: Any) -> None:
 
 def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bool = False) -> None:
     self._busy = False
+    self._active_cancellation = None
+    self._cancel_requested = False
     self._active_job_label = None
     self._active_job_started_at = None
     if clear_dirty_on_success:
@@ -506,11 +533,14 @@ def _interaction_screen_active(self: Any) -> bool:
 def _handle_toolbar_action(self: Any, button_id: str) -> None:
     if self._interaction_screen_active():
         return
+    # Quit and Cancel stay available while an action runs: quitting cancels a
+    # cancellable run and leaves immediately, and Cancel is the point of the
+    # control while the analyzer loop is busy.
+    if button_id == "action-quit":
+        self._request_quit_shell()
+        return
     if self._busy:
-        if button_id == "action-quit":
-            self._write_output("An action is still running. Wait for it to finish before quitting.")
-        else:
-            self._write_output("Another action is still running. Wait for it to finish first.")
+        self._write_output("Another action is still running. Wait for it to finish first.")
         return
     view_name = self._VIEW_ACTIONS.get(button_id)
     if view_name is not None:
@@ -521,8 +551,6 @@ def _handle_toolbar_action(self: Any, button_id: str) -> None:
         self._open_project_browser()
     elif button_id == "menu-file-new-project":
         self._new_project()
-    elif button_id == "action-quit":
-        self._request_quit_shell()
 
 
 def action_show_analyze(self: Any) -> None:
@@ -591,6 +619,33 @@ def action_quit_shell(self: Any) -> None:
     self._handle_toolbar_action("action-quit")
 
 
+def action_quit(self: Any) -> None:
+    """Override Textual's default Ctrl+Q action so quitting cancels first."""
+    self._request_quit_shell()
+
+
+def action_cancel_run(self: Any) -> None:
+    self._request_cancel_active_action()
+
+
+def _request_cancel_active_action(self: Any) -> None:
+    """Stop the running analysis without waiting for the current analyzer."""
+    if bool(getattr(self, "_quitting", False)):
+        return
+    cancellation = getattr(self, "_active_cancellation", None)
+    if cancellation is None:
+        # Esc is global; keep it silent when there is nothing to stop.
+        return
+    if bool(getattr(self, "_cancel_requested", False)):
+        return
+    self._cancel_requested = True
+    cancellation.cancel()
+    self._write_output("Cancelling the run. Analyzer workers are being stopped.")
+    self._refresh_summary()
+    self._refresh_view()
+    self._refresh_shell_state()
+
+
 def action_clear_output(self: Any) -> None:
     self._clear_session_output()
 
@@ -639,6 +694,16 @@ def action_back(self: Any) -> None:
 
 
 def _request_quit_shell(self: Any) -> None:
+    """Leave immediately, stopping a cancellable run first.
+
+    The analysis runs in a daemon thread, so the app does not wait for it to
+    return. A forced cancel kills the child process group before ``exit`` so no
+    analyzer outlives the shell.
+    """
+    self._quitting = True
+    cancellation = getattr(self, "_active_cancellation", None)
+    if cancellation is not None:
+        cancellation.cancel(force=True)
     self._set_active_action("action-quit")
     self.exit()
 
@@ -651,16 +716,17 @@ def action_focus_previous_control(self: Any) -> None:
     self.focus_previous()
 
 
-def _start_managed_action_worker(self: Any, work: Any, *, label: str, action_id: str) -> Any:
-    return self.run_worker(
-        work,
-        name=f"textual-action-{action_id}",
-        group="textual-shell-action",
-        description=label,
-        exit_on_error=False,
-        exclusive=True,
-        thread=True,
-    )
+def _start_action_thread(self: Any, work: Any, *, label: str, action_id: str) -> threading.Thread:
+    """Run an action on a daemon thread the app never joins.
+
+    Textual's thread workers live in the event loop's default executor, which
+    ``asyncio.run`` waits for on shutdown. A daemon thread lets Quit return at
+    once even when the action is still unwinding; ``_call_on_ui`` keeps the
+    worker from touching a UI that is already gone.
+    """
+    thread = threading.Thread(target=work, name=f"textual-action-{action_id}", daemon=True)
+    thread.start()
+    return thread
 
 
 def _start_action(
@@ -671,12 +737,16 @@ def _start_action(
     action_id: str,
     marks_dirty: bool = False,
     clear_dirty_on_success: bool = False,
+    cancellable: bool = False,
 ) -> None:
     if self._busy:
         self._write_output("Another action is still running. Wait for it to finish first.")
         return
 
+    cancellation = AnalysisCancellation() if cancellable else None
     self._busy = True
+    self._active_cancellation = cancellation
+    self._cancel_requested = False
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
     self._set_active_action(action_id)
@@ -693,20 +763,20 @@ def _start_action(
         clear_dirty = False
         try:
             with redirect_stdout(output_stream), redirect_stderr(output_stream):
-                result = action_fn()
+                result = action_fn(cancellation) if cancellable else action_fn()
                 dirty = marks_dirty and bool(result)
                 clear_dirty = clear_dirty_on_success
         except self._quit_app_error:
-            self.call_from_thread(self.exit)
+            self._call_on_ui(self.exit)
             return
         except KeyboardInterrupt:
             self._emit_output_from_thread(f"{label} interrupted.")
         except Exception as exc:  # pragma: no cover - runtime-only fallback  # noqa: BLE001
-            self.call_from_thread(self._report_error, f"{label} failed", f"{label} failed: {exc}")
+            self._call_on_ui(self._report_error, f"{label} failed", f"{label} failed: {exc}")
         finally:
-            self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
+            self._call_on_ui(self._finish_action, dirty, clear_dirty_on_success=clear_dirty)
 
-    self._start_managed_action_worker(_run, label=label, action_id=action_id)
+    self._start_action_thread(_run, label=label, action_id=action_id)
 
 
 def _show_setup_no_project(self: Any) -> None:
@@ -1029,6 +1099,7 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     output_widget = _query_required(self, "#output")
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
+    analyze_cancel_run_button = _query_required(self, "#analyze-cancel-run", _TEXTUAL_BUTTON)
     analyze_select_all_button = _query_required(self, "#analyze-select-all", _TEXTUAL_BUTTON)
     output_generate_change_review_button = _query_required(self, "#output-generate-change-review", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
@@ -1050,6 +1121,10 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
 
     analyze_run_selected_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets() or not selected_keys
+    )
+    cancellable_active = self._busy and getattr(self, "_active_cancellation", None) is not None
+    analyze_cancel_run_button.disabled = (
+        not cancellable_active or bool(getattr(self, "_cancel_requested", False)) or not analyze_view
     )
     analyze_select_all_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyzer_entry_ids())
@@ -1159,6 +1234,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
         "setup-target-remove": lambda: self._remove_selected_setup_target(self._selected_configured_target),
         "setup-target-browse": self._open_file_browser,
         "analyze-run-selected": self._run_selected_analyzers,
+        "analyze-cancel-run": self._request_cancel_active_action,
         "analyze-select-all": self._select_all_analyzers,
         "analyze-clear-filter": lambda: self._set_analyze_filter_text(""),
         "analyze-clear-selection": self._clear_selected_analyzers,
@@ -1216,6 +1292,7 @@ if TYPE_CHECKING:
         def _on_error_modal_closed(self, _result: object | None = None) -> None: ...
         def _report_error(self, title: str, message: str) -> None: ...
         def _write_output(self, text: str) -> None: ...
+        def _call_on_ui(self, callback: Any, *args: object, **kwargs: object) -> None: ...
         def _emit_output_from_thread(self, text: str) -> None: ...
         def _clear_session_output(self) -> None: ...
         def _clear_output_and_refocus(self) -> None: ...
@@ -1244,13 +1321,16 @@ if TYPE_CHECKING:
         def action_prompt_view_filter(self) -> None: ...
         def action_copy_output(self) -> None: ...
         def action_quit_shell(self) -> None: ...
+        def action_quit(self) -> None: ...
+        def action_cancel_run(self) -> None: ...
         def action_clear_output(self) -> None: ...
         def action_save_config(self) -> None: ...
         def action_back(self) -> None: ...
         def _request_quit_shell(self) -> None: ...
+        def _request_cancel_active_action(self) -> None: ...
         def action_focus_next_control(self) -> None: ...
         def action_focus_previous_control(self) -> None: ...
-        def _start_managed_action_worker(self, work: Any, *, label: str, action_id: str) -> Any: ...
+        def _start_action_thread(self, work: Any, *, label: str, action_id: str) -> threading.Thread: ...
         def _start_action(
             self,
             label: str,
@@ -1259,6 +1339,7 @@ if TYPE_CHECKING:
             action_id: str,
             marks_dirty: bool = False,
             clear_dirty_on_success: bool = False,
+            cancellable: bool = False,
         ) -> None: ...
         def _refresh_view(self) -> None: ...
         def _refresh_shell_state(self) -> None: ...
@@ -1284,6 +1365,7 @@ else:
         _on_error_modal_closed = _on_error_modal_closed
         _report_error = _report_error
         _write_output = _write_output
+        _call_on_ui = _call_on_ui
         _emit_output_from_thread = _emit_output_from_thread
         _clear_session_output = _clear_session_output
         _clear_output_and_refocus = _clear_output_and_refocus
@@ -1312,13 +1394,16 @@ else:
         action_prompt_view_filter = action_prompt_view_filter
         action_copy_output = action_copy_output
         action_quit_shell = action_quit_shell
+        action_quit = action_quit
+        action_cancel_run = action_cancel_run
         action_clear_output = action_clear_output
         action_save_config = action_save_config
         action_back = action_back
         _request_quit_shell = _request_quit_shell
+        _request_cancel_active_action = _request_cancel_active_action
         action_focus_next_control = action_focus_next_control
         action_focus_previous_control = action_focus_previous_control
-        _start_managed_action_worker = _start_managed_action_worker
+        _start_action_thread = _start_action_thread
         _start_action = _start_action
         _refresh_view = _refresh_view
         _refresh_shell_state = _refresh_shell_state

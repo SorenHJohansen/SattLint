@@ -58,9 +58,9 @@ def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> N
     ``variables`` and ``datatype-fields`` report cache versions and update the
     expected fingerprint and tags in this test.
     """
-    assert _variable_issue_layout_fingerprint() == "b39fce4a85ee4319"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-25-latch-and-gating"
-    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-25-latch-and-gating"
+    assert _variable_issue_layout_fingerprint() == "5a9a47422408ce18"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-26-secure-candidates"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-26-secure-candidates"
 
 
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:
