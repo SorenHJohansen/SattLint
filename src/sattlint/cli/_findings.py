@@ -235,7 +235,19 @@ def _same_project_path(left: str, right: str) -> bool:
     return os.path.normcase(left) == os.path.normcase(right)
 
 
-def resolve_run(run_id: str | None, *, project_path: str | None = None) -> RunRecord:
+def resolve_run(
+    run_id: str | None,
+    *,
+    project_path: str | None = None,
+    require_project_scope: bool = False,
+) -> RunRecord:
+    """Resolve a stored run, scoping ``latest`` to a project when one is given.
+
+    ``require_project_scope`` refuses ``latest`` when no project scope is
+    known. A machine-wide ``latest`` silently returns whichever project ran
+    last, so the CLI sets this. An explicit run id is already scoped and is
+    still resolved without a project.
+    """
     selector = "latest" if run_id is None else run_id.strip()
     if not selector:
         raise CliError(
@@ -267,6 +279,14 @@ def resolve_run(run_id: str | None, *, project_path: str | None = None) -> RunRe
                     details={"project": project_path},
                 )
             summaries = matching
+        elif require_project_scope:
+            raise CliError(
+                "No project file was found from the current directory upward, so 'latest' has no "
+                "project scope. Pass --project PATH to choose the project, or --run ID to read a "
+                "specific stored run.",
+                code="run_scope_unknown",
+                exit_code=2,
+            )
         # The newest record can be unreadable (truncated by a crash, written by
         # an older schema). Fall back to the newest record that loads.
         for summary in summaries:
@@ -308,13 +328,20 @@ def resolve_run(run_id: str | None, *, project_path: str | None = None) -> RunRe
     return record
 
 
-def run_payload(record: RunRecord) -> RunPayload:
+def run_payload(record: RunRecord, *, project_path: str | None = None) -> RunPayload:
+    """Serialize a run, naming the scope the query resolved when the run has none.
+
+    Runs stored before project scoping carry no project path. Naming the scope
+    the query actually used keeps the payload truthful for those runs while
+    leaving the shape unchanged. A run that names its own project keeps it, so
+    an explicitly selected run is never attributed to another project.
+    """
     return {
         "run_id": record.run_id,
         "started_at": record.started_at,
         "finished_at": record.finished_at,
         "project_tag": record.project_tag,
-        "project_path": record.project_path,
+        "project_path": record.project_path or project_path or "",
         "selected_analyzers": list(record.selected_analyzers),
         "cancelled": record.cancelled,
     }

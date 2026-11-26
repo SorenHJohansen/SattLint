@@ -13,9 +13,11 @@ from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.io import (
     SLPROJ_FILENAME,
     SLPROJ_VERSION,
+    ProjectAmbiguousError,
     _normalize,
     _project_path_hint,
     discover_project,
+    discover_project_result,
     init_project,
     load_project,
     save_project,
@@ -43,6 +45,85 @@ def test_discover_project_walks_upwards(tmp_path: Path) -> None:
     assert discover_project(nested) == (tmp_path / SLPROJ_FILENAME)
     found = discover_project(tmp_path / SLPROJ_FILENAME)
     assert found is not None and found.name == SLPROJ_FILENAME
+
+
+def test_discover_project_prefers_the_literal_file_over_named_files(tmp_path: Path) -> None:
+    (tmp_path / "alpha.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    (tmp_path / "beta.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    literal = tmp_path / SLPROJ_FILENAME
+    literal.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    result = discover_project_result(tmp_path)
+
+    assert result.selected == literal
+    assert result.candidates == (literal, tmp_path / "alpha.slproj", tmp_path / "beta.slproj")
+    assert not result.is_ambiguous
+    assert discover_project(tmp_path) == literal
+
+
+def test_discover_project_uses_the_only_named_file_in_the_nearest_directory(tmp_path: Path) -> None:
+    named = tmp_path / "app.slproj"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
+
+    assert discover_project(nested) == named
+    result = discover_project_result(nested)
+    assert result.directory == tmp_path
+    assert result.selected == named
+
+
+def test_discover_project_reports_every_candidate_when_two_named_files_exist(tmp_path: Path) -> None:
+    first = tmp_path / "first.slproj"
+    second = tmp_path / "second.slproj"
+    first.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    second.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    result = discover_project_result(tmp_path)
+
+    assert result.is_ambiguous
+    assert result.selected is None
+    assert result.directory == tmp_path
+    assert result.candidates == (first, second)
+    with pytest.raises(ProjectAmbiguousError) as raised:
+        discover_project(tmp_path)
+    message = str(raised.value)
+    assert str(first) in message
+    assert str(second) in message
+    assert "--project" in message
+
+
+def test_discover_project_stops_before_an_ambiguous_parent(tmp_path: Path) -> None:
+    (tmp_path / "one.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    (tmp_path / "two.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    child = tmp_path / "child"
+    child.mkdir()
+    child_project = child / "child.slproj"
+    child_project.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    # The walk stops at the child, so the ambiguous parent never matters.
+    assert discover_project(child) == child_project
+
+
+def test_discover_project_matches_the_suffix_case_insensitively_and_ignores_directories(tmp_path: Path) -> None:
+    (tmp_path / "not-a-project.slproj").mkdir()
+
+    assert discover_project(tmp_path) is None
+
+    named = tmp_path / "APP.SLPROJ"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    assert discover_project(tmp_path) == named
+
+
+def test_discover_project_result_reports_nothing_found(tmp_path: Path) -> None:
+    result = discover_project_result(tmp_path)
+
+    assert result.selected is None
+    assert result.directory is None
+    assert result.candidates == ()
+    assert not result.is_ambiguous
+    assert discover_project(tmp_path) is None
 
 
 def test_load_project_roundtrip(tmp_path: Path) -> None:

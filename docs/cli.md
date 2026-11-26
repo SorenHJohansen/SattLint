@@ -27,11 +27,19 @@ Every analysis command needs a `.slproj` project file.
 
 - `--project PATH` accepts a file or a directory.
 - A directory must contain exactly one file ending in `.slproj`.
-- Without `--project`, SattLint walks upward from the current working directory
-  and uses the first `.slproj` it finds.
+- Without `--project`, SattLint walks upward from the current working directory.
+  At each directory it uses the literal `.slproj` when it exists; otherwise the
+  only `*.slproj` file there. The suffix match is case-insensitive, directories
+  are ignored, and the walk stops at the first directory with a candidate.
+- Two or more project files in that directory is an error that lists the
+  candidates; pass `--project` to choose one.
+- An explicit `--project` skips discovery.
 - A blank `--project` value is a usage error instead of falling back to
   discovery.
 - Project settings merge over the user configuration.
+
+`findings` and `show` use the same discovery rule to scope stored-run queries.
+`latest` resolves to the newest run recorded for the resolved project.
 
 See [Project files](project-files.md) for the schema and merge rules.
 
@@ -146,6 +154,7 @@ Reads findings from a stored run without analyzing again.
 
 | Option | Effect |
 | --- | --- |
+| `--project PATH` | Project file or directory that scopes the run lookup. |
 | `--run ID` | Run ID, unique prefix, or `latest`; default `latest`. |
 | `--analyzer KEY` | Filter by analyzer key; repeatable. |
 | `--target NAME` | Filter by target name; repeatable. |
@@ -168,9 +177,18 @@ Rules:
 - The summary counts both findings and occurrences. Repeated identical findings
   collapse into one entry with an occurrence count.
 - `--limit` applies after filtering and before grouping.
+- `latest` resolves within the project: discovery from the current directory,
+  or an explicit `--project`. A run recorded for another project is never
+  returned.
+- With no discoverable project, `latest` is refused with exit code `2` and a
+  message that asks for `--project` or an explicit `--run`. An explicit run ID
+  needs no project.
+- Text and NDJSON output name the resolved project next to the run.
 
 ```bash
 sattlint findings --run latest
+sattlint findings --project app.slproj --run latest
+sattlint findings --run 2026-11-26T10-00-00 --format json
 sattlint findings --module Root.A --group-by module --format json
 sattlint findings --rule <rule-id> --limit 20 --format ndjson
 ```
@@ -182,6 +200,7 @@ Shows one finding, including its location and context, by its stable ID.
 | Option | Effect |
 | --- | --- |
 | `FINDING_ID` | Stable finding ID from `analyze` or `findings`. |
+| `--project PATH` | Project file or directory that scopes the run lookup. |
 | `--run ID` | Run ID, unique prefix, or `latest`; default `latest`. |
 | `--format {json,markdown,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
@@ -191,8 +210,8 @@ Shows one finding, including its location and context, by its stable ID.
 sattlint show f_7d3f9c1a --format markdown
 ```
 
-A missing finding or an ambiguous run identifier is an error with exit code
-`2`.
+A missing finding, an ambiguous run identifier, or an unscoped `latest` is an
+error with exit code `2`.
 
 ## Output contracts
 

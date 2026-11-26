@@ -277,7 +277,7 @@ def test_findings_filters_and_groups(
         [
             "findings",
             "--run",
-            "latest",
+            record.run_id,
             "--module",
             "Demo.A",
             "--group-by",
@@ -312,7 +312,7 @@ def test_show_finding_by_stable_id(
     monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
     monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
 
-    code = run_cli(["show", finding_id, "--format", "json"])
+    code = run_cli(["show", finding_id, "--run", record.run_id, "--format", "json"])
 
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
@@ -330,7 +330,7 @@ def test_show_unknown_finding_returns_two(
     monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
     monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
 
-    code = run_cli(["show", "f_missing", "--format", "json"])
+    code = run_cli(["show", "f_missing", "--run", record.run_id, "--format", "json"])
 
     assert code == 2
     payload = json.loads(capsys.readouterr().err)
@@ -655,14 +655,14 @@ def test_findings_exact_module_text_ndjson_and_output(
     monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
 
     code = run_cli(
-        ["findings", "--module", "Demo.A", "--exact-module"],
+        ["findings", "--run", record.run_id, "--module", "Demo.A", "--exact-module"],
     )
     assert code == 0
     out = capsys.readouterr().out
     assert "Demo.A:" in out
     assert "Demo.A.Sub" not in out
 
-    code = run_cli(["findings", "--format", "ndjson"])
+    code = run_cli(["findings", "--run", record.run_id, "--format", "ndjson"])
     assert code == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert lines[0]["record_type"] == "envelope"
@@ -672,7 +672,7 @@ def test_findings_exact_module_text_ndjson_and_output(
 
     output = tmp_path / "findings.json"
     code = run_cli(
-        ["findings", "--limit", "1", "--format", "json", "--output", str(output)],
+        ["findings", "--run", record.run_id, "--limit", "1", "--format", "json", "--output", str(output)],
     )
     assert code == 0
     assert capsys.readouterr().out == ""
@@ -693,6 +693,47 @@ def test_findings_without_runs_returns_error(
     assert payload["error"]["code"] == "no_runs"
 
 
+def test_findings_latest_uses_the_project_context(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_project(tmp_path)
+    record = RunRecord(
+        run_id="run-1",
+        started_at="2026-01-01T00:00:00Z",
+        finished_at="2026-01-01T00:00:01Z",
+        project_tag="Demo",
+        project_path=str(project.resolve()),
+    )
+    summary = RunSummary.from_record(record)
+    monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
+    monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
+
+    code = run_cli(["findings", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["run"]["run_id"] == record.run_id
+    assert payload["run"]["project_path"] == str(project.resolve())
+
+
+def test_findings_latest_without_a_project_returns_two(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    record = _run_record(_finding(module_path=("Demo", "A")))
+    summary = RunSummary.from_record(record)
+    monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
+    monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
+
+    code = run_cli(["findings", "--format", "json"])
+
+    assert code == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == "run_scope_unknown"
+
+
 def test_show_text_and_markdown(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -710,13 +751,13 @@ def test_show_text_and_markdown(
     monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
     monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
 
-    code = run_cli(["show", finding_id])
+    code = run_cli(["show", finding_id, "--run", record.run_id])
     assert code == 0
     out = capsys.readouterr().out
     assert "Site:" in out
     assert "Demo.A" in out
 
-    code = run_cli(["show", finding_id, "--format", "markdown"])
+    code = run_cli(["show", finding_id, "--run", record.run_id, "--format", "markdown"])
     assert code == 0
     out = capsys.readouterr().out
     assert out.startswith("# Unused variable: Demo.A")
@@ -1362,7 +1403,7 @@ def test_findings_grouped_text_uses_human_labels(
     monkeypatch.setattr("sattlint.cli._findings.list_runs", _fake_list_runs(summary))
     monkeypatch.setattr("sattlint.cli._findings.load_run", _fake_load_run(record))
 
-    code = run_cli(["findings", "--group-by", "kind"])
+    code = run_cli(["findings", "--run", record.run_id, "--group-by", "kind"])
 
     assert code == 0
     out = capsys.readouterr().out

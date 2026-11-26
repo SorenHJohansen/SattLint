@@ -47,6 +47,26 @@ jobs:
       - name: Pyright on production code and tests
         run: uv run --frozen pyright src/sattlint tests
 
+      # The changelog and the package version must name the same release. This
+      # runs on its own so a mismatch fails with a named check instead of inside
+      # the full suite.
+      - name: Release state check
+        run: uv run --frozen python -m pytest tests/test_release_state.py -q
+
+      # Only a tagged build compares against a tag, so ordinary branch and pull
+      # request runs need no git metadata. The tag is the version with its
+      # leading "v" removed.
+      - name: Check tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          actual="$(uv run --frozen python -c 'from sattlint import __version__; print(__version__)')"
+          if [[ "$expected" != "$actual" ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match package version '${actual}'"
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package version ${actual}"
+
       # Ruff, Pyright, and the docs check run above or in their own job; the
       # remaining hooks keep whitespace, end-of-file, YAML/TOML,
       # merge-conflict, line-ending and large-file checks on CI instead of only

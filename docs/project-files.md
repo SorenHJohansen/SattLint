@@ -80,8 +80,19 @@ another machine, as long as the relative layout is preserved.
 - `--project PATH` accepts a project file or a directory.
 - A directory must contain exactly one file ending in `.slproj`. If it contains
   several, pass the file explicitly.
-- Without `--project`, SattLint walks upward from the current working directory
-  and uses the first `.slproj` it finds.
+- Without `--project`, SattLint walks upward from the current working directory.
+  At each directory it uses the literal `.slproj` when it exists; otherwise it
+  uses the only `*.slproj` file in that directory. The suffix match is
+  case-insensitive and directories are ignored.
+- The walk stops at the first directory that holds any project file, so
+  candidates from different directories are never combined.
+- If two or more project files are in that directory and none of them is the
+  literal `.slproj`, discovery fails and lists every candidate. Pass `--project`
+  with the file to use.
+- An explicit `--project` skips discovery entirely.
+- `project show`, `analyze`, `findings`, and `show` share this rule. The query
+  commands cannot resolve `latest` without a project, so they require either a
+  discoverable project or an explicit `--project`.
 - The interactive shell does not auto-discover a project; open or create one
   from the **File** menu.
 

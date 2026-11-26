@@ -154,7 +154,13 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
 
 def _build_findings_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("findings", help="Query findings from a stored run.")
-    parser.add_argument("--run", default="latest", metavar="ID", help="Run ID, unique prefix, or 'latest'.")
+    _add_project_arg(parser)
+    parser.add_argument(
+        "--run",
+        default="latest",
+        metavar="ID",
+        help="Run ID, unique prefix, or 'latest'. 'latest' resolves within the project.",
+    )
     parser.add_argument(
         "--analyzer", action="append", default=[], metavar="KEY", help="Filter by analyzer key; repeatable."
     )
@@ -190,7 +196,13 @@ def _build_findings_parser(subparsers: _SubParserAction) -> None:
 def _build_show_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("show", help="Show one finding by its stable ID.")
     parser.add_argument("finding_id", metavar="FINDING_ID")
-    parser.add_argument("--run", default="latest", metavar="ID", help="Run ID, unique prefix, or 'latest'.")
+    _add_project_arg(parser)
+    parser.add_argument(
+        "--run",
+        default="latest",
+        metavar="ID",
+        help="Run ID, unique prefix, or 'latest'. 'latest' resolves within the project.",
+    )
     _add_output_args(parser, formats=("json", "markdown", "text"))
 
 

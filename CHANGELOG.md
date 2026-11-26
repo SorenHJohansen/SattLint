@@ -8,6 +8,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+## [2026.11.6] - 2026-11-26
+
 ### Added
 
 - The shell's status bar now reports live analysis progress: percentage
@@ -80,6 +82,19 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   placed module sizes follow the drawing grid, that placement is aligned to the
   containing module's grid, and that no graphics or interactor object sits
   entirely outside the visible area. Geometry driven by variables is skipped.
+- `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
+  document the security intake, the stable and preview surfaces, community
+  expectations, and the headless command reference.
+- `scripts/check_docs.py` fails when a relative Markdown link points at a file
+  that does not exist.
+- A question issue template, and a dependency audit job in CI.
+- `uv.lock` pins the development environment that CI installs.
+- A module type usage analyzer reports module types the analyzed target defines
+  but no loaded consumer invokes, following source-level dependencies across
+  programs.
+- The Results view groups findings by the persisted module hierarchy and shows
+  the selected module's findings as plain text with expandable detail.
+- The SFC checks report a sequence that does not begin with an initial step.
 
 ### Changed
 
@@ -239,6 +254,49 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The semantic index records single-module parameters and locals with their
   own symbol kinds, and module-type instance parameters and locals likewise,
   matching the typedef path.
+- CI installs the locked environment with `uv sync --frozen`, runs a Markdown
+  style gate, and cancels superseded pull request runs.
+- The release workflow validates the package version against the tag, accepts
+  a manual dispatch version, and skips artifacts that already exist on PyPI.
+- The pull request template, issue templates, and release notes in
+  `CONTRIBUTING.md` match the shipped commands.
+- The pinned Ruff version matches the pre-commit hook revision.
+- Upgraded `sattline-parser` to `2026.11.6` and pinned it exactly, with
+  `uv.lock` regenerated. The parser renames `Simple_DataType` to
+  `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
+  `modulecode` fields, and removes the interim graphics payload classes. The
+  2026.11.6 delta is additive for this codebase: no imported name or signature
+  changed except for new keyword fields and new project helpers.
+- Project loading is all or nothing. A missing or unparseable body, sidecar, or
+  companion now fails the target with a message that names the artifact,
+  instead of dropping the program silently. SattLint catches the parser load
+  errors at every load seam, reports the failure, and continues with the next
+  analyzed target.
+- Every cache version is bumped, so an entry written before the parser upgrade
+  is rejected rather than decoded into the new model.
+- A declared dependency that is not present is no longer recorded as a missing
+  library, because the parser refuses to return a partial project.
+- A module type definition no longer carries parameter mappings, so the
+  variables analyzer checks mappings only on submodules and module-type
+  instances, which is where the grammar allows them.
+- Dependency sidecar lookup is requester independent and pairs a sidecar with
+  the selected body's own prefix, matching the parser's ordered roots.
+- The unknown parameter mapping target rule stays with SattLint's variables
+  analyzer, so a root that carries that finding is still indexed.
+- The Analyze view no longer offers a Cancel control that could not stop a
+  running analysis, since the analysis pipeline has no cancellation checkpoint.
+- A companion is paired only with the artifact family of its body, and companion
+  stems match case-insensitively, following the parser rules.
+- PictureDisplay path diagnosis is computed once per target and reused by the
+  analyzer instead of being repeated.
+- The unused SFC parallel-write collector and contract-index subsystem are
+  removed.
+- The same-cycle shared access rule is removed; its findings repeated the
+  parallel-branch rules and fired on ordinary module interaction. The
+  parallel read/write and parallel write rules stay.
+- Cyclomatic complexity defaults, parameter mapping checks, read-before-write,
+  state-reset, and parallel-branch analysis were tightened to drop false
+  positives.
 
 ### Removed
 
@@ -406,73 +464,6 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   Review.
 - Frame-module code is indexed in the frame's own variable scope, so its
   references and call signatures are visible to Change Review.
-
-## [2026.11.5] - 2026-11-15
-
-### Added
-
-- `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
-  document the security intake, the stable and preview surfaces, community
-  expectations, and the headless command reference.
-- `scripts/check_docs.py` fails when a relative Markdown link points at a file
-  that does not exist.
-- A question issue template, and a dependency audit job in CI.
-- `uv.lock` pins the development environment that CI installs.
-- A module type usage analyzer reports module types the analyzed target defines
-  but no loaded consumer invokes, following source-level dependencies across
-  programs.
-- The Results view groups findings by the persisted module hierarchy and shows
-  the selected module's findings as plain text with expandable detail.
-- The SFC checks report a sequence that does not begin with an initial step.
-
-### Changed
-
-- CI installs the locked environment with `uv sync --frozen`, runs a Markdown
-  style gate, and cancels superseded pull request runs.
-- The release workflow validates the package version against the tag, accepts
-  a manual dispatch version, and skips artifacts that already exist on PyPI.
-- The pull request template, issue templates, and release notes in
-  `CONTRIBUTING.md` match the shipped commands.
-- The pinned Ruff version matches the pre-commit hook revision.
-- Upgraded `sattline-parser` to `2026.11.6` and pinned it exactly, with
-  `uv.lock` regenerated. The parser renames `Simple_DataType` to
-  `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
-  `modulecode` fields, and removes the interim graphics payload classes. The
-  2026.11.6 delta is additive for this codebase: no imported name or signature
-  changed except for new keyword fields and new project helpers.
-- Project loading is all or nothing. A missing or unparseable body, sidecar, or
-  companion now fails the target with a message that names the artifact,
-  instead of dropping the program silently. SattLint catches the parser load
-  errors at every load seam, reports the failure, and continues with the next
-  analyzed target.
-- Every cache version is bumped, so an entry written before the parser upgrade
-  is rejected rather than decoded into the new model.
-- A declared dependency that is not present is no longer recorded as a missing
-  library, because the parser refuses to return a partial project.
-- A module type definition no longer carries parameter mappings, so the
-  variables analyzer checks mappings only on submodules and module-type
-  instances, which is where the grammar allows them.
-- Dependency sidecar lookup is requester independent and pairs a sidecar with
-  the selected body's own prefix, matching the parser's ordered roots.
-- The unknown parameter mapping target rule stays with SattLint's variables
-  analyzer, so a root that carries that finding is still indexed.
-- The Analyze view no longer offers a Cancel control that could not stop a
-  running analysis, since the analysis pipeline has no cancellation checkpoint.
-- A companion is paired only with the artifact family of its body, and companion
-  stems match case-insensitively, following the parser rules.
-- PictureDisplay path diagnosis is computed once per target and reused by the
-  analyzer instead of being repeated.
-- The unused SFC parallel-write collector and contract-index subsystem are
-  removed.
-- The same-cycle shared access rule is removed; its findings repeated the
-  parallel-branch rules and fired on ordinary module interaction. The
-  parallel read/write and parallel write rules stay.
-- Cyclomatic complexity defaults, parameter mapping checks, read-before-write,
-  state-reset, and parallel-branch analysis were tightened to drop false
-  positives.
-
-### Fixed
-
 - Read-only findings no longer include constant fields, and a parameter mapping
   that targets a name outside the declared list is no longer reported.
 - The Results view hides empty module branches and keeps a finding's site,
@@ -925,7 +916,7 @@ parser AST migration.
 
 - This entry establishes the changelog baseline for future tagged releases.
 
-[2026.11.5]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.5
+[2026.11.6]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.6
 [2026.11.4]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.4
 [2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2

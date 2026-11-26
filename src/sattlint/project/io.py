@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,7 +19,52 @@ from ..config.types import ConfigObjectMap
 from .models import SattLintProjectFile
 from .types import DEFAULT_PROJECT_DICT, SLPROJ_VERSION, ProjectDict
 
-SLPROJ_FILENAME = ".slproj"
+SLPROJ_SUFFIX = ".slproj"
+SLPROJ_FILENAME = SLPROJ_SUFFIX
+
+
+class ProjectAmbiguousError(ValueError):
+    """Two or more project files exist in the first ancestor that has any.
+
+    Discovery never guesses between named project files. The message lists
+    every candidate so the caller can pass ``--project`` with one of them.
+    """
+
+    def __init__(self, directory: Path, candidates: tuple[Path, ...]) -> None:
+        self.directory = directory
+        self.candidates = candidates
+        listing = ", ".join(str(candidate) for candidate in candidates)
+        super().__init__(
+            f"Multiple {SLPROJ_SUFFIX} files found in {directory}: {listing}. Pass --project PATH to choose one."
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectDiscovery:
+    """The outcome of walking upward from a directory for a project file.
+
+    ``directory`` is the first ancestor that holds any project file, or
+    ``None`` when no ancestor holds one. ``candidates`` lists every project
+    file in that directory, and ``selected`` is the file discovery chose there.
+    A selection is ``None`` only when there is no candidate, or when several
+    named files are ambiguous.
+    """
+
+    searched_from: Path
+    directory: Path | None = None
+    candidates: tuple[Path, ...] = ()
+    selected: Path | None = None
+
+    @property
+    def is_ambiguous(self) -> bool:
+        return self.selected is None and len(self.candidates) > 1
+
+    def selected_path(self) -> Path | None:
+        """Return the selected project file, raising when the choice is ambiguous."""
+        if self.is_ambiguous:
+            directory = self.directory if self.directory is not None else self.searched_from
+            raise ProjectAmbiguousError(directory, self.candidates)
+        return self.selected
 
 
 def _project_path_hint(path: Path) -> str:
@@ -28,19 +74,63 @@ def _project_path_hint(path: Path) -> str:
     return str(path)
 
 
-def discover_project(start: Path | None = None) -> Path | None:
-    """Walk up from *start* (default CWD) looking for a .slproj file.
+def _project_candidates(directory: Path) -> tuple[Path, ...]:
+    """Return the regular files in *directory* whose name ends in .slproj.
 
-    Returns the first matching path, or *None* if none is found.
+    The suffix match is case-insensitive, directories are ignored, and the
+    result is sorted so an error message is stable.
     """
-    if start is None:
-        start = Path.cwd()
-    current = start.resolve()
-    for ancestor in [current, *current.parents]:
-        candidate = ancestor / SLPROJ_FILENAME
-        if candidate.is_file():
+    try:
+        entries = tuple(directory.iterdir())
+    except OSError:
+        return ()
+    return tuple(
+        sorted(
+            (entry for entry in entries if entry.is_file() and entry.name.casefold().endswith(SLPROJ_SUFFIX)),
+            key=lambda entry: entry.name.casefold(),
+        )
+    )
+
+
+def _choose_candidate(candidates: tuple[Path, ...]) -> Path | None:
+    """Pick the literal .slproj, else a unique named file, else nothing."""
+    for candidate in candidates:
+        if candidate.name.casefold() == SLPROJ_FILENAME:
             return candidate
+    if len(candidates) == 1:
+        return candidates[0]
     return None
+
+
+def discover_project_result(start: Path | None = None) -> ProjectDiscovery:
+    """Walk up from *start* (default CWD) and report the first project directory.
+
+    At each ancestor the literal ``.slproj`` wins over named files; otherwise a
+    unique ``*.slproj`` file is used. The walk stops at the first ancestor that
+    holds any candidate, so candidates are never merged across directories.
+    """
+    origin = (Path.cwd() if start is None else start).resolve()
+    for ancestor in (origin, *origin.parents):
+        candidates = _project_candidates(ancestor)
+        if not candidates:
+            continue
+        return ProjectDiscovery(
+            searched_from=origin,
+            directory=ancestor,
+            candidates=candidates,
+            selected=_choose_candidate(candidates),
+        )
+    return ProjectDiscovery(searched_from=origin)
+
+
+def discover_project(start: Path | None = None) -> Path | None:
+    """Walk up from *start* (default CWD) looking for a project file.
+
+    Returns the first matching path, or *None* if none is found. Raises
+    ``ProjectAmbiguousError`` when an ancestor holds two or more project files
+    and none of them is the literal ``.slproj``.
+    """
+    return discover_project_result(start).selected_path()
 
 
 def load_project(path: Path) -> SattLintProjectFile:
@@ -213,8 +303,12 @@ def init_project(
 
 __all__ = [
     "SLPROJ_FILENAME",
+    "SLPROJ_SUFFIX",
     "SLPROJ_VERSION",
+    "ProjectAmbiguousError",
+    "ProjectDiscovery",
     "discover_project",
+    "discover_project_result",
     "init_project",
     "load_project",
     "save_project",

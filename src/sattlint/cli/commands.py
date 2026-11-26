@@ -26,7 +26,8 @@ from ..core.progress import (
     ProgressCallback,
     encode_progress_line,
 )
-from ..project.io import discover_project
+from ..project.io import ProjectAmbiguousError, discover_project_result
+from ..project.models import SattLintProjectFile
 from ..project.support import TargetLoadError
 from ..runs import RunRecord
 from ._findings import (
@@ -150,8 +151,29 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
     )
 
 
+def _ambiguous_project_error(exc: ProjectAmbiguousError) -> CliError:
+    return CliError(
+        str(exc),
+        code="project_ambiguous",
+        exit_code=2,
+        details={"candidates": [str(candidate) for candidate in exc.candidates]},
+    )
+
+
+def _resolve_project(raw: str | None) -> SattLintProjectFile:
+    """Resolve the project file for a command, including discovery.
+
+    An explicit path skips discovery entirely. Discovery ambiguity becomes a
+    CLI error that lists the candidates.
+    """
+    try:
+        return resolve_project_file(raw)
+    except ProjectAmbiguousError as exc:
+        raise _ambiguous_project_error(exc) from exc
+
+
 def command_project_show(args: argparse.Namespace) -> int:
-    project = resolve_project_file(args.project)
+    project = _resolve_project(args.project)
     options = _output_options(args)
     project_info = project_payload(project, quiet=options.quiet)
     payload: ProjectShowPayload = {
@@ -334,7 +356,7 @@ def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: st
 
 def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
-    project = resolve_project_file(options.project)
+    project = _resolve_project(options.project)
     cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
     keys = _resolve_analyzer_keys(options.analyzers or project.analyzers)
     _require_configured_targets(cfg)
@@ -449,9 +471,38 @@ def _finding_line(finding: FindingPayload) -> str:
     return f"{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
-def _discovered_project_path() -> str | None:
-    discovered = discover_project()
-    return None if discovered is None else str(discovered)
+_LATEST_SELECTOR = "latest"
+
+
+def _scoped_project_path(raw: str | None) -> str | None:
+    """Return the project path that scopes a stored-run query.
+
+    An explicit ``--project`` names the scope directly and skips discovery.
+    Otherwise discovery walks up from the working directory. ``None`` means no
+    project could be found.
+    """
+    if raw is not None:
+        return str(_resolve_project(raw).path)
+    discovery = discover_project_result()
+    try:
+        selected = discovery.selected_path()
+    except ProjectAmbiguousError as exc:
+        raise _ambiguous_project_error(exc) from exc
+    return None if selected is None else str(selected)
+
+
+def _run_scope(args: argparse.Namespace) -> tuple[str, str | None]:
+    """Resolve a query's project scope.
+
+    An explicit ``--project`` names it directly; otherwise it comes from
+    discovery and may be absent. An explicit run id already names the run, so
+    it neither needs discovery nor fails because discovery is ambiguous.
+    """
+    selector = str(args.run)
+    raw_project = getattr(args, "project", None)
+    if raw_project is None and selector.strip().casefold() != _LATEST_SELECTOR:
+        return selector, None
+    return selector, _scoped_project_path(raw_project)
 
 
 def command_findings(args: argparse.Namespace) -> int:
@@ -459,7 +510,8 @@ def command_findings(args: argparse.Namespace) -> int:
     requested_analyzers = tuple(str(value) for value in args.analyzer)
     if requested_analyzers:
         requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers))
-    record = resolve_run(args.run, project_path=_discovered_project_path())
+    selector, project_path = _run_scope(args)
+    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
     filters = FindingFilters(
         targets=tuple(str(value) for value in args.target),
         analyzers=requested_analyzers,
@@ -479,7 +531,7 @@ def command_findings(args: argparse.Namespace) -> int:
     payload: FindingsPayload = {
         "schema_version": SCHEMA_VERSION,
         "command": "findings",
-        "run": run_payload(record),
+        "run": run_payload(record, project_path=project_path),
         "filters": FindingsFilters(
             target=list(filters.targets),
             analyzer=list(filters.analyzers),
@@ -509,10 +561,18 @@ def _group_label(key: str, group_by: str) -> str:
     return key
 
 
+def _run_header(run: Mapping[str, object]) -> str:
+    header = f"Run: {run['run_id']}"
+    project_path = str(run.get("project_path") or "")
+    if project_path:
+        header = f"{header}  Project: {project_path}"
+    return header
+
+
 def _findings_text(payload: FindingsPayload) -> list[str]:
     summary = payload["summary"]
     lines = [
-        f"Run: {payload['run']['run_id']}  Findings: {summary['findings']} (matched {summary.get('matched', 0)})",
+        f"{_run_header(payload['run'])}  Findings: {summary['findings']} (matched {summary.get('matched', 0)})",
     ]
     if payload["groups"]:
         group_by = payload["filters"]["group_by"]
@@ -524,7 +584,8 @@ def _findings_text(payload: FindingsPayload) -> list[str]:
 
 def command_show(args: argparse.Namespace) -> int:
     options = _output_options(args)
-    record = resolve_run(args.run, project_path=_discovered_project_path())
+    selector, project_path = _run_scope(args)
+    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
     finding_id = str(args.finding_id)
     match = next((finding for finding in flat_findings(record) if finding.id == finding_id), None)
     if match is None:
@@ -537,7 +598,7 @@ def command_show(args: argparse.Namespace) -> int:
     payload: ShowPayload = {
         "schema_version": SCHEMA_VERSION,
         "command": "show",
-        "run": run_payload(record),
+        "run": run_payload(record, project_path=project_path),
         "finding": finding_payload(match),
     }
     if options.output_format == "markdown":
