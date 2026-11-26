@@ -39,6 +39,8 @@ _LAZY_ANALYZER_EXPORTS: dict[str, tuple[str, str]] = {
     "analyze_picture_display_paths": ("sattlint.analyzers.picture_display_paths", "analyze_picture_display_paths"),
     "analyze_same_cycle": ("sattlint.analyzers.same_cycle", "analyze_same_cycle"),
     "analyze_sfc": ("sattlint.analyzers.sfc", "analyze_sfc"),
+    "analyze_string_capacity": ("sattlint.analyzers.string_usage", "analyze_string_capacity"),
+    "analyze_string_style": ("sattlint.analyzers.string_usage", "analyze_string_style"),
     "analyze_variables": ("sattlint.analyzers.variables", "analyze_variables"),
 }
 

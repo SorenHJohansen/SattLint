@@ -70,6 +70,8 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
     monkeypatch.setattr(registry_module, "analyze_moduletype_usage", _record("moduletype-usage"))
     monkeypatch.setattr(registry_module, "analyze_icf_configuration", _record("icf"))
     monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
+    monkeypatch.setattr(registry_module, "analyze_string_capacity", _record("string-capacity"))
+    monkeypatch.setattr(registry_module, "analyze_string_style", _record("string-style"))
 
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
     context = cast(
@@ -98,6 +100,8 @@ def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.Monke
         "datatype-fields",
         "moduletype-usage",
         "icf",
+        "string-capacity",
+        "string-style",
     }
 
     for key in expected_keys:

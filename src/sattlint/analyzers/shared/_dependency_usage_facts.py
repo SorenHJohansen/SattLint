@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 
 from sattlint.parser_api import (
     Assignment,
@@ -12,12 +10,6 @@ from sattlint.parser_api import (
     IfStmt,
     ModuleCode,
     ModuleTypeDef,
-    SFCAlternative,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransition,
-    SFCTransitionSub,
     VarRef,
     walk,
 )
@@ -25,6 +17,7 @@ from sattlint.parser_api import (
 from ...core.call_signatures import resolve_call_signature
 from ...resolution.scope import ScopeContext
 from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
+from .statement_sites import BlockKind, iter_statement_sites
 
 
 @dataclass(frozen=True)
@@ -44,19 +37,6 @@ class FactRef:
 class CallFact:
     function_name: str
     args: tuple[FactRef | None, ...]
-
-
-class BlockKind(StrEnum):
-    """The kind of module-code block a statement was collected from.
-
-    An equation block re-evaluates every scan, so a read there is not an
-    ordering hazard: the value carries over from the previous scan. Step
-    phases and transition guards are judged in sequence order instead.
-    """
-
-    EQUATION = "equation"
-    STEP = "step"
-    TRANSITION = "transition"
 
 
 @dataclass(frozen=True)
@@ -136,41 +116,8 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     ) -> None:
         if modulecode is None:
             return
-        for equation in modulecode.equationblocks or []:
-            site = f"equation block {equation.name!r}"
-            for statement in equation.code or []:
-                self._append_statement_fact(statement, context, module_path, site, BlockKind.EQUATION)
-        for sequence in modulecode.sequences or []:
-            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name or "")
-
-    def _walk_sequence_nodes(
-        self,
-        nodes: Sequence[object],
-        context: ScopeContext,
-        module_path: list[str],
-        sequence_name: str,
-    ) -> None:
-        for node in nodes:
-            if isinstance(node, SFCStep):
-                for phase, statements in (
-                    ("ENTER", node.code.enter or []),
-                    ("ACTIVE", node.code.active or []),
-                    ("EXIT", node.code.exit or []),
-                ):
-                    site = f"sequence {sequence_name!r} step {node.name!r} {phase}"
-                    for statement in statements:
-                        self._append_statement_fact(statement, context, module_path, site, BlockKind.STEP)
-                continue
-            if isinstance(node, SFCTransition) and node.condition is not None:
-                site = f"sequence {sequence_name!r} transition {node.name!r} condition"
-                self._append_statement_fact(node.condition, context, module_path, site, BlockKind.TRANSITION)
-                continue
-            if isinstance(node, SFCAlternative | SFCParallel):
-                for branch in node.branches or []:
-                    self._walk_sequence_nodes(branch, context, module_path, sequence_name)
-                continue
-            if isinstance(node, SFCSubsequence | SFCTransitionSub):
-                self._walk_sequence_nodes(node.body or [], context, module_path, sequence_name)
+        for event in iter_statement_sites(modulecode):
+            self._append_statement_fact(event.node, context, module_path, event.site, event.block_kind)
 
     def _append_statement_fact(
         self,

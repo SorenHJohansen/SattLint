@@ -32,6 +32,17 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   findings from local-variable findings, and lets a finding be acknowledged for
   the selected run with a checkmark and dimmed text. Clicking a module now shows
   its findings without collapsing the tree.
+  A module that owns findings turns green once every finding it owns is
+  acknowledged, and the color follows each acknowledgement toggle.
+- Two opt-in string analyzers. `string-capacity` reports literal initializers
+  and assignments that exceed a declared string capacity, and string procedures
+  that would write more characters into their target than it can hold.
+  `string-style` suggests a narrower string datatype when every observed value
+  fits, and names the string-specific copy procedure when a generic copy is used
+  between strings. The capacity checks track lengths and cursor positions only,
+  never the text, and report only when every operand length is known.
+- The SFC analyzer reports a fork that jumps back to the step it belongs to,
+  and a fork that targets an element in another sequence.
 
 ### Changed
 
@@ -43,6 +54,11 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   table and the standard values (15, 30, 40, 80, 140). The values feed string
   inference and validation, PictureDisplay path resolution, and the project
   cache key, so changing a capacity invalidates cached results.
+- String inference stops as soon as its string values stop changing, even when
+  an unrelated integer counter keeps growing. A value whose known/unknown status
+  oscillated between passes is reported as unknown instead of being recomputed
+  until the pass limit. The PictureDisplay path analyzer benefits from the
+  shorter run.
 - Analyzer selection is always explicit. A run names its analyzers with
   `--analyzer` or the project's `analyzers` list; a run that names none fails
   with an error that lists every selectable analyzer, in both the CLI and the
@@ -229,6 +245,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   lets a reset of a record field clear its nested fields.
 - An unused module-type parameter is not reported when the analyzed target is a
   library, because the connecting program outside the target consumes it.
+- The datatype duplication finding now reports field groups that several record
+  datatypes repeat, suggesting a nested record, instead of counting variables
+  that share a complex type.
+- Non-State multi-site writes treat equations guarded by different
+  ``NOT <Seq>.Reset`` flags as mutually exclusive, so sibling operation
+  equations no longer look like concurrent writers.
 - An enable flag that defaults to True is not reported as an unsafe startup
   default when the thing it enables is an alarm, warning, message, log, or
   display rather than equipment or logic.

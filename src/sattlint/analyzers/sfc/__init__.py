@@ -21,6 +21,11 @@ from sattlint.parser_api import (
 
 from ..framework import AnalysisContext, Issue, SimpleReport
 from ..shared.target_origin import TargetOriginFilter, build_target_origin_filter_for_basepicture
+from ._sfc_fork_checks import (
+    SFC_CROSS_SEQUENCE_FORK_KIND,
+    SFC_FORK_ISSUE_KINDS,
+    collect_sfc_fork_findings,
+)
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
     _format_branch_path,
@@ -193,6 +198,69 @@ def _collect_initial_step_issues(
     return issues
 
 
+def _collect_fork_issues(
+    base_picture: BasePicture,
+    *,
+    moduletype_filter: TargetOriginFilter | None = None,
+    selected_issue_kinds: AbstractSet[str] | None = None,
+) -> list[Issue]:
+    issues: list[Issue] = []
+    for finding in collect_sfc_fork_findings(base_picture, moduletype_filter=moduletype_filter):
+        if selected_issue_kinds is not None and finding.kind not in selected_issue_kinds:
+            continue
+        host = finding.host_name or "<unnamed>"
+        host_type = finding.host_type.capitalize()
+        sequence = finding.sequence_name or "<unnamed>"
+        target_sequence = finding.target_sequence or "<unnamed>"
+        if finding.kind == SFC_CROSS_SEQUENCE_FORK_KIND:
+            message = (
+                f"{host_type} {host!r} in sequence {sequence!r} forks to "
+                f"{finding.target!r} in sequence {target_sequence!r}."
+            )
+            explanation = (
+                "A fork into another sequence bypasses that sequence's own entry step, "
+                "so its initial step and state may never run."
+            )
+            suggestion = "Fork within the same sequence, or start the other sequence through its own initial step."
+        elif finding.host_name and finding.target.casefold() == finding.host_name.casefold():
+            message = f"{host_type} {host!r} in sequence {sequence!r} forks back to itself."
+            explanation = (
+                "A fork back to the same step re-enters a step that is already active, "
+                "which can repeat its ENTER/EXIT code in the same scan or create a tight loop."
+            )
+            suggestion = (
+                "Name a different target, or remove the fork when the transition already continues the sequence."
+            )
+        else:
+            message = f"{host_type} {host!r} in sequence {sequence!r} forks back to its own step {finding.target!r}."
+            explanation = (
+                "The transition forks back to the step it belongs to, so the step never "
+                "advances to the rest of the sequence."
+            )
+            suggestion = (
+                "Remove the fork when the transition should continue forward, or target the next step explicitly."
+            )
+        issues.append(
+            Issue(
+                kind=finding.kind,
+                message=message,
+                module_path=list(finding.module_path),
+                data={
+                    "sequence": sequence,
+                    "host": finding.host_name,
+                    "host_type": finding.host_type,
+                    "target": finding.target,
+                    "target_sequence": target_sequence,
+                    "site": f"SQ:{sequence}",
+                    "context": finding.host_label,
+                },
+                explanation=explanation,
+                suggestion=suggestion,
+            )
+        )
+    return issues
+
+
 def _format_terminator(terminated_by: SfcTerminator) -> str:
     if terminated_by.targets:
         rendered_targets = ", ".join(repr(target) for target in terminated_by.targets)
@@ -260,6 +328,14 @@ def analyze_sfc(
 
     if _should_collect_any_issue_kinds(_SFC_TRANSITION_LOGIC_ISSUE_KINDS):
         issues.extend(_collect_transition_logic_issues(base_picture, moduletype_filter=moduletype_filter))
+    if _should_collect_any_issue_kinds(SFC_FORK_ISSUE_KINDS):
+        issues.extend(
+            _collect_fork_issues(
+                base_picture,
+                moduletype_filter=moduletype_filter,
+                selected_issue_kinds=normalized_selected_issue_kinds,
+            )
+        )
 
     return SimpleReport(name=base_picture.header.name, issues=issues)
 

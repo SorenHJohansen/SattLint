@@ -38,6 +38,7 @@ from sattlint.analyzers.same_cycle import analyze_same_cycle
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes
 from sattlint.analyzers.variables import analyze_variables
+from sattlint.parser_api import parse_source_text
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -66,12 +67,29 @@ def _fork_step(name: str, targets: tuple[str, ...], *, has_break: bool = False) 
 
 
 def _sequence(nodes: SequenceABC[SFCBodyItem]) -> Sequence:
+    return _named_sequence("SeqMain", nodes)
+
+
+def _named_sequence(name: str | None, nodes: SequenceABC[SFCBodyItem]) -> Sequence:
     return Sequence(
-        name="SeqMain",
+        name=name,
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=list(nodes),
+    )
+
+
+def _fork_transition(
+    name: str,
+    targets: tuple[str, ...],
+    *,
+    has_break: bool = False,
+) -> SFCTransition:
+    return SFCTransition(
+        name=name,
+        condition=True,
+        fork=SFCFork(targets=targets, has_break=has_break),
     )
 
 
@@ -442,6 +460,270 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch: pytes
 
     assert build_calls == ["Root"]
     assert shared_artifacts.counters.variable_foundation_builds == 1
+
+
+def test_step_that_forks_back_to_itself_is_reported() -> None:
+    # Defensive: the parser's host/target kind rule rejects a step whose fork
+    # targets a step, but a hand-built or draft AST can still reach the collector.
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(sequences=[_sequence([_fork_step("Loop", ("Loop",))])]),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to itself" in report.issues[0].message
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["host"] == "Loop"
+
+
+def test_transition_that_forks_back_to_its_own_step_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Loop'" in report.issues[0].message
+
+
+def test_transition_fork_in_an_alternative_branch_back_to_its_step_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        SFCAlternative(branches=[[_fork_transition("Gate", ("Loop",))]]),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Loop'" in report.issues[0].message
+
+
+def test_fork_to_a_different_sequence_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    "Startup",
+                    [
+                        _step("Start", []),
+                        _fork_transition("Jump", ("Running",)),
+                    ],
+                ),
+                _named_sequence(
+                    "Running",
+                    [
+                        _step("Running", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_cross_sequence_fork"]
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["target_sequence"] == "Running"
+    assert "sequence 'Running'" in report.issues[0].message
+
+
+def test_forward_fork_within_the_same_sequence_is_not_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Jump", []),
+                        _fork_transition("Gate", ("Later",)),
+                        _step("Later", []),
+                        SFCTransition(name="After", condition=True),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(
+        bp,
+        selected_issue_kinds={"sfc_self_fork", "sfc_cross_sequence_fork"},
+    )
+
+    assert report.issues == []
+
+
+def test_two_unnamed_sequences_are_still_distinct_for_cross_fork_checks() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    None,
+                    [
+                        _step("Start", []),
+                        _fork_transition("Jump", ("Far",)),
+                    ],
+                ),
+                _named_sequence(
+                    None,
+                    [
+                        _step("Far", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_cross_sequence_fork"]
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["target_sequence"] == "<unnamed>"
+
+
+def test_fork_target_names_are_case_insensitive() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("loop",)),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+
+
+def test_ambiguous_target_name_is_not_classified() -> None:
+    # The parser counts every named SFC element, including a plain
+    # SUBSEQUENCE, when it decides whether a fork target is ambiguous.
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                        SFCSubsequence(name="Loop", kind="sequence", body=[_step("Inner", [])]),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(
+        bp,
+        selected_issue_kinds={"sfc_self_fork", "sfc_cross_sequence_fork"},
+    )
+
+    assert report.issues == []
+
+
+def test_fork_checks_respect_each_selected_kind() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    "Startup",
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                        _step("Jump", []),
+                        _fork_transition("JumpOut", ("Far",)),
+                    ],
+                ),
+                _named_sequence(
+                    "Running",
+                    [
+                        _step("Far", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    self_only = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+    cross_only = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in self_only.issues] == ["sfc_self_fork"]
+    assert [issue.kind for issue in cross_only.issues] == ["sfc_cross_sequence_fork"]
+
+
+def test_fork_checks_respect_issue_selection() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(sequences=[_sequence([_fork_step("Loop", ("Loop",))])]),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_missing_initial_step"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_missing_initial_step"]
+
+
+FORK_SELF_SOURCE = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: ForkSelf"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   SEQUENCE OpSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
+      SEQINITSTEP Init
+         ENTERCODE
+         EXITCODE
+      SEQTRANSITION Gate WAIT_FOR False SEQFORK Init
+   ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_transition_self_fork_is_reported_from_parsed_source() -> None:
+    base_picture = parse_source_text(FORK_SELF_SOURCE)
+
+    report = analyze_sfc(base_picture, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Init'" in report.issues[0].message
 
 
 def test_forward_fork_target_is_not_reported_unreachable() -> None:

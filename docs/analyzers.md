@@ -52,6 +52,8 @@ The category is metadata, not a severity. A finding is a finding.
 | `cyclomatic-complexity` | Cyclomatic complexity | style | per target |
 | `same-cycle` | Same-cycle hazards | correctness | per target |
 | `dataflow` | Dataflow | correctness | per target |
+| `string-capacity` | String capacity | correctness | per target |
+| `string-style` | String style | heuristic | per target |
 
 ## Variable issues
 
@@ -85,6 +87,50 @@ the block runs every scan.
 
 This analyzer builds the shared semantic foundation that other analyzers may
 reuse within the same target run.
+
+## String capacity
+
+Key: `string-capacity`
+
+Checks string values against the capacity of the datatype that stores them.
+
+- A literal initializer or assignment is reported when it is longer than the
+  declared capacity.
+- An assignment from another string is reported when its known value is longer
+  than the target capacity.
+- A string procedure is reported when it writes more characters than the target
+  can hold. The value-tracking procedures include `ClearString`, `SetStringPos`,
+  `CutString`, `PutBlanks`, `InsertString`, `Concatenate`, `ExtractString`,
+  `CopyString`, `CopyStringNoSort`, `IntegerToString`, and `RealToString`.
+  `CopyVariable` and `CopyVarNoSort` are tracked when both operands are strings.
+  National-case transforms are treated as unknown writes because the result
+  length depends on the locale.
+
+The analyzer tracks only lengths and cursor positions, never the text, so a
+module with many string operations stays cheap. A finding is emitted only when
+every operand length is known from a literal, initializer, parameter mapping, or
+a modelled procedure. An unknown input is never guessed. When the values do not
+settle within the pass budget, the report carries a note that the findings may be
+incomplete.
+
+## String style
+
+Key: `string-style`
+
+Suggests a more precise string datatype or procedure when every observed value
+is known. The analyzer is a suggestion set and is selected separately from the
+capacity checks.
+
+- A local string variable is reported when every value it receives fits a
+  smaller string datatype. Module parameters, root-level globals, constants, and
+  record fields are not reported, because the caller or another unit may rely on
+  the wider contract.
+- `CopyVariable` and `CopyVarNoSort` are reported when both operands are
+  strings, with the matching string-specific procedure in the message.
+  `CopyVariable` sorts like `CopyString`, but its third argument is a status
+  output. `CopyString` takes a Boolean that selects case sensitivity instead, so
+  the call's last argument has to be replaced as well. `CopyVarNoSort` matches
+  `CopyStringNoSort` and only names the operands more precisely.
 
 ## Datatype field usage
 
@@ -170,7 +216,9 @@ Checks SFC sequences (step diagrams). It reports:
 - a missing initial step at sequence start;
 - an unreachable sequence node;
 - an unreachable transition;
-- a duplicate transition guard.
+- a duplicate transition guard;
+- a step or transition that forks back to itself or to the step it belongs to;
+- a fork that targets an element in a different sequence.
 
 The analyzer works from the parsed SFC structure, not from formatted text.
 

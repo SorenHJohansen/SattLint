@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -106,6 +106,16 @@ class _ModuleSelection:
     aliases: dict[str, tuple[str, ...]]
 
 
+@dataclass(slots=True)
+class _ModuleNavigation:
+    """The module tree nodes and the state needed to recolor them."""
+
+    first_selection: _ModuleSelection | None = None
+    nodes: dict[tuple[str, ...], Any] = field(default_factory=dict)
+    labels: dict[tuple[str, ...], str] = field(default_factory=dict)
+    finding_paths: set[tuple[str, ...]] = field(default_factory=set)
+
+
 def _format_run_timestamp(iso_text: str) -> str:
     """Format an ISO run timestamp without the 'T'/'Z' separators."""
     if not iso_text:
@@ -186,7 +196,9 @@ def _finding_group_label(kind: str, role: str | None) -> str:
     return f"{kind_human_label(kind)} — {role_label}"
 
 
-def _module_node_label(label: str, *, has_findings: bool) -> str | Text:
+def _module_node_label(label: str, *, has_findings: bool, fully_acknowledged: bool = False) -> str | Text:
+    if fully_acknowledged:
+        return Text(label, style="bold #1b7f3a")
     return Text(label, style="bold #674600") if has_findings else label
 
 
@@ -379,6 +391,8 @@ def _add_module_children(
     finding_paths: set[tuple[str, ...]],
     finding_prefixes: set[tuple[str, ...]],
     aliases: dict[str, tuple[str, ...]],
+    fully_acknowledged: set[tuple[str, ...]],
+    navigation: _ModuleNavigation,
 ) -> None:
     for child in children:
         child_path = (*path, child.name)
@@ -405,13 +419,27 @@ def _add_module_children(
             label = f"{'.'.join(segment[-1] for segment in merged_paths)}{label.removeprefix(final.name)}"
         child_key = tuple(part.casefold() for part in child_path)
         child_node = parent.add(
-            _module_node_label(label, has_findings=child_key in finding_paths),
+            _module_node_label(
+                label,
+                has_findings=child_key in finding_paths,
+                fully_acknowledged=child_key in fully_acknowledged,
+            ),
             data=_ModuleSelection(target, child_path, aliases),
         )
+        _record_navigation_node(navigation, child_key, label, child_node)
         for merged_path in merged_paths:
             branches[tuple(part.casefold() for part in merged_path)] = child_node
         _add_module_children(
-            child_node, retained_children, child_path, target, branches, finding_paths, finding_prefixes, aliases
+            child_node,
+            retained_children,
+            child_path,
+            target,
+            branches,
+            finding_paths,
+            finding_prefixes,
+            aliases,
+            fully_acknowledged,
+            navigation,
         )
 
 
@@ -425,10 +453,7 @@ def _fallback_module_children(
     )
 
 
-def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelection | None:
-    tree.reset("", data=None)
-    tree.show_root = False
-    first_selection = None
+def _results_targets(record: RunRecord) -> list[RunTargetRecord]:
     targets = list(record.targets)
     if any(analyzer.findings for analyzer in record.project_analyzers):
         targets.append(
@@ -437,27 +462,80 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                 analyzers=record.project_analyzers,
             )
         )
-    for target in targets:
+    return targets
+
+
+def _target_root_name(target: RunTargetRecord) -> str:
+    module = target.module
+    roots = {
+        finding.module_path[0] for analyzer in target.analyzers for finding in analyzer.findings if finding.module_path
+    }
+    return (
+        module.name.split(":", 1)[-1]
+        if module is not None
+        else next(iter(roots))
+        if len(roots) == 1
+        else target.target_name
+    )
+
+
+def _fully_acknowledged_paths(record: RunRecord, acknowledged: frozenset[str]) -> set[tuple[str, ...]]:
+    """Normalized module paths whose displayed findings are all acknowledged."""
+    fully_acknowledged: set[tuple[str, ...]] = set()
+    for target in _results_targets(record):
+        if not any(analyzer.findings for analyzer in target.analyzers):
+            continue
+        root_name = _target_root_name(target)
+        aliases = _module_path_aliases(target, root_name)
+        keys_by_path: dict[tuple[str, ...], list[str]] = {}
+        for analyzer in target.analyzers:
+            findings_by_path: dict[tuple[str, ...], list[AnalysisFinding]] = {}
+            for finding in analyzer.findings:
+                path = _normalized_finding_path(target, root_name, finding, analyzer, aliases)
+                findings_by_path.setdefault(path, []).append(finding)
+            for path, findings in findings_by_path.items():
+                groups = _finding_groups(
+                    RunAnalyzerRecord(
+                        key=analyzer.key,
+                        name=analyzer.name,
+                        status=analyzer.status,
+                        findings=findings,
+                    )
+                )
+                for _kind, declaration_role, items in groups:
+                    for finding, _occurrence_count in items:
+                        key = finding_acknowledgement_key(
+                            target_name=target.target_name,
+                            analyzer_key=analyzer.key,
+                            finding=finding,
+                            declaration_role=declaration_role,
+                        )
+                        keys_by_path.setdefault(path, []).append(key)
+        for path, keys in keys_by_path.items():
+            if keys and all(key in acknowledged for key in keys):
+                fully_acknowledged.add(tuple(part.casefold() for part in path))
+    return fully_acknowledged
+
+
+def _populate_module_navigation(
+    tree: Any,
+    record: RunRecord,
+    *,
+    acknowledged: frozenset[str] = frozenset(),
+) -> _ModuleNavigation:
+    tree.reset("", data=None)
+    tree.show_root = False
+    navigation = _ModuleNavigation()
+    fully_acknowledged = _fully_acknowledged_paths(record, acknowledged)
+    for target in _results_targets(record):
         if not any(analyzer.findings for analyzer in target.analyzers):
             continue
         module = target.module
-        roots = {
-            finding.module_path[0]
-            for analyzer in target.analyzers
-            for finding in analyzer.findings
-            if finding.module_path
-        }
-        root_name = (
-            module.name.split(":", 1)[-1]
-            if module is not None
-            else next(iter(roots))
-            if len(roots) == 1
-            else target.target_name
-        )
+        root_name = _target_root_name(target)
         aliases = _module_path_aliases(target, root_name)
         selection = _ModuleSelection(target, (root_name,), aliases)
-        if first_selection is None:
-            first_selection = selection
+        if navigation.first_selection is None:
+            navigation.first_selection = selection
         root_label = (
             _module_label(module)
             if module
@@ -470,16 +548,32 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
             for analyzer in target.analyzers
             for finding in analyzer.findings
         }
+        navigation.finding_paths.update(finding_paths)
         finding_prefixes = {path[:length] for path in finding_paths for length in range(1, len(path) + 1)}
+        root_key = (root_name.casefold(),)
         root_node = tree.root.add(
-            _module_node_label(root_label, has_findings=(root_name.casefold(),) in finding_paths),
+            _module_node_label(
+                root_label,
+                has_findings=root_key in finding_paths,
+                fully_acknowledged=root_key in fully_acknowledged,
+            ),
             data=selection,
         )
-        branches = {(root_name.casefold(),): root_node}
+        _record_navigation_node(navigation, root_key, root_label, root_node)
+        branches = {root_key: root_node}
 
         if module is not None:
             _add_module_children(
-                root_node, module.children, selection.path, target, branches, finding_paths, finding_prefixes, aliases
+                root_node,
+                module.children,
+                selection.path,
+                target,
+                branches,
+                finding_paths,
+                finding_prefixes,
+                aliases,
+                fully_acknowledged,
+                navigation,
             )
         else:
             path_children: dict[tuple[str, ...], dict[str, str]] = {}
@@ -499,6 +593,8 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                 finding_paths,
                 finding_prefixes,
                 aliases,
+                fully_acknowledged,
+                navigation,
             )
         for analyzer in target.analyzers:
             for finding in analyzer.findings:
@@ -508,14 +604,48 @@ def _populate_module_navigation(tree: Any, record: RunRecord) -> _ModuleSelectio
                     key = tuple(part.casefold() for part in prefix)
                     if key not in branches:
                         parent_key = tuple(part.casefold() for part in prefix[:-1])
-                        branches[key] = branches[parent_key].add(
-                            _module_node_label(prefix[-1], has_findings=key in finding_paths),
+                        node = branches[parent_key].add(
+                            _module_node_label(
+                                prefix[-1],
+                                has_findings=key in finding_paths,
+                                fully_acknowledged=key in fully_acknowledged,
+                            ),
                             data=_ModuleSelection(target, prefix, aliases),
                         )
+                        branches[key] = node
+                        _record_navigation_node(navigation, key, prefix[-1], node)
     _mark_leaf_nodes(tree.root)
     _auto_expand_single_child_chains(tree.root)
     tree.root.expand()
-    return first_selection
+    return navigation
+
+
+def _record_navigation_node(
+    navigation: _ModuleNavigation,
+    key: tuple[str, ...],
+    label: str,
+    node: Any,
+) -> None:
+    navigation.nodes[key] = node
+    navigation.labels[key] = label
+
+
+def _refresh_results_module_colors(self: Any, acknowledged: frozenset[str]) -> None:
+    """Recolor module nodes after an acknowledgement toggle."""
+    navigation = getattr(self, "_results_navigation", None)
+    record = getattr(self, "_selected_run_record", None)
+    if navigation is None or record is None:
+        return
+    fully_acknowledged = _fully_acknowledged_paths(record, acknowledged)
+    for key, node in navigation.nodes.items():
+        node.label = _module_node_label(
+            navigation.labels[key],
+            has_findings=key in navigation.finding_paths,
+            fully_acknowledged=key in fully_acknowledged,
+        )
+        refresh = getattr(node, "refresh", None)
+        if callable(refresh):
+            refresh()
 
 
 def _build_module_findings_report(
@@ -823,13 +953,15 @@ def _render_results_tree(self: Any, record: RunRecord) -> None:
         self._results_findings_widget = findings_report
     render_key = record.run_id
     if getattr(self, "_results_tree_render_key", None) != render_key:
-        selection = _populate_module_navigation(tree, record)
+        acknowledged = load_run_acknowledgements(record.run_id)
+        navigation = _populate_module_navigation(tree, record, acknowledged=acknowledged)
+        self._results_navigation = navigation
         self._results_tree_render_key = render_key
         self._results_tree_run_id = record.run_id
-        self._results_acknowledged = load_run_acknowledgements(record.run_id)
+        self._results_acknowledged = acknowledged
         self._selected_results_module = None
-        if selection is not None:
-            _select_results_module(self, selection)
+        if navigation.first_selection is not None:
+            _select_results_module(self, navigation.first_selection)
         else:
             findings_report.update("No findings")
     elif self._selected_results_module is not None:
@@ -862,6 +994,7 @@ def _toggle_results_acknowledgement(self: Any, run_id: str, key: str) -> None:
     findings_report = getattr(self, "_results_findings_widget", None)
     if findings_report is not None:
         findings_report.set_acknowledged(updated, run_id=run_id)
+    _refresh_results_module_colors(self, updated)
     self._write_output(message)
 
 

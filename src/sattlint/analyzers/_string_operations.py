@@ -22,16 +22,16 @@ from ._string_models import (
     StringCandidate,
     StringInferenceResult,
     StringProvenanceSegment,
+    StringSlot,
     _AbstractState,
     _IntResult,
-    _ResolvedSlot,
 )
 from .shared._string_capacity import capacity_for_datatype
 
 
 def _read_string_result(
     state: _AbstractState,
-    slot: _ResolvedSlot,
+    slot: StringSlot,
     *,
     capacities: StringCapacities,
 ) -> StringInferenceResult:

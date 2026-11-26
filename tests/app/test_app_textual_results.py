@@ -78,7 +78,7 @@ def test_module_navigation_includes_project_level_analyzers() -> None:
     )
     tree = results_module._new_results_tree()
 
-    selection = results_module._populate_module_navigation(tree, record)
+    selection = results_module._populate_module_navigation(tree, record).first_selection
 
     assert selection is not None
     assert selection.target.target_name == "Project"
@@ -88,7 +88,7 @@ def test_module_navigation_includes_project_level_analyzers() -> None:
 def test_module_navigation_merges_single_child_chains_but_keeps_findings_selectable() -> None:
     record = _record()
     tree = results_module._new_results_tree()
-    selection = results_module._populate_module_navigation(tree, record)
+    selection = results_module._populate_module_navigation(tree, record).first_selection
 
     assert selection is not None
     root = tree.root.children[0]
@@ -103,7 +103,7 @@ def test_module_navigation_merges_single_child_chains_but_keeps_findings_selecta
         "Variable issues" in results_module._module_findings_report(intermediate.data, show_empty_analyzers=False).plain
     )
     empty_record = replace(record, targets=(replace(record.targets[0], analyzers=()),))
-    assert results_module._populate_module_navigation(tree, empty_record) is None
+    assert results_module._populate_module_navigation(tree, empty_record).first_selection is None
     assert list(tree.root.children) == []
 
 
@@ -302,7 +302,7 @@ def test_legacy_run_builds_navigation_from_finding_paths() -> None:
 def test_show_empty_analyzers_only_at_target_root() -> None:
     record = _record()
     tree = results_module._new_results_tree()
-    selection = results_module._populate_module_navigation(tree, record)
+    selection = results_module._populate_module_navigation(tree, record).first_selection
     assert selection is not None
     assert results_module._module_findings_report(selection, show_empty_analyzers=True).plain == (
         "SFC checks\n  No findings"
@@ -477,8 +477,9 @@ def test_results_tree_announces_shown_results_only_when_the_run_changes(
     populated: list[str] = []
     app_instance = _tree_render_app(messages)
 
-    def record_populated(_tree: object, record: RunRecord, **_kwargs: object) -> None:
+    def record_populated(_tree: object, record: RunRecord, **_kwargs: object) -> Any:
         populated.append(record.run_id)
+        return results_module._ModuleNavigation()
 
     monkeypatch.setattr(results_module, "_populate_module_navigation", record_populated)
     monkeypatch.setattr(results_module, "load_run_acknowledgements", lambda _run_id: frozenset())
@@ -691,6 +692,36 @@ def test_results_tree_accents_nodes_that_own_findings() -> None:
 
     assert root.label.style == ""
     assert intermediate.label.style == "bold #674600"
+
+
+def test_results_tree_marks_a_module_green_when_all_its_findings_are_acknowledged() -> None:
+    record = _record()
+    finding = record.targets[0].analyzers[0].findings[0]
+    key = finding_acknowledgement_key(target_name="Root", analyzer_key="variables", finding=finding)
+    tree = results_module._new_results_tree()
+
+    navigation = results_module._populate_module_navigation(tree, record, acknowledged=frozenset({key}))
+
+    module_key = ("root", "inlinelager", "l1")
+    assert navigation.nodes[module_key].label.style == "bold #1b7f3a"
+    assert navigation.nodes[("root",)].label.style == ""
+
+
+def test_refresh_results_module_colors_recolors_after_acknowledgement() -> None:
+    record = _record()
+    finding = record.targets[0].analyzers[0].findings[0]
+    key = finding_acknowledgement_key(target_name="Root", analyzer_key="variables", finding=finding)
+    tree = results_module._new_results_tree()
+    navigation = results_module._populate_module_navigation(tree, record)
+    app = SimpleNamespace(_results_navigation=navigation, _selected_run_record=record)
+
+    results_module._refresh_results_module_colors(app, frozenset({key}))
+
+    assert navigation.nodes[("root", "inlinelager", "l1")].label.style == "bold #1b7f3a"
+
+    results_module._refresh_results_module_colors(app, frozenset())
+
+    assert navigation.nodes[("root", "inlinelager", "l1")].label.style == "bold #674600"
 
 
 def test_results_tree_disallows_expanding_childless_nodes() -> None:

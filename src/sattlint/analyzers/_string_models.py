@@ -10,20 +10,8 @@ value model can be reasoned about independently of either.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
-from sattlint.parser_api import (
-    BasePicture,
-    FrameModule,
-    ModuleTypeDef,
-    ModuleTypeInstance,
-    SingleModule,
-    Variable,
-)
-
-if TYPE_CHECKING:
-    from ..resolution.scope import ScopeContext
-
+from sattlint.parser_api import Variable
 
 _MAX_STRING_CANDIDATES = 24
 _MAX_CURSOR_POSITIONS = 24
@@ -71,15 +59,15 @@ class StringInferenceResult:
 
 
 @dataclass(frozen=True, slots=True)
-class _SlotKey:
+class StringSlotKey:
     module_path: tuple[str, ...]
     variable_name: str
     field_path: str = ""
 
 
 @dataclass(frozen=True, slots=True)
-class _ResolvedSlot:
-    key: _SlotKey
+class StringSlot:
+    key: StringSlotKey
     display_name: str
     decl_module_path: tuple[str, ...]
     variable: Variable
@@ -91,34 +79,18 @@ class _IntResult:
     unknown: bool = False
 
 
-def _string_values_factory() -> dict[_SlotKey, StringInferenceResult]:
+def _string_values_factory() -> dict[StringSlotKey, StringInferenceResult]:
     return {}
 
 
-def _int_values_factory() -> dict[_SlotKey, _IntResult]:
+def _int_values_factory() -> dict[StringSlotKey, _IntResult]:
     return {}
 
 
 @dataclass(slots=True)
 class _AbstractState:
-    string_values: dict[_SlotKey, StringInferenceResult] = field(default_factory=_string_values_factory)
-    int_values: dict[_SlotKey, _IntResult] = field(default_factory=_int_values_factory)
+    string_values: dict[StringSlotKey, StringInferenceResult] = field(default_factory=_string_values_factory)
+    int_values: dict[StringSlotKey, _IntResult] = field(default_factory=_int_values_factory)
 
     def clone(self) -> _AbstractState:
         return _AbstractState(string_values=self.string_values.copy(), int_values=self.int_values.copy())
-
-
-@dataclass(frozen=True, slots=True)
-class _LiteralBinding:
-    target_ref: str
-    source_literal: object
-    source_kind: str
-
-
-@dataclass(slots=True)
-class _ModuleContext:
-    path: tuple[str, ...]
-    scope: ScopeContext
-    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance
-    literal_bindings: tuple[_LiteralBinding, ...]
-    nested: tuple[_ModuleContext, ...] = ()

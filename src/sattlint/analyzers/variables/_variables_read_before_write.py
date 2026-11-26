@@ -18,8 +18,9 @@ from typing import TYPE_CHECKING
 from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
 from ...reporting.variables_report import ReadBeforeWriteIssue
 from ...resolution import AccessKind
-from ..shared._dependency_usage_facts import BlockKind, FactRef, StatementFact, collect_statement_facts
+from ..shared._dependency_usage_facts import FactRef, StatementFact, collect_statement_facts
 from ..shared.instance_paths import collect_instance_paths
+from ..shared.statement_sites import BlockKind
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer

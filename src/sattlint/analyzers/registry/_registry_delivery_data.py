@@ -70,6 +70,20 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="string-capacity",
+            delivery_scope="workspace",
+            implementation_bucket="string-analysis",
+            acceptance_tests=("tests/analyzers/test_string_usage.py", *_APP_ACCEPTANCE_TESTS),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
+            key="string-style",
+            delivery_scope="workspace",
+            implementation_bucket="string-analysis",
+            acceptance_tests=("tests/analyzers/test_string_usage.py", *_APP_ACCEPTANCE_TESTS),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="icf",
             delivery_scope="workspace",
             implementation_bucket="icf-validation",

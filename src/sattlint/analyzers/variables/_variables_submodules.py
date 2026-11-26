@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Any, cast
 
 from sattlint.parser_api import (
@@ -461,7 +462,6 @@ def _lookup_env_var_from_varname_dict(
 
 _MIN_NESTED_RECORD_FIELDS = 3
 _MAX_NESTED_RECORD_FIELDS = 32
-_MAX_NESTED_WINDOW_FIELDS = 8
 
 type _FieldSignature = tuple[str, str, bool, bool]
 
@@ -506,23 +506,27 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
         datatype.name: tuple(_field_signature(field) for field in (datatype.var_list or [])) for datatype in records
     }
 
-    windows: dict[tuple[_FieldSignature, ...], _FieldWindow] = {}
-    for record in records:
-        fields = tuple(record.var_list or [])
-        signatures = fields_by_record[record.name]
-        for start in range(len(signatures)):
-            for end in range(
-                start + _MIN_NESTED_RECORD_FIELDS,
-                min(len(signatures), start + _MAX_NESTED_WINDOW_FIELDS) + 1,
-            ):
-                window = signatures[start:end]
-                candidate = windows.setdefault(window, _FieldWindow())
-                candidate.records.add(record.name)
+    fields_display = {record.name: tuple(field.name for field in (record.var_list or [])) for record in records}
+    shared: dict[tuple[_FieldSignature, ...], _FieldWindow] = {}
+    record_names = list(fields_by_record)
+    for left_index, left_name in enumerate(record_names):
+        for right_name in record_names[left_index + 1 :]:
+            matcher = SequenceMatcher(
+                a=fields_by_record[left_name],
+                b=fields_by_record[right_name],
+                autojunk=False,
+            )
+            for block in matcher.get_matching_blocks():
+                if block.size < _MIN_NESTED_RECORD_FIELDS:
+                    continue
+                window = fields_by_record[left_name][block.a : block.a + block.size]
+                candidate = shared.setdefault(window, _FieldWindow())
+                candidate.records.update((left_name, right_name))
                 if not candidate.display_fields:
-                    candidate.display_fields = tuple(field.name for field in fields[start:end])
+                    candidate.display_fields = fields_display[left_name][block.a : block.a + block.size]
 
     candidates = sorted(
-        ((window, candidate) for window, candidate in windows.items() if len(candidate.records) >= 2),
+        ((window, candidate) for window, candidate in shared.items() if len(candidate.records) >= 2),
         key=lambda item: (-len(item[0]), tuple(name.casefold() for name in sorted(item[1].records))),
     )
 

@@ -493,15 +493,17 @@ CACHE_KEY_SCHEMA_VERSION = 2
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-25-file-line-ownership",
     "cyclomatic-complexity": "2026-11-21-worst-scope",
-    "sfc": "2026-11-25-forward-fork",
+    "sfc": "2026-11-26-fork-targets",
     "variables": "2026-11-25-latch-and-gating",
     "datatype-fields": "2026-11-25-latch-and-gating",
     "moduletype-usage": "2026-11-21-consumer-closure",
-    "picture-display-paths": "2026-11-21-wmf-emf-skip",
+    "picture-display-paths": "2026-11-25-stable-string-pass",
     "icf": "2026-11-25-partial-project",
     "dataflow": "2026-11-25-sfc-guard-and-state",
     "same-cycle": "2026-11-21-instance-dedupe",
     "alarm-integrity": "2026-11-25-structural-never-cleared",
+    "string-capacity": "2026-11-25-length-only",
+    "string-style": "2026-11-25-length-only",
 }
 # The analysis foundation (type graph + typedef/moduletype/datatype indices + symbol skeleton) is
 # derived per run from the parsed ASTs and is not persisted: a restored foundation holds symbol

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from sattlint.analyzers.shared._dependency_usage_facts import BlockKind, collect_statement_facts
+from sattlint.analyzers.shared._dependency_usage_facts import collect_statement_facts
+from sattlint.analyzers.shared.statement_sites import BlockKind
 from sattlint.parser_api import (
     Assignment,
     BasePicture,

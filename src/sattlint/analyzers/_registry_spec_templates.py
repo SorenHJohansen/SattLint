@@ -201,6 +201,65 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             context_kwargs=("graph", "analyzed_target_is_library", "string_capacities"),
         ),
         AnalyzerSpecTemplate(
+            key="string-capacity",
+            name="String capacity",
+            description=(
+                "Checks string values against the capacity of the datatype that stores them.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Literal overflow - an initializer or assignment is longer than the "
+                "declared string capacity.\n"
+                "  Example: a 16-character literal assigned to an identstring with a "
+                "15-character capacity.\n"
+                "\n"
+                "- Assignment overflow - an assignment copies a longer known string "
+                "into a smaller target.\n"
+                "\n"
+                "- Procedure overflow - InsertString, Concatenate, CopyString, "
+                "CopyStringNoSort, CopyVariable, CopyVarNoSort, ExtractString, "
+                "PutBlanks, or an integer conversion writes more characters into a "
+                "string than it can hold.\n"
+                "  Example: two identstrings joined into another identstring whose "
+                "combined length exceeds 15.\n"
+                "\n"
+                "Only values that are known from literals, initializers, parameter "
+                "mappings, or modelled string procedures are reported, so an unknown "
+                "input is never guessed."
+            ),
+            analyzer_attr="analyze_string_capacity",
+            context_kwargs=("graph", "string_capacities"),
+        ),
+        AnalyzerSpecTemplate(
+            key="string-style",
+            name="String style",
+            description=(
+                "Suggests a more precise string datatype or procedure when every "
+                "observed value is known.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Narrower datatype - a local string variable is declared wider than "
+                "its values need.\n"
+                "  Example: a string variable that only ever holds values of at most "
+                "10 characters could be an identstring.\n"
+                "\n"
+                "- Generic copy - CopyVariable or CopyVarNoSort copies between two "
+                "string variables.\n"
+                "  Example: 'CopyVariable(Source, Target, Status)' when both sides are "
+                "strings. CopyString is the string-specific copy; its last argument is "
+                "a Boolean case-sensitivity choice rather than the status output that "
+                "CopyVariable takes. CopyStringNoSort is the no-sort counterpart of "
+                "CopyVarNoSort.\n"
+                "\n"
+                "This analyzer is a suggestion set and is selected separately from the "
+                "capacity checks."
+            ),
+            analyzer_attr="analyze_string_style",
+            category="heuristic",
+            context_kwargs=("graph", "string_capacities"),
+        ),
+        AnalyzerSpecTemplate(
             key="icf",
             name="ICF configuration",
             description=(
@@ -278,7 +337,17 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "\n"
                 "- Duplicate transition guard - two transitions have the same "
                 "condition.\n"
-                "  Example: TrA and TrB both wait for 'Ready == True'."
+                "  Example: TrA and TrB both wait for 'Ready == True'.\n"
+                "\n"
+                "- Self fork - a step or transition forks back to itself or to the "
+                "step it belongs to.\n"
+                "  Example: 'SEQTRANSITION Gate WAIT_FOR Ready SEQFORK Loop' where "
+                "Loop is the transition's own step.\n"
+                "\n"
+                "- Cross-sequence fork - a fork targets an element in a different "
+                "sequence.\n"
+                "  Example: a transition in sequence 'Startup' forks to a step in "
+                "sequence 'Running'."
             ),
             analyzer_attr="analyze_sfc",
             context_kwargs=("analysis_context",),

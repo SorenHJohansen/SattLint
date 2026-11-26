@@ -1,5 +1,6 @@
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     Equation,
     MappingSource,
@@ -11,7 +12,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattline_parser.models.expressions import FuncCall, FuncCallStmt, SLExpression, VarRef
+from sattline_parser.models.expressions import BinOp, FuncCall, FuncCallStmt, SLExpression, VarRef
 
 from sattlint.analyzers.string_inference import ExactStringInferenceEngine
 from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES, StringCapacities
@@ -340,6 +341,34 @@ def test_inference_resolves_frame_module_locals() -> None:
     result = _engine(base_picture).infer("FrameText", module_path=("BasePicture", "FrameRoot"))
 
     assert result.texts == ("FrameView",)
+
+
+def test_inference_stops_when_string_values_are_stable_even_if_an_integer_counter_grows() -> None:
+    """A scan counter grows forever; string values are what the engine solves."""
+    base_picture = _base_picture(
+        variables=[Variable(name="Counter", datatype=ScalarDatatype.INTEGER, init_value=0)],
+        code=[
+            Assignment(
+                target=_varref("Counter"),
+                value=BinOp(left=_varref("Counter"), op="+", right=1),
+            )
+        ],
+    )
+    passes = 0
+
+    def _progress(message: str) -> None:
+        nonlocal passes
+        if message.startswith("resolving string values"):
+            passes += 1
+
+    engine = ExactStringInferenceEngine(
+        base_picture,
+        capacities=STANDARD_STRING_CAPACITIES,
+        progress_callback=_progress,
+    )
+    engine.infer("Counter", module_path=("Root",))
+
+    assert passes == 1
 
 
 def test_configured_string_capacity_decides_copy_overflow() -> None:
