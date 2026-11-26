@@ -10,9 +10,17 @@
 
 ## Codebase Exploration
 
-- Use Semble when it makes sense: discovery, symbol lookup, and similar-code search.
-- For targeted reads, exact files, or when Semble misses, use `read`, `grep`, and `glob`.
-- Prefer the cheapest reliable tool; do not force Semble for a one-line lookup.
+- Use Semble first when the task is discovery-shaped: where something lives,
+  who calls it, which analyzers or modules implement a behavior, which tests
+  cover a seam, or what similar code already exists. One focused query, then
+  navigate to the returned path and line instead of grepping the same content.
+- Use `read`, `grep`, and `glob` when the target is already known: a file named
+  by the task or plan, a single symbol or literal, a config key, or when a
+  Semble query misses.
+- Do not force Semble for a one-line lookup, and do not repeat a search it
+  already answered.
+- When a change crosses modules, name the discovery query and its top hit in the
+  change summary, so the route can be checked without redoing the search.
 
 ## Quick Reference
 
