@@ -83,6 +83,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- `sattlint analyze` runs per-target analyzers in order by default. Pass
+  `--jobs 0` to pick a worker count from the CPU count, or `--jobs N` for an
+  explicit number of forked workers.
 - Upgraded `sattline-parser` to `2026.11.9` and pinned it exactly, with
   `uv.lock` regenerated.
 - Reverse-library consumers load in one parser pass that keeps every consumer
@@ -252,6 +255,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- The analysis child process no longer imports modules from the analyzed
+  project directory, so a project file named like the package cannot run code
+  inside it.
+- A bare `sattlint` prints the usage and exits 2 when stdin or stdout is not a
+  terminal, instead of starting the interactive shell and writing escape
+  sequences into a pipe.
 - Picture display path analysis reads tuple-shaped parser collections again,
   and string inference, latch scanning, magic-number walking, and cyclomatic
   complexity walk both list and tuple child collections.
