@@ -1,11 +1,12 @@
-> Historical migration plan. SattLint 2026.11.5 completed the parser 2026.11.5
-> upgrade; follow-up work is tracked separately.
+> Historical migration plan. The `feature/parser-2026.11.5` branch completed the
+> parser 2026.11.5 upgrade and shipped it in SattLint 2026.11.6; follow-up work
+> is tracked separately.
 
 # SattLint parser upgrade plan: 2026.11.5
 
 Status: implemented on `feature/parser-2026.11.5`.
 Target parser: `sattline-parser==2026.11.5`
-SattLint release: 2026.11.5, pinned to `sattline-parser==2026.11.5`
+SattLint release: 2026.11.6, which later moved the pin to `sattline-parser==2026.11.9`
 
 ## Why this needed its own branch
 
