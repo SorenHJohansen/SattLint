@@ -7,7 +7,7 @@ from typing import TypeGuard, cast
 
 from ..config.types import ConfigDict
 from ..models.project_graph import ProjectFailure
-from ..utils.casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+from ..utils.casefolding import dedupe_unit_names, unit_equal, unit_key
 
 _PICTURE_DISPLAY_WARNING_RE = re.compile(
     r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"
@@ -75,7 +75,7 @@ class TargetLoadError(RuntimeError):
         return None if failure is None else failure.name
 
     def _build_message(self) -> str:  # noqa: PLR0915
-        direct_keys = {casefold_key(name) for name in self.direct_dependencies}
+        direct_keys = {unit_key(name) for name in self.direct_dependencies}
         root_failures: list[str] = []
         direct_failures: list[str] = []
         transitive_failures: list[str] = []
@@ -90,9 +90,9 @@ class TargetLoadError(RuntimeError):
             if failure_name is None:
                 other_failures.append(item)
                 continue
-            if casefold_equal(failure_name, self.target_name):
+            if unit_equal(failure_name, self.target_name):
                 root_failures.append(item)
-            elif casefold_key(failure_name) in direct_keys:
+            elif unit_key(failure_name) in direct_keys:
                 direct_failures.append(item)
             else:
                 transitive_failures.append(item)
@@ -101,9 +101,9 @@ class TargetLoadError(RuntimeError):
             warning_name = self._extract_warning_name(item)
             if warning_name is None:
                 other_warnings.append(item)
-            elif casefold_equal(warning_name, self.target_name):
+            elif unit_equal(warning_name, self.target_name):
                 root_warnings.append(item)
-            elif casefold_key(warning_name) in direct_keys:
+            elif unit_key(warning_name) in direct_keys:
                 direct_warnings.append(item)
             else:
                 transitive_warnings.append(item)
@@ -196,7 +196,7 @@ def _shared_warning_target(warnings: Sequence[str]) -> str | None:
         if target_name is None:
             target_name = warning_name
             continue
-        if not casefold_equal(target_name, warning_name):
+        if not unit_equal(target_name, warning_name):
             return None
     return target_name
 
@@ -211,7 +211,7 @@ def target_validation_warnings(target_name: str, warnings: list[str]) -> list[st
     return [
         item
         for item in warnings
-        if ((warning_name := extract_warning_name(item)) is None or casefold_equal(warning_name, target_name))
+        if ((warning_name := extract_warning_name(item)) is None or unit_equal(warning_name, target_name))
     ]
 
 
@@ -232,7 +232,7 @@ def get_analyzed_targets(cfg: Mapping[str, object]) -> list[str]:
     raw_targets = cfg.get("analyzed_programs_and_libraries", [])
     if not _is_string_sequence(raw_targets):
         return []
-    return dedupe_casefolded_strings(raw_targets)
+    return dedupe_unit_names(raw_targets)
 
 
 def _is_string_sequence(value: object) -> TypeGuard[Sequence[str]]:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..parser_api import BasePicture, DataType, ModuleTypeDef
+from ..utils.casefolding import unit_key
 
 if TYPE_CHECKING:
     from ..graphics.picture_display_paths import PictureDisplayOccurrence, PictureDisplayPathDiagnostic
@@ -175,19 +176,20 @@ def program_identity(bp: BasePicture) -> str:
 class ProjectGraph:
     ast_by_name: dict[str, BasePicture] = field(default_factory=_ast_by_name_factory)
     root_origins: dict[str, RootOrigin] = field(default_factory=_root_origins_factory)
-    # Keyed by (origin_lib.casefold(), moduletype_name.casefold(), origin_file.casefold())
+    # Keyed by language identity: (origin_lib, moduletype_name, origin_file),
     # so same-name types from the same library but different files are preserved.
     moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=_moduletype_defs_factory)
-    # Keyed like ``moduletype_defs``: (origin_lib, name, origin_file), all
-    # casefolded, so same-named record types from different libraries coexist.
+    # Keyed like ``moduletype_defs``: (origin_lib, name, origin_file), all by
+    # language identity, so same-named record types from different libraries
+    # coexist.
     datatype_defs: dict[tuple[str, str, str], DataType] = field(default_factory=_datatype_defs_factory)
-    # library_name.casefold() -> set of dependency library names (casefolded)
+    # library identity key -> set of dependency library identity keys
     library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     source_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     missing: list[str] = field(default_factory=_missing_factory)
     warnings: list[str] = field(default_factory=_warnings_factory)
     #: Typed view of every parse, transform, and load failure. Keyed by the
-    #: casefolded program name and the authoritative source for failure detail;
+    #: program's language identity and the authoritative source for failure detail;
     #: ``missing`` also carries entries that have no program, such as a missing
     #: dependency file.
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
@@ -212,15 +214,15 @@ class ProjectGraph:
     def add_library_dependencies(self, library_name: str | None, dep_libs: list[str]) -> None:
         if not library_name:
             return
-        key = library_name.casefold()
+        key = unit_key(library_name)
         bucket = self.library_dependencies.setdefault(key, set())
         for dep in dep_libs:
             if dep:
-                bucket.add(dep.casefold())
+                bucket.add(unit_key(dep))
 
     @staticmethod
     def _root_origin_key(name: str) -> str:
-        return name.casefold()
+        return unit_key(name)
 
     def record_root_origin(
         self,
@@ -344,9 +346,9 @@ class ProjectGraph:
                 source_name=source_path.name if source_path is not None else None,
                 library_name=library_name,
             )
-            lib_key = (moduletype.origin_lib or "").casefold()
-            name_key = moduletype.name.casefold()
-            file_key = (moduletype.origin_file or "").casefold()
+            lib_key = unit_key(moduletype.origin_lib or "")
+            name_key = unit_key(moduletype.name)
+            file_key = unit_key(moduletype.origin_file or "")
             self.moduletype_defs[(lib_key, name_key, file_key)] = moduletype
         for d in bp.datatype_defs:
             datatype = _datatype_with_origin(
@@ -354,9 +356,9 @@ class ProjectGraph:
                 source_name=source_path.name if source_path is not None else None,
                 library_name=library_name,
             )
-            lib_key = (datatype.origin_lib or "").casefold()
-            name_key = datatype.name.casefold()
-            file_key = (datatype.origin_file or "").casefold()
+            lib_key = unit_key(datatype.origin_lib or "")
+            name_key = unit_key(datatype.name)
+            file_key = unit_key(datatype.origin_file or "")
             self.datatype_defs[(lib_key, name_key, file_key)] = datatype
 
 

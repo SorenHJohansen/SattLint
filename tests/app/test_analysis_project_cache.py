@@ -555,7 +555,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
             ast_by_name={"Dependency": "bp-dependency"},
             missing=["dep parse error"],
             warnings=["dep warning"],
-            failures={"dep": ProjectFailure("dep", "dep parse error", line=9, column=3)},
+            failures={"DEP": ProjectFailure("dep", "dep parse error", line=9, column=3)},
             source_files={Path("programs/Dependency.s")},
         )
 
@@ -596,7 +596,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
         "missing": ["dep parse error"],
         "warnings": ["dep warning"],
         "direct_dependencies": ["Dependency"],
-        "failures": {"dep": ProjectFailure("dep", "dep parse error", line=9, column=3)},
+        "failures": {"DEP": ProjectFailure("dep", "dep parse error", line=9, column=3)},
     }
     assert callable(loader_kwargs.get("status_update_fn"))
 

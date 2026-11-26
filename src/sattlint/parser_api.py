@@ -31,6 +31,7 @@ from sattline_parser import (
     parse_source_file,
     parse_source_text,
     preprocess_sl_text,
+    split_source_lines,
     validate_basepicture,
 )
 from sattline_parser import (
@@ -140,6 +141,7 @@ from sattline_parser.project import (
     ProjectLookup,
     SattLineProgram,
     SattLineProject,
+    TargetLoadResult,
     UnitIdentity,
     code_ext_candidates,
     find_companion_beside,
@@ -268,6 +270,7 @@ __all__ = [
     "SourceSpan",
     "Tail",
     "TailedClause",
+    "TargetLoadResult",
     "TernaryOp",
     "TypeFamily",
     "UnaryOp",
@@ -324,6 +327,7 @@ __all__ = [
     "resolve_variable_field_datatype",
     "source_text_for_parse",
     "split_dotted_name",
+    "split_source_lines",
     "suggest_datatype_name",
     "validate_basepicture",
     "walk",

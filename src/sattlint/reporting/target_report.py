@@ -59,7 +59,7 @@ def select_report_source_path(
     graph: Any,
     *,
     source_paths_for_current_target_fn: Callable[[Any, Any], set[Path]],
-    casefold_equal_fn: Callable[[str, str], bool],
+    unit_equal_fn: Callable[[str, str], bool],
     preferred_suffixes: frozenset[str] | None = None,
 ) -> Path | None:
     try:
@@ -77,7 +77,7 @@ def select_report_source_path(
             return root_source_path
 
     origin_file_name = _origin_file_name(getattr(project_bp, "origin_file", None))
-    candidates = [path for path in source_paths if origin_file_name and casefold_equal_fn(path.name, origin_file_name)]
+    candidates = [path for path in source_paths if origin_file_name and unit_equal_fn(path.name, origin_file_name)]
     if not candidates:
         candidates = list(source_paths)
 

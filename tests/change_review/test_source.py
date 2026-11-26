@@ -143,7 +143,7 @@ def test_provider_returns_none_for_unreadable_file(tmp_path: Path):
 
 def test_repeated_line_reads_decode_the_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source_path = tmp_path / "Repeated.s"
-    source_path.write_text(_SOURCE, encoding="windows-1252")
+    source_path.write_bytes(_SOURCE.encode("windows-1252"))
     calls: list[Path] = []
 
     def _counting_read(path: Path) -> str:
@@ -159,3 +159,27 @@ def test_repeated_line_reads_decode_the_file_once(tmp_path: Path, monkeypatch: p
     assert first is not None and "EQUATIONBLOCK B0" in first
     assert second == "      Value = 1;"
     assert calls == [source_path]
+
+
+def _provider(tmp_path: Path, text: str) -> SourceTextProvider:
+    path = tmp_path / "Unit.s"
+    path.write_bytes(text.encode("windows-1252"))
+    return SourceTextProvider({source_key("Unit.s", None): path})
+
+
+def test_lines_split_on_crlf_lf_and_lone_cr(tmp_path: Path) -> None:
+    provider = _provider(tmp_path, "a\r\nb\rc\nd")
+
+    assert provider.lines("Unit.s", 1, 1) == "a"
+    assert provider.lines("Unit.s", 2, 2) == "b"
+    assert provider.lines("Unit.s", 3, 3) == "c"
+    assert provider.lines("Unit.s", 4, 4) == "d"
+    assert provider.lines("Unit.s", 1, 4) == "a\nb\nc\nd"
+    assert provider.line_count("Unit.s") == 4
+
+
+def test_lines_keep_form_feed_inside_one_line(tmp_path: Path) -> None:
+    provider = _provider(tmp_path, "a\x0cb\nc")
+
+    assert provider.lines("Unit.s", 1, 1) == "a\x0cb"
+    assert provider.lines("Unit.s", 2, 2) == "c"

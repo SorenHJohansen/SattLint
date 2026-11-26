@@ -89,7 +89,7 @@ def test_select_report_source_path_propagates_callback_type_error() -> None:
             SimpleNamespace(origin_file="Root.s"),
             SimpleNamespace(),
             source_paths_for_current_target_fn=lambda *_args: (_ for _ in ()).throw(TypeError("bad graph")),
-            casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+            unit_equal_fn=lambda left, right: left.casefold() == right.casefold(),
         )
 
 
@@ -102,7 +102,7 @@ def test_select_report_source_path_prefers_graph_root_origin_path() -> None:
         project_bp,
         graph,
         source_paths_for_current_target_fn=lambda *_args: {Path("fallback/Root.s"), Path("preferred/Root.s")},
-        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+        unit_equal_fn=lambda left, right: left.casefold() == right.casefold(),
     )
 
     assert selected == Path("preferred/Root.s")
@@ -140,7 +140,7 @@ def test_select_report_source_path_prefers_configured_mode_suffix_on_equal_mtime
         project_bp,
         graph,
         source_paths_for_current_target_fn=lambda *_args: {draft, official},
-        casefold_equal_fn=lambda left, right: left.casefold() == right.casefold(),
+        unit_equal_fn=lambda left, right: left.casefold() == right.casefold(),
         preferred_suffixes=frozenset({".s", ".l"}),
     )
 

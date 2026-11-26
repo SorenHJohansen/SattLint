@@ -24,7 +24,7 @@ from ..models.project_graph import ProjectGraph
 from ..project import loading as analysis_loading_module
 from ..project import support as support_module
 from ..project.loading import is_within_directory
-from ..utils.casefolding import casefold_equal, casefold_key
+from ..utils.casefolding import unit_equal, unit_key
 
 ASTCache = cache_module.ASTCache
 AnalysisReportCache = cache_module.AnalysisReportCache
@@ -75,8 +75,8 @@ def _source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGrap
     return analysis_loading_module.source_paths_for_current_target(
         project_bp,
         graph,
-        casefold_equal_fn=casefold_equal,
-        casefold_key_fn=casefold_key,
+        unit_equal_fn=unit_equal,
+        unit_key_fn=unit_key,
     )
 
 

@@ -21,16 +21,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sattlint.parser_api import source_text_for_parse
+from sattlint.parser_api import source_text_for_parse, split_source_lines
+from sattlint.utils.casefolding import unit_key
 
-#: ``(library.casefold(), file_name.casefold())``. The empty library means the
+#: ``(unit_key(library), unit_key(file_name))``. The empty library means the
 #: caller did not know one.
 SourceKey = tuple[str, str]
 
 
 def source_key(file_name: str, library: str | None) -> SourceKey:
     """Return the provider key for a source file."""
-    return ((library or "").casefold(), file_name.casefold())
+    return (unit_key(library or ""), unit_key(file_name))
 
 
 class SourceTextProvider:
@@ -49,7 +50,7 @@ class SourceTextProvider:
             return exact
         if library:
             return None
-        return self._unique_by_name.get(file_name.casefold())
+        return self._unique_by_name.get(unit_key(file_name))
 
     def file_path(self, file_name: str | None, *, library: str | None = None) -> Path | None:
         if file_name is None:
@@ -95,7 +96,9 @@ class SourceTextProvider:
         text = self.text(file_name, library=library)
         if text is None:
             return None
-        return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+        if not text:
+            return 0
+        return len(split_source_lines(text))
 
     def lines(
         self,
@@ -116,7 +119,7 @@ class SourceTextProvider:
             text = self.text(file_name, library=library)
             if text is None:
                 return None
-            all_lines = tuple(text.splitlines())
+            all_lines = split_source_lines(text)
             self._lines_cache[key] = all_lines
         if not all_lines:
             return ""

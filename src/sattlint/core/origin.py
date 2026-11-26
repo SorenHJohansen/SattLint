@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..utils.casefolding import unit_equal
+
 
 def is_root_origin(
     origin_file: str | None,
@@ -21,10 +23,10 @@ def is_root_origin(
     program share a stem but are different artifacts. Missing origin data is
     treated as root-owned.
     """
-    if root_origin_library and origin_lib and origin_lib.casefold() != root_origin_library.casefold():
+    if root_origin_library and origin_lib and not unit_equal(origin_lib, root_origin_library):
         return False
     if origin_file and root_origin_file:
-        return Path(origin_file).name.casefold() == Path(root_origin_file).name.casefold()
+        return unit_equal(Path(origin_file).name, Path(root_origin_file).name)
     return True
 
 

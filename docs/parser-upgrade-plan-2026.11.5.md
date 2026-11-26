@@ -122,3 +122,28 @@ layer gained identity and index helpers, and `parse_and_validate` gained
 external-definition arguments. The full suite, the corpus manifests, and both
 configured library targets were re-run after the pin change with the same
 results.
+
+## Parser 2026.11.9 delta
+
+The branch moved from 2026.11.6 to 2026.11.9. The surface SattLint imports is
+still additive, and the release adds three capabilities the project layer now
+uses:
+
+- `SattLineProject.load_many` loads several reverse-library consumers in one
+  discovery and parse pass and keeps every consumer that succeeds. The adapter
+  exposes it as `load_parser_projects`, which translates a parser cycle into
+  SattLint's wording, and the consumer batch uses it instead of the
+  batch-then-retry fallback.
+- `UnitIdentity` is the language name table, so unit-name comparisons now use
+  `unit_key`/`unit_equal` rather than Unicode case folding. Root origins,
+  failure records, unavailable libraries, memo keys, and origin-stem checks all
+  share that key space.
+- `split_source_lines` is the parser's CRLF, LF, and lone-CR rule, and Change
+  Review uses it for line-numbered snippets.
+
+Parser collections now arrive as tuples instead of lists. Four walkers that
+tested `isinstance(value, list)` silently skipped parser collections: picture
+display placeholder collection, string inference declarations, latch scanning,
+and magic-number walking. They accept both shapes now. Cyclomatic complexity
+also counts tuple child collections, and the `__all__` in `parser_api` exports
+the new names.

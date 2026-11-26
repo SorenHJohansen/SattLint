@@ -258,59 +258,25 @@ def test_analysis_loading_cache_manifest_files_adds_companions_and_dependency_ma
     }
 
 
-def test_visit_targets_into_graph_falls_back_per_consumer_after_batch_failure(monkeypatch: pytest.MonkeyPatch):
-    converted: list[tuple[str, tuple[Path, ...]]] = []
-    failures: list[str] = []
-
-    def fake_load_parser_project(
-        _binding: ParserProjectBinding, targets: list[str], **_kwargs: object
-    ) -> SimpleNamespace:
-        if len(targets) > 1:
-            raise ProjectLoadError(targets[0], "missing code file")
-        if targets[0] == "ConsumerB":
-            raise ProjectLoadError(targets[0], "missing code file")
-        return SimpleNamespace(names=tuple(targets))
-
-    def fake_convert_project_into_graph(
-        _project: object,
-        _graph: ProjectGraph,
-        *,
-        binding: ParserProjectBinding,
-        root_name: str,
-        strict: bool,
-        lib_names: dict[str, str],
-        extra_roots: tuple[Path, ...] = (),
-    ) -> None:
-        del binding, strict, lib_names
-        converted.append((root_name, tuple(extra_roots)))
-
-    def fake_record_project_load_failure(_graph: ProjectGraph, name: str, _exception: BaseException) -> None:
-        failures.append(name)
-
-    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
-    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
-    monkeypatch.setattr(analysis_loading_module, "record_project_load_failure", fake_record_project_load_failure)
-
-    analysis_loading_module._visit_targets_into_graph(
-        cast(Any, object()),
-        ProjectGraph(),
-        [("ConsumerA", None), ("ConsumerB", None)],
-        lib_names={},
-    )
-
-    assert failures == ["ConsumerB"]
-    assert converted == [("ConsumerA", ())]
-
-
-def test_visit_targets_into_graph_isolates_a_consumer_cycle_from_the_library(monkeypatch: pytest.MonkeyPatch):
+def test_visit_targets_into_graph_keeps_consumers_that_load(monkeypatch: pytest.MonkeyPatch):
     converted: list[str] = []
+    failures: list[tuple[str, str]] = []
 
     def fake_load_parser_project(
         _binding: ParserProjectBinding, targets: list[str], **_kwargs: object
     ) -> SimpleNamespace:
-        if len(targets) > 1 or targets[0] == "ConsumerB":
-            raise CircularDependencyError(targets[0], [targets[0], "Shared"])
-        return SimpleNamespace(names=tuple(targets))
+        raise ProjectLoadError(targets[0], "missing code file")
+
+    def fake_load_parser_projects(
+        _binding: ParserProjectBinding, targets: list[str], **_kwargs: object
+    ) -> dict[str, SimpleNamespace]:
+        results: dict[str, SimpleNamespace] = {}
+        for name in targets:
+            if name == "ConsumerB":
+                results[name] = SimpleNamespace(project=None, error=ProjectLoadError(name, "missing code file"))
+            else:
+                results[name] = SimpleNamespace(project=SimpleNamespace(names=(name,)), error=None)
+        return results
 
     def fake_convert_project_into_graph(
         _project: object,
@@ -325,26 +291,59 @@ def test_visit_targets_into_graph_isolates_a_consumer_cycle_from_the_library(mon
         del binding, strict, lib_names, extra_roots
         converted.append(root_name)
 
-    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
-    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+    def fake_record_project_load_failure(_graph: ProjectGraph, name: str, exception: BaseException) -> None:
+        failures.append((name, str(exception)))
 
-    graph = ProjectGraph()
+    monkeypatch.setattr(analysis_loading_module, "load_parser_project", fake_load_parser_project)
+    monkeypatch.setattr(analysis_loading_module, "load_parser_projects", fake_load_parser_projects)
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+    monkeypatch.setattr(analysis_loading_module, "record_project_load_failure", fake_record_project_load_failure)
+
     analysis_loading_module._visit_targets_into_graph(
         cast(Any, object()),
-        graph,
+        ProjectGraph(),
         [("ConsumerA", None), ("ConsumerB", None)],
         lib_names={},
     )
 
-    # The healthy consumer still loads, and the cyclic one is recorded as a
-    # load failure instead of escaping and failing the selected library.
     assert converted == ["ConsumerA"]
-    assert set(graph.failures) == {"consumerb"}
-    failure = graph.failures["consumerb"]
-    assert failure.line is None
-    assert failure.column is None
-    assert "Circular dependency detected" in failure.message
-    assert graph.missing == [failure.message]
+    assert [name for name, _message in failures] == ["ConsumerB"]
+    assert "missing code file" in failures[0][1]
+
+
+def test_visit_targets_into_graph_batch_marks_every_consumer_as_root(monkeypatch: pytest.MonkeyPatch):
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def fake_convert_project_into_graph(
+        _project: object,
+        _graph: ProjectGraph,
+        *,
+        binding: ParserProjectBinding,
+        root_name: str,
+        strict: bool,
+        lib_names: dict[str, str],
+        extra_roots: tuple[str, ...] = (),
+    ) -> None:
+        del binding, strict, lib_names
+        calls.append((root_name, tuple(extra_roots)))
+
+    monkeypatch.setattr(
+        analysis_loading_module,
+        "load_parser_project",
+        lambda _binding, targets, **_kwargs: SimpleNamespace(names=tuple(targets)),
+    )
+    monkeypatch.setattr(analysis_loading_module, "convert_project_into_graph", fake_convert_project_into_graph)
+
+    analysis_loading_module._visit_targets_into_graph(
+        cast(Any, object()),
+        ProjectGraph(),
+        [("ConsumerA", None), ("ConsumerB", None)],
+        lib_names={},
+    )
+
+    # The shared project validates both consumers as roots, so a consumer that
+    # is also another consumer's dependency keeps its root-scope diagnostics.
+    assert calls == [("ConsumerA", ("ConsumerB",))]
 
 
 def test_record_project_load_failure_names_the_program_message_and_dependency():

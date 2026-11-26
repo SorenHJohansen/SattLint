@@ -10,6 +10,7 @@ from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleT
 from sattlint.parser_api import constants as const
 
 from ..resolution.common import select_moduletype_def_strict
+from ..utils.casefolding import unit_key
 from .picture_display_runtime_helpers import (
     CompositeRecordOccurrence,
     RuntimeModuleNode,
@@ -56,7 +57,7 @@ def _resolve_runtime_moduletype(
     graph: ProjectGraph | None,
     candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
 ) -> ModuleTypeDef | None:
-    matches = list(candidate_moduletype_index.get(child.moduletype_name.casefold(), ()))
+    matches = list(candidate_moduletype_index.get(unit_key(child.moduletype_name), ()))
     try:
         return select_moduletype_def_strict(
             base_picture,
@@ -142,7 +143,7 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             )
 
     def _local_instance_key(moduletype_name: str, relative_path: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
-        return (moduletype_name.casefold(), tuple(segment.casefold() for segment in relative_path))
+        return (unit_key(moduletype_name), tuple(unit_key(segment) for segment in relative_path))
 
     def register_local_instance_path(
         moduletype_name: str,
@@ -241,9 +242,9 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             return
 
         moduletype_key = (
-            (resolved_moduletype.origin_lib or current_library or "").casefold(),
-            resolved_moduletype.name.casefold(),
-            (resolved_moduletype.origin_file or current_file or "").casefold(),
+            unit_key(resolved_moduletype.origin_lib or current_library or ""),
+            unit_key(resolved_moduletype.name),
+            unit_key(resolved_moduletype.origin_file or current_file or ""),
         )
         if moduletype_key in active_moduletype_keys:
             return
@@ -459,9 +460,9 @@ def _build_runtime_child(
         )
 
     moduletype_key = (
-        (resolved_moduletype.origin_lib or current_library or "").casefold(),
-        resolved_moduletype.name.casefold(),
-        (resolved_moduletype.origin_file or current_file or "").casefold(),
+        unit_key(resolved_moduletype.origin_lib or current_library or ""),
+        unit_key(resolved_moduletype.name),
+        unit_key(resolved_moduletype.origin_file or current_file or ""),
     )
     if moduletype_key in active_moduletype_keys:
         return RuntimeModuleNode(

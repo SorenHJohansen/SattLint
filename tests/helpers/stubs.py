@@ -12,6 +12,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sattlint.utils.casefolding import unit_key
+
 
 def _string_list() -> list[str]:
     return []
@@ -89,10 +91,10 @@ class AnalysisGraphStub:
         source_path: Path | None = None,
         library_name: str | None = None,
     ) -> None:
-        self.root_origins[name.casefold()] = RootOriginStub(source_path=source_path, library_name=library_name)
+        self.root_origins[unit_key(name)] = RootOriginStub(source_path=source_path, library_name=library_name)
 
     def root_origin_for_name(self, name: str) -> RootOriginStub | None:
-        return self.root_origins.get(name.casefold())
+        return self.root_origins.get(unit_key(name))
 
     def root_origin_for_basepicture(self, bp: object) -> RootOriginStub | None:
         header = getattr(bp, "header", None)

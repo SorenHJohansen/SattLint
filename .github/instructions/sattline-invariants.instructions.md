@@ -8,7 +8,7 @@ applyTo: ["src/**", "tests/**"]
 ## Language And Parser
 
 - The grammar start rule requires three header `STRING` lines before `BasePicture`; parser tests and minimal fixtures must include them.
-- SattLine identifiers are case-insensitive. Compare names with `.casefold()`.
+- SattLine identifiers are case-insensitive under the language's CP1252 name table, not Unicode case folding. Compare unit and module-type names with `utils.casefolding.unit_key`/`unit_equal`; `Library` matches `library`, but `Straße` does not match `STRASSE`.
 - Extended Latin letters are valid in identifiers.
 - Keyword-prefixed identifiers such as `NOTOG217Active` or `IFState` are valid because keywords tokenize only as standalone words.
 - `SEQFORK` accepts multiple comma-separated targets.

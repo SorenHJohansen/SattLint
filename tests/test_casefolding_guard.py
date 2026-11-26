@@ -1,10 +1,10 @@
 """AST guard enforcing casefold-only normalization for SattLine identifiers.
 
-SattLine identifiers (variable / module-type / datatype / program names) must be
-normalized with ``casefold`` (via ``utils.casefolding.casefold_key`` or
-``.casefold()``), never ``.lower()`` — ``casefold`` is the only normalization that
-handles non-ASCII names uniformly. ``.lower()`` is reserved for genuinely
-non-identifier strings (file suffixes, mode/config strings, CLI prompts).
+SattLine identifiers must be normalized with the parser's own identity rule
+(``utils.casefolding.unit_key`` for unit and module-type names) or with
+``casefold`` for text that is not a name the parser owns, never ``.lower()``.
+``.lower()`` is reserved for genuinely non-identifier strings (file suffixes,
+mode/config strings, CLI prompts).
 
 Mechanical enforcement, mirroring ``tests/test_dependency_guard.py``: walks the
 AST of every ``src/sattlint`` module and fails via plain ``assert`` if a

@@ -16,6 +16,7 @@ from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
 from ..models.project_graph_warnings import record_project_warning as record_project_warning
+from ..utils.casefolding import unit_key
 from .support import LOAD_FAILURE_MARKER, PARSE_FAILURE_MARKER
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
@@ -142,7 +143,7 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
             if suffix not in suffixes:
                 continue
             rank = (suffixes.index(suffix), directory_rank)
-            target_key = deps_path.stem.casefold()
+            target_key = unit_key(deps_path.stem)
             current = chosen.get(target_key)
             if current is None or rank < current[0]:
                 chosen[target_key] = (rank, deps_path)
@@ -167,21 +168,21 @@ def _include_reverse_library_consumers(
     # depended on where the file lived (``program_dir``), so a library stored
     # beside its programs had no consumers loaded and its types looked unused.
     del root_bp
-    selected_key = selected_target.casefold()
+    selected_key = unit_key(selected_target)
     # unit key -> (directory that holds its sidecar, configured spelling, dependencies)
     candidates: dict[str, tuple[Path, str, set[str]]] = {}
 
     def _remember(target_name: str, deps_path: Path | None, dependencies: list[str]) -> None:
         if deps_path is None:
             return
-        key = target_name.casefold()
+        key = unit_key(target_name)
         if key == selected_key:
             return
         entry: tuple[Path, str, set[str]] | None = candidates.get(key)
         if entry is None:
             entry = (deps_path.parent, target_name, set())
             candidates[key] = entry
-        entry[2].update(dependency.casefold() for dependency in dependencies if dependency)
+        entry[2].update(unit_key(dependency) for dependency in dependencies if dependency)
 
     for candidate in require_analyzed_targets_fn(cfg):
         deps_path = find_dependency_path_fn(candidate)
@@ -191,10 +192,10 @@ def _include_reverse_library_consumers(
         _remember(candidate, deps_path, read_dependency_names_fn(deps_path))
 
     consumers_of: dict[str, set[str]] = defaultdict(set)
-    for unit_key, (_directory, _name, dependencies) in candidates.items():
+    for entry_key, (_directory, _name, dependencies) in candidates.items():
         for dependency in dependencies:
-            if dependency != unit_key:
-                consumers_of[dependency].add(unit_key)
+            if dependency != entry_key:
+                consumers_of[dependency].add(entry_key)
 
     # A consumer is anything that imports the selected target, directly or
     # through another unit. Transitivity matters because a module type used
@@ -232,7 +233,7 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
         column = column if column is not None else getattr(exception.orig_exc, "column", None)
         length = length if length is not None else getattr(exception.orig_exc, "length", None)
     graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(
+    graph.failures[unit_key(name)] = ProjectFailure(
         name=name,
         message=message,
         detail=str(exception),
@@ -253,7 +254,7 @@ def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLo
     """
     message = f"{name}{LOAD_FAILURE_MARKER}{error}"
     graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(name=name, message=message, detail=str(error))
+    graph.failures[unit_key(name)] = ProjectFailure(name=name, message=message, detail=str(error))
 
 
 def format_debug_list(title: str, entries: Iterable[str]) -> str:

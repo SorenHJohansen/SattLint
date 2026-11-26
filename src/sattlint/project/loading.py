@@ -24,6 +24,7 @@ from ..core.progress import AnalysisProgressEvent, ProgressCallback, ProgressPha
 from ..core.syntax import CodeMode, normalize_code_mode
 from ..graphics.graphics_context_helpers import resolve_graphics_companion_path
 from ..models.project_graph import ProjectGraph, merge_project_basepicture
+from ..utils.casefolding import unit_equal, unit_key
 from .loader_config import build_parser_binding, validate_loader_config
 from .loading_support import (
     _attach_analysis_cache_metadata,
@@ -40,6 +41,7 @@ from .parser_adapter import (
     convert_project_into_graph,
     find_dependency_path,
     load_parser_project,
+    load_parser_projects,
     read_dependency_names,
 )
 from .support import configured_icf_files
@@ -108,8 +110,8 @@ def source_paths_for_current_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
     *,
-    casefold_equal_fn: Callable[[str, str], bool],
-    casefold_key_fn: Callable[[str], str],
+    unit_equal_fn: Callable[[str, str], bool],
+    unit_key_fn: Callable[[str], str],
 ) -> set[Path]:
     source_files: set[Path] = graph.source_files
     root_source_path = graph.root_source_path_for_basepicture(project_bp)
@@ -118,16 +120,16 @@ def source_paths_for_current_target(
 
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
-        matches = {path for path in source_files if casefold_equal_fn(path.name, origin_file)}
+        matches = {path for path in source_files if unit_equal_fn(path.name, origin_file)}
         # Several libraries can hold a file with that name; a single match
         # identifies the target, a crowd does not, so fall through instead.
         if len(matches) == 1:
             return matches
 
-    target_name = casefold_key_fn(
+    target_name = unit_key_fn(
         getattr(project_bp, "program_name", None) or getattr(project_bp, "name", None) or project_bp.header.name
     )
-    return {path for path in source_files if casefold_key_fn(path.stem) == target_name}
+    return {path for path in source_files if unit_key_fn(path.stem) == target_name}
 
 
 def target_is_library(
@@ -263,19 +265,26 @@ def _visit_targets_into_graph(
         project = load_parser_project(binding, names)
     except (ProjectLoadError, CircularDependencyError):
         # The parser returns a complete closure or raises, so one broken
-        # consumer fails the batch. The selected target is already in the graph,
-        # so retry per consumer and record the ones that cannot load.
+        # consumer fails the batch. Its shared pass keeps every consumer that
+        # succeeds without re-parsing the union once per healthy consumer, and
+        # each failure is recorded against its own consumer.
+        results = load_parser_projects(binding, names)
         for name in names:
-            try:
-                single = load_parser_project(binding, [name])
-            except (ProjectLoadError, CircularDependencyError) as exc:
-                # A cycle is a load failure of the consumer; keep its parser
-                # explanation but record it through the load-failure channel.
-                load_error = exc if isinstance(exc, ProjectLoadError) else ProjectLoadError(name, str(exc))
-                record_project_load_failure(graph, name, load_error)
+            result = results.get(name)
+            if result is None:
+                record_project_load_failure(graph, name, ProjectLoadError(name, "target was not loaded"))
+                continue
+            if result.project is None:
+                # A cycle is a load failure of the consumer; the adapter already
+                # keeps SattLint's wording for it.
+                record_project_load_failure(
+                    graph,
+                    name,
+                    result.error or ProjectLoadError(name, "target was not loaded"),
+                )
                 continue
             convert_project_into_graph(
-                single,
+                result.project,
                 graph,
                 binding=binding,
                 root_name=name,
@@ -552,7 +561,7 @@ def _program_batch_cache_target(program_names: Sequence[str]) -> str:
     a project target impossible while still hashing the exact set that was
     parsed.
     """
-    normalized = sorted(name.casefold() for name in program_names)
+    normalized = sorted(unit_key(name) for name in program_names)
     return "icf-program-batch::" + "|".join(normalized)
 
 
@@ -616,10 +625,12 @@ def load_program_asts(
     )
 
     asts: dict[str, BasePicture] = {}
-    by_casefold = {name.casefold(): name for name in graph.ast_by_name}
+    by_identity: dict[str, str] = {}
+    for indexed_name in graph.ast_by_name:
+        by_identity.setdefault(unit_key(indexed_name), indexed_name)
     missing: list[str] = []
     for name in names:
-        resolved_name = name if name in graph.ast_by_name else by_casefold.get(name.casefold(), name)
+        resolved_name = name if name in graph.ast_by_name else by_identity.get(unit_key(name), name)
         program_bp = graph.ast_by_name.get(resolved_name)
         if program_bp is None:
             missing.append(name)

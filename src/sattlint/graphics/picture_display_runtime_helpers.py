@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 from sattlint.parser_api import BasePicture, ModuleTypeDef, ModuleTypeInstance
 
 from ..resolution.common import select_moduletype_def_strict
+from ..utils.casefolding import unit_equal, unit_key
 
 if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
 
 
-type _LoweredPath = tuple[str, ...]
+type _PathKey = tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +43,9 @@ class RuntimeModuleNode:
 @dataclass(frozen=True, slots=True)
 class RuntimeTree:
     root: RuntimeModuleNode
-    nodes_by_path: dict[_LoweredPath, RuntimeModuleNode]
-    parents_by_path: dict[_LoweredPath, RuntimeModuleNode]
-    suffix_buckets: dict[_LoweredPath, tuple[RuntimeModuleNode, ...]]
+    nodes_by_path: dict[_PathKey, RuntimeModuleNode]
+    parents_by_path: dict[_PathKey, RuntimeModuleNode]
+    suffix_buckets: dict[_PathKey, tuple[RuntimeModuleNode, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,12 +67,12 @@ def _local_moduletype_defs(base_picture: BasePicture) -> tuple[ModuleTypeDef, ..
 
 def _is_local_moduletype_def(base_picture: BasePicture, moduletype: ModuleTypeDef) -> bool:
     origin_file = getattr(base_picture, "origin_file", None)
-    origin_lib = (getattr(base_picture, "origin_lib", None) or "").casefold()
+    origin_lib = unit_key(getattr(base_picture, "origin_lib", None) or "")
     if not origin_file and not origin_lib:
         return True
-    moduletype_origin_lib = (moduletype.origin_lib or "").casefold()
+    moduletype_origin_lib = unit_key(moduletype.origin_lib or "")
     if origin_lib and moduletype_origin_lib:
-        root_stem = _file_stem_casefold(origin_file)
+        root_stem = _file_stem_key(origin_file)
         if root_stem and origin_lib == root_stem:
             return moduletype_origin_lib == origin_lib
     return _same_origin_file_stem(moduletype.origin_file, origin_file)
@@ -82,23 +83,23 @@ def _same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> 
         return True
     if not root_origin:
         return False
-    return _file_stem_casefold(origin_file) == _file_stem_casefold(root_origin)
+    return _file_stem_key(origin_file) == _file_stem_key(root_origin)
 
 
-def _file_stem_casefold(file_name: str | None) -> str | None:
+def _file_stem_key(file_name: str | None) -> str | None:
     if not file_name:
         return None
     try:
-        return Path(file_name).stem.casefold()
+        return unit_key(Path(file_name).stem)
     except (TypeError, ValueError):
-        return file_name.rsplit(".", 1)[0].casefold()
+        return unit_key(file_name.rsplit(".", 1)[0])
 
 
 def _moduletype_identity_key(moduletype: ModuleTypeDef) -> tuple[str, str, str]:
     return (
-        (moduletype.origin_lib or "").casefold(),
-        moduletype.name.casefold(),
-        (moduletype.origin_file or "").casefold(),
+        unit_key(moduletype.origin_lib or ""),
+        unit_key(moduletype.name),
+        unit_key(moduletype.origin_file or ""),
     )
 
 
@@ -130,7 +131,7 @@ def _candidate_moduletype_index(
 ) -> dict[str, tuple[ModuleTypeDef, ...]]:
     index: dict[str, list[ModuleTypeDef]] = {}
     for moduletype in _candidate_moduletype_defs(base_picture, graph):
-        index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+        index.setdefault(unit_key(moduletype.name), []).append(moduletype)
     return {name: tuple(matches) for name, matches in index.items()}
 
 
@@ -143,7 +144,7 @@ def _resolve_runtime_moduletype(
     graph: ProjectGraph | None,
     candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
 ) -> ModuleTypeDef | None:
-    matches = list(candidate_moduletype_index.get(child.moduletype_name.casefold(), ()))
+    matches = list(candidate_moduletype_index.get(unit_key(child.moduletype_name), ()))
     try:
         return select_moduletype_def_strict(
             base_picture,
@@ -159,22 +160,22 @@ def _resolve_runtime_moduletype(
         return None
 
 
-def _lowered_path(path: tuple[str, ...]) -> _LoweredPath:
-    return tuple(segment.casefold() for segment in path)
+def _path_key(path: tuple[str, ...]) -> _PathKey:
+    return tuple(unit_key(segment) for segment in path)
 
 
 def _index_runtime_tree(root: RuntimeModuleNode) -> RuntimeTree:
-    nodes_by_path: dict[_LoweredPath, RuntimeModuleNode] = {}
-    parents_by_path: dict[_LoweredPath, RuntimeModuleNode] = {}
-    suffix_buckets: dict[_LoweredPath, list[RuntimeModuleNode]] = {}
+    nodes_by_path: dict[_PathKey, RuntimeModuleNode] = {}
+    parents_by_path: dict[_PathKey, RuntimeModuleNode] = {}
+    suffix_buckets: dict[_PathKey, list[RuntimeModuleNode]] = {}
 
     def visit(node: RuntimeModuleNode, parent: RuntimeModuleNode | None) -> None:
-        lowered_path = _lowered_path(node.path)
-        nodes_by_path[lowered_path] = node
+        path_key = _path_key(node.path)
+        nodes_by_path[path_key] = node
         if parent is not None:
-            parents_by_path[lowered_path] = parent
-        for suffix_length in range(2, len(lowered_path) + 1):
-            suffix_buckets.setdefault(lowered_path[-suffix_length:], []).append(node)
+            parents_by_path[path_key] = parent
+        for suffix_length in range(2, len(path_key) + 1):
+            suffix_buckets.setdefault(path_key[-suffix_length:], []).append(node)
         for child in node.children:
             visit(child, node)
 
@@ -184,18 +185,18 @@ def _index_runtime_tree(root: RuntimeModuleNode) -> RuntimeTree:
         nodes_by_path=nodes_by_path,
         parents_by_path=parents_by_path,
         suffix_buckets={
-            suffix: tuple(sorted(nodes, key=lambda node: (len(node.path), _lowered_path(node.path))))
+            suffix: tuple(sorted(nodes, key=lambda node: (len(node.path), _path_key(node.path))))
             for suffix, nodes in suffix_buckets.items()
         },
     )
 
 
 def find_node(runtime_tree: RuntimeTree, path: tuple[str, ...]) -> RuntimeModuleNode | None:
-    return runtime_tree.nodes_by_path.get(_lowered_path(path))
+    return runtime_tree.nodes_by_path.get(_path_key(path))
 
 
 def find_parent_node(runtime_tree: RuntimeTree, path: tuple[str, ...]) -> RuntimeModuleNode | None:
-    return runtime_tree.parents_by_path.get(_lowered_path(path))
+    return runtime_tree.parents_by_path.get(_path_key(path))
 
 
 def find_best_suffix_node(
@@ -225,18 +226,18 @@ def find_suffix_nodes(
     *,
     exclude_path: tuple[str, ...] | None = None,
 ) -> tuple[RuntimeModuleNode, ...]:
-    lowered_path = _lowered_path(path)
-    lowered_exclude_path = _lowered_path(exclude_path) if exclude_path is not None else None
+    path_key = _path_key(path)
+    exclude_key = _path_key(exclude_path) if exclude_path is not None else None
     matches: list[RuntimeModuleNode] = []
-    seen_paths: set[_LoweredPath] = set()
-    for suffix_length in range(len(lowered_path), 1, -1):
-        for candidate in runtime_tree.suffix_buckets.get(lowered_path[-suffix_length:], ()):
-            lowered_candidate_path = _lowered_path(candidate.path)
-            if lowered_exclude_path is not None and lowered_candidate_path == lowered_exclude_path:
+    seen_paths: set[_PathKey] = set()
+    for suffix_length in range(len(path_key), 1, -1):
+        for candidate in runtime_tree.suffix_buckets.get(path_key[-suffix_length:], ()):
+            candidate_key = _path_key(candidate.path)
+            if exclude_key is not None and candidate_key == exclude_key:
                 continue
-            if lowered_candidate_path in seen_paths:
+            if candidate_key in seen_paths:
                 continue
-            seen_paths.add(lowered_candidate_path)
+            seen_paths.add(candidate_key)
             matches.append(candidate)
     return tuple(matches)
 
@@ -244,7 +245,7 @@ def find_suffix_nodes(
 def _common_suffix_length(left: tuple[str, ...], right: tuple[str, ...]) -> int:
     match_length = 0
     for left_segment, right_segment in zip(reversed(left), reversed(right), strict=False):
-        if left_segment.casefold() != right_segment.casefold():
+        if not unit_equal(left_segment, right_segment):
             break
         match_length += 1
     return match_length
@@ -258,9 +259,9 @@ def consume_name(raw_path: str) -> tuple[str, str]:
 
 
 def find_nearest_descendant(node: RuntimeModuleNode, wanted_name: str) -> RuntimeModuleNode | None:
-    target = wanted_name.casefold()
+    target = unit_key(wanted_name)
     for child in node.children:
-        if child.name.casefold() == target:
+        if unit_key(child.name) == target:
             return child
         match = find_nearest_descendant(child, wanted_name)
         if match is not None:

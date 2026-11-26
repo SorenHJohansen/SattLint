@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from sattlint.parser_api import BasePicture
 
 from ..analyzers.string_inference import ExactStringInferenceEngine
+from ..utils.casefolding import unit_equal, unit_key
 from ..config.string_capacities import StringCapacities
 from .picture_display_runtime import (
     RuntimeModuleNode,
@@ -210,13 +211,13 @@ def resolve_picture_display_path(
             detail=f"program unit {program_name!r} is not loaded",
         )
 
-    runtime_tree_key = program_name.casefold()
+    runtime_tree_key = unit_key(program_name)
     runtime_tree = _runtime_trees.get(runtime_tree_key) if _runtime_trees is not None else None
     if runtime_tree is None:
         runtime_tree = build_runtime_tree(target_picture, graph=graph)
         if _runtime_trees is not None:
             _runtime_trees[runtime_tree_key] = runtime_tree
-    same_program = program_name.casefold() == base_picture.header.name.casefold()
+    same_program = unit_equal(program_name, base_picture.header.name)
     exact_current = runtime_tree.root if not same_program else find_node(runtime_tree, module_path)
     suffix_current = None
     suffix_candidates: tuple[RuntimeModuleNode, ...] = ()
@@ -372,7 +373,7 @@ def _resolve_picture_display_path_from_current(
             continue
 
         token, raw_path = consume_name(raw_path)
-        matches = [child for child in current.children if child.name.casefold() == token.casefold()]
+        matches = [child for child in current.children if unit_equal(child.name, token)]
         if not matches:
             return PictureDisplayPathResolution(
                 path_text=path_text,
@@ -472,12 +473,12 @@ def _resolve_program_picture(
     base_picture: BasePicture,
     graph: ProjectGraph | None,
 ) -> BasePicture | None:
-    if program_name.casefold() == base_picture.header.name.casefold():
+    if unit_equal(program_name, base_picture.header.name):
         return base_picture
     if graph is None:
         return None
     for candidate_name, candidate in graph.ast_by_name.items():
-        if candidate_name.casefold() == program_name.casefold():
+        if unit_equal(candidate_name, program_name):
             return candidate
     return None
 

@@ -13,6 +13,8 @@ from sattlint.parser_api import (
     SingleModule,
 )
 
+from ..utils.casefolding import unit_equal, unit_key
+
 type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
 type ModuleNode = BasePicture | SubmoduleNode
 
@@ -44,9 +46,9 @@ def dedupe_moduletype_defs(matches: list[ModuleTypeDef]) -> list[ModuleTypeDef]:
     unique: dict[tuple[str, str, str], ModuleTypeDef] = {}
     for mt in matches:
         key = (
-            mt.name.casefold(),
-            (mt.origin_lib or "").casefold(),
-            (mt.origin_file or "").casefold(),
+            unit_key(mt.name),
+            unit_key(mt.origin_lib or ""),
+            unit_key(mt.origin_file or ""),
         )
         if key not in unique:
             unique[key] = mt
@@ -103,26 +105,24 @@ def select_moduletype_def_strict(  # noqa: PLR0915
     preferred_extensions = preferred_source_extensions(current_file or bp.origin_file)
 
     if current_file is not None:
-        current_file_cf = current_file.casefold()
+        current_file_key = unit_key(current_file)
         # A unit's own definition is the one its code means, even when other
         # units in the same library folder declare the same name.
-        same_file = [mt for mt in matches if (mt.origin_file or "").casefold() == current_file_cf]
+        same_file = [mt for mt in matches if unit_equal(mt.origin_file or "", current_file)]
         if len(same_file) == 1:
             return same_file[0]
 
         # ``PRIVATE_`` types are visible only inside their declaring unit.
-        visible = [mt for mt in matches if not mt.is_private or (mt.origin_file or "").casefold() == current_file_cf]
+        visible = [mt for mt in matches if not mt.is_private or unit_key(mt.origin_file or "") == current_file_key]
         if visible:
             matches = visible
 
         # The dependency sidecar names the units this file may use, which is
         # more precise than the library folder several units can share.
-        unit_dependencies = (source_dependencies or {}).get(Path(current_file).stem.casefold(), ())
-        dependencies = {item.casefold() for item in unit_dependencies}
+        unit_dependencies = (source_dependencies or {}).get(unit_key(Path(current_file).stem), ())
+        dependencies = {unit_key(item) for item in unit_dependencies}
         if dependencies:
-            declared_by_dependency = [
-                mt for mt in matches if Path(mt.origin_file or "").stem.casefold() in dependencies
-            ]
+            declared_by_dependency = [mt for mt in matches if unit_key(Path(mt.origin_file or "").stem) in dependencies]
             if declared_by_dependency:
                 matches = declared_by_dependency
 
@@ -131,8 +131,8 @@ def select_moduletype_def_strict(  # noqa: PLR0915
             current_library = bp.origin_lib
 
         if current_library:
-            current_lib_cf = current_library.casefold()
-            local_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == current_lib_cf]
+            current_lib_key = unit_key(current_library)
+            local_matches = [mt for mt in matches if unit_key(mt.origin_lib or "") == current_lib_key]
             local_matches = narrow_matches_by_source_preference(local_matches, preferred_extensions)
             if len(local_matches) == 1:
                 return local_matches[0]
@@ -140,11 +140,11 @@ def select_moduletype_def_strict(  # noqa: PLR0915
                 labels = sorted(format_moduletype_label(mt) for mt in local_matches)
                 raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
 
-            deps = library_dependencies.get(current_lib_cf, ()) if library_dependencies is not None else ()
+            deps = library_dependencies.get(current_lib_key, ()) if library_dependencies is not None else ()
             dep_candidates: list[ModuleTypeDef] = []
             for dep in deps:
-                dep_cf = dep.casefold()
-                dep_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == dep_cf]
+                dep_key = unit_key(dep)
+                dep_matches = [mt for mt in matches if unit_key(mt.origin_lib or "") == dep_key]
                 dep_matches = narrow_matches_by_source_preference(dep_matches, preferred_extensions)
                 if len(dep_matches) > 1:
                     labels = sorted(format_moduletype_label(mt) for mt in dep_matches)

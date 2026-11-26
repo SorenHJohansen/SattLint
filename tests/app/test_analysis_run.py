@@ -46,10 +46,10 @@ def test_iter_loaded_projects_skips_failed_targets(
                 ],
                 direct_dependencies=["dep_c", "dep_d"],
                 failures={
-                    "broken": ProjectFailure(
+                    "BROKEN": ProjectFailure(
                         "Broken", "Broken parse/transform error: root failed", detail="root failed", line=7, column=2
                     ),
-                    "dep_c": ProjectFailure(
+                    "DEP_C": ProjectFailure(
                         "dep_c",
                         "dep_c parse/transform error: something bad happened",
                         detail="something bad happened",
@@ -57,7 +57,7 @@ def test_iter_loaded_projects_skips_failed_targets(
                         column=4,
                         length=3,
                     ),
-                    "transitive_lib": ProjectFailure(
+                    "TRANSITIVE_LIB": ProjectFailure(
                         "transitive_lib",
                         "transitive_lib parse/transform error: nested failure",
                         detail="nested failure",

@@ -83,6 +83,18 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Changed
 
+- Upgraded `sattline-parser` to `2026.11.9` and pinned it exactly, with
+  `uv.lock` regenerated.
+- Reverse-library consumers load in one parser pass that keeps every consumer
+  that succeeds, so one broken consumer no longer discards the healthy ones or
+  forces their shared closure to be parsed again.
+- Project-layer unit names, origin matching, and picture-display module-type
+  matching use the parser's language identity instead of Unicode case folding,
+  so `Library` and `library` still match while `Straße` and `STRASSE` stay
+  distinct.
+- Change Review slices source lines with the parser's line rule (CRLF, LF, and a
+  lone CR), so snippets line up with the spans the parser reports, and its
+  source-file keys use the same language identity.
 - `sattlint analyze --no-cache` now means what it always documented: ignore
   stored analyzer reports. It no longer discards the parsed project graph or the
   parser's per-file cache, which made a one-target run re-parse for over two
@@ -240,6 +252,9 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- Picture display path analysis reads tuple-shaped parser collections again,
+  and string inference, latch scanning, magic-number walking, and cyclomatic
+  complexity walk both list and tuple child collections.
 - Magic-number and record-component-order findings no longer leak into the
   opt-in datatype-field analyzer, so selecting both analyzers does not
   duplicate findings.

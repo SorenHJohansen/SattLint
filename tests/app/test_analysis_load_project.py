@@ -156,7 +156,7 @@ def test_load_project_skips_cache_when_a_dependency_is_unavailable(monkeypatch: 
     graph = AnalysisGraphStub(
         ast_by_name={"TargetA": root_bp},
         missing=["Missing code file for 'MissingLib' (draft)"],
-        unavailable_libraries={"missinglib"},
+        unavailable_libraries={"MISSINGLIB"},
         source_files={Path("programs/TargetA.s")},
     )
 

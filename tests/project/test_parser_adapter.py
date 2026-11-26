@@ -18,6 +18,8 @@ import pytest
 from sattline_parser import Diagnostic, DiagnosticCode, parse_source_text
 from sattline_parser.models.ast_model import BasePicture, DataType
 from sattline_parser.project import (
+    CacheDisabledReason,
+    DependencyCycleError,
     ProjectLoadError,
     SattLineProgram,
     SattLineProject,
@@ -34,6 +36,7 @@ from sattlint.project.parser_adapter import (
     find_code_path,
     find_dependency_path,
     load_parser_project,
+    load_parser_projects,
     read_dependency_names,
 )
 
@@ -91,8 +94,8 @@ def test_convert_populates_graph_from_registry() -> None:
     assert graph.ast_by_name["A"] is project.programs()["a"].code
     assert graph.ast_by_name["B"] is project.programs()["b"].code
     assert graph.source_files == {lib / "A.s", prg / "B.s"}
-    assert graph.library_dependencies["prg"] == {"lib"}
-    assert graph.source_dependencies == {"a": set(), "b": {"a"}}
+    assert graph.library_dependencies["PRG"] == {"LIB"}
+    assert graph.source_dependencies == {"A": set(), "B": {"A"}}
     assert graph.missing == []
 
 
@@ -104,7 +107,7 @@ def test_convert_flags_root_not_loaded_as_missing() -> None:
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="R", strict=False)
 
     assert set(graph.ast_by_name) == {"A"}
-    assert "r" in graph.unavailable_libraries
+    assert "R" in graph.unavailable_libraries
     assert any("'R'" in entry and "B" not in entry for entry in graph.missing)
     assert len(graph.missing) == 1
 
@@ -122,10 +125,10 @@ def test_convert_failed_root_is_not_also_reported_as_missing() -> None:
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="A", strict=False)
 
     assert graph.ast_by_name == {}
-    assert set(graph.failures) == {"a"}
-    assert "a" not in graph.unavailable_libraries
+    assert set(graph.failures) == {"A"}
+    assert "A" not in graph.unavailable_libraries
     assert not any("Missing code file" in entry for entry in graph.missing)
-    assert graph.missing == [graph.failures["a"].message]
+    assert graph.missing == [graph.failures["A"].message]
 
 
 def test_index_failure_retracts_a_partially_committed_program(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,10 +146,10 @@ def test_index_failure_retracts_a_partially_committed_program(monkeypatch: pytes
     )
 
     assert graph.ast_by_name == {}
-    assert "a" not in binding._indexed_names
+    assert "A" not in binding._indexed_names
     assert graph.graphics_attachments == {}
-    assert set(graph.failures) == {"a"}
-    assert graph.missing == [graph.failures["a"].message]
+    assert set(graph.failures) == {"A"}
+    assert graph.missing == [graph.failures["A"].message]
 
 
 def test_index_failure_retracts_every_committed_definition(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,7 +184,7 @@ def test_index_failure_retracts_every_committed_definition(monkeypatch: pytest.M
     assert graph.source_files == set()
     assert graph.source_dependencies == {}
     assert graph.library_dependencies == {}
-    assert set(graph.failures) == {"a"}
+    assert set(graph.failures) == {"A"}
 
 
 def test_convert_raises_on_cycle_always() -> None:
@@ -310,7 +313,76 @@ def test_library_name_falls_through_to_program_root() -> None:
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_bound(prg), root_name="Root", strict=False)
 
-    assert graph.library_dependencies["prg"] == {"abb", "liba", "libb"}
+    assert graph.library_dependencies["PRG"] == {"ABB", "LIBA", "LIBB"}
+
+
+def test_load_parser_projects_keeps_the_targets_that_load(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Good.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Good.l").write_text("Shared\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["Good", "Missing"])
+
+    good = results["Good"]
+    assert good.ok
+    assert good.error is None
+    assert good.project is not None
+    assert good.project.get("Good") is not None
+    assert good.project.get("Shared") is not None
+
+    missing = results["Missing"]
+    assert not missing.ok
+    assert missing.project is None
+    assert isinstance(missing.error, ProjectLoadError)
+
+
+def test_load_parser_projects_shares_a_dependency_across_targets(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    for name in ("First", "Second"):
+        (program_dir / f"{name}.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+        (program_dir / f"{name}.l").write_text("Shared\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["First", "Second"])
+
+    first = results["First"].project
+    second = results["Second"].project
+    assert first is not None
+    assert second is not None
+    assert first.get("First") is not None
+    assert first.get("Shared") is not None
+    assert second.get("Second") is not None
+    assert second.get("Shared") is not None
+
+
+def test_load_parser_projects_translates_a_real_parser_cycle(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    for name in ("A", "B", "Healthy"):
+        (program_dir / f"{name}.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "A.l").write_text("B\n", encoding="utf-8")
+    (program_dir / "B.l").write_text("A\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["A", "B", "Healthy"])
+
+    assert results["Healthy"].ok
+    for name in ("A", "B"):
+        result = results[name]
+        assert not result.ok
+        assert result.project is None
+        assert result.error is not None
+        assert "Circular dependency detected" in str(result.error)
+
+
+def test_cycle_error_for_translates_parser_cycles() -> None:
+    cycle = parser_adapter_module._cycle_error_for(DependencyCycleError(("A", "B", "A")))
+
+    assert isinstance(cycle, CircularDependencyError)
+    assert cycle.cycle_path == ["A", "B"]
+    assert parser_adapter_module._cycle_error_for(ProjectLoadError("A", "missing code file")) is None
 
 
 def test_load_parser_project_memoizes_single_target(tmp_path: Path) -> None:
@@ -404,7 +476,7 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
     assert set(graph.ast_by_name) == {"A", "R1", "R2"}
     assert graph.ast_by_name["R1"] is project.programs()["r1"].code
     assert graph.ast_by_name["R2"] is project.programs()["r2"].code
-    assert graph.library_dependencies["prg"] == {"prg"}
+    assert graph.library_dependencies["PRG"] == {"PRG"}
 
 
 def test_convert_extra_roots_records_each_missing_root() -> None:
@@ -488,5 +560,14 @@ def test_two_targets_share_one_parser_cache(tmp_path: Path) -> None:
     assert "Shared" in first
     assert "Shared" in second
     assert second.dependencies_of("Second") == ("Shared",)
-    file_ast_entries = list((cache_dir / "file_ast").iterdir())
-    assert file_ast_entries
+
+    # The parser owns the cache layout and disables the cache when it cannot
+    # prove the directory private to the user (for example under a shared temp
+    # directory on Windows). Its public status is the contract, not the files
+    # it writes.
+    info = first.cache_info
+    if info.enabled:
+        assert second.cache_info.enabled
+        assert second.cache_info.ast_hits > 0
+    else:
+        assert info.disabled_reason is CacheDisabledReason.PRIVACY
