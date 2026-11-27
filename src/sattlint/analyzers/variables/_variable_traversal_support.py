@@ -21,11 +21,11 @@ from sattlint.parser_api import (
     Variable,
     VarRef,
     VarTail,
-    get_function_signature,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
-from ...resolution import AccessKind
+from ...core.call_signatures import resolve_call_signature
+from ...reporting.variables_report import IssueKind, RecordComponentOrderIssue
+from ...resolution import AccessKind, resolve_record
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import is_anytype_name
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
@@ -38,6 +38,8 @@ from ._variable_traversal_objects import (
     _walk_moduledef,
     _walk_typedef_groupconn,
 )
+from ._variables_access import _reference_library
+from ._variables_contracts import should_collect_issue_kind as _should_collect_issue_kind
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -157,6 +159,7 @@ def _record_component_field_name(
     fn_name: str,
     syntactic_ref: str,
     path: list[str],
+    library: str | None = None,
 ) -> str | None:
     if component_index <= 0:
         return None
@@ -171,6 +174,7 @@ def _record_component_field_name(
                 syntactic_ref=syntactic_ref,
                 resolved_var_name=variable.name,
                 use_path=path,
+                library=library,
             )
         except ValueError:
             return None
@@ -180,7 +184,12 @@ def _record_component_field_name(
     if not isinstance(current_type, str):
         return None
 
-    record_type = self.type_graph.record(current_type)
+    record_type = resolve_record(
+        self.type_graph,
+        current_type,
+        library=library,
+        on_ambiguity=self._warn_ambiguous_record,
+    )
     if record_type is None:
         return None
 
@@ -198,6 +207,8 @@ def _append_record_component_order_issue(
     path: list[str],
 ) -> None:
     if len(args) < 2:
+        return
+    if not _should_collect_issue_kind(self, IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE):
         return
 
     record_ref = _var_name_of(args[0])
@@ -234,6 +245,7 @@ def _append_record_component_order_issue(
             fn_name=fn_name,
             syntactic_ref=record_ref,
             path=path,
+            library=_reference_library(context),
         )
         if field_name is None:
             role = f"{role} (index {component_index})"
@@ -242,8 +254,7 @@ def _append_record_component_order_issue(
 
     self._record_component_order_datatypes_seen.add(datatype_key)
     self.append_issue(
-        VariableIssue(
-            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+        RecordComponentOrderIssue(
             module_path=path.copy(),
             variable=variable,
             datatype_name=datatype_name,
@@ -416,16 +427,15 @@ def _handle_function_call(  # noqa: PLR0915
         self._record_function_call_effect_flow(fn_name, args or [], context)
         return
 
-    sig = get_function_signature(fn_name)
-    if sig is None:
+    signature = resolve_call_signature(fn_name)
+    if signature is None:
         for argument in args or []:
             self._walk_stmt_or_expr(argument, context, path, is_ui_read=is_ui_read)
         return
 
     for idx, arg in enumerate(args or []):
-        direction = "in"
-        if idx < len(sig.parameters):
-            direction = sig.parameters[idx].direction
+        parameter = signature.parameters[idx] if idx < len(signature.parameters) else None
+        direction = parameter.direction if parameter is not None else "in"
 
         full_name = _var_name_of(arg)
         if full_name is not None:

@@ -35,7 +35,7 @@ from sattlint.parser_api import (
 from sattlint.parser_api import format_expr as _format_expr
 
 from ...resolution import AccessKind
-from ...resolution.common import varname_base
+from ...resolution.common import varname_base, varname_full
 from ...resolution.scope import ScopeContext
 from ._variable_traversal_support import (
     _var_name_of,
@@ -43,6 +43,22 @@ from ._variable_traversal_support import (
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+
+def _record_secure_unconditional_equation_write(
+    self: VariablesAnalyzer,
+    statement: Assignment,
+    context: ScopeContext,
+) -> None:
+    facts = getattr(self, "_secure_candidate_facts", None)
+    if facts is None:
+        return
+    ref_name = varname_full(statement.target)
+    if not ref_name:
+        return
+    variable, field_path, _decl_path, _decl_display = context.resolve_variable(ref_name)
+    if variable is not None and not field_path:
+        facts.record_unconditional_equation_write(variable)
 
 
 def _set_current_statement(self: VariablesAnalyzer, obj: Any) -> None:
@@ -67,6 +83,8 @@ def _walk_module_code(
             self._push_site(f"EQ:{eq.name}")
         try:
             for stmt in eq.code or []:
+                if isinstance(stmt, Assignment):
+                    _record_secure_unconditional_equation_write(self, stmt, context)
                 self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path)
         finally:
@@ -92,43 +110,90 @@ def _walk_sequence(
             self._pop_site()
 
 
+def _walk_step_code(
+    self: VariablesAnalyzer,
+    node: SFCStep,
+    conditions: list[object],
+    context: ScopeContext,
+    path: list[str],
+) -> None:
+    with self.effect_flow_tracker.conditional_effects(conditions, context):
+        for stmt in node.code.enter or []:
+            self._set_current_statement(stmt)
+            self._walk_stmt_or_expr(stmt, context, path)
+        for stmt in node.code.active or []:
+            self._set_current_statement(stmt)
+            self._walk_stmt_or_expr(stmt, context, path)
+        for stmt in node.code.exit or []:
+            self._set_current_statement(stmt)
+            self._walk_stmt_or_expr(stmt, context, path)
+
+
+def _walk_transition_condition(
+    self: VariablesAnalyzer,
+    node: SFCTransition,
+    context: ScopeContext,
+    path: list[str],
+) -> None:
+    self._set_current_statement(node.condition)
+    self._walk_stmt_or_expr(node.condition, context, path)
+
+
 def _walk_seq_nodes(
     self: VariablesAnalyzer,
     nodes: list[Any],
     env: dict[str, Variable],
     path: list[str],
     context: ScopeContext,
-) -> None:
+) -> list[object]:
+    """Return the transition guards of paths that fall through this container."""
+    conditions: list[object] = []
     for node in nodes or []:
         if isinstance(node, SFCStep):
-            for stmt in node.code.enter or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
-            for stmt in node.code.active or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
-            for stmt in node.code.exit or []:
-                self._set_current_statement(stmt)
-                self._walk_stmt_or_expr(stmt, context, path)
+            previous_in_step = getattr(self, "_secure_in_step", False)
+            previous_step_name = getattr(self, "_secure_step_name", None)
+            self._secure_in_step = True
+            self._secure_step_name = node.name
+            try:
+                _walk_step_code(self, node, conditions, context, path)
+            finally:
+                self._secure_in_step = previous_in_step
+                self._secure_step_name = previous_step_name
+            if node.fork is not None:
+                return []
             continue
         if isinstance(node, SFCTransition):
-            self._set_current_statement(node.condition)
-            self._walk_stmt_or_expr(node.condition, context, path)
+            previous_in_transition = getattr(self, "_secure_in_transition", False)
+            previous_transition_name = getattr(self, "_secure_transition_name", None)
+            self._secure_in_transition = True
+            self._secure_transition_name = node.name
+            try:
+                _walk_transition_condition(self, node, context, path)
+            finally:
+                self._secure_in_transition = previous_in_transition
+                self._secure_transition_name = previous_transition_name
+            conditions.append(node.condition)
+            if node.fork is not None:
+                return []
             continue
-        if isinstance(node, SFCAlternative):
-            for branch in node.branches or []:
-                self._walk_seq_nodes(branch or [], env, path, context)
-            continue
-        if isinstance(node, SFCParallel):
-            for branch in node.branches or []:
-                self._walk_seq_nodes(branch or [], env, path, context)
+        if isinstance(node, SFCAlternative | SFCParallel):
+            joined_conditions: list[object] = []
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for branch in node.branches or []:
+                    joined_conditions.extend(self._walk_seq_nodes(branch or [], env, path, context))
+            conditions.extend(joined_conditions)
             continue
         if isinstance(node, SFCSubsequence):
-            self._walk_seq_nodes(node.body or [], env, path, context)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                joined_conditions = self._walk_seq_nodes(node.body or [], env, path, context)
+            conditions.extend(joined_conditions)
             continue
         if isinstance(node, SFCTransitionSub):
-            self._walk_seq_nodes(node.body or [], env, path, context)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                joined_conditions = self._walk_seq_nodes(node.body or [], env, path, context)
+            conditions.extend(joined_conditions)
             continue
+    return conditions
 
 
 def _walk_stmt_or_expr(  # noqa: PLR0915
@@ -147,14 +212,18 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         return
 
     if isinstance(obj, IfStmt):
+        conditions: list[object] = []
         for cond, stmts in obj.branches or []:
             self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
-            for stmt in stmts or []:
+            conditions.append(cond)
+            with self.effect_flow_tracker.conditional_effects(conditions, context):
+                for stmt in stmts or []:
+                    self._set_current_statement(stmt)
+                    self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
+        with self.effect_flow_tracker.conditional_effects(conditions, context):
+            for stmt in obj.else_block or []:
                 self._set_current_statement(stmt)
                 self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
-        for stmt in obj.else_block or []:
-            self._set_current_statement(stmt)
-            self._walk_stmt_or_expr(stmt, context, path, is_ui_read=is_ui_read)
         return
 
     if isinstance(obj, Assignment):
@@ -242,8 +311,8 @@ def _walk_stmt_or_expr(  # noqa: PLR0915
         self._add_magic_number_issue(path, value, span)
         return
 
-    if isinstance(obj, list):
-        for item in cast(list[Any], obj):
+    if isinstance(obj, (list, tuple)):
+        for item in cast(list[Any] | tuple[Any, ...], obj):
             self._walk_stmt_or_expr(item, context, path, is_ui_read=is_ui_read)
 
 

@@ -6,6 +6,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from .string_capacities import StringCapacitiesDict
+
 type ConfigMode = Literal["official", "draft"]
 type ConfigPathValue = str | PathLike[str] | Path
 type ConfigObjectMap = dict[str, object]
@@ -37,36 +39,30 @@ class ReviewConfigOverride(TypedDict, total=False):
     output_dir: ConfigPathValue
 
 
-class SpecComplianceConfig(TypedDict):
-    step_prefix: str
-    transition_prefix: str
-    sequence_prefix: str
-    equation_prefix: str
-
-
-class SpecComplianceConfigOverride(TypedDict, total=False):
-    step_prefix: str
-    transition_prefix: str
-    sequence_prefix: str
-    equation_prefix: str
-
-
 class AnalysisConfig(TypedDict):
-    spec_compliance: SpecComplianceConfig
     unsafe_default_tokens: list[str]
     cyclomatic_module_threshold: int
     cyclomatic_step_threshold: int
     cyclomatic_equation_block_threshold: int
     fan_in_out_threshold: int
+    module_grid: float
+    module_grid_tolerance: float
+    source_byte_limit: int
+    icf_byte_limit: int
+    project_byte_limit: int
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
-    spec_compliance: SpecComplianceConfigOverride
     unsafe_default_tokens: list[str]
     cyclomatic_module_threshold: int
     cyclomatic_step_threshold: int
     cyclomatic_equation_block_threshold: int
     fan_in_out_threshold: int
+    module_grid: float
+    module_grid_tolerance: float
+    source_byte_limit: int
+    icf_byte_limit: int
+    project_byte_limit: int
 
 
 class ConfigDict(TypedDict):
@@ -77,6 +73,7 @@ class ConfigDict(TypedDict):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
+    string_capacities: StringCapacitiesDict
     run_history: RunHistoryConfig
     output: OutputConfig
     review: ReviewConfig
@@ -91,6 +88,7 @@ class ConfigOverrideDict(TypedDict, total=False):
     ABB_lib_dir: ConfigPathValue
     icf_dir: ConfigPathValue
     other_lib_dirs: list[ConfigPathValue]
+    string_capacities: StringCapacitiesDict
     run_history: RunHistoryConfigOverride
     output: OutputConfigOverride
     review: ReviewConfigOverride
@@ -111,6 +109,5 @@ __all__ = [
     "ReviewConfigOverride",
     "RunHistoryConfig",
     "RunHistoryConfigOverride",
-    "SpecComplianceConfig",
-    "SpecComplianceConfigOverride",
+    "StringCapacitiesDict",
 ]

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import threading
 import time
+from collections import deque
+from collections.abc import Mapping
+from concurrent.futures import CancelledError as _FutureCancelledError
 from contextlib import redirect_stderr, redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -16,9 +20,19 @@ except ImportError:  # pragma: no cover - optional dependency path
     _RichText = None
 
 from .. import config as config_module
+from ..application.cancellation import AnalysisCancellation
+from ..config.string_capacities import (
+    STRING_CAPACITY_KEYS,
+    StringCapacitiesDict,
+    standard_string_capacities_dict,
+    validate_string_capacities,
+)
 from ..project import load_project as _load_project_fn
 from ..project.io import (
     SLPROJ_FILENAME as _SLPROJ_FILENAME,
+)
+from ..project.io import (
+    SLPROJ_VERSION as _SLPROJ_VERSION,
 )
 from ..project.io import (
     init_project as _init_project,
@@ -57,6 +71,8 @@ _NUMBERED_ITEM_RE = re.compile(r"^(?P<indent>\s*)(?P<number>\d+)\.\s+(?P<label>.
 # Marker printed by the shared analysis pipeline right before the exception text of
 # a target that failed to load. The UI surfaces the following output as an error popup.
 _TARGET_LOAD_ERROR_MARKER = "? Failed to load target:"
+
+_LOGGER = logging.getLogger(__name__)
 
 _OUTPUT_ACCENT = "#001ba3"
 _OUTPUT_MUTED = "#24505f"
@@ -179,9 +195,22 @@ def _output_line_needs_gap(line_text: str) -> bool:
     return bool(_TARGET_HEADER_RE.match(stripped) or _PHASE_HEADER_RE.match(stripped))
 
 
+def _pending_interaction_queue(self: Any) -> deque[tuple[InteractionRequest, Any | None]]:
+    """Requests raised while another interaction owns the screen.
+
+    Completing a queued request with ``None`` made an unseen confirmation look
+    like a denial, so requests wait here and are presented in arrival order.
+    """
+    pending = getattr(self, "_pending_interactions", None)
+    if pending is None:
+        pending = deque()
+        self._pending_interactions = pending
+    return pending
+
+
 def present_request(self: Any, request: InteractionRequest, on_response_fn: Any | None = None) -> None:
     if self._active_request is not None:
-        self._complete_request(request, None)
+        _pending_interaction_queue(self).append((request, on_response_fn))
         return
 
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
@@ -190,10 +219,14 @@ def present_request(self: Any, request: InteractionRequest, on_response_fn: Any 
         self._resolve_request(request, response)
 
     pane = _InteractionPane(request, submit_response_fn=_resolve_response)
+    previous_focus = getattr(self, "focused", None)
+    # Mount before recording the request: a mount that raises must not leave
+    # the shell locked behind a request that never reached the screen.
+    interaction_host.mount(pane)
     self._active_request = request
     self._active_request_callback = on_response_fn
     self._interaction_pane = pane
-    interaction_host.mount(pane)
+    self._interaction_previous_focus = previous_focus
     self._refresh_shell_state()
 
 
@@ -208,7 +241,18 @@ def _track_ui_task(self: Any, task: asyncio.Task[object]) -> None:
         pending_ui_tasks = set()
         self._pending_ui_tasks = pending_ui_tasks
     pending_ui_tasks.add(task)
-    task.add_done_callback(pending_ui_tasks.discard)
+
+    def _on_task_done(done_task: asyncio.Task[object]) -> None:
+        pending_ui_tasks.discard(done_task)
+        if done_task.cancelled():
+            return
+        exception = done_task.exception()
+        if exception is not None:
+            # The coroutine runs on the UI loop, so report here rather than
+            # dropping the failure with the task.
+            self._report_error("Action failed", f"Action failed: {exception}")
+
+    task.add_done_callback(_on_task_done)
 
 
 def _schedule_ui_coroutine(self: Any, coroutine_factory: Any, *, fallback_fn: Any | None = None) -> None:
@@ -234,15 +278,29 @@ def _resolve_request(self: Any, request: InteractionRequest, response: object) -
 
     pane = self._interaction_pane
     request_callback = self._active_request_callback
+    previous_focus = getattr(self, "_interaction_previous_focus", None)
     self._active_request = None
     self._active_request_callback = None
     self._interaction_pane = None
+    self._interaction_previous_focus = None
     if pane is not None:
         pane.remove()
     self._refresh_shell_state()
     self._complete_request(request, response)
-    if request_callback is not None:
+    if request_callback is not None and not request.cancelled:
         request_callback(response)
+    pending = _pending_interaction_queue(self)
+    if pending:
+        next_request, next_callback = pending.popleft()
+        self.present_request(next_request, next_callback)
+    elif (
+        self._active_request is None
+        and previous_focus is not None
+        and bool(getattr(previous_focus, "is_mounted", True))
+    ):
+        # Only take focus back when no other request or callback took the
+        # screen; restoring it would otherwise steal focus from the new pane.
+        self.call_after_refresh(previous_focus.focus)
 
 
 def _refresh_summary(self: Any) -> None:
@@ -263,6 +321,7 @@ def _refresh_summary(self: Any) -> None:
             root = getattr(project, "root", None)
             project_name = str(getattr(root, "name", "") or "").strip()
     project_widget.update(project_name or "No configuration")
+    self._refresh_status_progress()
     try:
         summary_widget = self.query_one("#status-summary", _TEXTUAL_STATIC)
     except _TEXTUAL_QUERY_ERRORS:
@@ -291,17 +350,25 @@ def _append_output_line_to_widget(self: Any, output_widget: Any, line_text: str,
     return line_text
 
 
-def _trim_session_output_lines(self: Any) -> bool:
+def _trim_session_output_lines(self: Any) -> int:
+    """Drop the oldest batch of lines and report how many were dropped."""
     retained_lines = getattr(self, "_session_output_lines", None)
     if not isinstance(retained_lines, list):
-        return False
+        return 0
     retention = getattr(self, "_output_retention_lines", lambda: _SESSION_OUTPUT_MAX_LINES)()
     overflow = len(retained_lines) - retention
     if overflow <= 0:
-        return False
+        return 0
+    # Rebuilding the widget is the expensive half of trimming, so wait for a
+    # batch of overflow (roughly half the retention window) before trimming.
+    # The trim then drops exactly the overflow, so the pane never holds fewer
+    # lines than the retention it advertises.
+    batch = max(retention // 2, 1)
+    if overflow < batch:
+        return 0
     del retained_lines[:overflow]
     self._session_output_dropped_line_count = int(getattr(self, "_session_output_dropped_line_count", 0)) + overflow
-    return True
+    return overflow
 
 
 def _rebuild_output_widget(self: Any, output_widget: Any) -> None:
@@ -348,7 +415,16 @@ def _capture_error_modal_output(self: Any, text: str) -> str | None:
 
 
 def _show_error_modal(self: Any, title: str, message: str) -> None:
-    self.push_screen(_ErrorScreen(title=title, message=message))
+    if bool(getattr(self, "_error_modal_active", False)):
+        # One modal is enough to report the failure; stacking a second makes the
+        # first one impossible to dismiss without closing both.
+        return
+    self._error_modal_active = True
+    self.push_screen(_ErrorScreen(title=title, message=message), self._on_error_modal_closed)
+
+
+def _on_error_modal_closed(self: Any, _result: object | None = None) -> None:
+    self._error_modal_active = False
 
 
 def _report_error(self: Any, title: str, message: str) -> None:
@@ -363,12 +439,19 @@ def _write_output(self: Any, text: str) -> None:
         return
 
     follow_output = bool(getattr(output_widget, "is_vertical_scroll_end", True))
+    scroll_y = None if follow_output else getattr(output_widget, "scroll_y", None)
     line_texts = [chunk[:-1] if chunk.endswith("\n") else chunk for chunk in normalized.splitlines(keepends=True)]
     error_message = self._capture_error_modal_output(normalized)
     self._session_output_lines.extend(line_texts)
-    trimmed = self._trim_session_output_lines()
-    if trimmed:
+    dropped_lines = self._trim_session_output_lines()
+    if dropped_lines:
         self._rebuild_output_widget(output_widget)
+        # A rebuild replaces every line, so restore the reader's place in the
+        # log. The lines that just left the top shift every remaining offset
+        # up by their count, so the reader stays on the same text.
+        if isinstance(scroll_y, (int, float)):
+            with suppress(AttributeError, TypeError):
+                output_widget.scroll_to(y=max(0, scroll_y - dropped_lines), animate=False)
     else:
         previous_line = getattr(self, "_last_output_line", None)
         for line_text in line_texts:
@@ -380,8 +463,27 @@ def _write_output(self: Any, text: str) -> None:
         self._show_error_modal("Failed to load target", error_message)
 
 
+def _call_on_ui(self: Any, callback: Any, *args: object, **kwargs: object) -> None:
+    """Marshal a worker callback onto the UI thread, or drop it after the exit.
+
+    The analysis runs on a daemon thread that the app does not join, so a quit
+    can land while the worker is still unwinding. Once the event loop is gone
+    ``call_from_thread`` either raises or never runs the callback; in both cases
+    the worker must keep going instead of blocking the process teardown.
+    """
+    if bool(getattr(self, "_quitting", False)):
+        return
+    try:
+        self.call_from_thread(callback, *args, **kwargs)
+    except (_FutureCancelledError, RuntimeError, AttributeError):
+        # The loop stopped between the check above and the marshal, or the
+        # callback itself failed. Either way the worker must not block teardown;
+        # keep the failure visible in the log instead of dropping it silently.
+        _LOGGER.debug("Dropped a UI callback from a worker thread", exc_info=True)
+
+
 def _emit_output_from_thread(self: Any, text: str) -> None:
-    self.call_from_thread(self._write_output, text.rstrip("\n"))
+    self._call_on_ui(self._write_output, text.rstrip("\n"))
 
 
 def _clear_session_output(self: Any) -> None:
@@ -391,6 +493,12 @@ def _clear_session_output(self: Any) -> None:
     self._session_output_lines.clear()
     self._session_output_dropped_line_count = 0
     self._last_output_line = None
+    # Target-load error detection carries state between output chunks; clear it
+    # so a marker from one project's output cannot decorate another's.
+    self._pending_error_target_name = None
+    self._last_output_target_name = None
+    self._analyze_help_entry_id = None
+    self._results_empty_state_written = False
     _query_required(self, "#output-title", _TEXTUAL_STATIC).update(self._output_title_text())
 
 
@@ -405,12 +513,11 @@ def _clear_output_and_refocus(self: Any) -> None:
 
 def _finish_action(self: Any, dirty: bool = False, *, clear_dirty_on_success: bool = False) -> None:
     self._busy = False
+    self._active_cancellation = None
+    self._cancel_requested = False
     self._active_job_label = None
     self._active_job_started_at = None
-    self._active_job_worker = None
-    self._active_job_cancel_event = None
-    self._active_job_cancel_requested = False
-    self._active_job_thread = None
+    self._reset_analysis_progress()
     if clear_dirty_on_success:
         self._dirty = False
     else:
@@ -428,19 +535,24 @@ def _interaction_screen_active(self: Any) -> bool:
 def _handle_toolbar_action(self: Any, button_id: str) -> None:
     if self._interaction_screen_active():
         return
+    # Quit and Cancel stay available while an action runs: quitting cancels a
+    # cancellable run and leaves immediately, and Cancel is the point of the
+    # control while the analyzer loop is busy.
+    if button_id == "action-quit":
+        self._request_quit_shell()
+        return
     if self._busy:
-        if button_id == "action-quit":
-            self._write_output("An action is still running. Wait for it to finish before quitting.")
-        else:
-            self._write_output("Another action is still running. Wait for it to finish first.")
+        self._write_output("Another action is still running. Wait for it to finish first.")
         return
     view_name = self._VIEW_ACTIONS.get(button_id)
     if view_name is not None:
         self._activate_view(view_name)
     elif button_id == "action-help":
         self._open_help_popup()
-    elif button_id == "action-quit":
-        self._request_quit_shell()
+    elif button_id == "menu-file-open-project":
+        self._open_project_browser()
+    elif button_id == "menu-file-new-project":
+        self._new_project()
 
 
 def action_show_analyze(self: Any) -> None:
@@ -505,32 +617,35 @@ def action_copy_output(self: Any) -> None:
         self._write_output("Copied all Session output because no text was selected.")
 
 
-def action_cancel_running_analysis(self: Any) -> None:
-    if not self._busy or self._active_job_action_id != "action-analyze":
-        self._write_output("No selected analysis run is active.")
-        return
+def action_quit_shell(self: Any) -> None:
+    self._handle_toolbar_action("action-quit")
 
-    worker = getattr(self, "_active_job_worker", None)
-    cancel_event = getattr(self, "_active_job_cancel_event", None)
-    if cancel_event is None:
-        self._write_output("The running analysis queue does not currently support cancellation.")
-        return
-    if self._active_job_cancel_requested:
-        self._write_output("Cancellation is already pending for the running analysis queue.")
-        return
 
-    self._active_job_cancel_requested = True
-    cancel_event.set()
-    if worker is not None:
-        with suppress(Exception):
-            worker.cancel()
+def action_quit(self: Any) -> None:
+    """Override Textual's default Ctrl+Q action so quitting cancels first."""
+    self._request_quit_shell()
+
+
+def action_cancel_run(self: Any) -> None:
+    self._request_cancel_active_action()
+
+
+def _request_cancel_active_action(self: Any) -> None:
+    """Stop the running analysis without waiting for the current analyzer."""
+    if bool(getattr(self, "_quitting", False)):
+        return
+    cancellation = getattr(self, "_active_cancellation", None)
+    if cancellation is None:
+        # Esc is global; keep it silent when there is nothing to stop.
+        return
+    if bool(getattr(self, "_cancel_requested", False)):
+        return
+    self._cancel_requested = True
+    cancellation.cancel()
+    self._write_output("Cancelling the run. Analyzer workers are being stopped.")
+    self._refresh_summary()
     self._refresh_view()
     self._refresh_shell_state()
-    self._write_output("Cancellation requested. The running analysis will stop at the next checkpoint.")
-
-
-def action_quit_shell(self: Any) -> None:
-    self._request_quit_shell()
 
 
 def action_clear_output(self: Any) -> None:
@@ -557,33 +672,15 @@ def action_save_config(self: Any) -> None:
         self._dirty = False
         self._write_output("App settings saved to your user config.")
         return
+    if getattr(self, "_project_path", None) is not None:
+        if self._persist_project():
+            self._write_output("Configuration saved.")
+        return
     raw_path = self._config_path
     if raw_path is None:
         return
-    config_path = Path(raw_path)
-    if config_path.suffix == ".slproj":
-        root = config_path.parent.resolve()
-        cfg_raw: dict[str, object] = self._cfg
-        project_data: dict[str, object] = {
-            "slproj_version": 1,
-            "analyzed_programs_and_libraries": list(
-                cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])
-            ),
-            "mode": str(cfg_raw.get("mode", "official")),
-            "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
-            "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
-            "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
-            "other_lib_dirs": [
-                _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
-            ],
-            "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
-        }
-        _save_slproj(config_path, cast(ProjectDict, project_data))
-        self._dirty = False
-        self._write_output("Configuration saved.")
-        return
     try:
-        self._save_config_fn(self._config_path, self._cfg)
+        self._save_config_fn(raw_path, self._cfg)
     except ValueError as exc:
         self._report_error("Save failed", f"Save failed: {exc}")
         return
@@ -599,6 +696,16 @@ def action_back(self: Any) -> None:
 
 
 def _request_quit_shell(self: Any) -> None:
+    """Leave immediately, stopping a cancellable run first.
+
+    The analysis runs in a daemon thread, so the app does not wait for it to
+    return. A forced cancel kills the child process group before ``exit`` so no
+    analyzer outlives the shell.
+    """
+    self._quitting = True
+    cancellation = getattr(self, "_active_cancellation", None)
+    if cancellation is not None:
+        cancellation.cancel(force=True)
     self._set_active_action("action-quit")
     self.exit()
 
@@ -611,16 +718,17 @@ def action_focus_previous_control(self: Any) -> None:
     self.focus_previous()
 
 
-def _start_managed_action_worker(self: Any, work: Any, *, label: str, action_id: str) -> Any:
-    return self.run_worker(
-        work,
-        name=f"textual-action-{action_id}",
-        group="textual-shell-action",
-        description=label,
-        exit_on_error=False,
-        exclusive=True,
-        thread=True,
-    )
+def _start_action_thread(self: Any, work: Any, *, label: str, action_id: str) -> threading.Thread:
+    """Run an action on a daemon thread the app never joins.
+
+    Textual's thread workers live in the event loop's default executor, which
+    ``asyncio.run`` waits for on shutdown. A daemon thread lets Quit return at
+    once even when the action is still unwinding; ``_call_on_ui`` keeps the
+    worker from touching a UI that is already gone.
+    """
+    thread = threading.Thread(target=work, name=f"textual-action-{action_id}", daemon=True)
+    thread.start()
+    return thread
 
 
 def _start_action(
@@ -631,21 +739,19 @@ def _start_action(
     action_id: str,
     marks_dirty: bool = False,
     clear_dirty_on_success: bool = False,
+    cancellable: bool = False,
 ) -> None:
     if self._busy:
         self._write_output("Another action is still running. Wait for it to finish first.")
         return
 
-    def _register_action_thread(worker_thread: threading.Thread) -> None:
-        self._active_job_thread = worker_thread
-
+    cancellation = AnalysisCancellation() if cancellable else None
     self._busy = True
+    self._active_cancellation = cancellation
+    self._cancel_requested = False
     self._active_job_label = label
     self._active_job_started_at = time.monotonic()
-    self._active_job_worker = None
-    self._active_job_cancel_event = threading.Event()
-    self._active_job_cancel_requested = False
-    self._active_job_thread = None
+    self._reset_analysis_progress()
     self._set_active_action(action_id)
     self._refresh_summary()
     self._refresh_shell_state()
@@ -655,29 +761,25 @@ def _start_action(
     self._write_output(f"Starting {label}... Live output is shown in this panel.")
 
     def _run() -> None:
-        self.call_from_thread(_register_action_thread, threading.current_thread())
         output_stream = _TextualOutput(emit_text_fn=self._emit_output_from_thread)
         dirty = False
         clear_dirty = False
         try:
             with redirect_stdout(output_stream), redirect_stderr(output_stream):
-                result = action_fn()
+                result = action_fn(cancellation) if cancellable else action_fn()
                 dirty = marks_dirty and bool(result)
                 clear_dirty = clear_dirty_on_success
         except self._quit_app_error:
-            self.call_from_thread(self.exit)
+            self._call_on_ui(self.exit)
             return
         except KeyboardInterrupt:
-            if action_id == "action-analyze" and self._active_job_cancel_requested:
-                self._emit_output_from_thread("Selected analyses canceled.")
-            else:
-                self._emit_output_from_thread(f"{label} interrupted.")
+            self._emit_output_from_thread(f"{label} interrupted.")
         except Exception as exc:  # pragma: no cover - runtime-only fallback  # noqa: BLE001
-            self.call_from_thread(self._report_error, f"{label} failed", f"{label} failed: {exc}")
+            self._call_on_ui(self._report_error, f"{label} failed", f"{label} failed: {exc}")
         finally:
-            self.call_from_thread(lambda: self._finish_action(dirty, clear_dirty_on_success=clear_dirty))
+            self._call_on_ui(self._finish_action, dirty, clear_dirty_on_success=clear_dirty)
 
-    self._active_job_worker = self._start_managed_action_worker(_run, label=label, action_id=action_id)
+    self._start_action_thread(_run, label=label, action_id=action_id)
 
 
 def _show_setup_no_project(self: Any) -> None:
@@ -694,6 +796,9 @@ def _show_setup_no_project(self: Any) -> None:
     ):
         with suppress(*_TEXTUAL_QUERY_ERRORS):
             self.query_one(f"#{label_id}", _TEXTUAL_STATIC).update("")
+    for capacity_key in STRING_CAPACITY_KEYS:
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#setup-label-capacity-{capacity_key}", _TEXTUAL_STATIC).update("")
 
 
 def _show_results_no_project(self: Any) -> None:
@@ -733,8 +838,12 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
     view_host.set_class(settings_view or results_view or output_view, "no-view-box")
     title_widget.update(view.title)
     description_widget.update(view.description)
-    if analyze_view or setup_view or settings_view or results_view or output_view:
-        note_widget.update("")
+    if analyze_view:
+        note_widget.update(self._analyze_note_text())
+    elif setup_view:
+        note_widget.update(self._setup_note_text())
+    elif settings_view:
+        note_widget.update(self._settings_note_text())
     else:
         note_widget.update(view.note)
     workspace_host.set_class(analyze_view, "analyze-split")
@@ -771,6 +880,7 @@ def _refresh_view(self: Any) -> None:  # noqa: PLR0915
         else:
             self._refresh_setup_target_list()
             self._refresh_setup_settings_labels()
+            self._ensure_string_capacity_editor()
 
     if settings_view:
         self._refresh_settings_labels()
@@ -793,10 +903,10 @@ def _interaction_locked(self: Any) -> bool:
 def _load_project_object(self: Any, project: Any) -> None:
     self._project = project
     self._cfg = project.to_default_merged_config_dict(cast(dict[str, object], self._app_only_cfg))
-    self._config_path = project.path
+    self._project_path = project.path
     self._dirty = False
     self._startup_output = ""
-    self._analyze_selected_entry_ids.clear()
+    self._seed_analyze_selection(project.analyzers)
     self._analyze_filter_text = ""
     self._setup_filter_text = ""
     self._ast_refresh_pending = True
@@ -870,8 +980,8 @@ def _confirm_delete_configuration(self: Any, path: Path) -> None:
         project = getattr(self, "_project", None)
         if project is not None and getattr(project, "path", None) == path:
             self._project = None
+            self._project_path = None
             self._cfg = dict(cast(dict[str, object], getattr(self, "_app_only_cfg", {})))
-            self._config_path = None
             self._dirty = False
             self._analyze_selected_entry_ids.clear()
             self._clear_session_output()
@@ -918,7 +1028,7 @@ def _new_project(self: Any) -> None:
             self._write_output(f"A configuration already exists at {project_path}.")
             return
         try:
-            project = _init_project(project_path, name=sanitized)
+            project = _init_project(project_path)
         except (FileExistsError, OSError, ValueError) as exc:
             self._report_error("Failed to create configuration", f"Failed to create configuration: {exc}")
             return
@@ -928,30 +1038,69 @@ def _new_project(self: Any) -> None:
     self.present_request(request, on_response_fn=_apply_response)
 
 
-def _persist_project(self: Any) -> None:
+def _project_string_capacities(cfg_raw: Mapping[str, object], project: object) -> StringCapacitiesDict:
+    """The capacities to write, falling back to the project file and standards.
+
+    A UI-only cfg built from a bare dictionary may not carry the table yet, but
+    the loaded project still does. Validating the resolved table is what keeps a
+    missing or non-positive value out of the saved file.
+    """
+    table = cfg_raw.get("string_capacities")
+    if not isinstance(table, Mapping):
+        project_data = getattr(project, "data", None)
+        if isinstance(project_data, Mapping):
+            table = cast(Mapping[str, object], project_data).get("string_capacities")
+    if table is None:
+        table = standard_string_capacities_dict()
+    return validate_string_capacities(table, location="the configuration").as_dict()
+
+
+def _persist_project(self: Any) -> bool:
+    """Save the in-memory configuration to its project file.
+
+    Returns whether the configuration is now on disk. A missing project has
+    nothing to save, so it reports failure and the caller keeps the shell in the
+    unsaved state.
+    """
     project = getattr(self, "_project", None)
     if project is None:
-        return
+        return False
     cfg_raw: dict[str, object] = self._cfg
     root = project.root
-    project_data: dict[str, object] = {
-        "slproj_version": 1,
+    try:
+        capacities = _project_string_capacities(cfg_raw, project)
+    except ValueError as exc:
+        self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
+        return False
+    program_dir = _make_project_relative(str(cfg_raw.get("program_dir", "")), root)
+    abb_lib_dir = _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root)
+    icf_dir = _make_project_relative(str(cfg_raw.get("icf_dir", "")), root)
+    other_lib_dirs = [
+        _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
+    ]
+    saved_roots = (program_dir, abb_lib_dir, icf_dir, *other_lib_dirs)
+    external_root = any(path and Path(path).is_absolute() for path in saved_roots)
+    allow_external_roots = external_root or bool(project.data.get("allow_external_roots", False))
+    project_data: ProjectDict = {
+        "slproj_version": _SLPROJ_VERSION,
         "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
+        "analyzers": list(getattr(project, "analyzers", ())),
+        "string_capacities": capacities,
         "mode": str(cfg_raw.get("mode", "official")),
-        "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
-        "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
-        "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
-        "other_lib_dirs": [
-            _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
-        ],
+        "program_dir": program_dir,
+        "ABB_lib_dir": abb_lib_dir,
+        "icf_dir": icf_dir,
+        "other_lib_dirs": other_lib_dirs,
+        "allow_external_roots": allow_external_roots,
         "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
     }
     try:
-        _save_slproj(project.path, cast(ProjectDict, project_data))
+        _save_slproj(project.path, project_data)
     except (ValueError, OSError) as exc:
         self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
-        return
+        return False
     self._dirty = False
+    return True
 
 
 def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
@@ -961,9 +1110,9 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     output_widget = _query_required(self, "#output")
     interaction_host = _query_required(self, "#interaction-host", _TEXTUAL_VERTICAL)
     analyze_run_selected_button = _query_required(self, "#analyze-run-selected", _TEXTUAL_BUTTON)
+    analyze_cancel_run_button = _query_required(self, "#analyze-cancel-run", _TEXTUAL_BUTTON)
     analyze_select_all_button = _query_required(self, "#analyze-select-all", _TEXTUAL_BUTTON)
     output_generate_change_review_button = _query_required(self, "#output-generate-change-review", _TEXTUAL_BUTTON)
-    analyze_cancel_running_button = _query_required(self, "#analyze-cancel-running", _TEXTUAL_BUTTON)
     analyze_clear_selection_button = _query_required(self, "#analyze-clear-selection", _TEXTUAL_BUTTON)
     analyze_clear_output_button = _query_required(self, "#analyze-clear-output", _TEXTUAL_BUTTON)
 
@@ -984,14 +1133,15 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
     analyze_run_selected_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not self._setup_has_targets() or not selected_keys
     )
+    cancellable_active = self._busy and getattr(self, "_active_cancellation", None) is not None
+    analyze_cancel_run_button.disabled = (
+        not cancellable_active or bool(getattr(self, "_cancel_requested", False)) or not analyze_view
+    )
     analyze_select_all_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyzer_entry_ids())
     )
     output_generate_change_review_button.disabled = (
         toolbar_disabled or not output_view or interaction_locked or not self._setup_has_targets()
-    )
-    analyze_cancel_running_button.disabled = not (
-        self._busy and self._active_job_action_id == "action-analyze" and analyze_view
     )
     analyze_clear_selection_button.disabled = (
         toolbar_disabled or not analyze_view or interaction_locked or not bool(self._analyze_selected_entry_ids)
@@ -1002,10 +1152,8 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         analyze_clear_filter_button.disabled = toolbar_disabled or not analyze_view or interaction_locked
     except _TEXTUAL_QUERY_ERRORS:
         pass
-    results_group_button = _query_required(self, "#results-toggle-group", _TEXTUAL_BUTTON)
     results_expand_button = _query_required(self, "#results-expand-all", _TEXTUAL_BUTTON)
     results_collapse_button = _query_required(self, "#results-collapse-all", _TEXTUAL_BUTTON)
-    results_group_button.disabled = toolbar_disabled or not results_view or interaction_locked
     results_expand_button.disabled = toolbar_disabled or not results_view or interaction_locked
     results_collapse_button.disabled = toolbar_disabled or not results_view or interaction_locked
     try:
@@ -1027,14 +1175,6 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         widget_id = str(getattr(selection_list, "id", "") or "")
         if widget_id.startswith(_ANALYZER_LIST_ID_PREFIX):
             selection_list.disabled = toolbar_disabled or not analyze_view or interaction_locked
-    focused_widget = getattr(self, "focused", None)
-    if (
-        analyze_view
-        and self._busy
-        and self._active_job_action_id == "action-analyze"
-        and bool(getattr(focused_widget, "disabled", False))
-    ):
-        analyze_cancel_running_button.focus()
 
     for btn_id in (
         "setup-edit-program-dir",
@@ -1068,6 +1208,11 @@ def _refresh_shell_state(self: Any) -> None:  # noqa: PLR0915
         "settings-edit-review-output-dir",
     ):
         _query_required(self, f"#{btn_id}", _TEXTUAL_BUTTON).disabled = toolbar_disabled or not settings_view
+    for capacity_key in STRING_CAPACITY_KEYS:
+        with suppress(*_TEXTUAL_QUERY_ERRORS):
+            self.query_one(f"#setup-edit-capacity-{capacity_key}", _TEXTUAL_BUTTON).disabled = (
+                toolbar_disabled or not setup_view or interaction_locked
+            )
     if setup_view and self._project_loaded():
         self._refresh_setup_settings_labels()
     if settings_view:
@@ -1094,16 +1239,17 @@ def _on_nav_tab_click(self: Any, event: Any) -> None:
 
 def on_button_pressed(self: Any, event: Any) -> None:
     button_id = event.button.id or ""
+    if self._handle_string_capacity_button(button_id):
+        return
     button_actions: dict[str, Any] = {
         "setup-target-remove": lambda: self._remove_selected_setup_target(self._selected_configured_target),
         "setup-target-browse": self._open_file_browser,
         "analyze-run-selected": self._run_selected_analyzers,
+        "analyze-cancel-run": self._request_cancel_active_action,
         "analyze-select-all": self._select_all_analyzers,
         "analyze-clear-filter": lambda: self._set_analyze_filter_text(""),
-        "analyze-cancel-running": self.action_cancel_running_analysis,
         "analyze-clear-selection": self._clear_selected_analyzers,
         "analyze-clear-output": self._clear_output_and_refocus,
-        "results-toggle-group": self._toggle_results_group_by,
         "results-expand-all": self._expand_all_results,
         "results-collapse-all": self._collapse_all_results,
         "results-delete-run": self._delete_selected_run,
@@ -1127,10 +1273,7 @@ def on_button_pressed(self: Any, event: Any) -> None:
             "output", "retention_lines", label="session output retention"
         ),
         "settings-edit-review-output-dir": self._open_review_output_dir_picker,
-        "menu-file-open-project": self._open_project_browser,
-        "menu-file-new-project": self._new_project,
         "menu-help": self._open_help_popup,
-        "action-quit": self._request_quit_shell,
     }
     action = button_actions.get(button_id)
     if action is not None:
@@ -1153,12 +1296,14 @@ if TYPE_CHECKING:
         def _append_output_line_to_widget(
             self, output_widget: Any, line_text: str, *, previous_line: str | None
         ) -> str: ...
-        def _trim_session_output_lines(self) -> bool: ...
+        def _trim_session_output_lines(self) -> int: ...
         def _rebuild_output_widget(self, output_widget: Any) -> None: ...
         def _capture_error_modal_output(self, text: str) -> str | None: ...
         def _show_error_modal(self, title: str, message: str) -> None: ...
+        def _on_error_modal_closed(self, _result: object | None = None) -> None: ...
         def _report_error(self, title: str, message: str) -> None: ...
         def _write_output(self, text: str) -> None: ...
+        def _call_on_ui(self, callback: Any, *args: object, **kwargs: object) -> None: ...
         def _emit_output_from_thread(self, text: str) -> None: ...
         def _clear_session_output(self) -> None: ...
         def _clear_output_and_refocus(self) -> None: ...
@@ -1174,7 +1319,7 @@ if TYPE_CHECKING:
         def _open_project_browser(self) -> None: ...
         def _confirm_delete_configuration(self, path: Path) -> None: ...
         def _new_project(self) -> None: ...
-        def _persist_project(self) -> None: ...
+        def _persist_project(self) -> bool: ...
         def _show_setup_no_project(self) -> None: ...
         def _show_results_no_project(self) -> None: ...
         def action_show_analyze(self) -> None: ...
@@ -1186,15 +1331,17 @@ if TYPE_CHECKING:
         def action_toggle_results_empty(self) -> None: ...
         def action_prompt_view_filter(self) -> None: ...
         def action_copy_output(self) -> None: ...
-        def action_cancel_running_analysis(self) -> None: ...
         def action_quit_shell(self) -> None: ...
+        def action_quit(self) -> None: ...
+        def action_cancel_run(self) -> None: ...
         def action_clear_output(self) -> None: ...
         def action_save_config(self) -> None: ...
         def action_back(self) -> None: ...
         def _request_quit_shell(self) -> None: ...
+        def _request_cancel_active_action(self) -> None: ...
         def action_focus_next_control(self) -> None: ...
         def action_focus_previous_control(self) -> None: ...
-        def _start_managed_action_worker(self, work: Any, *, label: str, action_id: str) -> Any: ...
+        def _start_action_thread(self, work: Any, *, label: str, action_id: str) -> threading.Thread: ...
         def _start_action(
             self,
             label: str,
@@ -1203,6 +1350,7 @@ if TYPE_CHECKING:
             action_id: str,
             marks_dirty: bool = False,
             clear_dirty_on_success: bool = False,
+            cancellable: bool = False,
         ) -> None: ...
         def _refresh_view(self) -> None: ...
         def _refresh_shell_state(self) -> None: ...
@@ -1225,8 +1373,10 @@ else:
         _rebuild_output_widget = _rebuild_output_widget
         _capture_error_modal_output = _capture_error_modal_output
         _show_error_modal = _show_error_modal
+        _on_error_modal_closed = _on_error_modal_closed
         _report_error = _report_error
         _write_output = _write_output
+        _call_on_ui = _call_on_ui
         _emit_output_from_thread = _emit_output_from_thread
         _clear_session_output = _clear_session_output
         _clear_output_and_refocus = _clear_output_and_refocus
@@ -1254,15 +1404,17 @@ else:
         action_toggle_results_empty = action_toggle_results_empty
         action_prompt_view_filter = action_prompt_view_filter
         action_copy_output = action_copy_output
-        action_cancel_running_analysis = action_cancel_running_analysis
         action_quit_shell = action_quit_shell
+        action_quit = action_quit
+        action_cancel_run = action_cancel_run
         action_clear_output = action_clear_output
         action_save_config = action_save_config
         action_back = action_back
         _request_quit_shell = _request_quit_shell
+        _request_cancel_active_action = _request_cancel_active_action
         action_focus_next_control = action_focus_next_control
         action_focus_previous_control = action_focus_previous_control
-        _start_managed_action_worker = _start_managed_action_worker
+        _start_action_thread = _start_action_thread
         _start_action = _start_action
         _refresh_view = _refresh_view
         _refresh_shell_state = _refresh_shell_state

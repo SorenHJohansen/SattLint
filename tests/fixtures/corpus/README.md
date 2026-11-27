@@ -11,7 +11,7 @@ Layout:
 - `semantic/workspace/` for workspace-only semantic corpus fixtures
 - `semantic/analyzer/` for analyzer-only corpus fixtures
 - `semantic/shared/` for corpus fixtures reused by both workspace and analyzer manifests
-- `manifests/` for the analyzer manifests read by the corpus tests
+- `manifests/` for the corpus manifests; only the analyzer family has an executing harness
 
 Manifest shape:
 
@@ -43,9 +43,15 @@ Manifest shape:
 
 Execution:
 
-- `tests/test_corpus_analyzers.py` and `tests/corpus/test_corpus_regression_exactness.py`
-  load every `manifests/analyzer-*.json` file, run the named analyzer over the
-  target, and assert the findings against the expectation.
+- `tests/test_corpus_analyzers.py` loads every manifest whose `mode` starts
+  with `analyzer-`, runs the named analyzer over the target, and asserts the
+  finding ids and summary counts against the expectation.
+- `tests/corpus/test_manifest_schema.py` validates every manifest under
+  `manifests/`: it parses (rejecting duplicate JSON keys), declares the
+  required fields, names an existing target, resolves every analyzer key it
+  declares, rejects duplicate expected/forbidden ids, and requires
+  `finding_count == sum(rule_counts)` when both are present. It does not run
+  analyzers.
 - Analyzer manifests may point at `semantic/analyzer/`, `semantic/shared/`,
   `valid/`, or a specialized fixture tree such as
   `tests/fixtures/analyzer_guardrails/`.

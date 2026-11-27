@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 from sattlint.parser_api import ModuleTypeDef, ParameterMapping, Variable
 
 from ...models.usage import VariableUsage
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import VariableIssue
 from ...resolution.scope import ScopeContext
 from ._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
 
@@ -30,17 +30,6 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
     def append_param_mapping_issue(self, mapping: ParameterMapping, issue: VariableIssue) -> None:
         self._append_param_mapping_issue(mapping, issue)
 
-    def add_issue(
-        self,
-        kind: IssueKind,
-        module_path: list[str],
-        variable: Variable,
-        *,
-        role: str = "",
-        field_path: str | None = None,
-    ) -> None:
-        self._add_issue(kind, module_path, variable, role=role, field_path=field_path)
-
     def is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
         return self._is_from_root_origin(origin_file, origin_lib)
 
@@ -52,6 +41,9 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
 
     def has_ignorable_output_binding(self, variable: Variable) -> bool:
         return self._has_ignorable_output_binding(variable)
+
+    def has_out_of_origin_consumer(self, variable: Variable) -> bool:
+        return self._has_out_of_origin_consumer(variable)
 
     def procedure_status_issue(self, variable: Variable, usage: VariableUsage) -> tuple[str, str | None] | None:
         return self._procedure_status_issue(variable, usage)

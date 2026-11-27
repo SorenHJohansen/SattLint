@@ -9,6 +9,7 @@ from typing import TypedDict, cast
 
 from sattlint.parser_api import (
     BasePicture,
+    CodeComment,
     SFCAlternative,
     SFCParallel,
     SFCSubsequence,
@@ -19,8 +20,8 @@ from sattlint.parser_api import (
 
 from ...resolution.paths import CanonicalPath
 from ..framework import Issue
+from ..shared.module_code_walk import iter_modulecodes
 from ..shared.target_origin import TargetOriginFilter
-from ._sfc_module_walk import iter_sfc_modulecodes
 
 GuardLiteral = bool | int | float | str
 
@@ -242,6 +243,15 @@ def _normalize_guard_signature(expr: object) -> object:
     return ("text", _expr_text(cast(object, expr)).casefold())
 
 
+def _leading_transition(branch: SequenceABC[object]) -> SFCTransition | None:
+    """The entry transition of an alternative branch, if it starts with one."""
+    for node in branch:
+        if isinstance(node, CodeComment):
+            continue
+        return node if isinstance(node, SFCTransition) else None
+    return None
+
+
 def _collect_transition_logic_issues(
     base_picture: BasePicture,
     *,
@@ -249,66 +259,73 @@ def _collect_transition_logic_issues(
 ) -> list[Issue]:
     issues: list[Issue] = []
 
+    def inspect_alternative(
+        alternative: SFCAlternative,
+        module_path: list[str],
+        sequence_name: str,
+        branch_path: tuple[int, ...],
+    ) -> None:
+        duplicate_groups: dict[str, list[tuple[int, _DuplicateTransition]]] = {}
+        for branch_index, branch in enumerate(alternative.branches or []):
+            transition = _leading_transition(branch)
+            if transition is None:
+                continue
+            signature = _normalize_guard_signature(transition.condition)
+            entry = _DuplicateTransition(
+                name=transition.name or f"<unnamed branch {branch_index + 1}>",
+                condition=_expr_text(cast(object, transition.condition)),
+                normalized_guard=repr(signature),
+            )
+            duplicate_groups.setdefault(repr(signature), []).append((branch_index, entry))
+
+        for duplicates in duplicate_groups.values():
+            if len(duplicates) < 2:
+                continue
+            transition_names = [item["name"] for _branch_index, item in duplicates]
+            branch_indices = [branch_index for branch_index, _item in duplicates]
+            issues.append(
+                Issue(
+                    kind="sfc_duplicate_transition_guard",
+                    message=(
+                        f"Sequence {sequence_name!r}{_format_branch_path(branch_path)} has sibling alternative branches "
+                        f"with equivalent entry guards: {', '.join(repr(name) for name in transition_names)}."
+                    ),
+                    module_path=module_path.copy(),
+                    data={
+                        "sequence": sequence_name,
+                        "branch_path": list(branch_path),
+                        "branch_indices": [index + 1 for index in branch_indices],
+                        "transition_names": transition_names,
+                        "conditions": [item["condition"] for _branch_index, item in duplicates],
+                        "normalized_guard": duplicates[0][1]["normalized_guard"],
+                        "site": f"SQ:{sequence_name}{_format_branch_path(branch_path)}",
+                        "context": " OR ".join(item["condition"] for _branch_index, item in duplicates),
+                    },
+                )
+            )
+
     def inspect_nodes(
         nodes: SequenceABC[object] | None,
         module_path: list[str],
         sequence_name: str,
         branch_path: tuple[int, ...] = (),
     ) -> None:
-        duplicate_groups: dict[str, list[_DuplicateTransition]] = {}
-
-        for index, node in enumerate(nodes or []):
-            if isinstance(node, SFCTransition):
-                condition_text = _expr_text(cast(object, node.condition))
-                signature = _normalize_guard_signature(node.condition)
-                transition_name = node.name or f"<unnamed:{index + 1}>"
-
-                duplicate = _DuplicateTransition(
-                    name=transition_name,
-                    condition=condition_text,
-                    normalized_guard=repr(signature),
-                )
-                duplicate_groups.setdefault(repr(signature), []).append(duplicate)
+        for node in nodes or []:
+            if isinstance(node, SFCAlternative):
+                inspect_alternative(node, module_path, sequence_name, branch_path)
+                for branch_index, branch in enumerate(node.branches or []):
+                    inspect_nodes(branch, module_path, sequence_name, (*branch_path, branch_index))
                 continue
 
-            if isinstance(node, SFCAlternative | SFCParallel):
+            if isinstance(node, SFCParallel):
                 for branch_index, branch in enumerate(node.branches or []):
-                    inspect_nodes(
-                        branch,
-                        module_path,
-                        sequence_name,
-                        (*branch_path, branch_index),
-                    )
+                    inspect_nodes(branch, module_path, sequence_name, (*branch_path, branch_index))
                 continue
 
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 inspect_nodes(node.body, module_path, sequence_name, branch_path)
 
-        for duplicates in duplicate_groups.values():
-            if len(duplicates) < 2:
-                continue
-            transition_names = [item["name"] for item in duplicates]
-            issues.append(
-                Issue(
-                    kind="sfc_duplicate_transition_guard",
-                    message=(
-                        f"Sequence {sequence_name!r}{_format_branch_path(branch_path)} contains transitions with equivalent guards: "
-                        f"{', '.join(repr(name) for name in transition_names)}."
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "sequence": sequence_name,
-                        "branch_path": list(branch_path),
-                        "transition_names": transition_names,
-                        "conditions": [item["condition"] for item in duplicates],
-                        "normalized_guard": duplicates[0]["normalized_guard"],
-                        "site": f"SQ:{sequence_name}{_format_branch_path(branch_path)}",
-                        "context": " OR ".join(item["condition"] for item in duplicates),
-                    },
-                )
-            )
-
-    for module_path, modulecode in iter_sfc_modulecodes(base_picture, moduletype_filter=moduletype_filter):
+    for module_path, modulecode in iter_modulecodes(base_picture, moduletype_filter=moduletype_filter):
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:

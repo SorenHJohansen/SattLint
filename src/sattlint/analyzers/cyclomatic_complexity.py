@@ -20,7 +20,6 @@ from sattlint.parser_api import (
     SFCParallel,
     SFCStep,
     SFCSubsequence,
-    SFCTransition,
     SFCTransitionSub,
     SingleModule,
     TernaryOp,
@@ -28,6 +27,15 @@ from sattlint.parser_api import (
     VarRef,
 )
 
+from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD as DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD,
+)
+from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_MODULE_THRESHOLD as DEFAULT_MODULE_COMPLEXITY_THRESHOLD,
+)
+from ..config.analysis import (
+    DEFAULT_CYCLOMATIC_STEP_THRESHOLD as DEFAULT_STEP_COMPLEXITY_THRESHOLD,
+)
 from ..config.analysis import (
     cyclomatic_equation_block_threshold,
     cyclomatic_module_threshold,
@@ -37,9 +45,13 @@ from .framework import Issue, SimpleReport
 from .shared._walk_utils import iter_nested_modules
 from .shared.target_origin import build_target_origin_filter_for_basepicture
 
-DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
-DEFAULT_STEP_COMPLEXITY_THRESHOLD = 6
-DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD = 10
+__all__ = [
+    "DEFAULT_EQUATION_BLOCK_COMPLEXITY_THRESHOLD",
+    "DEFAULT_MODULE_COMPLEXITY_THRESHOLD",
+    "DEFAULT_STEP_COMPLEXITY_THRESHOLD",
+    "CyclomaticComplexityAnalyzer",
+    "analyze_cyclomatic_complexity",
+]
 
 
 class CyclomaticComplexityAnalyzer:
@@ -88,7 +100,7 @@ class CyclomaticComplexityAnalyzer:
         *,
         parent_path: list[str],
     ) -> None:
-        module_path = [*parent_path, moduletype.name]
+        module_path = [*parent_path, f"TypeDef:{moduletype.name}"]
         self._record_scope_complexity_issue(
             module_path=module_path,
             scope_kind="module type",
@@ -147,20 +159,29 @@ class CyclomaticComplexityAnalyzer:
         module_path: list[str],
         modulecode: ModuleCode,
     ) -> int:
+        # A module's complexity is the worst scope it contains, not the sum over
+        # its scopes. The module-level finding is a rollup: when the worst scope
+        # is an equation block or step, that block is reported on its own and
+        # the module finding identifies which module owns the hot spot. The
+        # module itself is one scope with base complexity 1.
         complexity = 1
         for equation in modulecode.equationblocks or []:
             equation_name = getattr(equation, "name", "") or "<unnamed>"
+            equation_complexity = 1 + self._count_statement_list(cast(list[object], equation.code or []))
             self._record_equation_block_complexity_issue(
                 module_path=module_path,
                 equation_name=equation_name,
-                equation_code=cast(list[object], equation.code or []),
+                equation_complexity=equation_complexity,
             )
-            complexity += self._count_statement_list(cast(list[object], equation.code or []))
+            complexity = max(complexity, equation_complexity)
         for sequence in modulecode.sequences or []:
-            complexity += self._count_sequence_nodes(
-                module_path=module_path,
-                sequence_name=sequence.name or "",
-                nodes=cast(list[object], sequence.code or []),
+            complexity = max(
+                complexity,
+                self._record_step_complexity_issues(
+                    module_path=module_path,
+                    sequence_name=sequence.name or "",
+                    nodes=cast(list[object], sequence.code or []),
+                ),
             )
         return complexity
 
@@ -169,9 +190,8 @@ class CyclomaticComplexityAnalyzer:
         *,
         module_path: list[str],
         equation_name: str,
-        equation_code: list[object],
+        equation_complexity: int,
     ) -> None:
-        equation_complexity = 1 + self._count_statement_list(equation_code)
         if equation_complexity <= self._equation_block_threshold:
             return
         self._issues.append(
@@ -193,14 +213,15 @@ class CyclomaticComplexityAnalyzer:
             )
         )
 
-    def _count_sequence_nodes(
+    def _record_step_complexity_issues(
         self,
         *,
         module_path: list[str],
         sequence_name: str,
         nodes: list[object],
     ) -> int:
-        count = 0
+        """Report over-threshold steps and return the worst step complexity in the nodes."""
+        max_step_complexity = 0
         for node in nodes:
             if isinstance(node, SFCStep):
                 step_complexity = 1 + self._count_statement_list(
@@ -226,27 +247,29 @@ class CyclomaticComplexityAnalyzer:
                             },
                         )
                     )
-                count += step_complexity - 1
-                continue
-            if isinstance(node, SFCTransition):
-                count += 1 + self._count_node(node.condition)
+                max_step_complexity = max(max_step_complexity, step_complexity)
                 continue
             if isinstance(node, SFCAlternative | SFCParallel):
-                count += max(0, len(node.branches or []) - 1)
                 for branch in node.branches or []:
-                    count += self._count_sequence_nodes(
-                        module_path=module_path,
-                        sequence_name=sequence_name,
-                        nodes=cast(list[object], branch),
+                    max_step_complexity = max(
+                        max_step_complexity,
+                        self._record_step_complexity_issues(
+                            module_path=module_path,
+                            sequence_name=sequence_name,
+                            nodes=cast(list[object], branch),
+                        ),
                     )
                 continue
             if isinstance(node, SFCSubsequence | SFCTransitionSub):
-                count += self._count_sequence_nodes(
-                    module_path=module_path,
-                    sequence_name=sequence_name,
-                    nodes=cast(list[object], node.body or []),
+                max_step_complexity = max(
+                    max_step_complexity,
+                    self._record_step_complexity_issues(
+                        module_path=module_path,
+                        sequence_name=sequence_name,
+                        nodes=cast(list[object], node.body or []),
+                    ),
                 )
-        return count
+        return max_step_complexity
 
     def _count_statement_list(self, statements: list[object]) -> int:
         return sum(self._count_node(statement) for statement in statements)
@@ -285,8 +308,8 @@ class CyclomaticComplexityAnalyzer:
             return self._count_node(node.operand)
         if isinstance(node, VarRef):
             return 0
-        if isinstance(node, list):
-            return sum(self._count_node(item) for item in cast(list[object], node))
+        if isinstance(node, (list, tuple)):
+            return sum(self._count_node(item) for item in cast(list[object] | tuple[object, ...], node))
         return 0
 
 

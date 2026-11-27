@@ -1,22 +1,46 @@
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-from tests.helpers.analyzers_variables_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    StringMappingMismatchIssue,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
+
+
+def _source_name(issue: StringMappingMismatchIssue) -> str:
+    """Name of the source variable a mismatch record names, which must be present."""
+    assert issue.source_variable is not None
+    return issue.source_variable.name
 
 
 def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_but_edge_mismatches_remain():
     dependency_typedef = ModuleTypeDef(
         name="EquipModCoordinate",
-        moduleparameters=[Variable(name="EdgeTarget", datatype=Simple_DataType.IDENTSTRING)],
-        localvariables=[Variable(name="InnerSource", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="EdgeTarget", datatype=ScalarDatatype.IDENTSTRING)],
+        localvariables=[Variable(name="InnerSource", datatype=ScalarDatatype.STRING)],
         submodules=[
             SingleModule(
                 header=_hdr("InnerConsumer"),
-                moduledefs=[],
-                moduleparameters=[Variable(name="InnerTarget", datatype=Simple_DataType.IDENTSTRING)],
+                moduledef=None,
+                moduleparameters=[Variable(name="InnerTarget", datatype=ScalarDatatype.IDENTSTRING)],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[
                     ParameterMapping(
                         target=_varref("InnerTarget"),
@@ -29,16 +53,15 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="exstruct.x",
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
         name="Column",
         moduleparameters=[],
-        localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="EdgeSource", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Coordinate"),
@@ -55,9 +78,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -67,8 +89,8 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
         moduletype_defs=[dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -78,7 +100,7 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -86,19 +108,18 @@ def test_library_dependency_typedef_internal_string_mismatches_are_suppressed_bu
 def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but_edge_mismatches_remain():
     nested_dependency = ModuleTypeDef(
         name="OffButtonFB",
-        moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
+        moduleparameters=[Variable(name="TagPrefix", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="exstruct.x",
         origin_lib="exstruct",
     )
     dependency_typedef = ModuleTypeDef(
         name="EquipModCoordinate",
-        moduleparameters=[Variable(name="EdgeTarget", datatype=Simple_DataType.IDENTSTRING)],
-        localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="EdgeTarget", datatype=ScalarDatatype.IDENTSTRING)],
+        localvariables=[Variable(name="Name", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("AutoButton"),
@@ -115,16 +136,15 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="exstruct.x",
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
         name="Column",
         moduleparameters=[],
-        localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="EdgeSource", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Coordinate"),
@@ -141,9 +161,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -153,8 +172,8 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
         moduletype_defs=[nested_dependency, dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -164,7 +183,7 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -172,19 +191,18 @@ def test_library_dependency_nested_instance_string_mismatches_are_suppressed_but
 def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_without_dependency_origin_file():
     nested_dependency = ModuleTypeDef(
         name="OffButtonFB",
-        moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
+        moduleparameters=[Variable(name="TagPrefix", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="exstruct.x",
         origin_lib="exstruct",
     )
     dependency_typedef = ModuleTypeDef(
         name="EquipModCoordinate",
-        moduleparameters=[Variable(name="EdgeTarget", datatype=Simple_DataType.IDENTSTRING)],
-        localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="EdgeTarget", datatype=ScalarDatatype.IDENTSTRING)],
+        localvariables=[Variable(name="Name", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("AutoButton"),
@@ -201,16 +219,15 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file=None,
         origin_lib="exstruct",
     )
     parent_typedef = ModuleTypeDef(
         name="Column",
         moduleparameters=[],
-        localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="EdgeSource", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Coordinate"),
@@ -227,9 +244,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -239,8 +255,8 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         moduletype_defs=[nested_dependency, dependency_typedef, parent_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -250,7 +266,7 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "TypeDef:Column", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]
 
@@ -258,19 +274,18 @@ def test_library_dependency_nested_instance_string_mismatches_stay_suppressed_wi
 def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_without_dependency_origin_file():
     nested_dependency = ModuleTypeDef(
         name="OffButtonFB",
-        moduleparameters=[Variable(name="TagPrefix", datatype=Simple_DataType.IDENTSTRING)],
+        moduleparameters=[Variable(name="TagPrefix", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="exstruct.x",
         origin_lib="exstruct",
     )
     dependency_typedef = ModuleTypeDef(
         name="EquipModCoordinate",
-        moduleparameters=[Variable(name="EdgeTarget", datatype=Simple_DataType.IDENTSTRING)],
-        localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        moduleparameters=[Variable(name="EdgeTarget", datatype=ScalarDatatype.IDENTSTRING)],
+        localvariables=[Variable(name="Name", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("AutoButton"),
@@ -287,9 +302,8 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file=None,
         origin_lib="exstruct",
     )
@@ -297,7 +311,7 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[nested_dependency, dependency_typedef],
-        localvariables=[Variable(name="EdgeSource", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="EdgeSource", datatype=ScalarDatatype.STRING)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Coordinate"),
@@ -314,8 +328,8 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
                 ],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="PlantProgram.s",
         origin_lib="PlantProgram",
     )
@@ -329,6 +343,6 @@ def test_program_dependency_nested_instance_string_mismatches_stay_suppressed_wi
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
 
-    assert [(issue.module_path, issue.variable.name, issue.source_variable.name) for issue in issues] == [
+    assert [(issue.module_path, issue.variable.name, _source_name(issue)) for issue in issues] == [
         (["Root", "Coordinate"], "EdgeTarget", "EdgeSource")
     ]

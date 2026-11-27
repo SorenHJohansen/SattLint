@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Protocol, cast
 
 from sattlint.parser_api import (
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
     VarRef,
 )
@@ -22,9 +22,15 @@ from sattlint.parser_api import (
     split_dotted_name as _split_dotted_name,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
-from ...resolution import TypeGraph
+from ...config.string_capacities import StringCapacities
+from ...reporting.variables_report import (
+    MinMaxMappingMismatchIssue,
+    StringMappingMismatchIssue,
+    VariableIssue,
+)
+from ...resolution import AmbiguousRecordError, TypeGraph
 from ...resolution.common import varname_full
+from ._string_capacity import capacity_for_datatype, is_string_datatype
 
 log = logging.getLogger("SattLint")
 
@@ -40,46 +46,44 @@ class Validator(Protocol):
 class StringMappingValidator:
     """Validates string variable mapping types."""
 
-    _STRING_LIMITS: ClassVar[dict[Simple_DataType, int]] = {
-        Simple_DataType.IDENTSTRING: 15,
-        Simple_DataType.TAGSTRING: 30,
-        Simple_DataType.STRING: 40,
-        Simple_DataType.LINESTRING: 80,
-        Simple_DataType.MAXSTRING: 140,
-    }
-    _STRING_TYPES: ClassVar[set[Simple_DataType]] = set(_STRING_LIMITS.keys())
+    def __init__(self, capacities: StringCapacities) -> None:
+        self._capacities = capacities
 
-    def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
-        return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
+    def _is_string_simple_type(self, dt: ScalarDatatype | str | None) -> bool:
+        return is_string_datatype(dt)
 
-    def _string_limit(self, dt: Simple_DataType | str | None) -> int | None:
-        if not isinstance(dt, Simple_DataType):
-            return None
-        return self._STRING_LIMITS.get(dt)
+    def _string_limit(self, dt: ScalarDatatype | str | None) -> int | None:
+        return capacity_for_datatype(self._capacities, dt)
+
+    def _mapping_context(self, target: Variable, source: Variable) -> str:
+        return (
+            f"{target.name} ({target.datatype_text}, {self._string_limit(target.datatype)} characters) => "
+            f"{source.name} ({source.datatype_text}, {self._string_limit(source.datatype)} characters)"
+        )
 
     def check_string_mapping(
         self,
         tgt_var: Variable,
         src_var: Variable,
         path: list[str],
-    ) -> list[VariableIssue]:
+    ) -> list[StringMappingMismatchIssue]:
         """
         Check if string variable mappings have mismatched types.
 
         SattLine requires strict string type matching (e.g. String40 -> String40).
         """
-        issues: list[VariableIssue] = []
+        issues: list[StringMappingMismatchIssue] = []
 
         # Only flag assignments that narrow string capacity.
         target_limit = self._string_limit(tgt_var.datatype)
         source_limit = self._string_limit(src_var.datatype)
         if target_limit is not None and source_limit is not None and source_limit > target_limit:
-            issue = VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            issue = StringMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
                 source_variable=src_var,
+                context=self._mapping_context(tgt_var, src_var),
             )
             issues.append(issue)
 
@@ -92,7 +96,7 @@ class StringMappingValidator:
         path: list[str],
         *,
         is_duration: bool = False,
-    ) -> list[VariableIssue]:
+    ) -> list[StringMappingMismatchIssue]:
         """Check if a literal-to-parameter mapping narrows a string type."""
         source_datatype = _infer_literal_datatype(source_literal, is_duration=is_duration)
         target_limit = self._string_limit(tgt_var.datatype)
@@ -107,13 +111,14 @@ class StringMappingValidator:
             if source_limit is None or source_limit <= target_limit:
                 return []
 
+        source_var = Variable(name=repr(source_literal), datatype=cast(ScalarDatatype, source_datatype))
         return [
-            VariableIssue(
-                kind=IssueKind.STRING_MAPPING_MISMATCH,
+            StringMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="parameter mapping type mismatch",
-                source_variable=Variable(name=repr(source_literal), datatype=cast(Simple_DataType, source_datatype)),
+                source_variable=source_var,
+                context=self._mapping_context(tgt_var, source_var),
             )
         ]
 
@@ -164,13 +169,13 @@ class MinMaxValidator:
         tgt_var: Variable,
         src_var: Variable,
         path: list[str],
-    ) -> list[VariableIssue]:
+    ) -> list[MinMaxMappingMismatchIssue]:
         """
         Check for mismatched min/max semantics in parameter mappings.
 
         Example: Mapping a 'MaxLimit' variable to a 'MinLimit' parameter.
         """
-        issues: list[VariableIssue] = []
+        issues: list[MinMaxMappingMismatchIssue] = []
 
         tgt_name = self._mapping_name_text(pm.target) or tgt_var.name
         src_name = self._mapping_name_text(pm.source) or src_var.name
@@ -187,8 +192,7 @@ class MinMaxValidator:
 
         # Check for cross-mapping
         if (tgt_min and src_max) or (tgt_max and src_min):
-            issue = VariableIssue(
-                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            issue = MinMaxMappingMismatchIssue(
                 module_path=list(path),
                 variable=tgt_var,
                 role="min/max mapping mismatch",
@@ -212,30 +216,43 @@ class ContractMappingValidator:
         self,
         target_name: str,
         target_variable: Variable,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         _base_name, field_path = _split_dotted_name(target_name)
         if not field_path:
             return target_variable.datatype, None
 
-        datatype = _resolve_variable_field_datatype(
-            target_variable,
-            field_path,
-            self._type_graph,
-        )
+        datatype = self._resolve_variable_field_datatype(target_variable, field_path)
         return datatype, ".".join(field_path)
+
+    def _resolve_variable_field_datatype(
+        self,
+        variable: Variable,
+        field_path: tuple[str, ...],
+    ) -> ScalarDatatype | str | None:
+        """Walk a field path without a library.
+
+        The parser helper has no library and no warning channel, so an
+        undecidable record name returns ``None``. Contract checking then has
+        nothing to compare, the same outcome as an unknown record, instead of
+        guessing a layout.
+        """
+        try:
+            return _resolve_variable_field_datatype(variable, field_path, self._type_graph)
+        except AmbiguousRecordError:
+            return None
 
     def resolve_target_datatype(
         self,
         target_name: str,
         target_variable: Variable,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         return self._resolve_target_datatype(target_name, target_variable)
 
     def _resolve_source_datatype(
         self,
         mapping: ParameterMapping,
         source_variable: Variable | None,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         if mapping.source_literal is not None:
             return (
                 _infer_literal_datatype(
@@ -253,16 +270,12 @@ class ContractMappingValidator:
         if not field_path:
             return source_variable.datatype, source_name
 
-        datatype = _resolve_variable_field_datatype(
-            source_variable,
-            field_path,
-            self._type_graph,
-        )
+        datatype = self._resolve_variable_field_datatype(source_variable, field_path)
         return datatype, source_name
 
     def resolve_source_datatype(
         self,
         mapping: ParameterMapping,
         source_variable: Variable | None,
-    ) -> tuple[Simple_DataType | str | None, str | None]:
+    ) -> tuple[ScalarDatatype | str | None, str | None]:
         return self._resolve_source_datatype(mapping, source_variable)

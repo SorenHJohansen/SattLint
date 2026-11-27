@@ -13,9 +13,9 @@ quality gates, validation map, and core beliefs.
 | `sattline-parser` (external) | Parser grammar, AST, transformer, strict syntax behavior | targeted parser pytest (the parser tool owns single-file check/parse CLIs) |
 | `src/sattlint/cli/` | CLI entrypoints and command handlers | Targeted owner pytest, then Ruff and Pyright |
 | `src/sattlint/analyzers/` | Heuristic analyzers and the rule registry | Targeted analyzer pytest |
-| `src/sattlint/core/` | Shared semantic snapshot, document helpers, and the engine-internal analysis trace recorder (`core/tracing.py`) | Targeted pytest |
+| `src/sattlint/core/` | Shared semantic snapshot, the semantic index, call signatures, origin matching, and document helpers | Targeted pytest |
 | `src/sattlint/project/` | `.slproj` project model + parser-adapted loading (`loader_config.build_parser_binding` → `parser_adapter.py` over `sattline-parser`'s project layer; orchestration in `loading.py`/`support.py`) | `tests/project/`, targeted pytest |
-| `src/sattlint/` (ICF, graphics, validation, engine) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
+| `src/sattlint/` (ICF, graphics, validation) | ICF analysis, graphics rules, strict syntax validation | Targeted owner pytest |
 | `src/sattlint/ui/` | Textual interactive UI | `tests/app/test_app_textual*.py` |
 | `src/sattlint/change_review/` | Semantic diff + impact analysis between official/draft project versions | `tests/change_review/`, `tests/app/test_app_textual_change_review.py` |
 | `tests/` | Owner suites and regression proofs | Narrow pytest slice first |
@@ -26,7 +26,7 @@ quality gates, validation map, and core beliefs.
 - `sattlint`
 - `python -m pre_commit run --all-files`
 - `python -m ruff check .`
-- `python -m pyright src/sattlint`
+- `python -m pyright src/sattlint tests`
 - `python -m pytest -q --tb=short`
 
 ### Actual Runtime Map
@@ -123,7 +123,7 @@ Canonical first-check command source for SattLint maintainer surfaces.
 - Fast local hygiene gate:
   `python -m pre_commit run --all-files`
 - Full local validation before push:
-  `python -m ruff check . && python -m ruff format --check . && python -m pyright src/sattlint && python -m pytest -q --tb=short`
+  `python -m ruff check . && python -m ruff format --check . && python -m pyright src/sattlint tests && python -m pytest -q --tb=short`
 
 ---
 

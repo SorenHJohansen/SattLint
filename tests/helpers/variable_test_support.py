@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
@@ -34,34 +34,36 @@ def issue_kinds(report: Any) -> set[Any]:
     return {issue.kind for issue in report.issues}
 
 
+def ignore_ambiguity(_error: object) -> None:
+    """Callback for fakes that do not exercise the ambiguity warning."""
+
+
 def status_bridge_typedef() -> ModuleTypeDef:
     return ModuleTypeDef(
         name="StatusBridge",
-        moduleparameters=[Variable(name="OperationStatus", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="OperationStatus", datatype=ScalarDatatype.INTEGER)],
         localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Destination", datatype=ScalarDatatype.INTEGER),
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="BridgeEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="CopyVariable",
-                                    args=(varref("Source"), varref("Destination"), varref("OperationStatus")),
-                                )
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="BridgeEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(varref("Source"), varref("Destination"), varref("OperationStatus")),
                             )
-                        ],
-                    )
-                ]
-            )
-        ],
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
 

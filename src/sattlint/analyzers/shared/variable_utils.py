@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
 from ...resolution.common import varname_base
-from ...utils.casefolding import casefold_key
+from ...utils.casefolding import casefold_key, unit_equal, unit_key
 
 if TYPE_CHECKING:
     from ..variables import VariablesAnalyzer
@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 def is_const_candidate(self: VariablesAnalyzer, variable: Variable) -> bool:
     return (
-        isinstance(variable.datatype, Simple_DataType)
-        and variable.datatype is not Simple_DataType.TIME
-        and variable.datatype is not Simple_DataType.DURATION
+        isinstance(variable.datatype, ScalarDatatype)
+        and variable.datatype is not ScalarDatatype.TIME
+        and variable.datatype is not ScalarDatatype.DURATION
         and not bool(variable.opsave)
         and not bool(variable.secure)
     )
@@ -49,9 +49,9 @@ def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> b
     if not root_origin:
         return False
     try:
-        return Path(origin_file).stem.casefold() == Path(root_origin).stem.casefold()
+        return unit_equal(Path(origin_file).stem, Path(root_origin).stem)
     except (TypeError, ValueError):
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+        return unit_equal(origin_file.rsplit(".", 1)[0], root_origin.rsplit(".", 1)[0])
 
 
 def matches_root_origin(
@@ -65,17 +65,17 @@ def matches_root_origin(
     if root_origin_lib and origin_lib and not origin_file:
         # Merged dependency ASTs can drop origin_file while still preserving origin_lib.
         # Treat foreign-library definitions as out of scope for both program and library targets.
-        return origin_lib.casefold() == root_origin_lib.casefold()
+        return unit_equal(origin_lib, root_origin_lib)
 
     if analyzed_target_is_library and root_origin_lib and origin_lib:
         try:
-            root_stem = Path(root_origin).stem.casefold() if root_origin else None
+            root_stem = unit_key(Path(root_origin).stem) if root_origin else None
         except (TypeError, ValueError):
-            root_stem = root_origin.rsplit(".", 1)[0].casefold() if root_origin else None
+            root_stem = unit_key(root_origin.rsplit(".", 1)[0]) if root_origin else None
 
         # Only treat the library name as authoritative when it identifies the root file itself.
-        if root_stem and root_origin_lib.casefold() == root_stem:
-            return origin_lib.casefold() == root_origin_lib.casefold()
+        if root_stem and unit_key(root_origin_lib) == root_stem:
+            return unit_equal(origin_lib, root_origin_lib)
 
     if not origin_file:
         return True

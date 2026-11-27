@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "lark>=1.3.1,<2",
-    "sattline-parser==2026.11.4",
+    "sattline-parser==2026.11.9",
     "tomli_w>=1.2.0",
     "rich>=13.9.0",
     "textual>=8.2.7,<9",
@@ -34,7 +34,7 @@ dependencies = [
 Homepage = "https://pypi.org/project/sattlint/"
 Repository = "https://github.com/SorenHJohansen/SattLint"
 Issues = "https://github.com/SorenHJohansen/SattLint/issues"
-Documentation = "https://github.com/SorenHJohansen/SattLint/blob/main/FEATURE_GUIDE.md"
+Documentation = "https://github.com/SorenHJohansen/SattLint/blob/main/docs/README.md"
 Support = "https://github.com/SorenHJohansen/SattLint/blob/main/SUPPORT.md"
 Changelog = "https://github.com/SorenHJohansen/SattLint/blob/main/CHANGELOG.md"
 Security = "https://github.com/SorenHJohansen/SattLint/security/policy"
@@ -66,8 +66,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Leave the timeout method unset: pytest-timeout then uses signals where they
+# exist (so a blocked C call or PTY read is interrupted) and the timer thread
+# elsewhere (Windows).
 timeout = 60
-timeout_method = "thread"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -78,7 +80,6 @@ markers = [
     "unit: marks tests as unit tests",
     "parser: marks tests related to parser functionality",
     "analyzer: marks tests related to analyzer functionality",
-    "quarantine: marks flaky tests that should be skipped in CI",
 ]
 
 [tool.coverage.report]
@@ -113,8 +114,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["S101", "F403", "F405"]
-"tests/**/*.py" = ["S101", "F403", "F405"]
+"tests/*.py" = ["S101"]
+"tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.pylint]
 max-statements = 50

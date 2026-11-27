@@ -1,25 +1,31 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import codecs
 from pathlib import Path
+from time import monotonic
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
 
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
-from sattlint.reporting.icf_report import ICFEntry, ICFResolvedEntry
+from sattlint.analyzers.icf._icf_file_io import IcfFileTooLargeError
+from sattlint.reporting.icf_report import ICFEntry, summarize_icf_unit_drift
+from sattlint.resolution.common import ResolvedModulePath
 
 
 def _header(name: str) -> ModuleHeader:
@@ -55,7 +61,7 @@ class _ReplaceOnlyBytes(bytes):
         raise UnicodeDecodeError(encoding, b"\xff", 0, 1, "forced failure")
 
 
-def test_icf_helper_decode_edges(tmp_path):
+def test_icf_helper_decode_edges(tmp_path: Path):
     text, encoding, has_bom = icf_module._decode_icf_text(codecs.BOM_UTF8 + b"\xff")
     assert text == "ÿ"
     assert encoding == "cp1252"
@@ -67,7 +73,7 @@ def test_icf_helper_decode_edges(tmp_path):
     assert replace_bom is False
 
 
-def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
+def test_icf_helper_parse_and_extract_edge_cases(tmp_path: Path):
     icf_file = tmp_path / "Program.icf"
     icf_file.write_text(
         "[Unit Unit221A]\n[Other Ignored]\nnot an assignment\nKey = Program:Unit221A.Value\n",
@@ -88,16 +94,89 @@ def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
     assert icf_module._is_placeholder_icf_value("Program:Unit.Value") is False
 
 
-def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Program:Path", ("Program", "Path")),
+        ("F::Program:Path", ("Program", "Path")),
+        ("prefix text F::Program:Path", ("Program", "Path")),
+        ("   Program:Path   ", ("Program", "Path")),
+        ("Program:Path.With.Colons", ("Program", "Path.With.Colons")),
+        ("Program:Path:More", ("Program", "Path:More")),
+        ("Program:", (None, None)),
+        (":Path", (None, None)),
+        ("NoColon", (None, None)),
+        ("   ", (None, None)),
+    ],
+)
+def test_extract_icf_sattline_ref_preserves_the_accepted_forms(
+    value: str,
+    expected: tuple[str | None, str | None],
+) -> None:
+    assert icf_module._extract_icf_sattline_ref(value) == expected
+
+
+def test_extract_icf_sattline_ref_handles_a_long_colon_free_line_quickly() -> None:
+    line = "x" * (1024 * 1024)
+
+    started = monotonic()
+    result = icf_module._extract_icf_sattline_ref(line)
+    elapsed = monotonic() - started
+
+    assert result == (None, None)
+    assert elapsed < 2.0
+
+
+def test_icf_file_over_the_limit_is_rejected_with_the_file_and_limit(tmp_path: Path) -> None:
+    icf_file = tmp_path / "Big.icf"
+    icf_file.write_bytes(b"x" * 4096)
+
+    with pytest.raises(IcfFileTooLargeError) as excinfo:
+        icf_module.parse_icf_file(icf_file, max_bytes=1024)
+
+    message = str(excinfo.value)
+    assert str(icf_file) in message
+    assert "4096" in message
+    assert "1024" in message
+    assert "[analysis].icf_byte_limit" in message
+    assert excinfo.value.limit == 1024
+    assert excinfo.value.observed_bytes == 4096
+
+
+def test_icf_file_that_grows_after_the_stat_is_still_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_file = tmp_path / "Grow.icf"
+    icf_file.write_bytes(b"x" * 4096)
+
+    def _stale_stat(_path: Path, *_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(st_size=0)
+
+    monkeypatch.setattr(Path, "stat", _stale_stat)
+
+    with pytest.raises(IcfFileTooLargeError) as excinfo:
+        icf_module.parse_icf_file(icf_file, max_bytes=1024)
+
+    assert excinfo.value.limit == 1024
+    assert excinfo.value.observed_bytes == 1025
+
+
+def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch: pytest.MonkeyPatch):
     base_picture = BasePicture(header=_header("Program"), submodules=[])
     instance = ModuleTypeInstance(header=_header("Unit221A"), moduletype_name="TankType")
-    family_module = SingleModule(header=_header("Unit221B"), moduledefs=[])
+    family_module = SingleModule(header=_header("Unit221B"), moduledef=None)
 
-    def _resolve_module(_bp, path, moduletype_index=None):
+    def _resolve_module(
+        _bp: BasePicture,
+        path: str,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    ) -> ResolvedModulePath:
+        del moduletype_index
         if path == "Unit221A":
-            return SimpleNamespace(node=instance)
+            return ResolvedModulePath(node=instance, path=[path], display_path_str=path)
         if path == "Unit221B":
-            return SimpleNamespace(node=family_module)
+            return ResolvedModulePath(node=family_module, path=[path], display_path_str=path)
         raise ValueError("missing")
 
     monkeypatch.setattr(icf_module, "resolve_module_by_strict_path", _resolve_module)
@@ -111,12 +190,19 @@ def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
         "family Unit221",
     )
 
-    extra_only = icf_module._summarize_signature_diff((), (("", "", "", "key", "value"),))
-    count_only = icf_module._summarize_signature_diff(
+    def _summary(
+        reference: tuple[tuple[str, str, str, str, str], ...],
+        current: tuple[tuple[str, str, str, str, str], ...],
+    ) -> str:
+        drift = icf_module._build_unit_drift("Current", "Type", "Reference", reference, current)
+        return summarize_icf_unit_drift(drift)
+
+    extra_only = _summary((), (("", "", "", "key", "value"),))
+    count_only = _summary(
         (("", "", "", "key", "value"), ("", "", "", "key", "value")),
         (("", "", "", "key", "value"),),
     )
-    ordering = icf_module._summarize_signature_diff(
+    ordering = _summary(
         (
             ("Op", "", "", "key-a", "value-a"),
             ("", "Journal", "", "key-b", "value-b"),
@@ -132,32 +218,31 @@ def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch):
     assert "entry ordering differs" in ordering
 
 
-def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
-    local_var = Variable(name="Local", datatype=Simple_DataType.INTEGER)
-    param_var = Variable(name="Param", datatype=Simple_DataType.INTEGER)
-    type_local = Variable(name="TypeLocal", datatype=Simple_DataType.INTEGER)
-    type_param = Variable(name="TypeParam", datatype=Simple_DataType.INTEGER)
+def test_icf_helper_find_variable_and_path_description_edges(monkeypatch: pytest.MonkeyPatch):
+    local_var = Variable(name="Local", datatype=ScalarDatatype.INTEGER)
+    param_var = Variable(name="Param", datatype=ScalarDatatype.INTEGER)
+    type_local = Variable(name="TypeLocal", datatype=ScalarDatatype.INTEGER)
+    type_param = Variable(name="TypeParam", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[type_param],
         localvariables=[type_local],
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
     )
     single = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[param_var],
         localvariables=[local_var],
     )
     base_picture = BasePicture(header=_header("Program"), moduletype_defs=[moduletype], submodules=[single])
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
 
-    monkeypatch.setattr(
-        icf_module,
-        "resolve_moduletype_def_strict",
-        lambda *_args, **_kwargs: moduletype,
-    )
+    def _resolve_moduletype(*_args: object, **_kwargs: object) -> ModuleTypeDef:
+        return moduletype
+
+    monkeypatch.setattr(icf_module, "resolve_moduletype_def_strict", _resolve_moduletype)
 
     assert icf_module._find_variable_in_module_scope(single, base_picture, "local") is local_var
     assert icf_module._find_variable_in_module_scope(single, base_picture, "param") is param_var
@@ -165,41 +250,39 @@ def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
     assert icf_module._find_variable_in_module_scope(moduletype, base_picture, "typeparam") is type_param
     assert icf_module._find_variable_in_module_scope(instance, base_picture, "typelocal") is type_local
 
-    monkeypatch.setattr(
-        icf_module,
-        "resolve_moduletype_def_strict",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing type")),
-    )
-    assert icf_module._find_variable_in_module_scope(instance, base_picture, "missing") is None
-    assert icf_module._find_variable_in_module_scope(object(), base_picture, "missing") is None
+    def _missing_moduletype(*_args: object, **_kwargs: object) -> ModuleTypeDef:
+        raise ValueError("missing type")
 
-    resolved = SimpleNamespace(
+    monkeypatch.setattr(icf_module, "resolve_moduletype_def_strict", _missing_moduletype)
+    assert icf_module._find_variable_in_module_scope(instance, base_picture, "missing") is None
+    assert icf_module._find_variable_in_module_scope(base_picture, base_picture, "missing") is None
+
+    resolved = ResolvedModulePath(
         node=single,
-        current_library=None,
-        current_file=None,
         display_path_str="Program.Unit",
         path=["Program", "Unit"],
     )
 
     path_calls: dict[str, int] = {}
 
-    def _resolve_path(_bp, path, moduletype_index=None):
+    def _resolve_path(
+        _bp: BasePicture,
+        path: str,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    ) -> ResolvedModulePath:
+        del moduletype_index
         path_calls[path] = path_calls.get(path, 0) + 1
         if path == "Program.Unit":
             return resolved
         if path == "Program.Unit.Local":
-            return SimpleNamespace(
+            return ResolvedModulePath(
                 node=single,
-                current_library=None,
-                current_file=None,
                 display_path_str="Program.Unit.Local",
                 path=["Program", "Unit", "Local"],
             )
         if path == "Program.Unit.Missing" and path_calls[path] > 1:
-            return SimpleNamespace(
+            return ResolvedModulePath(
                 node=single,
-                current_library=None,
-                current_file=None,
                 display_path_str="Program.Unit.Missing",
                 path=["Program", "Unit", "Missing"],
             )
@@ -210,14 +293,22 @@ def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
     assert icf_module._resolve_icf_path(base_picture, "") == (None, None, [])
     assert icf_module._resolve_icf_path(base_picture, "Program.Unit.Local.Field") == (resolved, local_var, ["Field"])
 
-    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", lambda *_args, **_kwargs: None)
+    def _no_variable(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", _no_variable)
     unresolved = icf_module._describe_unresolved_icf_path(base_picture, "Program.Unit.Local")
     assert "resolved to module path Program.Unit.Local" in unresolved
 
     variable_missing = icf_module._describe_unresolved_icf_path(base_picture, "Program.Unit.Missing")
     assert "variable 'Missing' not found under module Program.Unit" in variable_missing
 
-    def _raising_resolve(_bp, path, moduletype_index=None):
+    def _raising_resolve(
+        _bp: BasePicture,
+        path: str,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    ) -> ResolvedModulePath:
+        del moduletype_index
         if path == "Program":
             raise ValueError("bad root")
         raise ValueError("still missing")
@@ -226,16 +317,16 @@ def test_icf_helper_find_variable_and_path_description_edges(monkeypatch):
     assert "bad root" in icf_module._describe_unresolved_icf_path(base_picture, "Program.Unit")
 
 
-def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
+def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch: pytest.MonkeyPatch):
     signoff_log = DataType(
         name="ACSSignOffLOGData",
         description=None,
         datecode=None,
-        var_list=[Variable(name="LogTag", datatype=Simple_DataType.STRING)],
+        var_list=[Variable(name="LogTag", datatype=ScalarDatatype.STRING)],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
     )
     bp = BasePicture(
@@ -321,7 +412,10 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
     mismatch = _entry("C", "Other:Unit221A.HSSetLogData.LogTag", line_no=3)
     invalid_leaf = _entry("D", "Program:Unit221A.HSSetLogData.LogTag", line_no=4)
 
-    monkeypatch.setattr(icf_module, "resolve_leaf_datatype", lambda *_args, **_kwargs: None)
+    def _unresolved_leaf(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(icf_module, "resolve_leaf_datatype", _unresolved_leaf)
     mixed_report = icf_module.validate_icf_entries_against_program(
         bp,
         [placeholder, unparseable, mismatch, invalid_leaf],
@@ -332,57 +426,7 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
     assert {issue.reason for issue in mixed_report.issues} == {"program mismatch", "invalid field path"}
 
 
-def test_icf_helper_parameter_completeness_and_unit_structure_edges():
-    nested = DataType(
-        name="NestedRecord",
-        description=None,
-        datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.STRING)],
-    )
-    root = DataType(
-        name="RootRecord",
-        description=None,
-        datecode=None,
-        var_list=[Variable(name="Nested", datatype="NestedRecord")],
-    )
-    bp = BasePicture(header=_header("Program"), datatype_defs=[nested, root], submodules=[])
-    type_graph = icf_module.TypeGraph.from_basepicture(bp)
-    entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
-
-    direct_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype="RootRecord",
-        field_path="Nested.Leaf",
-        leaf_name="Leaf",
-        datatype=Simple_DataType.STRING,
-    )
-    placeholder_mismatch = _entry("Leaf", "H::.", unit="Other", journal="Other", group="JournalData_Parameters")
-
-    issues = icf_module._validate_parameter_record_completeness(type_graph, [direct_entry], [placeholder_mismatch])
-    assert issues == []
-
-    pathless_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype="RootRecord",
-        field_path=None,
-        leaf_name="Record",
-        datatype=Simple_DataType.STRING,
-    )
-    simple_entry = ICFResolvedEntry(
-        entry=entry,
-        module_path=["Program", "Unit"],
-        variable_name="Record",
-        root_datatype=Simple_DataType.INTEGER,
-        field_path="Leaf",
-        leaf_name="Leaf",
-        datatype=Simple_DataType.INTEGER,
-    )
-    assert icf_module._validate_parameter_record_completeness(type_graph, [pathless_entry, simple_entry]) == []
-
+def test_icf_helper_unit_structure_edges():
     structure_entries = [
         _entry("Key", "not-a-ref", unit="Unit221A", group="JournalData_Parameters"),
         _entry("Other", "Program:Unit221B.Path", line_no=2, unit="Unit221B", group="JournalData_Parameters"),
@@ -391,8 +435,8 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         BasePicture(
             header=_header("Program"),
             submodules=[
-                SingleModule(header=_header("Unit221A"), moduledefs=[]),
-                SingleModule(header=_header("Unit221B"), moduledefs=[]),
+                SingleModule(header=_header("Unit221A"), moduledef=None),
+                SingleModule(header=_header("Unit221B"), moduledef=None),
             ],
         ),
         structure_entries,
@@ -401,7 +445,7 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
     assert structure_issues[0].reason == "unit structure drift"
 
 
-def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch):
+def test_icf_helper_additional_summary_and_parse_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     parse_file = tmp_path / "Ops.icf"
     parse_file.write_text(
         "[Unit Unit221A]\n[Operation Start]\n[Journal HygienicStatus]\nKey=Program:Unit221A.Value\n",
@@ -413,23 +457,35 @@ def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch)
 
     assert icf_module._path_endswith(["OnlyOne"], ("A", "B")) is False
 
-    overflow = icf_module._summarize_signature_diff(
-        (),
-        (
-            ("", "", "", "a", "1"),
-            ("", "", "", "b", "2"),
-            ("", "", "", "c", "3"),
-            ("", "", "", "d", "4"),
-        ),
+    overflow = summarize_icf_unit_drift(
+        icf_module._build_unit_drift(
+            "Current",
+            "Type",
+            "Reference",
+            (),
+            (
+                ("", "", "", "a", "1"),
+                ("", "", "", "b", "2"),
+                ("", "", "", "c", "3"),
+                ("", "", "", "d", "4"),
+            ),
+        )
     )
     assert "..." in overflow
-    assert icf_module._summarize_signature_diff((), ()) == "entry ordering differs"
-
-    monkeypatch.setattr(
-        icf_module,
-        "resolve_module_by_strict_path",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")),
+    assert (
+        summarize_icf_unit_drift(icf_module._build_unit_drift("Current", "Type", "Reference", (), ()))
+        == "current unit Current (unit type Type) differs from reference unit Reference: entry ordering differs"
     )
+
+    def _missing_module_path(
+        _base_picture: BasePicture,
+        _path: str,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    ) -> ResolvedModulePath:
+        del moduletype_index
+        raise ValueError("missing")
+
+    monkeypatch.setattr(icf_module, "resolve_module_by_strict_path", _missing_module_path)
     fallback = icf_module._resolve_unit_type_label(
         BasePicture(header=_header("Program"), submodules=[]),
         "Unit221A",
@@ -438,7 +494,42 @@ def test_icf_helper_additional_summary_and_parse_branches(tmp_path, monkeypatch)
     assert fallback == ("family:unit221", "family Unit221")
 
 
-def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
+def test_icf_helper_field_path_ambiguity_and_canonical_leaf_edges():
+    alpha = DataType(
+        name="DuplicateRecord",
+        description=None,
+        datecode=None,
+        origin_lib="LibA",
+        var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
+    )
+    beta = DataType(
+        name="DuplicateRecord",
+        description=None,
+        datecode=None,
+        origin_lib="LibB",
+        var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
+    )
+    bp = BasePicture(header=_header("Program"), datatype_defs=[alpha, beta])
+    type_graph = icf_module.TypeGraph.from_basepicture(bp)
+
+    ambiguous_ok, ambiguous_detail = icf_module._validate_field_path(
+        type_graph,
+        Variable(name="Rec", datatype="DuplicateRecord"),
+        ["Field"],
+    )
+    assert ambiguous_ok is False
+    assert ambiguous_detail is not None
+    assert "more than one library" in ambiguous_detail
+
+    scalar_var = Variable(name="Count", datatype=ScalarDatatype.INTEGER)
+    assert icf_module._resolve_canonical_leaf_name(type_graph, scalar_var, ["Field"]) is None
+    assert (
+        icf_module._resolve_canonical_leaf_name(type_graph, Variable(name="Rec", datatype="UnknownRecord"), ["Field"])
+        is None
+    )
+
+
+def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch: pytest.MonkeyPatch):
     record = DataType(
         name="NestedRecord",
         description=None,
@@ -449,19 +540,19 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
         name="LeafRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="Value", datatype=ScalarDatatype.INTEGER)],
     )
     bp = BasePicture(header=_header("Program"), datatype_defs=[record, leaf], submodules=[])
     type_graph = icf_module.TypeGraph.from_basepicture(bp)
     record_var = Variable(name="Rec", datatype="NestedRecord")
-    simple_var = Variable(name="Count", datatype=Simple_DataType.INTEGER)
+    simple_var = Variable(name="Count", datatype=ScalarDatatype.INTEGER)
     unknown_var = SimpleNamespace(name="Mystery", datatype=None)
 
     assert icf_module._validate_field_path(type_graph, simple_var, ["Field"]) == (
         False,
         "datatype integer has no field 'Field'",
     )
-    assert icf_module._validate_field_path(type_graph, cast(Any, unknown_var), ["Field"]) == (
+    assert icf_module._validate_field_path(type_graph, cast(Variable, unknown_var), ["Field"]) == (
         False,
         "field 'Field' not found in datatype None",
     )
@@ -470,31 +561,42 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
     assert final_record_detail == "non-simple datatype LeafRecord referenced without field path"
 
     assert icf_datatype_module.resolve_leaf_datatype(type_graph, simple_var, ["Field"]) is None
-    assert icf_datatype_module.resolve_leaf_datatype(type_graph, cast(Any, unknown_var), ["Field"]) is None
+    assert icf_datatype_module.resolve_leaf_datatype(type_graph, cast(Variable, unknown_var), ["Field"]) is None
     assert icf_datatype_module.resolve_leaf_datatype(type_graph, record_var, ["Missing"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, simple_var.datatype, ["Field"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, unknown_var.datatype, ["Field"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Missing"]) is None
     assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner", "Value"]) is None
+    assert icf_datatype_module.resolve_record_datatype(type_graph, record_var.datatype, ["Inner"]) == "LeafRecord"
 
-    resolved = SimpleNamespace(
-        node=SingleModule(header=_header("Unit"), moduledefs=[], localvariables=[record_var]),
-        current_library=None,
-        current_file=None,
+    resolved = ResolvedModulePath(
+        node=SingleModule(header=_header("Unit"), moduledef=None, localvariables=[record_var]),
         display_path_str="Program.Unit",
         path=["Program", "Unit"],
     )
 
-    def _resolve_for_paths(_bp, path, moduletype_index=None):
+    def _resolve_for_paths(
+        _bp: BasePicture,
+        path: str,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    ) -> ResolvedModulePath:
+        del moduletype_index
         if path == "Program.Unit":
             return resolved
         raise ValueError("missing")
 
     monkeypatch.setattr(icf_module, "resolve_module_by_strict_path", _resolve_for_paths)
-    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", lambda *_args, **_kwargs: None)
+
+    def _no_variable(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", _no_variable)
     assert icf_module._resolve_icf_path(bp, "Program.Unit.Record.Field") == (None, None, [])
 
-    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", lambda *_args, **_kwargs: record_var)
+    def _record_variable(*_args: object, **_kwargs: object) -> Variable:
+        return record_var
+
+    monkeypatch.setattr(icf_module, "_find_variable_in_module_scope", _record_variable)
     unresolved = icf_module._describe_unresolved_icf_path(bp, "Program.Unit.Record.Field")
     assert "unresolved after variable 'Rec' under module Program.Unit" in unresolved
     assert icf_module._describe_unresolved_icf_path(bp, "") == ""

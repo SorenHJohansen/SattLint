@@ -8,20 +8,27 @@ from typing import Any, cast
 import pytest
 from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
-    Simple_DataType,
+    ScalarDatatype,
     Variable,
 )
 
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.shared import variable_utils as variable_utils_module
-from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnalyzer
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.analyzers.variables import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.variables import _variables_access as variables_access_module
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.analyzers.variables import _variables_mapping_refs as mapping_refs_module
 from sattlint.analyzers.variables import _variables_status as variables_status_module
 from sattlint.analyzers.variables._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
 from sattlint.analyzers.variables._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
-from sattlint.reporting.variables_report import VariablesReport
+from sattlint.reporting.variables_report import (
+    FieldPathVariableIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedIssue,
+    VariableIssue,
+    VariablesReport,
+)
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import ns as _ns
 
@@ -37,7 +44,7 @@ def _returns_false(*_args: object, **_kwargs: object) -> bool:
 
 
 def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    variable = Variable(name="StatusVar", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="StatusVar", datatype=ScalarDatatype.INTEGER)
     helper: Any = SimpleNamespace(
         procedure_status_bindings=defaultdict(list),
         ignorable_output_variable_ids=set(),
@@ -82,9 +89,9 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
 
     signature = _ns(
         parameters=[
-            _ns(is_status_channel=True, name="StatusOut", channel_kind="status", direction="out"),
-            _ns(is_status_channel=False, name="Ignored", channel_kind=None, direction="in"),
-            _ns(is_status_channel=False, name="FoundRec", channel_kind=None, direction="out"),
+            _ns(is_status_channel=True, is_output=True, name="StatusOut", channel_kind="status", direction="out"),
+            _ns(is_status_channel=False, is_output=False, name="Ignored", channel_kind=None, direction="in"),
+            _ns(is_status_channel=False, is_output=True, name="FoundRec", channel_kind=None, direction="out"),
         ]
     )
     status_calls: list[str] = []
@@ -165,8 +172,8 @@ def test_variables_status_cover_binding_branches(monkeypatch: pytest.MonkeyPatch
 
 
 def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
     binding = variables_status_module.ProcedureStatusBinding(
         call_name="Fn",
         parameter_name="Out",
@@ -232,7 +239,7 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
 
     report = VariablesReport(
         basepicture_name="Root",
-        issues=[VariableIssue(kind=IssueKind.UNUSED, module_path=["Root"], variable=source, role="unused")],
+        issues=[UnusedIssue(module_path=["Root"], variable=source, role="unused")],
         visible_kinds=frozenset({IssueKind.UNUSED}),
         include_empty_sections=True,
     )
@@ -259,7 +266,7 @@ def test_variables_status_propagation_and_variables_helpers(monkeypatch: pytest.
 
 
 def test_variables_status_procedure_status_issue_covers_remaining_branches() -> None:
-    bound_var = Variable(name="BoundStatus", datatype=Simple_DataType.INTEGER)
+    bound_var = Variable(name="BoundStatus", datatype=ScalarDatatype.INTEGER)
     binding = variables_status_module.ProcedureStatusBinding(
         call_name="RunProc",
         parameter_name="StatusOut",
@@ -333,9 +340,9 @@ def test_variables_analyzer_warn_trace_and_status_helpers_cover_remaining_branch
 
 
 def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -> None:  # noqa: PLR0915
-    variable = Variable(name="FacadeVar", datatype=Simple_DataType.INTEGER)
-    other_variable = Variable(name="GlobalVar", datatype=Simple_DataType.INTEGER)
-    issue = VariableIssue(kind=IssueKind.UNUSED, module_path=["Root"], variable=variable, role="unused")
+    variable = Variable(name="FacadeVar", datatype=ScalarDatatype.INTEGER)
+    other_variable = Variable(name="GlobalVar", datatype=ScalarDatatype.INTEGER)
+    issue = UnusedIssue(module_path=["Root"], variable=variable, role="unused")
     mapping = SimpleNamespace(name="Map")
     parent_context = SimpleNamespace(name="parent")
     context = SimpleNamespace(name="ctx")
@@ -352,9 +359,6 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
 
     def _append_param_mapping_issue(arg1: object, arg2: object) -> None:
         forwarded_calls.append(("append_param_mapping_issue", (arg1, arg2), {}))
-
-    def _add_issue(*args: object, **kwargs: object) -> None:
-        forwarded_calls.append(("add_issue", args, dict(kwargs)))
 
     def _is_from_root_origin(origin_file: str | None, origin_lib: str | None = None) -> bool:
         return (origin_file, origin_lib) == ("root.mod", "LIB")
@@ -384,7 +388,6 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     facade.usage_tracker = SimpleNamespace(get_usage=_get_usage, access_graph="graph")
     facade._append_issue = _append_issue
     facade._append_param_mapping_issue = _append_param_mapping_issue
-    facade._add_issue = _add_issue
     facade._is_from_root_origin = _is_from_root_origin
     facade._has_output_effect = _has_output_effect
     facade._has_ignorable_output_binding = _has_ignorable_output_binding
@@ -397,7 +400,6 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     assert facade.get_usage(variable) == ("usage", variable)
     facade.append_issue(issue)
     facade.append_param_mapping_issue(mapping, issue)
-    facade.add_issue(IssueKind.UNUSED, ["Root"], variable, role="unused", field_path="Leaf")
     assert facade.is_from_root_origin("root.mod", "LIB") is True
     assert facade.has_output_effect(variable, ["Root", "Out"]) is True
     assert facade.has_ignorable_output_binding(variable) is True
@@ -433,11 +435,6 @@ def test_variables_facade_forwarders_and_properties_cover_remaining_branches() -
     assert forwarded_calls == [
         ("append_issue", (issue,), {}),
         ("append_param_mapping_issue", (mapping, issue), {}),
-        (
-            "add_issue",
-            (IssueKind.UNUSED, ["Root"], variable),
-            {"role": "unused", "field_path": "Leaf"},
-        ),
         ("analyze_library_dependency_typedef_usage", (), {}),
         (
             "check_param_mapping",
@@ -454,14 +451,14 @@ def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: 
     assert (
         variable_utils_module.is_const_candidate(
             analyzer,
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
         )
         is True
     )
     assert (
         variable_utils_module.is_const_candidate(
             analyzer,
-            Variable(name="Timer", datatype=Simple_DataType.TIME),
+            Variable(name="Timer", datatype=ScalarDatatype.TIME),
         )
         is False
     )
@@ -533,9 +530,9 @@ def test_variable_utils_cover_mapping_and_origin_fallback_branches(monkeypatch: 
 
 
 def test_variable_issue_collection_and_variables_cover_remaining_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    proc_var = Variable(name="Proc", datatype=Simple_DataType.INTEGER)
-    ui_var = Variable(name="Display", datatype=Simple_DataType.INTEGER)
-    effect_var = Variable(name="Effect", datatype=Simple_DataType.INTEGER)
+    proc_var = Variable(name="Proc", datatype=ScalarDatatype.INTEGER)
+    ui_var = Variable(name="Display", datatype=ScalarDatatype.INTEGER)
+    effect_var = Variable(name="Effect", datatype=ScalarDatatype.INTEGER)
     issues: list[tuple[IssueKind, str | None, str | None]] = []
 
     def _is_from_root_origin(*_args: object) -> bool:
@@ -557,13 +554,20 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
         return None
 
     def _append_issue(issue: VariableIssue) -> None:
-        issues.append((issue.kind, issue.role, issue.field_path))
+        issues.append(
+            (
+                issue.kind,
+                issue.role,
+                issue.field_path if isinstance(issue, FieldPathVariableIssue | UnusedDatatypeFieldIssue) else None,
+            )
+        )
 
     helper: Any = SimpleNamespace(
         bp=SimpleNamespace(),
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         limit_to_module_path=["Root"],
+        _selected_issue_kinds=None,
         is_from_root_origin=_is_from_root_origin,
         get_usage=_get_usage,
         procedure_status_issue=_procedure_status_issue,
@@ -595,7 +599,7 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     report = VariablesReport(
         basepicture_name="Root",
         issues=[
-            VariableIssue(kind=IssueKind.UNUSED, module_path=["Root"], variable=proc_var, role="unused"),
+            UnusedIssue(module_path=["Root"], variable=proc_var, role="unused"),
         ],
         visible_kinds=frozenset({IssueKind.UNUSED}),
         include_empty_sections=True,
@@ -606,3 +610,95 @@ def test_variable_issue_collection_and_variables_cover_remaining_branches(monkey
     assert variables_access_impl._site_str(_ns(site_stack=[])) == ""
     assert variables_access_impl._site_str(_ns(site_stack=["A", "B"])) == "A > B"
     assert report.basepicture_name == "Root"
+
+
+def test_ordered_alias_links_settles_each_hop_before_its_parent() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    outer = (root, middle, "")
+    inner = (middle, leaf, "")
+
+    assert list(mapping_refs_module.ordered_alias_links([outer, inner])) == [inner, outer]
+    assert list(mapping_refs_module.ordered_alias_links([inner, outer])) == [inner, outer]
+
+
+def test_alias_back_propagation_reaches_the_root_whatever_the_link_order() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    usage_by_id: dict[int, _UsageStub] = {id(variable): _UsageStub() for variable in (root, middle, leaf)}
+    usage_by_id[id(leaf)].read = True
+    usage_by_id[id(leaf)].field_reads = cast(Any, {"Value": [["Root", "LeafModule"]]})
+
+    def _get_usage(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
+    helper: Any = SimpleNamespace(
+        _alias_links=[(root, middle, ""), (middle, leaf, "")],
+        _get_usage=_get_usage,
+    )
+
+    variables_execution_impl._apply_alias_back_propagation(helper)
+
+    assert usage_by_id[id(root)].read is True
+    assert usage_by_id[id(root)].field_reads == {"Value": [["Root", "LeafModule"]]}
+    assert usage_by_id[id(middle)].field_reads == {"Value": [["Root", "LeafModule"]]}
+
+
+def test_procedure_status_bindings_reach_the_root_whatever_the_link_order() -> None:
+    root = Variable(name="Root", datatype=ScalarDatatype.INTEGER)
+    middle = Variable(name="Middle", datatype=ScalarDatatype.INTEGER)
+    leaf = Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)
+    binding = variables_status_module.ProcedureStatusBinding(
+        call_name="ReadValue",
+        parameter_name="Status",
+        channel_kind="status",
+        field_path="Result",
+    )
+    bindings: defaultdict[int, list[Any]] = defaultdict(list, {id(leaf): [binding]})
+    helper: Any = SimpleNamespace(
+        alias_links=[(root, middle, ""), (middle, leaf, "")],
+        procedure_status_bindings=bindings,
+    )
+
+    variables_status_impl._propagate_procedure_status_bindings(helper)
+
+    assert bindings[id(root)] == [binding]
+    assert bindings[id(middle)] == [binding]
+
+
+def test_procedure_status_message_names_every_call_that_shares_a_sink() -> None:
+    sink = Variable(name="Sink", datatype=ScalarDatatype.INTEGER)
+    bindings = defaultdict(
+        list,
+        {
+            id(sink): [
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="ReadValue",
+                    parameter_name="Status",
+                    channel_kind="status",
+                    field_path="First",
+                ),
+                variables_status_module.ProcedureStatusBinding(
+                    call_name="WriteValue",
+                    parameter_name="Out",
+                    channel_kind="status",
+                    field_path=None,
+                ),
+            ]
+        },
+    )
+    helper: Any = SimpleNamespace(procedure_status_bindings=bindings)
+
+    issue = variables_status_impl._procedure_status_issue(
+        helper,
+        sink,
+        cast(Any, _UsageStub(written=True, ui_read=False, non_ui_read=False)),
+    )
+
+    assert issue is not None
+    message, field_path = issue
+    assert "'ReadValue' parameter 'Status'" in message
+    assert "'WriteValue' parameter 'Out'" in message
+    assert field_path == "First"

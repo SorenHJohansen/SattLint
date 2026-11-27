@@ -1,8 +1,9 @@
 # Architecture Summary
 
 This is the short architecture summary for onboarding and AI routing.
-For deeper design rationale, principles, and operating details, use
-`AGENTS_REFERENCE.md`.
+For the detailed architecture guide, use
+[docs/architecture.md](docs/architecture.md). For deeper design rationale,
+principles, and operating details, use `AGENTS_REFERENCE.md`.
 
 ## Layering
 
@@ -22,7 +23,7 @@ flowchart LR
     subgraph Analysis["Analysis Layer"]
         ANALYZERS["analyzers/"]
         CORE["core/ (semantic snapshot)"]
-        ENGINE["engine.py"]
+        PROJECT["project/ (loader, cache)"]
         RESOLUTION["resolution/"]
         REPORTING["reporting/"]
     end
@@ -36,9 +37,9 @@ flowchart LR
     CLI_LAYER --> UI
     CLI_LAYER --> CONFIG
     APPL --> ANALYZERS
-    APPL --> ENGINE
+    APPL --> PROJECT
     APPL --> CONFIG
-    ENGINE --> PARSER
+    PROJECT --> PARSER
     CORE --> ANALYZERS
     CORE --> RESOLUTION
     CORE --> REPORTING
@@ -102,7 +103,7 @@ Entry: `sattlint analyze` (CLI) or the Textual Analyze view. Both end up at
 
 ```mermaid
 flowchart TB
-    Keys["Selected keys<br/>(or the default CLI set, `DEFAULT_CLI_ANALYZER_KEYS`)"]
+    Keys["Selected keys<br/>(`--analyzer`, else the project's `analyzers` list)"]
     Canon["canonicalize_analyzer_keys<br/>(legacy aliases, casefold)"]
     Filter["get_cli_dispatch_analyzers<br/>resolve_selected_analyzers (exact filter)"]
     Split{"checks.py splits by scope"}
@@ -151,7 +152,7 @@ dependency names via `parser_adapter.find_dependency_path`/`read_dependency_name
 flowchart LR
 Loading["loader_config.build_parser_binding<br/>+ loading.load_project / load_program_ast"]
     Adapter["parser_adapter.py<br/>load_parser_project,<br/>convert_project_into_graph"]
-    Parser["sattline-parser project layer<br/>SattLineProject.load(cache_dir=None)<br/>discovery, resolution, parse"]
+    Parser["sattline-parser project layer<br/>SattLineProject.load(cache_dir=&lt;private root&gt;)<br/>discovery, resolution, parse"]
     Graph["ProjectGraph<br/>(analysis index + timings)"]
     SattLint["sattlint caches<br/>ASTCache / AnalysisReportCache"]
 
@@ -198,12 +199,13 @@ Two special cases worth knowing before changing anything:
 
 - Parser core ships as the external `sattline-parser` package and does not depend on application layers.
 - All SattLine discovery, `.s/.g/.l/.x/.y/.z` reading, dependency resolution, and parsing happen in
-  `sattline-parser`'s project layer (`SattLineProject.load`, hermetic via `cache_dir=None`); SattLint
+  `sattline-parser`'s project layer (`SattLineProject.load`, with an optional parser-owned cache
+  root that it disables unless the directory is provably private); SattLint
   routes every load through `loader_config.build_parser_binding` + `src/sattlint/project/parser_adapter.py`
   (`load_parser_project`/`convert_project_into_graph`), then translates diagnostics and indexes into `ProjectGraph`.
   Cache ownership is split: the parser owns its per-file lookup/AST caches
   (`FileLookupCache`/`FileASTCache`); SattLint owns the analysis caches
-  (`ASTCache`/`AnalysisReportCache`/foundation).
+  (`ASTCache`/`AnalysisReportCache`).
 - Graphics companions are scanned once by the parser into `GraphicsModel`. SattLint owns the
   workspace asset verification, the correlation against the code picture, and notice wording.
 - All retained analyzers use the same semantic engine and findings model.

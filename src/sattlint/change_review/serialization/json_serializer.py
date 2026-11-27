@@ -22,7 +22,7 @@ def _jsonable(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, Enum):
-        return str(value.value if hasattr(value, "value") else value)
+        return str(value.value)
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, tuple | list):
@@ -98,6 +98,12 @@ def _context_block_dict(block: ReviewContextBlock) -> dict[str, Any]:
         "file": block.file,
         "line_start": block.line_start,
         "line_end": block.line_end,
+        "official_file": block.official_file,
+        "official_line_start": block.official_line_start,
+        "official_line_end": block.official_line_end,
+        "draft_file": block.draft_file,
+        "draft_line_start": block.draft_line_start,
+        "draft_line_end": block.draft_line_end,
         "official_source": block.official_source,
         "draft_source": block.draft_source,
         "source": block.source,

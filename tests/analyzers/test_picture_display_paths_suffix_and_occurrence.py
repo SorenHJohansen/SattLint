@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
 )
 
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     correlate_picture_display_records,
@@ -28,7 +29,7 @@ def test_resolve_picture_display_path_recovers_missing_declaring_module_by_suffi
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             module(
                 "Column",
@@ -187,7 +188,7 @@ def test_correlate_picture_display_records_maps_local_moduletype_record_to_templ
             resolution_parent_step_adjustment=-1,
         ),
     )
-    assert diagnose_picture_display_paths(base_picture, occurrences) == ()
+    assert diagnose_picture_display_paths(base_picture, occurrences, capacities=STANDARD_STRING_CAPACITIES) == ()
 
 
 def test_correlate_picture_display_records_treats_same_library_typedef_as_local() -> None:
@@ -252,7 +253,7 @@ def test_correlate_picture_display_records_treats_same_library_typedef_as_local(
             resolution_parent_step_adjustment=-1,
         ),
     )
-    assert diagnose_picture_display_paths(base_picture, occurrences) == ()
+    assert diagnose_picture_display_paths(base_picture, occurrences, capacities=STANDARD_STRING_CAPACITIES) == ()
 
 
 def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete_order() -> None:
@@ -261,7 +262,7 @@ def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Form", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
             )
         ],
     )
@@ -269,15 +270,15 @@ def test_correlate_picture_display_records_keeps_local_templates_out_of_concrete
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
         moduletype_defs=[local_template],
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Parent", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="Leaf", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+                        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
                     ),
                     ModuleTypeInstance(
                         header=ModuleHeader(name="LocalTemplate", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),

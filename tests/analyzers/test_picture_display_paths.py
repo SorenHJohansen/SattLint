@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -10,7 +11,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     SourceSpan,
     Variable,
@@ -19,6 +20,7 @@ from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.string_inference import ExactStringInferenceEngine, StringProvenanceSegment
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.graphics.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
@@ -38,12 +40,12 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path) -> None:
+def test_wmf_asset_that_exists_on_disk_is_a_silent_skip(tmp_path: Path) -> None:
     (tmp_path / "nne_blue_web.wmf").write_bytes(b"asset")
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         origin_file=str(tmp_path / "Root.s"),
     )
 
@@ -55,14 +57,15 @@ def test_wmf_asset_that_exists_on_disk_is_not_reported_unresolved(tmp_path: Path
 
     assert resolution.ok
     assert resolution.failure_reason is None
+    assert resolution.detail is None
     assert resolution.resolved_module_path == ("Root",)
 
 
-def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) -> None:
+def test_wmf_asset_that_is_missing_is_a_silent_skip(tmp_path: Path) -> None:
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         origin_file=str(tmp_path / "Root.s"),
     )
 
@@ -72,8 +75,10 @@ def test_wmf_asset_that_is_missing_keeps_unimplemented_reason(tmp_path: Path) ->
         declaring_module_path=["Root"],
     )
 
-    assert not resolution.ok
-    assert resolution.failure_reason == "unimplemented_asset"
+    assert resolution.ok
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def _string_length_call(name: str) -> FuncCall:
@@ -84,65 +89,63 @@ def _build_operation_path_base_picture() -> BasePicture:
     path_builder = ModuleTypeDef(
         name="PathBuilder",
         moduleparameters=[
-            Variable(name="Prefix", datatype=Simple_DataType.STRING),
-            Variable(name="Name", datatype=Simple_DataType.IDENTSTRING),
+            Variable(name="Prefix", datatype=ScalarDatatype.STRING),
+            Variable(name="Name", datatype=ScalarDatatype.IDENTSTRING),
             Variable(name="Paths", datatype="PathsType"),
         ],
-        localvariables=[Variable(name="BuilderStatus", datatype=Simple_DataType.INTEGER)],
-        moduledefs=[ModuleDef()],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InsertString",
-                                    args=(
-                                        _varref("Paths.OperationPath"),
-                                        _varref("Prefix"),
-                                        _string_length_call("Prefix"),
-                                        _varref("BuilderStatus"),
-                                    ),
-                                )
-                            ),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InsertString",
-                                    args=(
-                                        _varref("Paths.OperationPath"),
-                                        _varref("Name"),
-                                        _string_length_call("Name"),
-                                        _varref("BuilderStatus"),
-                                    ),
-                                )
-                            ),
-                        ],
-                    )
-                ]
-            )
-        ],
+        localvariables=[Variable(name="BuilderStatus", datatype=ScalarDatatype.INTEGER)],
+        moduledef=ModuleDef(),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Paths.OperationPath"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
+                        ),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Paths.OperationPath"),
+                                    _varref("Name"),
+                                    _string_length_call("Name"),
+                                    _varref("BuilderStatus"),
+                                ),
+                            )
+                        ),
+                    ],
+                )
+            ]
+        ),
     )
 
     return BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         moduletype_defs=[path_builder],
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 localvariables=[
                     Variable(name="Paths", datatype="PathsType"),
-                    Variable(name="OprPath", datatype=Simple_DataType.STRING, init_value="+L2+Operations+L2*"),
+                    Variable(name="OprPath", datatype=ScalarDatatype.STRING, init_value="+L2+Operations+L2*"),
                     Variable(
                         name="FyldOprName",
-                        datatype=Simple_DataType.IDENTSTRING,
+                        datatype=ScalarDatatype.IDENTSTRING,
                         const=True,
                         init_value="FyldAppl",
                     ),
@@ -211,7 +214,9 @@ def test_picture_display_path_analyzer_reports_unresolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -250,6 +255,7 @@ def test_picture_display_path_analyzer_marks_library_target_findings_as_info() -
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -285,6 +291,7 @@ def test_picture_display_path_analyzer_library_target_reports_intra_library_fail
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -330,6 +337,7 @@ def test_picture_display_path_analyzer_library_target_suppresses_above_base_but_
 
     report = analyze_picture_display_paths(
         base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
         graph=graph_with_attachments(base_picture, base_picture_attachments),
         analyzed_target_is_library=True,
     )
@@ -366,7 +374,9 @@ def test_picture_display_path_analyzer_ignores_resolved_paths() -> None:
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert report.issues == []
@@ -376,49 +386,47 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         localvariables=[
-            Variable(name="DisplayPath", datatype=Simple_DataType.STRING),
-            Variable(name="Prefix", datatype=Simple_DataType.STRING, init_value="+"),
-            Variable(name="PanelName", datatype=Simple_DataType.IDENTSTRING, init_value="MissingPanel"),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="DisplayPath", datatype=ScalarDatatype.STRING),
+            Variable(name="Prefix", datatype=ScalarDatatype.STRING, init_value="+"),
+            Variable(name="PanelName", datatype=ScalarDatatype.IDENTSTRING, init_value="MissingPanel"),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InsertString",
-                                    args=(
-                                        _varref("DisplayPath"),
-                                        _varref("Prefix"),
-                                        _string_length_call("Prefix"),
-                                        _varref("Status"),
-                                    ),
-                                )
-                            ),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InsertString",
-                                    args=(
-                                        _varref("DisplayPath"),
-                                        _varref("PanelName"),
-                                        _string_length_call("PanelName"),
-                                        _varref("Status"),
-                                    ),
-                                )
-                            ),
-                        ],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("DisplayPath"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("Prefix"),
+                                    _string_length_call("Prefix"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("DisplayPath"),
+                                    _varref("PanelName"),
+                                    _string_length_call("PanelName"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
+                    ],
+                )
+            ]
+        ),
     )
     base_picture_attachments = graphics_attachments(
         picture_display_occurrences=[
@@ -445,7 +453,9 @@ def test_picture_display_path_analyzer_reports_generic_variable_path_candidates(
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -480,7 +490,9 @@ def test_picture_display_path_analyzer_reports_unresolved_operationpath_candidat
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     assert len(report.issues) == 1
@@ -516,7 +528,9 @@ def test_picture_display_path_analyzer_reports_above_base_as_distinct_kind() -> 
     )
 
     report = analyze_picture_display_paths(
-        base_picture, graph=graph_with_attachments(base_picture, base_picture_attachments)
+        base_picture,
+        string_capacities=STANDARD_STRING_CAPACITIES,
+        graph=graph_with_attachments(base_picture, base_picture_attachments),
     )
 
     above_base = [issue for issue in report.issues if issue.kind == "picture_display_paths.above_base"]
@@ -556,7 +570,7 @@ def test_resolve_picture_display_path_stepping_above_base_supports_wildcard() ->
 def test_exact_string_inference_tracks_provenance_segments_across_mapped_module_writes() -> None:
     base_picture = _build_operation_path_base_picture()
 
-    result = ExactStringInferenceEngine(base_picture).infer(
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
         "Paths.OperationPath",
         module_path=("Root", "UnitControl"),
     )
@@ -582,44 +596,42 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         localvariables=[
-            Variable(name="Tag", datatype=Simple_DataType.STRING),
-            Variable(name="Source", datatype=Simple_DataType.STRING, init_value="ABCD"),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="Tag", datatype=ScalarDatatype.STRING),
+            Variable(name="Source", datatype=ScalarDatatype.STRING, init_value="ABCD"),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InsertString",
-                                    args=(
-                                        _varref("Tag"),
-                                        _varref("Source"),
-                                        _string_length_call("Source"),
-                                        _varref("Status"),
-                                    ),
-                                )
-                            ),
-                            FuncCallStmt(
-                                call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))
-                            ),
-                            FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
-                        ],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(call=FuncCall(name="ClearString", args=(_varref("Tag"),))),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InsertString",
+                                args=(
+                                    _varref("Tag"),
+                                    _varref("Source"),
+                                    _string_length_call("Source"),
+                                    _varref("Status"),
+                                ),
+                            )
+                        ),
+                        FuncCallStmt(call=FuncCall(name="SetStringPos", args=(_varref("Tag"), 2, _varref("Status")))),
+                        FuncCallStmt(call=FuncCall(name="CutString", args=(_varref("Tag"), 2, _varref("Status")))),
+                    ],
+                )
+            ]
+        ),
     )
 
-    result = ExactStringInferenceEngine(base_picture).infer("Tag", module_path=("Root",))
+    result = ExactStringInferenceEngine(base_picture, capacities=STANDARD_STRING_CAPACITIES).infer(
+        "Tag", module_path=("Root",)
+    )
 
     assert result.texts == ("AD",)
     assert result.cursor_positions == (2,)
@@ -636,22 +648,22 @@ def test_exact_string_inference_tracks_setstringpos_and_cutstring() -> None:
 def test_resolve_picture_display_path_treats_single_plus_as_named_child_step() -> None:
     panel = SingleModule(
         header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
     )
     l2 = SingleModule(
         header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[panel],
     )
     l1 = SingleModule(
         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[l2],
     )
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[l1],
     )
 
@@ -678,7 +690,7 @@ def test_resolve_picture_display_path_uses_extra_plus_for_implicit_descent() -> 
     assert resolution.resolved_module_path == ("Root", "L1", "Panel")
 
 
-def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -687,12 +699,13 @@ def test_resolve_picture_display_path_reports_unimplemented_wmf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() -> None:
+def test_resolve_picture_display_path_skips_env_var_wmf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -701,12 +714,13 @@ def test_resolve_picture_display_path_reports_unimplemented_env_var_wmf_asset() 
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
-def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
+def test_resolve_picture_display_path_skips_emf_asset() -> None:
     base_picture = base_picture_with_single_chain()
 
     resolution = resolve_picture_display_path(
@@ -715,23 +729,24 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
         declaring_module_path=("Root",),
     )
 
-    assert resolution.ok is False
-    assert resolution.failure_reason == "unimplemented_asset"
-    assert resolution.detail == ".emf and .wmf resolution is not implemented"
+    assert resolution.ok is True
+    assert resolution.failure_reason is None
+    assert resolution.detail is None
+    assert resolution.resolved_module_path == ("Root",)
 
 
 def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has_dependencies() -> None:
     panel = SingleModule(
         header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
     )
     local_typedef = ModuleTypeDef(
         name="LocalType",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[panel],
             )
         ],
@@ -740,14 +755,14 @@ def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has
     )
     dependency_typedef = ModuleTypeDef(
         name="DependencyType",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         origin_lib="DepLib",
         origin_file="DepLib.s",
     )
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             ModuleTypeInstance(
                 header=ModuleHeader(name="Instance", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -778,38 +793,38 @@ def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has
 def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() -> None:
     inlet_outlet_steps = SingleModule(
         header=ModuleHeader(name="InletOutletSteps", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
     )
     logic = SingleModule(
         header=ModuleHeader(name="Logic", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[inlet_outlet_steps],
             )
         ],
     )
     startup_panel = SingleModule(
         header=ModuleHeader(name="StartupPanel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
     )
     opr_frame = SingleModule(
         header=ModuleHeader(name="OprFrame", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="Produktion", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledefs=[ModuleDef()],
+                        moduledef=ModuleDef(),
                         submodules=[
                             SingleModule(
                                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                moduledefs=[ModuleDef()],
+                                moduledef=ModuleDef(),
                                 submodules=[logic],
                             )
                         ],
@@ -820,11 +835,11 @@ def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() 
     )
     operations = SingleModule(
         header=ModuleHeader(name="Operations", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[opr_frame],
             ),
             startup_panel,
@@ -833,11 +848,11 @@ def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() 
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="Root",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="First", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[operations],
             )
         ],
@@ -959,51 +974,51 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
     base_picture = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
         name="BasePicture",
-        moduledefs=[ModuleDef()],
+        moduledef=ModuleDef(),
         submodules=[
             SingleModule(
                 header=ModuleHeader(name="XAppl_231XY", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                moduledefs=[ModuleDef()],
+                moduledef=ModuleDef(),
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                        moduledefs=[ModuleDef()],
+                        moduledef=ModuleDef(),
                         submodules=[
                             SingleModule(
                                 header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                moduledefs=[ModuleDef()],
+                                moduledef=ModuleDef(),
                                 submodules=[
                                     SingleModule(
                                         header=ModuleHeader(name="OpMessage1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                        moduledefs=[ModuleDef()],
+                                        moduledef=ModuleDef(),
                                     ),
                                     SingleModule(
                                         header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                        moduledefs=[ModuleDef()],
+                                        moduledef=ModuleDef(),
                                         submodules=[
                                             SingleModule(
                                                 header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-                                                moduledefs=[ModuleDef()],
+                                                moduledef=ModuleDef(),
                                                 submodules=[
                                                     SingleModule(
                                                         header=ModuleHeader(
                                                             name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)
                                                         ),
-                                                        moduledefs=[ModuleDef()],
+                                                        moduledef=ModuleDef(),
                                                         submodules=[
                                                             SingleModule(
                                                                 header=ModuleHeader(
                                                                     name="Operations",
                                                                     invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
                                                                 ),
-                                                                moduledefs=[ModuleDef()],
+                                                                moduledef=ModuleDef(),
                                                                 submodules=[
                                                                     SingleModule(
                                                                         header=ModuleHeader(
                                                                             name="L2",
                                                                             invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
                                                                         ),
-                                                                        moduledefs=[ModuleDef()],
+                                                                        moduledef=ModuleDef(),
                                                                         submodules=[
                                                                             SingleModule(
                                                                                 header=ModuleHeader(
@@ -1016,7 +1031,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                         1.0,
                                                                                     ),
                                                                                 ),
-                                                                                moduledefs=[ModuleDef()],
+                                                                                moduledef=ModuleDef(),
                                                                                 submodules=[
                                                                                     SingleModule(
                                                                                         header=ModuleHeader(
@@ -1029,7 +1044,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                 1.0,
                                                                                             ),
                                                                                         ),
-                                                                                        moduledefs=[ModuleDef()],
+                                                                                        moduledef=ModuleDef(),
                                                                                         submodules=[
                                                                                             SingleModule(
                                                                                                 header=ModuleHeader(
@@ -1042,9 +1057,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                         1.0,
                                                                                                     ),
                                                                                                 ),
-                                                                                                moduledefs=[
-                                                                                                    ModuleDef()
-                                                                                                ],
+                                                                                                moduledef=ModuleDef(),
                                                                                                 submodules=[
                                                                                                     SingleModule(
                                                                                                         header=ModuleHeader(
@@ -1057,9 +1070,7 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
                                                                                                                 1.0,
                                                                                                             ),
                                                                                                         ),
-                                                                                                        moduledefs=[
-                                                                                                            ModuleDef()
-                                                                                                        ],
+                                                                                                        moduledef=ModuleDef(),
                                                                                                     )
                                                                                                 ],
                                                                                             )
@@ -1108,3 +1119,24 @@ def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module()
         "L2",
         "OperatorMessage1",
     )
+
+
+def test_analyzer_reuses_precomputed_picture_display_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    base_picture = BasePicture(header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)))
+    attachments = graphics_attachments(picture_display_diagnostics_computed=True)
+    graph = graph_with_attachments(base_picture, attachments)
+    recomputed: list[bool] = []
+
+    def fake_diagnose(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        recomputed.append(True)
+        return ()
+
+    monkeypatch.setattr(
+        "sattlint.analyzers.picture_display_paths.diagnose_picture_display_paths",
+        fake_diagnose,
+    )
+
+    report = analyze_picture_display_paths(base_picture, string_capacities=STANDARD_STRING_CAPACITIES, graph=graph)
+
+    assert report.issues == []
+    assert recomputed == []

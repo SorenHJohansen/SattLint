@@ -1,4 +1,6 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportInvalidTypeForm=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 """Focused coverage tests for reset contamination ratchet repayment."""
 
 from __future__ import annotations
@@ -6,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
+import pytest
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -13,19 +16,53 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ScalarDatatype,
     Sequence,
     SFCAlternative,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
-from sattlint.reporting.variables_report import VariableIssue
-from tests.helpers.reset_contamination_api import reset_contamination_module
+from sattlint.analyzers.reset_contamination import (
+    ResetContaminationAnalyzer,
+    WriteMap,
+    detect_implicit_latching,
+    detect_reset_contamination,
+    is_from_root_origin,
+)
+from sattlint.analyzers.reset_contamination._reset_latching import (
+    BooleanPathState,
+    literal_boolean,
+    record_boolean_assignment,
+    record_boolean_function_call,
+    record_boolean_write,
+)
+from sattlint.analyzers.reset_contamination._reset_path_collection_sequence import (
+    collect_seq_node_paths,
+)
+from sattlint.analyzers.reset_contamination._reset_path_condition import (
+    varref_casefold,
+)
+from sattlint.analyzers.reset_contamination._reset_path_state import (
+    PathCollectionDebug,
+    PathState,
+    compact_path_states,
+)
+from sattlint.analyzers.reset_contamination._reset_path_stmt_handlers import (
+    collect_function_call_paths,
+    collect_if_stmt_paths,
+    collect_stmt_block_paths,
+)
+from sattlint.analyzers.reset_contamination._reset_path_writes import (
+    record_function_call_writes,
+    record_write,
+    split_var_ref,
+)
+from sattlint.reporting.variables_report import ImplicitLatchIssue, ResetContaminationIssue, VariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -75,32 +112,30 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
         name=name,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="LatchEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=cast(
-                            list[CodeItem],
-                            [
-                                IfStmt(
-                                    branches=(
-                                        (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
-                                    ),
-                                    else_block=(),
-                                )
-                            ],
-                        ),
-                    )
-                ]
-            )
-        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="LatchEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("AlarmLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
+                )
+            ]
+        ),
     )
 
 
@@ -109,13 +144,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="ResetType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_reset.origin_file = "root.s"
 
@@ -123,13 +158,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="SkippedType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_skipped.origin_file = "other.s"
 
@@ -141,52 +176,54 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         datatype_defs=[],
         moduletype_defs=[typedef_reset, typedef_skipped, typedef_latch],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="RootLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="RootLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="RootEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=cast(
-                            list[CodeItem],
-                            [
-                                IfStmt(
-                                    branches=(
-                                        (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
-                                    ),
-                                    else_block=(),
-                                )
-                            ],
-                        ),
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="RootEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=cast(
+                        list[CodeItem],
+                        [
+                            IfStmt(
+                                branches=(
+                                    (_varref("Start"), (Assignment(target=_varref("RootLatched"), value=True),)),
+                                ),
+                                else_block=(),
+                            )
+                        ],
+                    ),
+                )
+            ]
+        ),
+        moduledef=None,
     )
     bp.origin_file = "root.s"
 
     reset_issues: list[VariableIssue] = []
     trace_events: list[tuple[str, dict[str, Any]]] = []
-    reset_contamination_module.detect_reset_contamination(
+
+    def _record_trace(action: str, **data: Any) -> None:
+        trace_events.append((action, data))
+
+    detect_reset_contamination(
         bp,
         reset_issues,
         debug=True,
-        trace_fn=lambda action, **data: trace_events.append((action, data)),
+        trace_fn=_record_trace,
     )
 
-    assert [(issue.module_path, issue.variable.name) for issue in reset_issues if issue.variable is not None] == [
-        (["Root", "TypeDef:ResetType"], "Counter")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in reset_issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:ResetType"], "Counter")]
     assert any(action == "reset-contamination-modulecode-path-summary" for action, _data in trace_events)
 
     limited_reset_issues: list[VariableIssue] = []
-    reset_contamination_module.detect_reset_contamination(
+    detect_reset_contamination(
         bp,
         limited_reset_issues,
         limit_to_module_path=["Root", "NoMatch"],
@@ -194,38 +231,42 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
     assert limited_reset_issues == []
 
     latch_issues: list[VariableIssue] = []
-    reset_contamination_module.detect_implicit_latching(bp, latch_issues)
-    assert sorted((issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None) == [
+    detect_implicit_latching(bp, latch_issues)
+    assert sorted(
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ) == [
         (["Root"], "RootLatched"),
         (["Root", "TypeDef:LatchType"], "AlarmLatched"),
     ]
 
     limited_latch_issues: list[VariableIssue] = []
-    reset_contamination_module.detect_implicit_latching(
+    detect_implicit_latching(
         bp,
         limited_latch_issues,
         limit_to_module_path=["Root", "NoMatch"],
     )
     assert [
-        (issue.module_path, issue.variable.name) for issue in limited_latch_issues if issue.variable is not None
+        (issue.module_path, issue.variable.name)
+        for issue in limited_latch_issues
+        if isinstance(issue, ImplicitLatchIssue)
     ] == [(["Root"], "RootLatched")]
 
 
 def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:  # noqa: PLR0915
-    env = reset_contamination_module._build_local_env(
+    env = ResetContaminationAnalyzer._build_local_env(
         object(),
-        [Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+        [Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
         [
-            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
     )
     assert sorted(env) == ["counter", "flag", "param", "resetvalue", "seqresetold"]
-    assert reset_contamination_module._should_analyze_path(["Root", "Unit"], ["Other"]) is False
-    assert reset_contamination_module.is_from_root_origin(None, "root.s") is True
-    assert reset_contamination_module.is_from_root_origin("root.s", None) is False
+    assert ResetContaminationAnalyzer._should_analyze_path(["Root", "Unit"], ["Other"]) is False
+    assert is_from_root_origin(None, "root.s") is True
+    assert is_from_root_origin("root.s", None) is False
 
     class BrokenPath:
         def __init__(self, value: str) -> None:
@@ -234,70 +275,80 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         def rsplit(self, sep: str, maxsplit: int) -> list[str]:
             return self.value.rsplit(sep, maxsplit)
 
-    assert reset_contamination_module.is_from_root_origin(cast(Any, BrokenPath("root.s")), "root.s") is True
+    assert is_from_root_origin(cast(str, BrokenPath("root.s")), "root.s") is True
 
     calls: list[str] = []
-    reset_contamination_module._check_for_single(
+    ResetContaminationAnalyzer._check_for_single(
         SingleModule(
             header=_hdr("NoCode"),
-            moduledefs=[],
+            moduledef=None,
             moduleparameters=[],
             localvariables=[],
             submodules=[],
-            modulecodes=[],
+            modulecode=None,
             parametermappings=[],
         ),
         ["Root", "NoCode"],
         [],
         check_fn=lambda *_args: calls.append("single"),
     )
-    reset_contamination_module._check_for_typedef(
+    ResetContaminationAnalyzer(cast(BasePicture, None))._check_for_typedef(
         ModuleTypeDef(
             name="NoCodeType",
             moduleparameters=[],
             localvariables=[],
-            moduledefs=[],
-            modulecodes=[],
+            moduledef=None,
+            modulecode=None,
         ),
         ["Root", "TypeDef:NoCodeType"],
         [],
+        None,
         check_fn=lambda *_args: calls.append("typedef"),
     )
     assert calls == []
 
     child_module = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="ChildFlag", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="ChildFlag", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
         parametermappings=[],
     )
     parent_module = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[child_module],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     traversed_paths: list[list[str]] = []
-    reset_contamination_module._collect_from_module(
+
+    def _record_module_path(
+        _modulecode: ModuleCode,
+        _env: dict[str, Variable],
+        path: list[str],
+        _issues: list[VariableIssue],
+    ) -> None:
+        traversed_paths.append(path.copy())
+
+    ResetContaminationAnalyzer(cast(BasePicture, None))._collect_from_module(
         parent_module,
         ["Root"],
         [],
         None,
-        check_fn=lambda _modulecode, _env, path, _issues: traversed_paths.append(path.copy()),
+        check_fn=_record_module_path,
     )
     assert traversed_paths == [["Root", "Parent", "Child"]]
 
     no_sequence_issues: list[VariableIssue] = []
-    reset_contamination_module._check_for_modulecode(
+    ResetContaminationAnalyzer._check_for_modulecode(
         ModuleCode(equationblocks=[], sequences=[]), env, ["Root"], no_sequence_issues
     )
-    reset_contamination_module._check_for_modulecode(
+    ResetContaminationAnalyzer._check_for_modulecode(
         ModuleCode(
             equationblocks=[],
             sequences=[Sequence(name="", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
@@ -306,7 +357,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         ["Root"],
         no_sequence_issues,
     )
-    reset_contamination_module._check_for_modulecode(
+    ResetContaminationAnalyzer._check_for_modulecode(
         ModuleCode(
             equationblocks=[],
             sequences=[Sequence(name="OpSeq", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=[])],
@@ -315,7 +366,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         ["Root"],
         no_sequence_issues,
     )
-    reset_contamination_module._check_for_modulecode(
+    ResetContaminationAnalyzer._check_for_modulecode(
         ModuleCode(
             equationblocks=[
                 Equation(
@@ -339,7 +390,7 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
         ["Root"],
         no_sequence_issues,
     )
-    reset_contamination_module._check_for_modulecode(
+    ResetContaminationAnalyzer._check_for_modulecode(
         _reset_modulecode(run_target="SeqResetOld", reset_target="SeqResetOld"),
         env,
         ["Root"],
@@ -347,26 +398,26 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     )
     assert no_sequence_issues == []
 
-    out: reset_contamination_module.WriteMap = {}
-    reset_contamination_module._record_write(None, env, out)
-    reset_contamination_module._record_write({}, env, out)
-    reset_contamination_module._record_write(_varref(""), env, out)
-    reset_contamination_module._record_write(_varref(".Field"), env, out)
-    reset_contamination_module._record_write(_varref("Missing"), env, out)
+    out: WriteMap = {}
+    record_write(None, env, out)
+    record_write({}, env, out)
+    record_write(_varref(""), env, out)
+    record_write(_varref(".Field"), env, out)
+    record_write(_varref("Missing"), env, out)
     assert out == {}
 
-    bool_out: reset_contamination_module.WriteMap = {}
-    reset_contamination_module._record_boolean_write(None, env, bool_out)
-    reset_contamination_module._record_boolean_write({}, env, bool_out)
-    reset_contamination_module._record_boolean_write(_varref(""), env, bool_out)
-    reset_contamination_module._record_boolean_write(_varref("Counter"), env, bool_out)
-    reset_contamination_module._record_boolean_write(_varref("Flag.Member"), env, bool_out)
-    reset_contamination_module._record_boolean_write(_varref("Flag"), env, bool_out)
-    assert set(bool_out) == {("flag", "")}
+    bool_out: WriteMap = {}
+    record_boolean_write(None, env, bool_out)
+    record_boolean_write({}, env, bool_out)
+    record_boolean_write(_varref(""), env, bool_out)
+    record_boolean_write(_varref("Counter"), env, bool_out)
+    record_boolean_write(_varref("Flag.Member"), env, bool_out)
+    record_boolean_write(_varref("Flag"), env, bool_out)
+    assert set(bool_out) == {("flag", ""), ("flag", "member")}
 
-    call_out: reset_contamination_module.WriteMap = {}
-    reset_contamination_module._record_function_call_writes("NoSuchBuiltin", [_varref("Counter")], env, call_out)
-    reset_contamination_module._record_function_call_writes(
+    call_out: WriteMap = {}
+    record_function_call_writes("NoSuchBuiltin", [_varref("Counter")], env, call_out)
+    record_function_call_writes(
         "CopyVariable",
         [123, _varref("Counter"), _varref("Flag"), _varref("Counter.Member")],
         env,
@@ -374,40 +425,36 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     )
     assert set(call_out) == {("counter", ""), ("flag", "")}
 
-    bool_state = reset_contamination_module._BooleanPathState()
-    reset_contamination_module._record_boolean_assignment(_varref("Flag"), "True", env, bool_state)
-    reset_contamination_module._record_boolean_function_call("Other", [_varref("Flag"), True], env, bool_state)
-    reset_contamination_module._record_boolean_function_call("SetBooleanValue", [_varref("Flag")], env, bool_state)
-    reset_contamination_module._record_boolean_function_call(
-        "SetBooleanValue", [_varref("Flag"), "True"], env, bool_state
-    )
-    reset_contamination_module._record_boolean_function_call(
-        "SetBooleanValue", [_varref("Flag"), True], env, bool_state
-    )
+    bool_state = BooleanPathState()
+    record_boolean_assignment(_varref("Flag"), "True", env, bool_state)
+    record_boolean_function_call("Other", [_varref("Flag"), True], env, bool_state)
+    record_boolean_function_call("SetBooleanValue", [_varref("Flag")], env, bool_state)
+    record_boolean_function_call("SetBooleanValue", [_varref("Flag"), "True"], env, bool_state)
+    record_boolean_function_call("SetBooleanValue", [_varref("Flag"), True], env, bool_state)
     assert set(bool_state.true_writes) == {("flag", "")}
     assert bool_state.false_writes == {}
 
-    assert reset_contamination_module._literal_boolean("True") is None
-    assert reset_contamination_module._varref_casefold({}) is None
-    assert reset_contamination_module._varref_casefold(_varref("")) is None
-    assert reset_contamination_module._split_var_ref("") == ("", "")
+    assert literal_boolean("True") is None
+    assert varref_casefold({}) is None
+    assert varref_casefold(_varref("")) is None
+    assert split_var_ref("") == ("", "")
 
 
-def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog) -> None:
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    destination = Variable(name="Destination", datatype=Simple_DataType.INTEGER)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog: pytest.LogCaptureFixture) -> None:
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    destination = Variable(name="Destination", datatype=ScalarDatatype.INTEGER)
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
     env = {
         "counter": counter,
         "source": source,
         "destination": destination,
         "status": status,
     }
-    path_debug = reset_contamination_module._PathCollectionDebug(enabled=True)
+    path_debug = PathCollectionDebug(enabled=True)
 
     with caplog.at_level(logging.DEBUG, logger="SattLint"):
-        if_states = reset_contamination_module._collect_if_stmt_paths(
+        if_states = collect_if_stmt_paths(
             [
                 (
                     NotOp(operand=_varref("OpSeq.Reset")),
@@ -422,22 +469,22 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
             env,
             "opseq.reset",
             {"opseqresetold"},
-            [reset_contamination_module._PathState()],
+            [PathState()],
             path_debug=path_debug,
         )
-        call_states = reset_contamination_module._collect_function_call_paths(
+        call_states = collect_function_call_paths(
             "CopyVariable",
             [_varref("Source"), _varref("Destination"), _varref("Status")],
             env,
             "opseq.reset",
             {"opseqresetold"},
             [
-                reset_contamination_module._PathState(reset_state="run"),
-                reset_contamination_module._PathState(reset_state="run"),
+                PathState(reset_state="run"),
+                PathState(reset_state="run"),
             ],
             path_debug=path_debug,
         )
-        parallel_states = reset_contamination_module._collect_seq_node_paths(
+        parallel_states = collect_seq_node_paths(
             SFCParallel(
                 branches=[
                     [
@@ -497,7 +544,8 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
             env,
             "opseq.reset",
             {"opseqresetold"},
-            [reset_contamination_module._PathState(reset_state="run")],
+            [PathState(reset_state="run")],
+            collect_stmt_block_paths=collect_stmt_block_paths,
             path_debug=path_debug,
         )
 
@@ -515,18 +563,20 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
     assert "parallel-merge-step" in debug_output
 
 
-def test_reset_contamination_helpers_conservatively_merge_overflowed_path_frontiers(caplog) -> None:
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    overflow_states: list[reset_contamination_module._PathState] = []
+def test_reset_contamination_helpers_conservatively_merge_overflowed_path_frontiers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    overflow_states: list[PathState] = []
     for index in range(70):
-        state = reset_contamination_module._PathState(reset_state="run")
+        state = PathState(reset_state="run")
         state.run_writes[("counter", f"field{index}")] = (counter, f"field{index}")
         overflow_states.append(state)
 
     with caplog.at_level(logging.DEBUG, logger="SattLint"):
-        result = reset_contamination_module._compact_path_states(
+        result = compact_path_states(
             overflow_states,
-            debug=reset_contamination_module._PathCollectionDebug(enabled=True),
+            debug=PathCollectionDebug(enabled=True),
             site="overflow-test",
         )
 

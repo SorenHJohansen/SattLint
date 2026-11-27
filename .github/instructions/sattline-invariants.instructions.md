@@ -8,7 +8,7 @@ applyTo: ["src/**", "tests/**"]
 ## Language And Parser
 
 - The grammar start rule requires three header `STRING` lines before `BasePicture`; parser tests and minimal fixtures must include them.
-- SattLine identifiers are case-insensitive. Compare names with `.casefold()`.
+- SattLine identifiers are case-insensitive under the language's CP1252 name table, not Unicode case folding. Compare unit and module-type names with `utils.casefolding.unit_key`/`unit_equal`; `Library` matches `library`, but `Straße` does not match `STRASSE`.
 - Extended Latin letters are valid in identifiers.
 - Keyword-prefixed identifiers such as `NOTOG217Active` or `IFState` are valid because keywords tokenize only as standalone words.
 - `SEQFORK` accepts multiple comma-separated targets.
@@ -47,6 +47,8 @@ A file can be syntactically valid but semantically broken:
 ## Variable-Analysis Gotchas
 
 - Field-level usage matters. Record access can flow through parameter mappings and nested aliases, not just direct reads or writes.
+- Record layouts are library-scoped. A record resolves in the library of the scopes that reference it, and a field's own datatype resolves in the library that declares the record holding it, so nested records keep their library. Two libraries may declare the same record name with different fields; no consumer may pick one layout by name alone.
+- Record ambiguity is not fatal. When more than one library declares a name and the reference's library cannot decide, treat the type as a leaf, warn once per type where a warning channel exists, and leave the layout unresolved elsewhere. Direct `TypeGraph.record`/`field` lookup still raises for callers that handle the case themselves; production consumers go through `resolution.type_graph.resolve_record` or a leaf-expansion policy with an `on_issue` callback.
 - Respect parameter mappings when tracing usage and datatype compatibility.
 - Whole-record access suppresses partial-field unused findings for that datatype.
 - Partial record-leaf reporting uses `UNUSED_DATATYPE_FIELD`, aggregated by datatype across the analyzed target rather than as per-variable noise.
@@ -55,7 +57,7 @@ A file can be syntactically valid but semantically broken:
 
 ## CLI And Testing
 
-- The installed `sattlint` console script targets `sattlint.cli.startup:cli`. With arguments it dispatches the headless commands (`project show`, `analyzers list`, `analyze`, `findings`, `show`); with no arguments it opens the Textual interactive shell.
+- The installed `sattlint` console script targets `sattlint.cli.startup:cli`. With arguments it dispatches the headless commands (`project show`, `analyzers list`, `analyze`, `findings`, `show`); with no arguments it opens the Textual interactive shell when stdin and stdout are terminals, and otherwise prints the usage and exits 2.
 - SattLint does not do project validation; strict syntax checking belongs to the external `sattline check` command.
 - If you change CLI routing or the interactive shell, keep `tests/app/test_cli*.py` and `tests/app/test_app_textual*.py` in sync.
 - Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.

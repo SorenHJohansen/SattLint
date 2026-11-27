@@ -1,13 +1,36 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
-
-
 from sattline_parser.ast import MappingSource
-from sattline_parser.models.ast_model import GraphicsBinding
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    GraphicsBinding,
+    GraphObject,
+    ModuleCode,
+    ModuleDef,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
 from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
 from sattlint.graphics.validation import PictureDisplayPathRow, PictureDisplayRecord
-from tests.helpers.analyzers_variables_support import *
+from sattlint.reporting.variables_report import DATATYPE_FIELD_ANALYSIS_KINDS
 from tests.helpers.graphics_attachments_support import graphics_attachments
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_unused_datatype_fields_are_aggregated_across_variables():
@@ -16,9 +39,9 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.INTEGER),
-            Variable(name="C", datatype=Simple_DataType.INTEGER),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.INTEGER),
+            Variable(name="C", datatype=ScalarDatatype.INTEGER),
         ],
         origin_file="Root.x",
         origin_lib="ProjectLib",
@@ -29,25 +52,23 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[first, second],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("sinkA"), value=_varref("First.A")),
-                            Assignment(target=_varref("sinkB"), value=_varref("Second.B")),
-                        ],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("sinkA"), value=_varref("First.A")),
+                        Assignment(target=_varref("sinkB"), value=_varref("Second.B")),
+                    ],
+                )
+            ]
+        ),
         parametermappings=[],
     )
 
@@ -56,12 +77,12 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
         datatype_defs=[record_type],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="sinkA", datatype=Simple_DataType.INTEGER),
-            Variable(name="sinkB", datatype=Simple_DataType.INTEGER),
+            Variable(name="sinkA", datatype=ScalarDatatype.INTEGER),
+            Variable(name="sinkB", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.x",
         origin_lib="ProjectLib",
     )
@@ -87,9 +108,9 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="LOP19", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="LOP20", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="LOP21", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="LOP19", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="LOP20", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="LOP21", datatype=ScalarDatatype.BOOLEAN),
         ],
         origin_file="Root.s",
         origin_lib="ProjectLib",
@@ -104,24 +125,22 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
     )
     child_typedef = ModuleTypeDef(
         name="PanelType",
-        moduleparameters=[Variable(name="ThisOPStation", datatype=Simple_DataType.BOOLEAN)],
+        moduleparameters=[Variable(name="ThisOPStation", datatype=ScalarDatatype.BOOLEAN)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadThisOp",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[_varref("ThisOPStation")],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadThisOp",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    # A read-only self-assignment consumes the module parameter.
+                    code=[Assignment(target=_varref("ThisOPStation"), value=_varref("ThisOPStation"))],
+                )
+            ],
+            sequences=[],
+        ),
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
@@ -145,9 +164,8 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
@@ -157,8 +175,8 @@ def test_unused_datatype_fields_count_nested_record_field_accesses():
         moduletype_defs=[root_typedef, child_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
@@ -184,21 +202,20 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="TC601_AlarmDelay", datatype=Simple_DataType.INTEGER),
-            Variable(name="TC601_GlitChDelay", datatype=Simple_DataType.INTEGER),
-            Variable(name="Unused", datatype=Simple_DataType.INTEGER),
+            Variable(name="TC601_AlarmDelay", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TC601_GlitChDelay", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Unused", datatype=ScalarDatatype.INTEGER),
         ],
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
     dependency_typedef = ModuleTypeDef(
         name="MES_BatchControl",
-        moduleparameters=[Variable(name="AlarmDelay", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="AlarmDelay", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
         origin_file="MesLib.s",
         origin_lib="MesLib",
     )
@@ -207,7 +224,7 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
         moduleparameters=[],
         localvariables=[
             Variable(name="ColumnSh", datatype="ColumnShDataType"),
-            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+            Variable(name="Sink", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[
             ModuleTypeInstance(
@@ -225,21 +242,18 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
                 ],
             )
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Sink"), value=_varref("ColumnSh.TC601_GlitChDelay"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Sink"), value=_varref("ColumnSh.TC601_GlitChDelay"))],
+                )
+            ],
+            sequences=[],
+        ),
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -250,8 +264,8 @@ def test_library_target_dependency_mapping_counts_root_record_field_usage_withou
         moduletype_defs=[root_typedef, dependency_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ColumnLib.s",
         origin_lib="ColumnLib",
     )
@@ -279,20 +293,20 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
-            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
-            Variable(name="Unused", datatype=Simple_DataType.STRING),
+            Variable(name="CleanCycle", datatype=ScalarDatatype.STRING),
+            Variable(name="WaitCleanCycle", datatype=ScalarDatatype.STRING),
+            Variable(name="Unused", datatype=ScalarDatatype.STRING),
         ],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
     module = SingleModule(
         header=_hdr("DisplayModule"),
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         moduleparameters=[],
         localvariables=[Variable(name="StepTexts", datatype="StepTextType")],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -301,8 +315,8 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
@@ -356,14 +370,14 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
 
 
 def test_invalid_picture_display_path_rows_do_not_count_as_usage():
-    path_var = Variable(name="PathAIT", datatype=Simple_DataType.LINESTRING)
+    path_var = Variable(name="PathAIT", datatype=ScalarDatatype.LINESTRING)
     module = SingleModule(
         header=_hdr("DisplayModule"),
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         moduleparameters=[],
         localvariables=[path_var],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -372,8 +386,8 @@ def test_invalid_picture_display_path_rows_do_not_count_as_usage():
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     bp_attachments = graphics_attachments(
         bindings=[

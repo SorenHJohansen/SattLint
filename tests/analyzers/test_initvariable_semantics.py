@@ -1,4 +1,6 @@
+# These tests deliberately exercise private analyzer seams.
 # pyright: reportPrivateUsage=false
+
 """Focused regression tests for InitVariable record semantics."""
 
 from sattline_parser.models.ast_model import (
@@ -8,13 +10,14 @@ from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
 from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.reporting.variables_report import UnusedIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -40,37 +43,35 @@ def _build_initvariable_picture() -> tuple[BasePicture, Variable, Variable]:
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
+            Variable(name="A", datatype=ScalarDatatype.INTEGER),
+            Variable(name="B", datatype=ScalarDatatype.REAL),
         ],
     )
 
     init_record = Variable(name="InitRec", datatype="InitVariableType")
     record = Variable(name="Rec", datatype="InitVariableType")
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
 
     module = SingleModule(
         header=_hdr("M1"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[init_record, record, status],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        [
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="InitVariable",
-                                    args=(_varref("Rec"), _varref("InitRec"), _varref("Status")),
-                                )
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    [
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="InitVariable",
+                                args=(_varref("Rec"), _varref("InitRec"), _varref("Status")),
                             )
-                        ]
-                    )
-                ]
-            )
-        ],
+                        )
+                    ]
+                )
+            ]
+        ),
         parametermappings=[],
     )
 
@@ -80,8 +81,8 @@ def _build_initvariable_picture() -> tuple[BasePicture, Variable, Variable]:
         moduletype_defs=[],
         localvariables=[],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     return picture, init_record, record
 
@@ -90,7 +91,7 @@ def test_initvariable_source_is_not_reported_unused() -> None:
     picture, _, _ = _build_initvariable_picture()
 
     issues = VariablesAnalyzer(picture).run()
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
 
     assert "InitRec" not in unused
 

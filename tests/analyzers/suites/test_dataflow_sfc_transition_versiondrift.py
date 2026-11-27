@@ -1,43 +1,66 @@
-from sattline_parser.models.expressions import (
+from sattline_parser.models.ast_model import (
     Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    Sequence,
+    SFCAlternative,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    SFCTransition,
+    Variable,
+)
+from sattline_parser.models.expressions import (
     BoolOp,
     Compare,
     IfStmt,
     NotOp,
 )
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.same_cycle import analyze_same_cycle
+from sattlint.analyzers.sfc import analyze_sfc
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    issue_kinds as _issue_kinds,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_dataflow_flags_contradictory_branch_condition_in_analyzer_suite():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
-                                        (Assignment(target=_varref("Output"), value=True),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    BoolOp(op="AND", operands=(_varref("Flag"), NotOp(operand=_varref("Flag")))),
+                                    (Assignment(target=_varref("Output"), value=True),),
                                 ),
-                                else_block=(Assignment(target=_varref("Output"), value=False),),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=(Assignment(target=_varref("Output"), value=False),),
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
     report = analyze_dataflow(bp)
@@ -50,37 +73,35 @@ def test_dataflow_flags_impossible_inferred_compare_condition_in_analyzer_suite(
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        BoolOp(
-                                            op="AND",
-                                            operands=(
-                                                Compare(left=_varref("Counter"), op="==", right=1),
-                                                Compare(left=_varref("Counter"), op="==", right=2),
-                                            ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    BoolOp(
+                                        op="AND",
+                                        operands=(
+                                            Compare(left=_varref("Counter"), op="==", right=1),
+                                            Compare(left=_varref("Counter"), op="==", right=2),
                                         ),
-                                        (Assignment(target=_varref("Output"), value=True),),
                                     ),
+                                    (Assignment(target=_varref("Output"), value=True),),
                                 ),
-                                else_block=None,
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=None,
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
     report = analyze_dataflow(bp)
@@ -132,12 +153,12 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
                 name="RecType",
                 description=None,
                 datecode=None,
-                var_list=[Variable(name="Field", datatype=Simple_DataType.INTEGER)],
+                var_list=[Variable(name="Field", datatype=ScalarDatatype.INTEGER)],
             )
         ],
         localvariables=[Variable(name="Rec", datatype="RecType")],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
-        moduledefs=[],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
+        moduledef=None,
     )
 
     report = analyze_same_cycle(bp)
@@ -163,8 +184,8 @@ def test_dataflow_detects_always_true_transition_guard():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_dataflow(bp)
@@ -188,8 +209,8 @@ def test_dataflow_detects_always_false_transition_guard():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Permit", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_dataflow(bp)
@@ -205,23 +226,31 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            SFCTransition(
-                name="OpenPrimary",
-                condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
-            ),
-            SFCTransition(
-                name="OpenBackup",
-                condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
-            ),
+            SFCAlternative(
+                branches=[
+                    [
+                        SFCTransition(
+                            name="OpenPrimary",
+                            condition=BoolOp(op="AND", operands=(_varref("Permit"), _varref("Ready"))),
+                        )
+                    ],
+                    [
+                        SFCTransition(
+                            name="OpenBackup",
+                            condition=BoolOp(op="AND", operands=(_varref("Ready"), _varref("Permit"))),
+                        )
+                    ],
+                ]
+            )
         ],
     )
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Permit", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Ready", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Ready", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_sfc(bp)
@@ -230,123 +259,28 @@ def test_sfc_transition_logic_detects_duplicate_guards_after_normalization():
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["transition_names"] == ["OpenPrimary", "OpenBackup"]
+    assert issues[0].data["branch_indices"] == [1, 2]
 
 
-def test_version_drift_detects_small_code_delta_between_same_named_modules():
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledefs=[],
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
+def test_sfc_transition_logic_ignores_equivalent_guards_in_linear_steps():
+    sequence = Sequence(
+        name="SeqMain",
+        type="sequence",
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=[
+            SFCTransition(name="Tr2", condition=_varref("Permit")),
+            SFCStep(kind="step", name="OpenValve", code=SFCCodeBlocks()),
+            SFCTransition(name="Tr5", condition=_varref("Permit")),
+            SFCStep(kind="step", name="CloseValve", code=SFCCodeBlocks()),
         ],
-        parametermappings=[],
     )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledefs=[],
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Logic",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Output"), value=2)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
     bp = BasePicture(
         header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
-        origin_file="Root.s",
+        localvariables=[Variable(name="Permit", datatype=ScalarDatatype.BOOLEAN)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
-    report = analyze_version_drift(bp)
+    report = analyze_sfc(bp)
 
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert issues[0].data["module_name"] == "Mixer"
-    assert issues[0].data["unique_variants"] == 2
-    assert "code" in issues[0].data["material_differences"]
-    assert "modified_equations" in issues[0].data["material_differences"]["code"]
-    assert "Logic" in issues[0].data["material_differences"]["code"]["modified_equations"]
-    assert issues[0].data["material_differences"]["code"]["modified_equations"]["Logic"]
-    assert any("Equation 'Logic' changed" in note for note in issues[0].data["upgrade_notes"])
-
-
-def test_version_drift_records_modified_variable_shape_diffs():
-    variant_a = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=100,
-        moduledefs=[],
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecodes=[],
-        parametermappings=[],
-    )
-    variant_b = SingleModule(
-        header=_hdr("Mixer"),
-        datecode=200,
-        moduledefs=[],
-        moduleparameters=[],
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.REAL)],
-        submodules=[],
-        modulecodes=[],
-        parametermappings=[],
-    )
-    cast(Any, variant_a).origin_file = "Root.s"
-    cast(Any, variant_b).origin_file = "Root.s"
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[variant_a, variant_b],
-        modulecodes=[],
-        moduledefs=[],
-        origin_file="Root.s",
-    )
-
-    report = analyze_version_drift(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.version_drift"]
-    assert len(issues) == 1
-    assert issues[0].data is not None
-    assert "localvariables" in issues[0].data["material_differences"]
-    assert "Output" in issues[0].data["material_differences"]["localvariables"]["modified"]
-    assert any(
-        detail["path"] == "datatype"
-        for detail in issues[0].data["material_differences"]["localvariables"]["modified"]["Output"]
-    )
-    assert any("Local variable 'Output' changed" in note for note in issues[0].data["upgrade_notes"])
+    assert not [issue for issue in report.issues if issue.kind == "sfc_duplicate_transition_guard"]

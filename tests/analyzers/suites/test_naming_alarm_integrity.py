@@ -1,28 +1,48 @@
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    Variable,
+)
+from sattline_parser.models.expressions import (
+    FuncCall,
+    FuncCallStmt,
+)
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
+from sattlint.analyzers.registry import get_default_analyzers
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_alarm_integrity_detects_duplicate_tags_across_instances():
     detector = ModuleTypeDef(
         name="EventDetector1",
         moduleparameters=[
-            Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
-            Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
-            Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
         ],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="Root.s",
     )
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="CondA", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="CondB", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="CondB", datatype=ScalarDatatype.BOOLEAN),
         ],
         moduletype_defs=[detector],
         submodules=[
@@ -83,20 +103,19 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
     detector = ModuleTypeDef(
         name="EventDetector1",
         moduleparameters=[
-            Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
-            Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
-            Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
         ],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="Root.s",
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="SharedCondition", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="SharedCondition", datatype=ScalarDatatype.BOOLEAN)],
         moduletype_defs=[detector],
         submodules=[
             ModuleTypeInstance(
@@ -153,21 +172,55 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances():
 
 
 def test_alarm_integrity_detects_never_cleared_alarm_variable():
+    detector = ModuleTypeDef(
+        name="EventDetector1",
+        moduleparameters=[
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+    )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="AlarmTrip", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
-                    )
-                ]
+        localvariables=[Variable(name="AlarmTrip", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[detector],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmA"),
+                moduletype_name="EventDetector1",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="TRIP",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmTrip"),
+                        source_literal=None,
+                    ),
+                ],
             )
         ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
+                )
+            ]
+        ),
     )
 
     report = analyze_alarm_integrity(bp)

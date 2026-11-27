@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from sattlint.parser_api import ModuleTypeDef, Variable
 
-from ... import cache as cache_module
 from ...resolution import TypeGraph
 from ...resolution.access_graph import AccessGraph
 from ...resolution.scope import ScopeContext
-from ..shared._contract_index import ContractIndex, ContractIndexKey
 
 if TYPE_CHECKING:
     from ..variables._usage_tracker import UsageTracker
@@ -65,85 +63,19 @@ class AnalysisSharedArtifacts:
     # (`usage_tracker`, `_alias_links`, `access_graph`, ...) instead of re-running the instance
     # traversal. Typed as Any to avoid a framework -> variables dependency cycle.
     variable_analyzer: Any = None
-    # Phase E persistent-foundation cache support. `foundation_cache` is the disk store (created
-    # lazily from the user cache dir), typed as Any to keep framework -> app coupling nil. The
-    # project cache key + source-content manifest are seeded by the app orchestration layer; when
-    # all three are present, `ensure_foundation()` restores the foundation from disk instead of
-    # re-deriving it. Any source change alters the content-derived key and simply misses.
-    foundation_cache: Any = None
-    foundation_project_cache_key: str | None = None
-    foundation_source_manifest: dict[str, tuple[int, int]] | None = None
-    # The immutable, snapshot-scoped contract index (lazily built) plus the policy key it was
-    # built for. Only the deeply-immutable `ContractIndex` is ever published here -- never the
-    # mutable session provider analyzer, which stays internal to the builder.
-    contract_index: ContractIndex | None = None
-    contract_index_key: ContractIndexKey | None = None
-    _contract_index_lock: Any = field(default_factory=lambda: Lock(), init=False)
 
-    def ensure_foundation(self, build_fn: Any) -> VariableAnalysisArtifacts | None:
+    def ensure_foundation(self, build_fn: Callable[[], VariableAnalysisArtifacts]) -> VariableAnalysisArtifacts:
         """Lazily materialize the analysis foundation (type graph + indices + symbol skeleton).
 
         Mirrors `AnalysisContext.ensure_*`: only computes when an analyzer actually asks, then
-        memoizes on this holder. When persistent-cache data is seeded, prefers a disk restore over
-        a rebuild and persists newly-built foundations for the next cold run. The foundation must be
-        treated as read-only shared state by consumers (never mutated).
+        memoizes on this holder. The foundation is scoped to one run and one parse: it holds
+        ``Variable`` and ``ModuleTypeDef`` instances, so it is never restored from or persisted to
+        disk. A consumer must treat it as read-only shared state (never mutate it).
         """
-        if self.variable_analysis is not None:
-            return self.variable_analysis
-
-        if (
-            self.foundation_cache is None
-            and self.foundation_project_cache_key is not None
-            and self.foundation_source_manifest is not None
-        ):
-            self.foundation_cache = cache_module.FoundationCache(cache_module.get_cache_dir())
-
-        foundation_cache: Any = self.foundation_cache
-        project_cache_key: str | None = self.foundation_project_cache_key
-        source_manifest: dict[str, tuple[int, int]] | None = self.foundation_source_manifest
-        cache_key: str | None = None
-        if foundation_cache is not None and project_cache_key is not None and source_manifest is not None:
-            cache_key = cache_module.compute_foundation_cache_key(project_cache_key, source_manifest)
-
-        restored: VariableAnalysisArtifacts | None = None
-        if foundation_cache is not None and cache_key is not None:
-            payload = foundation_cache.load(cache_key)
-            if isinstance(payload, VariableAnalysisArtifacts):
-                restored = payload
-
-        if restored is not None:
-            self.variable_analysis = restored
-            return restored
-
-        built = build_fn()
-        self.variable_analysis = built
-        self.counters.variable_foundation_builds += 1
-        if foundation_cache is not None and cache_key is not None:
-            foundation_cache.save(cache_key, built)
-        return built
-
-    def ensure_contract_index(
-        self,
-        key: ContractIndexKey,
-        build_fn: Any,
-    ) -> ContractIndex | None:
-        """Lazily materialize the immutable contract index for one policy key.
-
-        Built at most once per :class:`ContractIndexKey`; a later request for a different
-        policy key rebuilds. Only the immutable :class:`ContractIndex` is stored and returned
-        -- the transient session provider is never published, so no caller can observe or
-        mutate in-progress per-typedef summaries. A building lock makes concurrent requests
-        for the same key wait for completion rather than observing a partial result.
-        """
-        with self._contract_index_lock:
-            if self.contract_index is not None and self.contract_index_key == key:
-                return self.contract_index
-            index = build_fn()
-            if index is None:
-                return None
-            self.contract_index = index
-            self.contract_index_key = key
-            return index
+        if self.variable_analysis is None:
+            self.variable_analysis = build_fn()
+            self.counters.variable_foundation_builds += 1
+        return self.variable_analysis
 
 
 __all__ = [

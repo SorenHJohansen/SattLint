@@ -57,6 +57,12 @@ class ReviewContextBlock:
     file: str | None
     line_start: int | None
     line_end: int | None
+    official_file: str | None = None
+    official_line_start: int | None = None
+    official_line_end: int | None = None
+    draft_file: str | None = None
+    draft_line_start: int | None = None
+    draft_line_end: int | None = None
     official_source: str | None = None
     draft_source: str | None = None
     source: str | None = None
@@ -80,18 +86,20 @@ def _end_line_for_span(
     span_line: int | None,
     start: int | None,
     end: int | None,
+    *,
+    library: str | None = None,
 ) -> int | None:
     if span_line is None:
         return None
     if start is None or end is None or end <= start:
         return span_line
-    text = provider.text(file_name)
+    text = provider.text(file_name, library=library)
     if text is None or start < 0 or end > len(text):
         return span_line
     return span_line + text[start:end].count("\n")
 
 
-_HEADER_PATTERN = re.compile(r"(EQUATIONBLOCK|SEQUENCE)\s+(\S+)")
+_HEADER_PATTERN = re.compile(r"(EQUATIONBLOCK|SEQUENCE)\s+(\S+)", re.IGNORECASE)
 
 
 def _expand_block_start(
@@ -109,8 +117,10 @@ def _expand_block_start(
     start_line = block.line_start
     if start_line is None or block.source_file is None or block.kind not in {"equation", "sequence"}:
         return start_line or 1
-    for candidate in range(max(1, start_line - 8), start_line):
-        line = provider.lines(block.source_file, candidate, candidate)
+    # Search downwards from the line just above the first statement so the
+    # nearest matching header wins.
+    for candidate in range(start_line - 1, max(0, start_line - 9), -1):
+        line = provider.lines(block.source_file, candidate, candidate, library=block.source_library)
         if line is None:
             break
         match = _HEADER_PATTERN.search(line)
@@ -123,23 +133,31 @@ def _block_source(
     provider: SourceTextProvider,
     block: BlockModel,
 ) -> tuple[str | None, str | None, int | None, int | None]:
-    if block.source_file is None or block.line_start is None:
+    if block.source_file is None:
         return None, None, None, None
-    end_line = None
-    if block.last_span is not None:
-        end_line = _end_line_for_span(
+    spans = [statement.span for statement in block.statements if statement.span is not None]
+    last_span = block.last_span
+    if last_span is None and spans:
+        last_span = max(spans, key=lambda span: (span.line, span.start))
+    start_line = block.line_start
+    if start_line is None and spans:
+        start_line = min(spans, key=lambda span: (span.line, span.start)).line
+    if start_line is None:
+        return None, block.source_file, None, None
+    end_line = start_line
+    if last_span is not None:
+        computed_end = _end_line_for_span(
             provider,
             block.source_file,
-            block.last_span.line,
-            block.last_span.start,
-            block.last_span.end,
+            last_span.line,
+            last_span.start,
+            last_span.end,
+            library=block.source_library,
         )
-    if end_line is None:
-        return None, None, None, None
+        if computed_end is not None:
+            end_line = max(start_line, computed_end)
     start_line = _expand_block_start(provider, block)
-    source = provider.lines(block.source_file, start_line, end_line)
-    if source is None:
-        return None, None, None, None
+    source = provider.lines(block.source_file, start_line, end_line, library=block.source_library)
     return source, block.source_file, start_line, end_line
 
 
@@ -147,18 +165,43 @@ def _version_block(version: VersionSnapshot, identity: tuple[tuple[str, ...], st
     return version.code_model.blocks_by_key.get(identity)
 
 
-def _definition_for_key(version: VersionSnapshot, key: tuple[str, ...]) -> SymbolDefinition | None:
+def _definition_map(version: VersionSnapshot) -> dict[tuple[str, ...], SymbolDefinition]:
+    definitions: dict[tuple[str, ...], SymbolDefinition] = {}
     for definition in version.snapshot.definitions:
-        if tuple(segment.casefold() for segment in definition.canonical_path.split(".")) == key:
-            return definition
-    return None
+        key = tuple(segment.casefold() for segment in definition.canonical_path.split("."))
+        definitions.setdefault(key, definition)
+    return definitions
+
+
+def _definition_source_map(
+    provider: SourceTextProvider,
+    version: VersionSnapshot,
+) -> dict[tuple[str, ...], str]:
+    """Index the first assignment source for every produced definition key."""
+    sources: dict[tuple[str, ...], str] = {}
+    for block in version.code_model.blocks_by_key.values():
+        for statement in block.statements:
+            if statement.span is None or statement.source_file is None:
+                continue
+            for key in statement.produced_keys:
+                if key in sources:
+                    continue
+                source = provider.snippet(
+                    statement.source_file,
+                    statement.span.start,
+                    statement.span.end,
+                    library=statement.source_library,
+                )
+                if source is not None:
+                    sources[key] = source
+    return sources
 
 
 def _variable_declaration_source(
     provider: SourceTextProvider,
     fact: SymbolFact,
-    official: VersionSnapshot,
-    draft: VersionSnapshot,
+    official_definitions: dict[tuple[str, ...], SymbolDefinition],
+    draft_definitions: dict[tuple[str, ...], SymbolDefinition],
 ) -> str | None:
     """Return the actual declaration line(s) of a variable, if available.
 
@@ -166,44 +209,36 @@ def _variable_declaration_source(
     distinct from the statements that assign its value.
     """
     key = tuple(segment.casefold() for segment in fact.symbol.split("."))
-    for version in (draft, official):
-        definition = _definition_for_key(version, key)
+    for definitions in (draft_definitions, official_definitions):
+        definition = definitions.get(key)
         if definition is None or definition.declaration_span is None:
             continue
         line = definition.declaration_span.line
         if definition.source_file:
-            source = provider.lines(definition.source_file, line, line)
+            end_line = _end_line_for_span(
+                provider,
+                definition.source_file,
+                line,
+                definition.declaration_span.start,
+                definition.declaration_span.end,
+                library=definition.source_library,
+            )
+            source = provider.lines(
+                definition.source_file,
+                line,
+                end_line if end_line is not None else line,
+                library=definition.source_library,
+            )
             if source:
                 return source
         source = provider.snippet(
             definition.source_file,
             definition.declaration_span.start,
             definition.declaration_span.end,
+            library=definition.source_library,
         )
         if source:
             return source
-    return None
-
-
-def _definition_source_in_version(
-    provider: SourceTextProvider,
-    fact: SymbolFact,
-    version: VersionSnapshot,
-) -> str | None:
-    """Return the statement that assigns the variable in one project version."""
-    key = tuple(segment.casefold() for segment in fact.symbol.split("."))
-    for block in version.code_model.blocks_by_key.values():
-        if key not in block.writes_keys:
-            continue
-        for statement in block.statements:
-            if key in statement.produced_keys and statement.span is not None and statement.source_file:
-                source = provider.snippet(
-                    statement.source_file,
-                    statement.span.start,
-                    statement.span.end,
-                )
-                if source:
-                    return source
     return None
 
 
@@ -214,18 +249,27 @@ def _attach_variable_sources(
     draft: VersionSnapshot,
     provider: SourceTextProvider,
 ) -> tuple[SymbolFact, ...]:
+    official_definitions = _definition_map(official)
+    draft_definitions = _definition_map(draft)
+    official_sources = _definition_source_map(provider, official)
+    draft_sources = _definition_source_map(provider, draft)
     enriched: list[SymbolFact] = []
     for fact in variables:
         if fact.declaration_source is None:
-            source = _variable_declaration_source(provider, fact, official, draft)
+            source = _variable_declaration_source(
+                provider,
+                fact,
+                official_definitions,
+                draft_definitions,
+            )
             if source is not None:
                 fact = replace(fact, declaration_source=source)
         if fact.official_definition_source is None:
-            source = _definition_source_in_version(provider, fact, official)
+            source = official_sources.get(tuple(segment.casefold() for segment in fact.symbol.split(".")))
             if source is not None:
                 fact = replace(fact, official_definition_source=source)
         if fact.draft_definition_source is None:
-            source = _definition_source_in_version(provider, fact, draft)
+            source = draft_sources.get(tuple(segment.casefold() for segment in fact.symbol.split(".")))
             if source is not None:
                 fact = replace(fact, draft_definition_source=source)
         enriched.append(fact)
@@ -245,6 +289,9 @@ def _context_block_for(
     if official_block is None and draft_block is None:
         return None
 
+    official_location = _block_source(provider, official_block) if official_block is not None else None
+    draft_location = _block_source(provider, draft_block) if draft_block is not None else None
+
     official_source = None
     draft_source = None
     source = None
@@ -253,10 +300,10 @@ def _context_block_for(
     line_end = None
 
     if context.role == "changed":
-        if official_block is not None:
-            official_source, file_name, line_start, line_end = _block_source(provider, official_block)
-        if draft_block is not None:
-            draft_source, draft_file, draft_start, draft_end = _block_source(provider, draft_block)
+        if official_location is not None:
+            official_source, file_name, line_start, line_end = official_location
+        if draft_location is not None:
+            draft_source, draft_file, draft_start, draft_end = draft_location
             if file_name is None:
                 file_name = draft_file
             if line_start is None:
@@ -264,13 +311,20 @@ def _context_block_for(
             if line_end is None:
                 line_end = draft_end
     else:
-        preferred = draft_block if draft_block is not None else official_block
+        preferred = draft_location if draft_location is not None else official_location
         if preferred is not None:
-            source, file_name, line_start, line_end = _block_source(provider, preferred)
+            source, file_name, line_start, line_end = preferred
 
-    if official_source is None and draft_source is None and source is None:
-        return None
+    if file_name is None:
+        fallback_block = draft_block if draft_block is not None else official_block
+        if fallback_block is not None:
+            file_name = fallback_block.source_file
+            line_start = line_start if line_start is not None else fallback_block.line_start
+            if line_end is None and fallback_block.last_span is not None:
+                line_end = fallback_block.last_span.line
 
+    official_file = official_location[1] if official_location is not None else None
+    draft_file = draft_location[1] if draft_location is not None else None
     return ReviewContextBlock(
         symbol=context.symbol,
         module_path=context.module_path,
@@ -283,6 +337,12 @@ def _context_block_for(
         file=file_name,
         line_start=line_start,
         line_end=line_end,
+        official_file=official_file,
+        official_line_start=official_location[2] if official_location is not None else None,
+        official_line_end=official_location[3] if official_location is not None else None,
+        draft_file=draft_file,
+        draft_line_start=draft_location[2] if draft_location is not None else None,
+        draft_line_end=draft_location[3] if draft_location is not None else None,
         official_source=official_source,
         draft_source=draft_source,
         source=source,
@@ -302,6 +362,11 @@ def _attach_contexts(
         context = context_by_index.get(index)
         enriched.append(replace(change, semantic_context=context) if context is not None else change)
     return tuple(enriched)
+
+
+def _source_size(source: str | None) -> int:
+    """UTF-8 byte size, the same unit the project source size is measured in."""
+    return 0 if source is None else len(source.encode("utf-8"))
 
 
 def build_change_review(
@@ -328,7 +393,8 @@ def build_change_review(
 
     total_size = official.total_source_size + draft.total_source_size
     selected_source_size = sum(
-        len(block.source or "") + len(block.official_source or "") + len(block.draft_source or "") for block in context
+        _source_size(block.source) + _source_size(block.official_source) + _source_size(block.draft_source)
+        for block in context
     )
     reduction = 1.0 - (selected_source_size / total_size) if total_size else 0.0
 
@@ -346,7 +412,7 @@ def build_change_review(
         project=official.snapshot.entry_file.stem or official.snapshot.base_picture.name,
         official_revision=official.label,
         draft_revision=draft.label,
-        generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
+        generated_at=datetime.now(UTC).isoformat(timespec="microseconds"),
     )
     size_stats = ReviewSizeStats(
         total_project_source_size=total_size,
@@ -355,7 +421,7 @@ def build_change_review(
         artifact_size=0,
         source_reduction_percent=round(reduction * 100.0, 2),
         semantic_change_count=len(changes),
-        relevant_block_count=len(relevance.relevant_blocks),
+        relevant_block_count=len(context),
         relevant_variable_count=len(relevance.relevant_variables),
         contextual_block_count=contextual_count,
     )

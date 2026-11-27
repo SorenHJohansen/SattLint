@@ -1,11 +1,10 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 from pathlib import Path
 
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     ModuleHeader,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -43,7 +42,7 @@ def _entry(
     )
 
 
-def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path) -> None:
+def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path: Path) -> None:
     icf_file = tmp_path / "Program.icf"
     icf_file.write_text(
         "[Unit Unit221A]\n"
@@ -66,11 +65,11 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -93,7 +92,7 @@ def test_icf_validation_reports_valid_and_invalid_entries() -> None:
 def test_icf_validation_skips_placeholder_h_dot_value() -> None:
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
     entries = [
         _entry(

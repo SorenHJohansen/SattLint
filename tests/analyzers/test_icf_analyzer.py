@@ -1,23 +1,30 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
+from __future__ import annotations
+
+from collections.abc import Sequence
 from pathlib import Path
-from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTypeDef
+from sattline_parser.project import ProjectLoadError
 
 import sattlint.analyzers.icf.analyzer as analyzer_module
+from sattlint.analyzers.framework import build_analysis_context
 from sattlint.analyzers.registry import (
-    DEFAULT_CLI_ANALYZER_KEYS,
     get_default_analyzer_catalog,
+    get_selectable_analyzer_keys,
     get_selectable_analyzers,
 )
 from sattlint.config.types import ConfigDict
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.icf_report import ICFEntry, ICFValidationIssue, ICFValidationReport
 
 
 def _config(**overrides: object) -> ConfigDict:
-    return cast(ConfigDict, {"icf_dir": "/tmp/icf", **overrides})
+    return cast(ConfigDict, {"icf_dir": "icf", **overrides})
 
 
 def _entry(line: int = 3, value: str = "Program:Module.Var") -> ICFEntry:
@@ -46,12 +53,79 @@ def _report(*issues: ICFValidationIssue) -> ICFValidationReport:
     )
 
 
-def _graph() -> SimpleNamespace:
-    return SimpleNamespace(ast_by_name={})
+def _graph() -> ProjectGraph:
+    return ProjectGraph()
+
+
+def _loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg
+    return _base_picture(program_name), _graph()
+
+
+def _failing_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg, program_name
+    raise RuntimeError("boom")
+
+
+def _parser_rejecting_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+    del cfg
+    raise ProjectLoadError(program_name, "missing code file")
 
 
 def _base_picture(name: str = "Program") -> BasePicture:
-    return cast(BasePicture, SimpleNamespace(header=SimpleNamespace(name=name)))
+    return BasePicture(
+        header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        program_name=name,
+    )
+
+
+def _patch_icf_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    icf_dir: Path,
+    programs_by_file: dict[Path, list[str]],
+) -> None:
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, list(programs_by_file)
+
+    def _parsed(path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+        del max_bytes
+        return [
+            _entry(line=line, value=f"{program}:Module.Var{line}")
+            for line, program in enumerate(programs_by_file[path], start=1)
+        ]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+    monkeypatch.setattr(analyzer_module, "parse_icf_file", _parsed)
+
+
+def _patch_merge(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _merge(base_picture: BasePicture, _graph: ProjectGraph) -> BasePicture:
+        return base_picture
+
+    monkeypatch.setattr(analyzer_module, "merge_project_basepicture", _merge)
+
+
+def _patch_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    report: ICFValidationReport,
+    *,
+    seen: list[tuple[str, list[str]]] | None = None,
+) -> None:
+    def _validate(
+        _base_picture: BasePicture,
+        entries: list[ICFEntry],
+        *,
+        expected_program: str,
+        debug: bool = False,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+        unavailable_libraries: object = None,
+    ) -> ICFValidationReport:
+        del debug, moduletype_index, unavailable_libraries
+        if seen is not None:
+            seen.append((expected_program, [entry.value for entry in entries]))
+        return report
+
+    monkeypatch.setattr(analyzer_module, "validate_icf_entries_against_program", _validate)
 
 
 @pytest.mark.parametrize(
@@ -76,75 +150,351 @@ def test_unknown_reason_falls_back_to_generic_kind() -> None:
     assert analyzer_module._kind_for_reason("something new") == "icf.issue"
 
 
-def test_analyzes_all_configured_icf_files(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+def test_issue_message_uses_the_first_detail_line() -> None:
+    assert analyzer_module._issue_message(_issue("unresolved path")) == "Program.icf:3: unresolved path"
+    assert analyzer_module._issue_message(_issue("unresolved path", "  \n  ")) == "Program.icf:3: unresolved path"
+    assert (
+        analyzer_module._issue_message(_issue("unresolved path", "  first line\nsecond line"))
+        == "Program.icf:3: unresolved path: first line"
+    )
+
+
+def test_analyzes_all_configured_icf_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
     f2 = icf_dir / "ProgramB.icf"
-    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1, f2]))
-    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(
-        analyzer_module,
-        "load_program_ast",
-        lambda cfg, name: (_base_picture(name), _graph()),
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"], f2: ["ProgramB"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(_issue("unresolved path")), seen=seen)
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_loader,
     )
-    monkeypatch.setattr(analyzer_module, "merge_project_basepicture", lambda bp, graph: bp)
 
-    seen_programs: list[str] = []
-
-    def fake_validate(bp, entries, *, expected_program, debug=False, moduletype_index=None):
-        seen_programs.append(expected_program)
-        return _report(_issue("unresolved path"))
-
-    monkeypatch.setattr(analyzer_module, "validate_icf_entries_against_program", fake_validate)
-
-    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
-
-    assert sorted(seen_programs) == ["ProgramA", "ProgramB"]
+    assert sorted(program for program, _entries in seen) == ["ProgramA", "ProgramB"]
     assert len(report.issues) == 2
     assert report.issues[0].kind == "icf.unresolved_path"
     assert report.issues[0].module_path == ["ProgramA"]
     assert report.issues[1].module_path == ["ProgramB"]
 
 
-def test_reuses_in_memory_program_when_matching(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
-    f1 = icf_dir / "ProgramA.icf"
-    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
-    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(analyzer_module, "merge_project_basepicture", lambda bp, graph: bp)
+def test_program_identity_comes_from_entries_not_the_file_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    channel_config = icf_dir / "KaHCBSolvent.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {channel_config: ["KaHCBZAMix", "KaHCBZASto"]})
+    _patch_merge(monkeypatch)
+    _patch_validation(monkeypatch, _report())
 
-    def _should_not_load(cfg, name):
-        raise AssertionError("load_program_ast should not be called when the program is already in memory")
+    loaded: list[str] = []
 
-    monkeypatch.setattr(analyzer_module, "load_program_ast", _should_not_load)
-    monkeypatch.setattr(
-        analyzer_module,
-        "validate_icf_entries_against_program",
-        lambda bp, entries, *, expected_program, debug=False, moduletype_index=None: _report(
-            _issue("program mismatch")
-        ),
+    def _counting_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_counting_loader,
     )
 
-    report = analyzer_module.analyze_icf_configuration(_base_picture("ProgramA"), config=_config(icf_dir=str(icf_dir)))
+    assert loaded == ["KaHCBZAMix", "KaHCBZASto"]
+    assert not any(issue.kind == "icf.program_load_failed" for issue in report.issues)
+
+
+def test_validates_each_program_against_only_its_own_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    multi_program = icf_dir / "Channel.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {multi_program: ["ProgramA", "ProgramB", "ProgramA"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(), seen=seen)
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_loader,
+    )
+
+    assert seen == [
+        ("ProgramA", ["ProgramA:Module.Var1", "ProgramA:Module.Var3"]),
+        ("ProgramB", ["ProgramB:Module.Var2"]),
+    ]
+
+
+def test_icf_file_without_a_referenced_program_is_not_validated(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    unbound = icf_dir / "Unbound.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {unbound: []})
+    _patch_validation(monkeypatch, _report(_issue("unresolved path")))
+
+    def _should_not_load(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg, program_name
+        raise AssertionError("an .icf file with no referenced program must not load anything")
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_should_not_load,
+    )
+
+    assert report.issues == []
+
+
+def test_placeholder_only_entries_are_not_a_program_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    unbound = icf_dir / "Unbound.icf"
+
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, [unbound]
+
+    def _parsed(_path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+        del max_bytes
+        return [_entry(value="H::."), _entry(line=4, value="free text without a reference")]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+    monkeypatch.setattr(analyzer_module, "parse_icf_file", _parsed)
+
+    def _should_not_load(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg, program_name
+        raise AssertionError("a placeholder is not a program reference")
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_should_not_load,
+    )
+
+    assert report.issues == []
+
+
+def test_program_identity_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["KaHCBZAMix", "kahcbzamix"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(), seen=seen)
+
+    loaded: list[str] = []
+
+    def _counting_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_counting_loader,
+    )
+
+    assert loaded == ["KaHCBZAMix"]
+    assert seen == [("KaHCBZAMix", ["KaHCBZAMix:Module.Var1", "kahcbzamix:Module.Var2"])]
+
+
+def test_reuses_in_memory_program_when_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
+    _patch_merge(monkeypatch)
+
+    def _should_not_load(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg, program_name
+        raise AssertionError("the loader must not run when the program is already in memory")
+
+    _patch_validation(monkeypatch, _report(_issue("program mismatch")))
+
+    report = analyzer_module.analyze_icf_configuration(
+        _base_picture("ProgramA"),
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_should_not_load,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_mismatch"
 
 
-def test_load_failure_emits_program_load_failed(monkeypatch) -> None:
-    icf_dir = Path("/tmp/icf")
+def test_load_failure_emits_program_load_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
     f1 = icf_dir / "ProgramA.icf"
-    monkeypatch.setattr(analyzer_module, "configured_icf_files", lambda config: (icf_dir, [f1]))
-    monkeypatch.setattr(analyzer_module, "parse_icf_file", lambda path: [_entry()])
-    monkeypatch.setattr(
-        analyzer_module, "load_program_ast", lambda cfg, name: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
 
-    report = analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_failing_loader,
+    )
 
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_load_failed"
     assert report.issues[0].module_path == ["ProgramA"]
+
+
+def test_parser_load_error_emits_program_load_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_parser_rejecting_loader,
+    )
+
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "icf.program_load_failed"
+    assert report.issues[0].module_path == ["ProgramA"]
+
+
+def test_oversized_icf_file_reports_a_finding_and_validates_the_others(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    oversized = icf_dir / "Big.icf"
+    oversized.write_bytes(b"x" * 4096)
+    valid = icf_dir / "Small.icf"
+    valid.write_text("Key=F::Program:Module.Var\n", encoding="utf-8")
+
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, [oversized, valid]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+    _patch_merge(monkeypatch)
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(), seen=seen)
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir), analysis={"icf_byte_limit": 1024}),
+        program_ast_loader=_loader,
+    )
+
+    assert [issue.kind for issue in report.issues] == ["icf.file_too_large"]
+    message = report.issues[0].message
+    assert str(oversized) in message
+    assert "4096" in message
+    assert "1024" in message
+    # The readable file still validates even though its neighbor was refused.
+    assert seen == [("Program", ["F::Program:Module.Var"])]
+
+
+def test_oversized_only_icf_inputs_need_no_program_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    oversized = icf_dir / "Big.icf"
+    oversized.write_bytes(b"x" * 4096)
+
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, [oversized]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir), analysis={"icf_byte_limit": 1024}),
+    )
+
+    assert [issue.kind for issue in report.issues] == ["icf.file_too_large"]
+
+
+def test_one_load_failure_does_not_hide_the_other_referenced_programs(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA", "Missing"]})
+    _patch_merge(monkeypatch)
+    _patch_validation(monkeypatch, _report(_issue("unresolved path")))
+
+    def _partial_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        if program_name == "Missing":
+            raise ProjectLoadError(program_name, "missing code file")
+        return _base_picture(program_name), _graph()
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_partial_loader,
+    )
+
+    kinds = sorted(issue.kind for issue in report.issues)
+    assert kinds == ["icf.program_load_failed", "icf.unresolved_path"]
+    load_failures = [issue for issue in report.issues if issue.kind == "icf.program_load_failed"]
+    assert [issue.module_path for issue in load_failures] == [["Missing"]]
+
+
+def test_program_is_loaded_once_across_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "First.icf"
+    f2 = icf_dir / "Second.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"], f2: ["ProgramA"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(), seen=seen)
+
+    loaded: list[str] = []
+
+    def _counting_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_counting_loader,
+    )
+
+    assert loaded == ["ProgramA"]
+    assert [program for program, _entries in seen] == ["ProgramA", "ProgramA"]
+
+
+def test_requires_a_program_loader_for_referenced_programs(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
+
+    with pytest.raises(RuntimeError, match="program loader"):
+        analyzer_module.analyze_icf_configuration(None, config=_config(icf_dir=str(icf_dir)))
+
+
+def test_registry_passes_the_context_program_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
+    _patch_merge(monkeypatch)
+    _patch_validation(monkeypatch, _report())
+
+    loaded: list[str] = []
+
+    def fake_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    spec = next(analyzer.spec for analyzer in get_default_analyzer_catalog().analyzers if analyzer.spec.key == "icf")
+    context = build_analysis_context(
+        cast(BasePicture, None),
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=fake_loader,
+    )
+
+    report = spec.run(context)
+
+    assert loaded == ["ProgramA"]
+    assert report.issues == []
 
 
 def test_no_config_returns_empty_report() -> None:
@@ -152,11 +502,132 @@ def test_no_config_returns_empty_report() -> None:
     assert report.issues == []
 
 
+def test_no_configured_icf_files_returns_empty_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    _patch_icf_inputs(monkeypatch, icf_dir, {})
+
+    def _should_not_load(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg, program_name
+        raise AssertionError("no ICF files means nothing to load")
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_should_not_load,
+    )
+
+    assert report.issues == []
+
+
+def test_loaded_graph_moduletypes_reach_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "ProgramA.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA"]})
+
+    moduletype = ModuleTypeDef(name="TankType", localvariables=[])
+    picture = _base_picture("ProgramA")
+    picture.moduletype_defs = [moduletype]
+
+    def _graph_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        return picture, ProjectGraph(ast_by_name={program_name: picture})
+
+    seen_indexes: list[dict[str, list[ModuleTypeDef]] | None] = []
+
+    def _validate(
+        _base_picture_arg: BasePicture,
+        _entries: list[ICFEntry],
+        *,
+        expected_program: str,
+        debug: bool = False,
+        moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+        unavailable_libraries: object = None,
+    ) -> ICFValidationReport:
+        del expected_program, debug, unavailable_libraries
+        seen_indexes.append(moduletype_index)
+        return _report()
+
+    monkeypatch.setattr(analyzer_module, "validate_icf_entries_against_program", _validate)
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_graph_loader,
+    )
+
+    assert seen_indexes == [{"tanktype": [moduletype]}]
+
+
 def test_icf_is_registered_and_selectable() -> None:
-    assert "icf" in DEFAULT_CLI_ANALYZER_KEYS
+    assert "icf" in get_selectable_analyzer_keys()
     assert any(spec.key == "icf" for spec in get_selectable_analyzers())
 
     catalog = get_default_analyzer_catalog()
     icf_analyzers = [analyzer for analyzer in catalog.analyzers if analyzer.spec.key == "icf"]
     assert len(icf_analyzers) == 1
     assert icf_analyzers[0].spec.category == "correctness"
+
+
+def test_batch_loader_loads_every_referenced_program_in_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "First.icf"
+    f2 = icf_dir / "Second.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA", "ProgramB"], f2: ["ProgramC", "ProgramA"]})
+    _patch_merge(monkeypatch)
+
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(_issue("unresolved path")), seen=seen)
+
+    batch_calls: list[list[str]] = []
+
+    def _batch_loader(cfg: ConfigDict, program_names: Sequence[str]) -> tuple[dict[str, BasePicture], ProjectGraph]:
+        del cfg
+        batch_calls.append(list(program_names))
+        return {name: _base_picture(name) for name in program_names}, _graph()
+
+    single_calls: list[str] = []
+
+    def _single_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        single_calls.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_single_loader,
+        program_ast_batch_loader=_batch_loader,
+    )
+
+    assert batch_calls == [["ProgramA", "ProgramB", "ProgramC"]]
+    assert single_calls == []
+    assert sorted(program for program, _entries in seen) == ["ProgramA", "ProgramA", "ProgramB", "ProgramC"]
+    assert len(report.issues) == 4
+
+
+def test_batch_loader_failure_falls_back_to_per_program_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    icf_dir = Path("icf")
+    f1 = icf_dir / "First.icf"
+    _patch_icf_inputs(monkeypatch, icf_dir, {f1: ["ProgramA", "ProgramB"]})
+    _patch_merge(monkeypatch)
+    _patch_validation(monkeypatch, _report())
+
+    def _batch_loader(cfg: ConfigDict, program_names: Sequence[str]) -> tuple[dict[str, BasePicture], ProjectGraph]:
+        del cfg, program_names
+        raise RuntimeError("batch failed")
+
+    loaded: list[str] = []
+
+    def _single_loader(cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]:
+        del cfg
+        loaded.append(program_name)
+        return _base_picture(program_name), _graph()
+
+    analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir)),
+        program_ast_loader=_single_loader,
+        program_ast_batch_loader=_batch_loader,
+    )
+
+    assert loaded == ["ProgramA", "ProgramB"]

@@ -11,12 +11,13 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
+from ...reporting.variables_report import ShadowingIssue
 from ...resolution.common import resolve_moduletype_def_strict
 from ...utils.casefolding import casefold_key
 
@@ -31,15 +32,40 @@ def _typed_base_picture(self: Any) -> BasePicture:
     return cast(BasePicture, self.bp)
 
 
+def _declared_variables(
+    moduleparameters: Iterable[Variable] | None,
+    localvariables: Iterable[Variable] | None,
+) -> list[Variable]:
+    """Return every name a scope declares, in declaration order.
+
+    Parameters are part of the visible scope: a same-named local in a nested
+    scope captures the value they receive, so both kinds extend the parent
+    name set.
+    """
+    return [*(moduleparameters or ()), *(localvariables or ())]
+
+
+def _shadowing_candidates(localvariables: Iterable[Variable] | None) -> list[Variable]:
+    """Return the declarations that can hide an outer name.
+
+    A module parameter is an explicit alias for the caller's variable, and its
+    mapping is visible at the invocation, so a parameter repeating an outer
+    name forwards that same value instead of hiding it. Only a local
+    declaration creates a name the outer scope no longer reaches.
+    """
+    return list(localvariables or ())
+
+
 def collect_shadowing_issues(self: Any) -> None:
-    """Append ``IssueKind.SHADOWING`` issues for locals hiding outer names."""
+    """Append ``IssueKind.SHADOWING`` issues for declarations hiding outer names."""
     if getattr(self, "_limit_to_module_path", None) is not None:
         return
 
     bp = _typed_base_picture(self)
     root_path = [bp.header.name]
     parent_locals = {
-        casefold_key(variable.name): _ShadowedVar(variable, root_path) for variable in (bp.localvariables or [])
+        casefold_key(variable.name): _ShadowedVar(variable, root_path)
+        for variable in _declared_variables(bp.moduleparameters, bp.localvariables)
     }
     _walk_shadowing_submodules(
         self,
@@ -63,9 +89,9 @@ def _walk_shadowing_submodules(
         child_path = [*parent_path, child.header.name]
 
         if isinstance(child, SingleModule):
-            child_locals = list(child.localvariables or [])
-            _check_shadowing(self, child_locals, parent_locals, child_path)
-            next_locals = _extend_locals(parent_locals, child_locals, child_path)
+            child_variables = _declared_variables(child.moduleparameters, child.localvariables)
+            _check_shadowing(self, _shadowing_candidates(child.localvariables), parent_locals, child_path)
+            next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,
@@ -75,12 +101,15 @@ def _walk_shadowing_submodules(
                 current_library=current_library,
             )
         elif isinstance(child, FrameModule):
+            frame_variables = _declared_variables(child.moduleparameters, child.localvariables)
+            _check_shadowing(self, _shadowing_candidates(child.localvariables), parent_locals, child_path)
+            frame_locals = _extend_locals(parent_locals, frame_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,
                 child.submodules or [],
                 parent_path=child_path,
-                parent_locals=parent_locals,
+                parent_locals=frame_locals,
                 current_library=current_library,
             )
         else:
@@ -93,9 +122,9 @@ def _walk_shadowing_submodules(
             ):
                 continue
 
-            child_locals = list(moduletype.localvariables or [])
-            _check_shadowing(self, child_locals, parent_locals, child_path)
-            next_locals = _extend_locals(parent_locals, child_locals, child_path)
+            child_variables = _declared_variables(moduletype.moduleparameters, moduletype.localvariables)
+            _check_shadowing(self, _shadowing_candidates(moduletype.localvariables), parent_locals, child_path)
+            next_locals = _extend_locals(parent_locals, child_variables, child_path)
             _walk_shadowing_submodules(
                 self,
                 bp,
@@ -139,11 +168,11 @@ def _check_shadowing(
         if _is_integer_status_indicator(self, var) or _is_integer_status_indicator(self, parent.variable):
             continue
         parent_path = ".".join(parent.module_path)
-        issue = VariableIssue(
-            kind=IssueKind.SHADOWING,
+        issue = ShadowingIssue(
             module_path=module_path.copy(),
             variable=var,
             role=f"shadows {parent.variable.name!r} from {parent_path}",
+            declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE,
             source_variable=parent.variable,
         )
         if callable(append_issue):
@@ -154,7 +183,7 @@ def _check_shadowing(
 
 def _is_integer_status_indicator(self: Any, variable: Variable) -> bool:
     datatype = variable.datatype
-    is_integer = datatype == Simple_DataType.INTEGER or (isinstance(datatype, str) and datatype.casefold() == "integer")
+    is_integer = datatype == ScalarDatatype.INTEGER or (isinstance(datatype, str) and datatype.casefold() == "integer")
     if not is_integer:
         return False
 

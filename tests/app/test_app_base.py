@@ -1,15 +1,19 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false, reportPrivateUsage=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# The fake ctypes entry points and os/sys stand-ins are dynamic by construction;
+# lambdas in those tables cannot carry parameter annotations.
 from __future__ import annotations
 
 import builtins
 import ctypes
 import logging
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
 from sattlint import config as config_module
+from sattlint.config.types import ConfigDict
 from sattlint.core import interaction as interaction_module
 from sattlint.core import terminal as terminal_module
 from sattlint.core.logging import apply_debug
@@ -60,7 +64,7 @@ def _install_fake_kernel(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> _Fak
 
 
 def test_config_save_emits_confirmation(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    cfg = {"debug": False}
+    cfg = cast(ConfigDict, {"debug": False})
     config_path = Path("config.toml")
     seen: dict[str, Any] = {}
 
@@ -80,7 +84,7 @@ def test_config_save_emits_confirmation(monkeypatch: pytest.MonkeyPatch, capsys:
 
 
 def test_load_self_check_and_target_exists_delegate(monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg = {"debug": False}
+    cfg = cast(ConfigDict, {"debug": False})
     config_path = Path("config.toml")
     seen: dict[str, Any] = {}
 
@@ -115,11 +119,11 @@ def test_apply_debug_switches_log_levels(monkeypatch: pytest.MonkeyPatch) -> Non
     original_log_level = sattlint_logger.level
 
     try:
-        apply_debug({"debug": True})
+        apply_debug(cast(ConfigDict, {"debug": True}))
         assert root_logger.level == logging.DEBUG
         assert sattlint_logger.level == logging.DEBUG
 
-        apply_debug({"debug": False})
+        apply_debug(cast(ConfigDict, {"debug": False}))
         assert root_logger.level == logging.INFO
         assert sattlint_logger.level == logging.INFO
     finally:
@@ -127,42 +131,27 @@ def test_apply_debug_switches_log_levels(monkeypatch: pytest.MonkeyPatch) -> Non
         sattlint_logger.setLevel(original_log_level)
 
 
-def test_configure_windows_console_api_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(
-        terminal_module,
-        "_configure_windows_console_api",
-        lambda kernel32, coord_type, buffer_info_type: seen.update(
-            {
-                "kernel32": kernel32,
-                "coord_type": coord_type,
-                "buffer_info_type": buffer_info_type,
-            }
-        ),
-    )
+def test_apply_debug_ignores_non_boolean_truthy_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    import logging as _logging  # noqa: PLC0415 - mirror root logger state cleanly
 
-    terminal_module.configure_windows_console_api("kernel32", "coord", "buffer")
+    sattlint_logger = _logging.getLogger("SattLint")
+    root_logger = _logging.getLogger()
+    original_root_level = root_logger.level
+    original_log_level = sattlint_logger.level
 
-    assert seen == {
-        "kernel32": "kernel32",
-        "coord_type": "coord",
-        "buffer_info_type": "buffer",
-    }
-
-
-def test_clear_windows_console_wrapper_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[str] = []
-    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: calls.append("clear"))
-
-    terminal_module.clear_windows_console()
-
-    assert calls == ["clear"]
+    try:
+        apply_debug(cast(ConfigDict, {"debug": "false"}))
+        assert root_logger.level == logging.INFO
+        assert sattlint_logger.level == logging.INFO
+    finally:
+        root_logger.setLevel(original_root_level)
+        sattlint_logger.setLevel(original_log_level)
 
 
 def test_clear_windows_console_executes_success_path(monkeypatch: pytest.MonkeyPatch) -> None:
     kernel32 = _install_fake_kernel(monkeypatch)
 
-    terminal_module._clear_windows_console()
+    terminal_module.clear_windows_console()
 
     assert kernel32.GetStdHandle.calls
     assert kernel32.GetConsoleScreenBufferInfo.calls
@@ -189,7 +178,7 @@ def test_clear_windows_console_raises_for_each_windows_api_failure(
     _install_fake_kernel(monkeypatch, **kwargs)
 
     with pytest.raises(OSError, match=message):
-        terminal_module._clear_windows_console()
+        terminal_module.clear_windows_console()
 
 
 def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,11 +193,11 @@ def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: 
             "write": lambda self, text: writes.append(text),
         },
     )()
-    monkeypatch.setattr(terminal_module, "_clear_windows_console", lambda: clears.append("clear"))
+    monkeypatch.setattr(terminal_module, "_default_clear_windows_console", lambda: clears.append("clear"))
 
     terminal_module.clear_screen(
-        os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: 1})(),
-        sys_module=type("_Sys", (), {"stdout": stdout})(),
+        os_module=cast(ModuleType, type("_Os", (), {"name": "nt", "system": lambda self, command: 1})()),
+        sys_module=cast(ModuleType, type("_Sys", (), {"stdout": stdout})()),
     )
 
     assert clears == ["clear"]
@@ -216,8 +205,8 @@ def test_clear_screen_covers_default_windows_helper_and_ansi_paths(monkeypatch: 
     assert flushes == ["flush"]
 
     terminal_module.clear_screen(
-        os_module=type("_Os", (), {"name": "posix", "system": lambda self, command: 1})(),
-        sys_module=type("_Sys", (), {"stdout": stdout})(),
+        os_module=cast(ModuleType, type("_Os", (), {"name": "posix", "system": lambda self, command: 1})()),
+        sys_module=cast(ModuleType, type("_Sys", (), {"stdout": stdout})()),
         clear_windows_console=lambda: None,
     )
 
@@ -238,8 +227,11 @@ def test_clear_screen_falls_back_to_cls_or_ansi_after_windows_error() -> None:
     )()
 
     terminal_module.clear_screen(
-        os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: cls_calls.append(command) or 0})(),
-        sys_module=type("_Sys", (), {"stdout": stdout_cls})(),
+        os_module=cast(
+            ModuleType,
+            type("_Os", (), {"name": "nt", "system": lambda self, command: cls_calls.append(command) or 0})(),
+        ),
+        sys_module=cast(ModuleType, type("_Sys", (), {"stdout": stdout_cls})()),
         clear_windows_console=lambda: (_ for _ in ()).throw(OSError("boom")),
     )
 
@@ -247,8 +239,8 @@ def test_clear_screen_falls_back_to_cls_or_ansi_after_windows_error() -> None:
     assert ansi_writes == []
 
     terminal_module.clear_screen(
-        os_module=type("_Os", (), {"name": "nt", "system": lambda self, command: 1})(),
-        sys_module=type("_Sys", (), {"stdout": stdout_cls})(),
+        os_module=cast(ModuleType, type("_Os", (), {"name": "nt", "system": lambda self, command: 1})()),
+        sys_module=cast(ModuleType, type("_Sys", (), {"stdout": stdout_cls})()),
         clear_windows_console=lambda: (_ for _ in ()).throw(OSError("boom")),
     )
 

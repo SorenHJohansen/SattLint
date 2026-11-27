@@ -1,6 +1,6 @@
 """Ad-hoc validation for the field validation fix."""
 
-from sattline_parser.models.ast_model import BasePicture, DataType, ModuleHeader, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, DataType, ModuleHeader, ScalarDatatype, Variable
 
 from sattlint.analyzers.variables import VariablesAnalyzer
 
@@ -11,8 +11,8 @@ def _bp_with_datatypes() -> BasePicture:
         description="Application Dv Type",
         datecode=None,
         var_list=[
-            Variable(name="SomeField", datatype=Simple_DataType.REAL),
-            Variable(name="OtherField", datatype=Simple_DataType.INTEGER),
+            Variable(name="SomeField", datatype=ScalarDatatype.REAL),
+            Variable(name="OtherField", datatype=ScalarDatatype.INTEGER),
         ],
     )
 
@@ -22,7 +22,7 @@ def _bp_with_datatypes() -> BasePicture:
         datecode=None,
         var_list=[
             Variable(name="APPL", datatype="ApplType"),
-            Variable(name="BatchID", datatype=Simple_DataType.INTEGER),
+            Variable(name="BatchID", datatype=ScalarDatatype.INTEGER),
         ],
     )
 
@@ -31,7 +31,7 @@ def _bp_with_datatypes() -> BasePicture:
         description="Application Type",
         datecode=None,
         var_list=[
-            Variable(name="Abort", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Abort", datatype=ScalarDatatype.BOOLEAN),
         ],
     )
 
@@ -46,6 +46,6 @@ def test_type_graph_does_not_invent_fields():
     analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
     tg = analyzer.type_graph
 
-    assert tg.has_record("ApplDvType")
+    assert tg.record("ApplDvType") is not None
     assert tg.field("ApplDvType", "APPL") is None
     assert tg.field("MESBatchCtrlType", "APPL") is not None

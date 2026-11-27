@@ -5,14 +5,16 @@ invocation of it too, and SattLine removes moduletypes that have no invocation.
 Analyzer passes that study a moduletype body once therefore currently attribute
 their findings to a synthetic ``TypeDef:Name`` module path, which is invisible
 to SattLine engineers. These helpers map such paths back to the first real
-invocation (instance) found anywhere in the loaded graph.
+invocation (instance) in the analyzed picture. Reverse consumers loaded only to
+measure usage are deliberately excluded, so a finding never names a unit that
+was not part of the run.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import FrozenInstanceError
+from dataclasses import fields, is_dataclass, replace
 from typing import Any, cast
 
 from sattlint.parser_api import BasePicture, ModuleTypeInstance
@@ -73,42 +75,70 @@ def collect_instance_paths(
     return out
 
 
-def first_instance_path_for_moduletype(
+def rewrite_typedef_paths[RecordT](
+    records: Iterable[RecordT],
     base_picture: BasePicture,
-    moduletype_name: str,
-    graph: ProjectGraph | None = None,
-) -> list[str] | None:
-    paths = collect_instance_paths(base_picture, graph).get(moduletype_name.casefold())
-    if paths:
-        return paths[0]
-    return None
+) -> list[RecordT]:
+    """Return copies of ``records`` with ``TypeDef:Name`` segments resolved.
 
-
-def rewrite_typedef_paths(
-    issues: Iterable[Any],
-    base_picture: BasePicture,
-    graph: ProjectGraph | None = None,
-) -> None:
-    """Replace any ``TypeDef:Name`` segment in each issue's module path in place.
-
-    Also rewrites the same ``TypeDef:Name`` tokens inside the issue's message and
-    ``data`` so leaf text agrees with the rewritten branch. If no invocation
-    exists anywhere in the loaded graph, the ``TypeDef:`` text is left unchanged
-    so the finding is never lost.
+    Frozen report records are never mutated: each record whose module path
+    mentions a moduletype is rebuilt through ``dataclasses.replace`` and the
+    caller rebinds its own collection. A record that is not a dataclass is
+    returned unchanged. Also rewrites the same ``TypeDef:Name`` tokens inside
+    a record's message and ``data`` so leaf text agrees with the rewritten
+    branch. Only invocations inside the analyzed picture are used: a
+    reverse consumer or dependency that happens to invoke the same type is
+    outside the reported target, and routing a finding through its tree would
+    name a unit the user did not analyze. If the picture has no invocation, the
+    ``TypeDef:`` text is left unchanged so the finding is never lost.
     """
     index: dict[str, list[list[str]]] | None = None
-    for issue in issues:
-        raw_path = getattr(issue, "module_path", None)
-        if not isinstance(raw_path, list):
+    rewritten_records: list[RecordT] = []
+    for record in records:
+        module_path = getattr(record, "module_path", None)
+        if not isinstance(module_path, list | tuple):
+            rewritten_records.append(record)
             continue
-        module_path = cast(list[object], raw_path)
-        if not any(isinstance(seg, str) and seg.startswith(_TYPEDEF_PREFIX) for seg in module_path):
+        path_segments = cast(list[object] | tuple[object, ...], module_path)
+        if not any(isinstance(segment, str) and segment.startswith(_TYPEDEF_PREFIX) for segment in path_segments):
+            rewritten_records.append(record)
             continue
         if index is None:
-            index = collect_instance_paths(base_picture, graph)
-        rewritten = _rewrite_typedef_path(module_path, index)
-        module_path[:] = cast(list[Any], rewritten)
-        _rewrite_typedef_text(issue, index)
+            index = collect_instance_paths(base_picture)
+        rewritten_records.append(_rewrite_typedef_record(record, path_segments, index))
+    return rewritten_records
+
+
+def _rewrite_typedef_record[RecordT](
+    record: RecordT,
+    module_path: list[object] | tuple[object, ...],
+    index: Mapping[str, list[list[str]]],
+) -> RecordT:
+    if not is_dataclass(record) or isinstance(record, type):
+        # Only dataclass records can be rebuilt without touching shared
+        # state. A plugin that reports its own record type keeps its path.
+        return record
+
+    rewritten_path = _rewrite_typedef_path(list(module_path), index)
+    updates: dict[str, Any] = {
+        "module_path": tuple(rewritten_path) if isinstance(module_path, tuple) else rewritten_path,
+    }
+    field_names = {field_info.name for field_info in fields(record)}
+
+    if "message" in field_names:
+        message = getattr(record, "message", None)
+        if isinstance(message, str) and message:
+            rewritten_message = _replace_typedef_tokens(message, index)
+            if rewritten_message != message:
+                updates["message"] = rewritten_message
+
+    if "data" in field_names:
+        data = getattr(record, "data", None)
+        if isinstance(data, dict):
+            data_mapping = cast(dict[str, Any], data)
+            updates["data"] = {key: _replace_typedef_tokens(value, index) for key, value in data_mapping.items()}
+
+    return replace(record, **updates)
 
 
 def _rewrite_typedef_path(
@@ -141,22 +171,6 @@ def _rewrite_typedef_path(
     return current
 
 
-def _rewrite_typedef_text(issue: Any, index: Mapping[str, list[list[str]]]) -> None:
-    message = getattr(issue, "message", None)
-    if isinstance(message, str) and message:
-        rewritten = _replace_typedef_tokens(message, index)
-        if rewritten != message:
-            try:
-                issue.message = rewritten
-            except FrozenInstanceError:
-                object.__setattr__(issue, "message", rewritten)
-    data = getattr(issue, "data", None)
-    if isinstance(data, dict):
-        mapping = cast(dict[str, Any], data)
-        for key, value in list(mapping.items()):
-            mapping[key] = _replace_typedef_tokens(value, index)
-
-
 def _replace_typedef_tokens(value: Any, index: Mapping[str, list[list[str]]]) -> Any:
     if isinstance(value, str):
         text = value
@@ -172,6 +186,9 @@ def _replace_typedef_tokens(value: Any, index: Mapping[str, list[list[str]]]) ->
     if isinstance(value, list):
         sequence = cast(list[object], value)
         return [_replace_typedef_tokens(item, index) for item in sequence]
+    if isinstance(value, tuple):
+        sequence = cast(tuple[object, ...], value)
+        return tuple(_replace_typedef_tokens(item, index) for item in sequence)
     if isinstance(value, dict):
         mapping = cast(dict[str, object], value)
         return {str(key): _replace_typedef_tokens(item, index) for key, item in mapping.items()}
@@ -190,6 +207,5 @@ def _typedef_replacement(moduletype_name: str, index: Mapping[str, list[list[str
 
 __all__ = [
     "collect_instance_paths",
-    "first_instance_path_for_moduletype",
     "rewrite_typedef_paths",
 ]

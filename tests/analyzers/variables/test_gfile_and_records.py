@@ -1,11 +1,45 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from pathlib import Path
 
-from sattline_parser.models.ast_model import GraphicsBinding
+import pytest
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    GraphicsBinding,
+    GraphObject,
+    ModuleCode,
+    ModuleDef,
+    ScalarDatatype,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
+from sattline_parser.models.expressions import FuncCall
 
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
 from sattlint.graphics.validation import GraphicsCompositeRecord
-from tests.helpers.analyzers_variables_support import *
+from sattlint.parser_api import parse_source_file
+from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
+    DATATYPE_FIELD_ANALYSIS_KINDS,
+    NeverReadIssue,
+    ReadOnlyNonConstIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedIssue,
+)
 from tests.helpers.graphics_attachments_support import graphics_attachments
+from tests.helpers.project_loading import load_target_project
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_sample_fixture_contains_common_variable_quality_issues():
@@ -16,17 +50,11 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
 
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
-    read_only_non_const = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
-    }
-    never_read = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
-    }
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
+    read_only_non_const = {issue.variable.name for issue in issues if isinstance(issue, ReadOnlyNonConstIssue)}
+    never_read = {issue.variable.name for issue in issues if isinstance(issue, NeverReadIssue)}
     unused_fields = {
-        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        (issue.datatype_name, issue.field_path) for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)
     }
 
     assert "UnusedValue" in unused
@@ -35,165 +63,90 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     assert ("QualityRecord", "UnusedField") in unused_fields
 
 
-def test_sample_fixture_catches_outletprod_sibling_field_miswire():
+def test_sample_fixture_reports_only_globally_unused_datatype_fields():
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "OutletProdSiblingMiswire.s"
 
     bp = parse_source_file(fixture)
-    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS)).run()
+    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
-    field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
-    }
     unused_fields = {
-        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        (issue.datatype_name, issue.field_path) for issue in issues if isinstance(issue, UnusedDatatypeFieldIssue)
     }
 
-    assert ("OutletConfig", "OutletProd_Def.Std") in field_read_only
-    assert ("OutletConfig", "OutletProd_X_Def.Std") in field_never_read
+    # The sibling miswire is a per-instance asymmetry: one field is only read,
+    # the other only written. Globally both are used, so neither is reported.
+    assert not any(issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ} for issue in issues)
     assert ("OutletProdPair", "OutletProd_Def.Std") not in unused_fields
     assert ("OutletProdPair", "OutletProd_X_Def.Std") not in unused_fields
+    # Aux is never read or written anywhere, so it is genuinely unused.
+    assert ("OutletProdState", "Aux") in unused_fields
 
 
-def _build_record_field_asymmetry_basepicture(*, include_whole_read: bool) -> BasePicture:
+def _build_whole_record_basepicture(*, read_payload: bool) -> BasePicture:
     record_type = DataType(
         name="PayloadType",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Used", datatype=Simple_DataType.INTEGER),
-            Variable(name="Miswired", datatype=Simple_DataType.INTEGER),
+            Variable(name="Used", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
         ],
     )
 
     payload = Variable(name="Payload", datatype="PayloadType")
-    whole_peer = Variable(name="WholePeer", datatype="PayloadType")
-    field_source = Variable(name="FieldSource", datatype=Simple_DataType.INTEGER)
-    sink = Variable(name="Sink", datatype=Simple_DataType.INTEGER)
+    peer = Variable(name="Peer", datatype="PayloadType")
 
     whole_record_assignment = (
-        Assignment(target=_varref("WholePeer"), value=_varref("Payload"))
-        if include_whole_read
-        else Assignment(target=_varref("Payload"), value=_varref("WholePeer"))
+        Assignment(target=_varref("Peer"), value=_varref("Payload"))
+        if read_payload
+        else Assignment(target=_varref("Payload"), value=_varref("Peer"))
     )
 
     return BasePicture(
         header=_hdr("BasePicture"),
         datatype_defs=[record_type],
         moduletype_defs=[],
-        localvariables=[payload, whole_peer, field_source, sink],
+        localvariables=[payload, peer],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="WholeRecordAccess",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[whole_record_assignment],
-                    ),
-                    Equation(
-                        name="ReadUsedField",
-                        position=(1.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Sink"), value=_varref("Payload.Used"))],
-                    ),
-                    Equation(
-                        name="WriteMiswiredField",
-                        position=(2.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Payload.Miswired"), value=_varref("FieldSource"))],
-                    ),
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="WholeRecordAccess",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[whole_record_assignment],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
     )
 
 
-def test_whole_record_write_does_not_hide_field_never_read_issue():
-    bp = _build_record_field_asymmetry_basepicture(include_whole_read=False)
+@pytest.mark.parametrize("read_payload", [True, False])
+def test_whole_record_access_marks_every_field_used_globally(read_payload: bool):
+    bp = _build_whole_record_basepicture(read_payload=read_payload)
 
     issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
 
-    field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
-    }
-
-    assert ("Payload", "Used") not in field_read_only
-    assert ("Payload", "Miswired") in field_never_read
-
-
-def test_whole_record_read_does_not_hide_field_read_only_issue():
-    bp = _build_record_field_asymmetry_basepicture(include_whole_read=True)
-
-    issues = VariablesAnalyzer(bp, selected_issue_kinds=frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)).run()
-
-    field_read_only = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_READ_ONLY and issue.variable is not None
-    }
-    field_never_read = {
-        (issue.variable.name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.FIELD_NEVER_READ and issue.variable is not None
-    }
-
-    assert ("Payload", "Used") in field_read_only
-    assert ("Payload", "Miswired") not in field_never_read
+    assert not [issue for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD]
+    assert not any(issue.kind in {IssueKind.FIELD_READ_ONLY, IssueKind.FIELD_NEVER_READ} for issue in issues)
 
 
 def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
-    from sattlint.engine import (  # noqa: PLC0415
-        CodeMode,
-        load_project_graph,
-        merge_project_basepicture,
-    )
-
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "sample_sattline_files" / "TestGFileParse.s"
-    cfg: dict[str, object] = {
-        "program_dir": fixture.parent,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": fixture.parent,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-
-    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
-    assert root_bp is not None
-    bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    bp, graph = load_target_project(fixture)
     analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
     usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
-    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
+    unused = {issue.variable.name for issue in issues if isinstance(issue, UnusedIssue)}
 
     assert unused == set()
     assert all(usage.read for usage in usage_by_name.values())
 
 
 def test_nested_gfile_bindings_count_as_used_end_to_end(tmp_path: Path):
-    from sattlint.engine import (  # noqa: PLC0415
-        CodeMode,
-        load_project_graph,
-        merge_project_basepicture,
-    )
-
     source = """"SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -225,17 +178,7 @@ ENDDEF (*BasePicture*);
     fixture.write_text(source, encoding="utf-8")
     fixture.with_suffix(".g").write_text(graphics, encoding="utf-8")
 
-    cfg: dict[str, object] = {
-        "program_dir": tmp_path,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": tmp_path,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-
-    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
-    assert root_bp is not None
-    bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    bp, graph = load_target_project(fixture)
     analyzer = VariablesAnalyzer(bp, graphics_attachments=graph.graphics_attachments_for(bp))
     issues = analyzer.run()
 
@@ -258,14 +201,14 @@ ENDDEF (*BasePicture*);
 def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     module = SingleModule(
         header=_hdr("Panel"),
-        moduledefs=[ModuleDef(graph_objects=[GraphObject("CompositeObject")])],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
         moduleparameters=[],
         localvariables=[
-            Variable(name="NestedOnly", datatype=Simple_DataType.INTEGER),
-            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+            Variable(name="NestedOnly", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Shared", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -273,12 +216,12 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="RootOnly", datatype=Simple_DataType.INTEGER),
-            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+            Variable(name="RootOnly", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Shared", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[module],
-        modulecodes=[],
-        moduledefs=[ModuleDef()],
+        modulecode=None,
+        moduledef=ModuleDef(),
     )
     bp_attachments = graphics_attachments(
         bindings=[
@@ -303,10 +246,7 @@ def test_nested_composite_gfile_bindings_use_declaring_module_scope():
     analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "NestedOnly"
-        for issue in issues
-    )
+    assert not any(isinstance(issue, UnusedIssue) and issue.variable.name == "NestedOnly" for issue in issues)
     assert not any(
         issue.kind is IssueKind.UNUSED
         and issue.variable is not None
@@ -329,12 +269,12 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="Alpha", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Beta", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Alpha", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Beta", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[ModuleDef()],
+        modulecode=None,
+        moduledef=ModuleDef(),
     )
     bp_attachments = graphics_attachments(
         bindings=[
@@ -350,10 +290,7 @@ def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
     analyzer = VariablesAnalyzer(bp, graphics_attachments=bp_attachments)
     issues = analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name in {"Alpha", "Beta"}
-        for issue in issues
-    )
+    assert not any(isinstance(issue, UnusedIssue) and issue.variable.name in {"Alpha", "Beta"} for issue in issues)
 
 
 def test_search_rec_component_found_record_output_is_not_flagged_never_read():
@@ -362,52 +299,48 @@ def test_search_rec_component_found_record_output_is_not_flagged_never_read():
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[
-            Variable(name="CR", datatype=Simple_DataType.INTEGER),
-            Variable(name="Index", datatype=Simple_DataType.INTEGER),
-            Variable(name="SearchUnit", datatype=Simple_DataType.INTEGER),
-            Variable(name="FoundUnit", datatype=Simple_DataType.INTEGER),
-            Variable(name="srci", datatype=Simple_DataType.INTEGER),
-            Variable(name="SearchSucceeded", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
+            Variable(name="CR", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Index", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SearchUnit", datatype=ScalarDatatype.INTEGER),
+            Variable(name="FoundUnit", datatype=ScalarDatatype.INTEGER),
+            Variable(name="srci", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SearchSucceeded", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Mirror", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Search",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(
-                                target=_varref("SearchSucceeded"),
-                                value=FuncCall(
-                                    name="SearchRecComponent",
-                                    args=(
-                                        _varref("CR"),
-                                        _varref("Index"),
-                                        10,
-                                        _varref("SearchUnit"),
-                                        _varref("SearchUnit"),
-                                        _varref("FoundUnit"),
-                                        _varref("srci"),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Search",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(
+                            target=_varref("SearchSucceeded"),
+                            value=FuncCall(
+                                name="SearchRecComponent",
+                                args=(
+                                    _varref("CR"),
+                                    _varref("Index"),
+                                    10,
+                                    _varref("SearchUnit"),
+                                    _varref("SearchUnit"),
+                                    _varref("FoundUnit"),
+                                    _varref("srci"),
                                 ),
                             ),
-                            Assignment(target=_varref("Mirror"), value=_varref("Index")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+                        ),
+                        Assignment(target=_varref("Mirror"), value=_varref("Index")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
     )
 
     issues = VariablesAnalyzer(bp).run()
 
-    never_read = {
-        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
-    }
+    never_read = {issue.variable.name for issue in issues if isinstance(issue, NeverReadIssue)}
 
     assert "FoundUnit" not in never_read

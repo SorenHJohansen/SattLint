@@ -1,17 +1,24 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportAttributeAccessIssue=false, reportMissingTypeArgument=false, reportOptionalSubscript=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 """Tests for SFC analyzer checks."""
 
-from types import SimpleNamespace
+from collections.abc import Sequence as SequenceABC
 
+import pytest
 from sattline_parser.ast import Assignment, VarRef
 from sattline_parser.models.ast_model import (
     BasePicture,
+    CodeComment,
+    CodeItem,
     FrameModule,
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ScalarDatatype,
     Sequence,
     SFCAlternative,
+    SFCBodyItem,
     SFCCodeBlocks,
     SFCFork,
     SFCParallel,
@@ -19,8 +26,8 @@ from sattline_parser.models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Simple_DataType,
     SingleModule,
+    SLExpression,
     Variable,
 )
 
@@ -28,13 +35,10 @@ from sattlint.analyzers import sfc as sfc_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, Issue
 from sattlint.analyzers.same_cycle import analyze_same_cycle
-from sattlint.analyzers.sfc import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.analyzers.sfc._sfc_collectors import _SfcAccessCollector
-from sattlint.analyzers.sfc._sfc_module_walk import iter_sfc_modulecodes
+from sattlint.analyzers.shared.module_code_walk import iter_modulecodes
 from sattlint.analyzers.variables import analyze_variables
-from sattlint.resolution import AccessKind
-from sattlint.resolution.paths import CanonicalPath
+from sattlint.parser_api import parse_source_text
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -45,11 +49,11 @@ def _varref(name: str) -> VarRef:
     return VarRef(name=name)
 
 
-def _assign(name: str, value: object) -> Assignment:
+def _assign(name: str, value: SLExpression) -> Assignment:
     return Assignment(target=_varref(name), value=value)
 
 
-def _step(name: str, active_stmts: list[object]) -> SFCStep:
+def _step(name: str, active_stmts: list[CodeItem]) -> SFCStep:
     return SFCStep(kind="step", name=name, code=SFCCodeBlocks(active=active_stmts))
 
 
@@ -62,14 +66,86 @@ def _fork_step(name: str, targets: tuple[str, ...], *, has_break: bool = False) 
     )
 
 
-def _sequence(nodes: list[object]) -> Sequence:
+def _sequence(nodes: SequenceABC[SFCBodyItem]) -> Sequence:
+    return _named_sequence("SeqMain", nodes)
+
+
+def _named_sequence(name: str | None, nodes: SequenceABC[SFCBodyItem]) -> Sequence:
     return Sequence(
-        name="SeqMain",
+        name=name,
         type="sequence",
         position=(0.0, 0.0),
         size=(1.0, 1.0),
-        code=nodes,
+        code=list(nodes),
     )
+
+
+def _fork_transition(
+    name: str,
+    targets: tuple[str, ...],
+    *,
+    has_break: bool = False,
+) -> SFCTransition:
+    return SFCTransition(
+        name=name,
+        condition=True,
+        fork=SFCFork(targets=targets, has_break=has_break),
+    )
+
+
+@pytest.mark.parametrize("opening", ["init", "comment", "step", "transition", "alternative", "parallel", "empty"])
+def test_each_sequence_must_begin_with_an_initial_step(opening: str) -> None:
+    initial = SFCStep(kind="init", name="Start", code=SFCCodeBlocks())
+    if opening == "init":
+        nodes = [
+            initial,
+            SFCTransition(name="Proceed", condition=True),
+            SFCAlternative(branches=[[_step("BranchStep", [])], [_step("OtherStep", [])]]),
+        ]
+    elif opening == "comment":
+        nodes = [CodeComment(text="Sequence notes"), initial]
+    elif opening == "step":
+        nodes = [_step("NotInitial", []), SFCTransition(name="Later", condition=True), initial]
+    elif opening == "transition":
+        nodes = [SFCTransition(name="TooEarly", condition=True), initial]
+    elif opening == "alternative":
+        nodes = [SFCAlternative(branches=[[initial], [_step("OtherStep", [])]])]
+    elif opening == "parallel":
+        nodes = [SFCParallel(branches=[[initial], [_step("OtherStep", [])]])]
+    else:
+        nodes = []
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[_sequence(nodes)]))
+    report = analyze_sfc(bp)
+    issues = [issue for issue in report.issues if issue.kind == "sfc_missing_initial_step"]
+    assert bool(issues) is (opening not in {"init", "comment"})
+    if issues:
+        assert len(issues) == 1
+        assert issues[0].message == "Sequence 'SeqMain' must begin with an initial step (SEQINITSTEP)."
+        assert issues[0].module_path == ["Root"]
+        assert issues[0].data is not None and issues[0].data["site"] == "SQ:SeqMain"
+
+
+def test_sequence_start_check_reaches_nested_library_modules_and_respects_selection() -> None:
+    invalid = _sequence([_step("NotInitial", [])])
+    library = ModuleTypeDef(
+        name="LibraryType",
+        submodules=[
+            FrameModule(
+                header=_hdr("Frame"),
+                submodules=[
+                    SingleModule(
+                        header=_hdr("Logic"),
+                        modulecode=ModuleCode(sequences=[invalid]),
+                    )
+                ],
+            )
+        ],
+    )
+    bp = BasePicture(header=_hdr("Root"), moduletype_defs=[library])
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_missing_initial_step"})
+    assert len(report.issues) == 1
+    assert report.issues[0].module_path == ["Root", "TypeDef:LibraryType", "Frame", "Logic"]
+    assert not analyze_sfc(bp, selected_issue_kinds={"sfc_duplicate_transition_guard"}).issues
 
 
 def test_parallel_branch_write_race_detected():
@@ -86,8 +162,8 @@ def test_parallel_branch_write_race_detected():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[]),
     )
 
     report = analyze_same_cycle(bp)
@@ -110,10 +186,10 @@ def test_parallel_branch_distinct_writes_not_reported():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="OutputA", datatype=Simple_DataType.INTEGER),
-            Variable(name="OutputB", datatype=Simple_DataType.INTEGER),
+            Variable(name="OutputA", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OutputB", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[]),
     )
 
     report = analyze_same_cycle(bp)
@@ -121,27 +197,25 @@ def test_parallel_branch_distinct_writes_not_reported():
     assert not report.issues
 
 
-def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch):
+def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_collectors(monkeypatch: pytest.MonkeyPatch):
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    _sequence(
-                        [
-                            SFCParallel(
-                                branches=[
-                                    [_step("Left", [_assign("Output", 1)])],
-                                    [_step("Right", [_assign("Output", 2)])],
-                                ]
-                            )
-                        ]
-                    )
-                ],
-                equationblocks=[],
-            )
-        ],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Output", 1)])],
+                                [_step("Right", [_assign("Output", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
     )
 
     report = analyze_same_cycle(
@@ -152,160 +226,84 @@ def test_analyze_same_cycle_parallel_write_race_selection_skips_other_issue_coll
     assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]
 
 
-def test_sfc_access_collector_tracks_parallel_writes_for_direct_and_resolved_writes(monkeypatch):
-    collector = _SfcAccessCollector(BasePicture(header=_hdr("Root"), localvariables=[]))
-    parent_calls: list[tuple[AccessKind, CanonicalPath, str]] = []
-
-    def _fake_parent_record_access(self, kind, canonical_path, context, syntactic_ref):
-        _ = context
-        parent_calls.append((kind, canonical_path, syntactic_ref))
-
-    monkeypatch.setattr(sfc_collectors_module.VariablesAnalyzer, "_record_access", _fake_parent_record_access)
-
-    parallel_key = (("Root",), "SeqMain", 1)
-    collector._parallel_stack = [(parallel_key, 0)]
-    canonical_path = CanonicalPath(("Root", "Output"))
-
-    collector._record_access(AccessKind.READ, canonical_path, SimpleNamespace(), "Output")
-    collector._record_access(AccessKind.WRITE, canonical_path, SimpleNamespace(), "Output")
-
-    assert parent_calls == [
-        (AccessKind.READ, canonical_path, "Output"),
-        (AccessKind.WRITE, canonical_path, "Output"),
-    ]
-    assert collector.parallel_writes[parallel_key][0] == {canonical_path}
-
-    usage_calls: list[dict[str, object]] = []
-    collector.usage_tracker = SimpleNamespace(mark_ref_access=lambda **kwargs: usage_calls.append(kwargs))
-    variable = Variable(name="Rec", datatype=Simple_DataType.INTEGER)
-    resolved_context = SimpleNamespace(
-        env={},
-        resolve_variable=lambda _ref: (variable, "Field.Sub", ("Root", "Unit"), ("BP:Root", "Unit")),
+def test_parallel_branch_terminal_empty_step_after_fork_is_not_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [])],
+                    [_step("Work", [])],
+                ]
+            )
+        ]
     )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
 
-    collector._mark_ref_access("Rec.Field.Sub", resolved_context, ["Root", "Unit"], AccessKind.READ)
-    collector._mark_ref_access("Rec.Field.Sub", resolved_context, ["Root", "Unit"], AccessKind.WRITE)
-    collector._mark_ref_access(
-        "Missing",
-        SimpleNamespace(env={}, resolve_variable=lambda _ref: (None, None, (), None)),
-        ["Root"],
-        AccessKind.WRITE,
+    assert sfc_module.collect_sfc_reachability_findings(bp) == []
+
+
+def test_parallel_branch_terminal_step_with_code_after_fork_is_still_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [_assign("Output", 1)])],
+                ]
+            )
+        ]
     )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
 
-    assert len(usage_calls) == 2
-    assert usage_calls[0]["kind"] is AccessKind.READ
-    assert usage_calls[1]["kind"] is AccessKind.WRITE
-    assert CanonicalPath(("Root", "Unit", "Rec", "Field", "Sub")) in collector.parallel_writes[parallel_key][0]
+    findings = sfc_module.collect_sfc_reachability_findings(bp)
+
+    assert [finding.node_label for finding in findings] == ["SFCStep:Stop"]
+    assert findings[0].branch_path == (0,)
 
 
-def test_sfc_access_collector_walk_helpers_cover_branch_labels_and_site_markers(monkeypatch):
-    collector = _SfcAccessCollector(BasePicture(header=_hdr("Root"), localvariables=[]))
-    context = SimpleNamespace(env={})
-    site_events: list[tuple[str, str]] = []
-    stmt_events: list[object] = []
-    branch_labels: list[str | None] = []
-    seq_node_calls: list[tuple[list[object], list[str], bool, list[str]]] = []
-
-    monkeypatch.setattr(collector, "_push_site", lambda label: site_events.append(("push", label)))
-    monkeypatch.setattr(collector, "_pop_site", lambda: site_events.append(("pop", "")))
-    monkeypatch.setattr(
-        collector, "_walk_stmt_or_expr", lambda statement, _context, _path: stmt_events.append(statement)
+def test_alternative_branch_terminal_empty_step_after_fork_is_still_reported() -> None:
+    sequence = _sequence(
+        [
+            SFCAlternative(
+                branches=[
+                    [_fork_step("Break", ("Done",)), _step("Stop", [])],
+                ]
+            )
+        ]
     )
+    bp = BasePicture(header=_hdr("Root"), modulecode=ModuleCode(sequences=[sequence], equationblocks=[]))
 
-    step = SFCStep(kind="step", name="Main", code=SFCCodeBlocks(active=[_assign("Output", 1)]))
-    transition = SFCTransition(name=None, condition=_varref("Permit"))
+    findings = sfc_module.collect_sfc_reachability_findings(bp)
 
-    collector._walk_step_node(step, context, ["Root"], include_site_labels=True)
-    collector._walk_transition_node(transition, context, ["Root"], include_site_labels=True)
-
-    assert ("push", "STEP:Main:ACTIVE") in site_events
-    assert ("push", "TRANS:<unnamed>") in site_events
-    assert stmt_events == [_assign("Output", 1), _varref("Permit")]
-
-    monkeypatch.setattr(
-        collector,
-        "_walk_branch_node",
-        lambda nodes, _context, _path, *, label: branch_labels.append(label),
-    )
-    monkeypatch.setattr(
-        collector,
-        "_walk_transition_node",
-        lambda node, _context, _path, *, include_site_labels: branch_labels.append(
-            f"TRANS:{node.name}:{include_site_labels}"
-        ),
-    )
-
-    collector._walk_sequence_node(transition, context, ["Root"], include_site_labels=False)
-    collector._walk_sequence_node(
-        SFCAlternative(branches=[[step], []]),
-        context,
-        ["Root"],
-        include_site_labels=True,
-    )
-    collector._walk_sequence_node(
-        SFCSubsequence(name="Nested", body=[step]),
-        context,
-        ["Root"],
-        include_site_labels=True,
-    )
-    collector._walk_sequence_node(
-        SFCTransitionSub(name="Gate", body=[transition]),
-        context,
-        ["Root"],
-        include_site_labels=True,
-    )
-
-    assert branch_labels == [
-        "TRANS:None:False",
-        "ALT:BRANCH:0",
-        "ALT:BRANCH:1",
-        "SUBSEQ:Nested",
-        "TRANS-SUB:Gate",
-    ]
-
-    monkeypatch.setattr(
-        collector,
-        "_walk_sequence_node",
-        lambda node, scoped_context, path, *, include_site_labels: seq_node_calls.append(
-            (scoped_context.display_module_path, path.copy(), include_site_labels, [node])
-        ),
-    )
-    _SfcAccessCollector._walk_branch_node(collector, [step], context, ["Root", "Unit"], label="ALT:BRANCH:0")
-    _SfcAccessCollector._walk_seq_nodes(collector, [transition], {}, ["Root", "Unit"], context)
-
-    assert site_events[-2:] == [("push", "ALT:BRANCH:0"), ("pop", "")]
-    assert seq_node_calls == [
-        (["Root<BP>", "Unit"], ["Root", "Unit"], False, [step]),
-        (["Root<BP>", "Unit"], ["Root", "Unit"], False, [transition]),
-    ]
+    assert [finding.node_label for finding in findings] == ["SFCStep:Stop"]
+    assert findings[0].branch_path == (0,)
 
 
-def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
+def test_iter_modulecodes_covers_root_nested_modules_and_typedefs():
     nested_frame = FrameModule(
         header=_hdr("FrameChild"),
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
         submodules=[],
     )
     nested_single = SingleModule(
         header=_hdr("UnitChild"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[nested_frame],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
     moduletype = ModuleTypeDef(
         name="TypeLogic",
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
     bp = BasePicture(
         header=_hdr("Root"),
         submodules=[nested_single],
         moduletype_defs=[moduletype],
-        modulecodes=[ModuleCode(sequences=[], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[], equationblocks=[]),
     )
 
-    entries = list(iter_sfc_modulecodes(bp))
+    entries = list(iter_modulecodes(bp))
 
     assert [path for path, _modulecode in entries] == [
         ["Root"],
@@ -315,7 +313,9 @@ def test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs():
     ]
 
 
-def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_previews(monkeypatch) -> None:
+def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_previews(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     findings: list[sfc_module.SfcReachabilityFinding] = []
     sfc_module._inspect_sfc_linear_nodes(
         findings,
@@ -360,29 +360,30 @@ def test_sfc_reachability_and_active_step_helpers_cover_nested_nodes_and_preview
         "SFCStep:Nested",
         "SFCTransition:AfterFork",
     ]
-    assert findings[0].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
+    assert findings[0].terminated_by == sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",))
     assert branch_findings[0].branch_path == (0,)
-    assert branch_findings[-1].terminated_by == {"kind": "SFCFork", "targets": ["Done"]}
+    assert branch_findings[-1].terminated_by == sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",))
     assert sfc_module._sequence_node_label(SFCTransition(name=None, condition=None)) == "SFCTransition"
 
     sequence = _sequence([_step("Idle", []), _step("Running", [])])
     bp = BasePicture(
         header=_hdr("Root"),
-        submodules=[FrameModule(header=_hdr("NoCode"), modulecodes=[], submodules=[])],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        submodules=[FrameModule(header=_hdr("NoCode"), modulecode=None, submodules=[])],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
     assert sfc_module.collect_sfc_reachability_findings(bp) == []
-    assert sfc_module._format_terminator({"kind": "SFCFork", "targets": ["Left", 7, "Right"]}) == (
+    assert sfc_module._format_terminator(sfc_module.SfcTerminator(kind="SFCFork", targets=("Left", "Right"))) == (
         "SFCFork targeting 'Left', 'Right'"
     )
-    assert sfc_module._format_terminator({}) == "an earlier terminating node"
+    assert sfc_module._format_terminator(sfc_module.SfcTerminator(kind="SFCBreak")) == "SFCBreak"
 
 
-def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch) -> None:
-    monkeypatch.setattr(
-        sfc_module,
-        "collect_sfc_reachability_findings",
-        lambda _bp, **kwargs: [
+def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _reachability_findings(
+        _bp: BasePicture,
+        **_kwargs: object,
+    ) -> list[sfc_module.SfcReachabilityFinding]:
+        return [
             sfc_module.SfcReachabilityFinding(
                 module_path=("Root",),
                 sequence_name="SeqMain",
@@ -390,7 +391,7 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
                 node_index=2,
                 node_label="SFCTransition:LateGate",
                 node_type="SFCTransition",
-                terminated_by={"kind": "SFCBreak"},
+                terminated_by=sfc_module.SfcTerminator(kind="SFCBreak"),
             ),
             sfc_module.SfcReachabilityFinding(
                 module_path=("Root",),
@@ -399,15 +400,15 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
                 node_index=3,
                 node_label="SFCStep:LateStep",
                 node_type="SFCStep",
-                terminated_by={"kind": "SFCFork", "targets": ["Done"]},
+                terminated_by=sfc_module.SfcTerminator(kind="SFCFork", targets=("Done",)),
             ),
-        ],
-    )
-    monkeypatch.setattr(
-        sfc_module,
-        "_collect_transition_logic_issues",
-        lambda _bp, **kwargs: [Issue(kind="sfc_duplicate_transition_guard", message="logic")],
-    )
+        ]
+
+    def _transition_logic_issues(_bp: BasePicture, **_kwargs: object) -> list[Issue]:
+        return [Issue(kind="sfc_duplicate_transition_guard", message="logic")]
+
+    monkeypatch.setattr(sfc_module, "collect_sfc_reachability_findings", _reachability_findings)
+    monkeypatch.setattr(sfc_module, "_collect_transition_logic_issues", _transition_logic_issues)
 
     report = analyze_sfc(BasePicture(header=_hdr("Root")))
 
@@ -417,15 +418,16 @@ def test_analyze_sfc_covers_selected_collectors_and_reachability_messages(monkey
         "sfc_unreachable_sequence_node",
         "sfc_duplicate_transition_guard",
     ]
+    assert report.issues[0].data is not None
     assert report.issues[0].data["branch_path"] == [1]
     assert "targeting 'Done'" in report.issues[1].message
 
 
-def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
+def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
     build_calls: list[str] = []
     original_builder = variables_module._build_variable_analysis_artifacts
 
-    def _recording_builder(base_picture):
+    def _recording_builder(base_picture: BasePicture) -> variables_module.VariableAnalysisArtifacts:
         build_calls.append(base_picture.header.name)
         return original_builder(base_picture)
 
@@ -433,24 +435,22 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[
-            ModuleCode(
-                sequences=[
-                    _sequence(
-                        [
-                            SFCParallel(
-                                branches=[
-                                    [_step("Left", [_assign("Output", 1)])],
-                                    [_step("Right", [_assign("Output", 2)])],
-                                ]
-                            )
-                        ]
-                    )
-                ],
-                equationblocks=[],
-            )
-        ],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Output", 1)])],
+                                [_step("Right", [_assign("Output", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equationblocks=[],
+        ),
     )
     shared_artifacts = AnalysisSharedArtifacts()
     context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
@@ -460,3 +460,287 @@ def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
 
     assert build_calls == ["Root"]
     assert shared_artifacts.counters.variable_foundation_builds == 1
+
+
+def test_step_that_forks_back_to_itself_is_reported() -> None:
+    # Defensive: the parser's host/target kind rule rejects a step whose fork
+    # targets a step, but a hand-built or draft AST can still reach the collector.
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(sequences=[_sequence([_fork_step("Loop", ("Loop",))])]),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to itself" in report.issues[0].message
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["host"] == "Loop"
+
+
+def test_transition_that_forks_back_to_its_own_step_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Loop'" in report.issues[0].message
+
+
+def test_transition_fork_in_an_alternative_branch_back_to_its_step_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        SFCAlternative(branches=[[_fork_transition("Gate", ("Loop",))]]),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Loop'" in report.issues[0].message
+
+
+def test_fork_to_a_different_sequence_is_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    "Startup",
+                    [
+                        _step("Start", []),
+                        _fork_transition("Jump", ("Running",)),
+                    ],
+                ),
+                _named_sequence(
+                    "Running",
+                    [
+                        _step("Running", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_cross_sequence_fork"]
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["target_sequence"] == "Running"
+    assert "sequence 'Running'" in report.issues[0].message
+
+
+def test_forward_fork_within_the_same_sequence_is_not_reported() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Jump", []),
+                        _fork_transition("Gate", ("Later",)),
+                        _step("Later", []),
+                        SFCTransition(name="After", condition=True),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(
+        bp,
+        selected_issue_kinds={"sfc_self_fork", "sfc_cross_sequence_fork"},
+    )
+
+    assert report.issues == []
+
+
+def test_two_unnamed_sequences_are_still_distinct_for_cross_fork_checks() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    None,
+                    [
+                        _step("Start", []),
+                        _fork_transition("Jump", ("Far",)),
+                    ],
+                ),
+                _named_sequence(
+                    None,
+                    [
+                        _step("Far", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_cross_sequence_fork"]
+    assert report.issues[0].data is not None
+    assert report.issues[0].data["target_sequence"] == "<unnamed>"
+
+
+def test_fork_target_names_are_case_insensitive() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("loop",)),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+
+
+def test_ambiguous_target_name_is_not_classified() -> None:
+    # The parser counts every named SFC element, including a plain
+    # SUBSEQUENCE, when it decides whether a fork target is ambiguous.
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                        SFCSubsequence(name="Loop", kind="sequence", body=[_step("Inner", [])]),
+                    ]
+                )
+            ]
+        ),
+    )
+
+    report = analyze_sfc(
+        bp,
+        selected_issue_kinds={"sfc_self_fork", "sfc_cross_sequence_fork"},
+    )
+
+    assert report.issues == []
+
+
+def test_fork_checks_respect_each_selected_kind() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(
+            sequences=[
+                _named_sequence(
+                    "Startup",
+                    [
+                        _step("Loop", []),
+                        _fork_transition("Gate", ("Loop",)),
+                        _step("Jump", []),
+                        _fork_transition("JumpOut", ("Far",)),
+                    ],
+                ),
+                _named_sequence(
+                    "Running",
+                    [
+                        _step("Far", []),
+                        SFCTransition(name="Done", condition=True),
+                    ],
+                ),
+            ]
+        ),
+    )
+
+    self_only = analyze_sfc(bp, selected_issue_kinds={"sfc_self_fork"})
+    cross_only = analyze_sfc(bp, selected_issue_kinds={"sfc_cross_sequence_fork"})
+
+    assert [issue.kind for issue in self_only.issues] == ["sfc_self_fork"]
+    assert [issue.kind for issue in cross_only.issues] == ["sfc_cross_sequence_fork"]
+
+
+def test_fork_checks_respect_issue_selection() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        modulecode=ModuleCode(sequences=[_sequence([_fork_step("Loop", ("Loop",))])]),
+    )
+
+    report = analyze_sfc(bp, selected_issue_kinds={"sfc_missing_initial_step"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_missing_initial_step"]
+
+
+FORK_SELF_SOURCE = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: ForkSelf"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+   SEQUENCE OpSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
+      SEQINITSTEP Init
+         ENTERCODE
+         EXITCODE
+      SEQTRANSITION Gate WAIT_FOR False SEQFORK Init
+   ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_transition_self_fork_is_reported_from_parsed_source() -> None:
+    base_picture = parse_source_text(FORK_SELF_SOURCE)
+
+    report = analyze_sfc(base_picture, selected_issue_kinds={"sfc_self_fork"})
+
+    assert [issue.kind for issue in report.issues] == ["sfc_self_fork"]
+    assert "forks back to its own step 'Init'" in report.issues[0].message
+
+
+def test_forward_fork_target_is_not_reported_unreachable() -> None:
+    findings: list[sfc_module.SfcReachabilityFinding] = []
+    sfc_module._inspect_sfc_linear_nodes(
+        findings,
+        [
+            _fork_step("Jump", ("Later",)),
+            _step("Skipped", []),
+            _step("Later", []),
+            SFCTransition(name="After", condition=True),
+        ],
+        ["Root"],
+        "SeqMain",
+    )
+
+    labels = [finding.node_label for finding in findings]
+    assert "SFCStep:Skipped" in labels
+    assert "SFCStep:Later" not in labels
+    assert "SFCTransition:After" not in labels

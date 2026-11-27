@@ -1,7 +1,47 @@
-# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportUnusedImport=false
+# pyright: reportPrivateUsage=false
 from types import SimpleNamespace
+from typing import Any
 
-from tests.helpers.analyzers_variables_support import *
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
+    Variable,
+)
+
+from sattlint.analyzers.variables import (
+    IssueKind,
+    analyze_variables,
+)
+from sattlint.analyzers.variables import (
+    _variable_issue_collection as variable_issue_collection_module,
+)
+from sattlint.reporting.variables_report import (
+    DATATYPE_FIELD_ANALYSIS_KINDS,
+    VariableIssue,
+)
+from tests.helpers.variable_test_support import (
+    UsageStub as _UsageStub,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    ignore_ambiguity as _ignore_ambiguity,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
+
+
+def _always_root_origin(origin_file: str, origin_lib: str | None = None) -> bool:
+    """Every origin belongs to the root program."""
+    return True
 
 
 def test_iter_variables_for_datatype_field_analysis_includes_context_only_variables():
@@ -13,12 +53,12 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
         moduletype_defs=[],
         localvariables=[root_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
-    fake_analyzer = SimpleNamespace(
+    fake_analyzer: Any = SimpleNamespace(
         bp=bp,
         limit_to_module_path=None,
         analyzed_target_is_library=True,
@@ -29,15 +69,17 @@ def test_iter_variables_for_datatype_field_analysis_includes_context_only_variab
                 param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
             )
         },
-        is_from_root_origin=lambda origin_file, origin_lib=None: True,
+        is_from_root_origin=_always_root_origin,
     )
 
     collected = variable_issue_collection_module.iter_variables_for_datatype_field_analysis(fake_analyzer)
 
-    assert any(variable is root_var for _path, variable, _role, _root_owned in collected)
+    assert any(entry.variable is root_var for entry in collected)
     assert any(
-        variable is context_var and path == ["BasePicture", "Nested", "Display"] and role == "moduleparameter"
-        for path, variable, role, _root_owned in collected
+        entry.variable is context_var
+        and entry.path == ["BasePicture", "Nested", "Display"]
+        and entry.role == "moduleparameter"
+        for entry in collected
     )
 
 
@@ -49,8 +91,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
-            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="CleanCycle", datatype=ScalarDatatype.STRING),
+            Variable(name="WaitCleanCycle", datatype=ScalarDatatype.STRING),
         ],
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
@@ -61,8 +103,8 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         moduletype_defs=[],
         localvariables=[root_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="DiluteLib.s",
         origin_lib="DiluteLib",
     )
@@ -70,12 +112,23 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
         id(root_var): _UsageStub(field_reads={"WaitCleanCycle": [object()]}),
         id(context_var): _UsageStub(field_reads={"CleanCycle": [object()]}),
     }
+
+    def _leaf_field_paths(_datatype: object, library: object = None, policy: object = None) -> list[tuple[str, ...]]:
+        return [("CleanCycle",), ("WaitCleanCycle",)]
+
+    def _no_record(_datatype: object, library: object = None) -> None:
+        return None
+
+    def _usage_for(variable: Variable) -> _UsageStub:
+        return usage_by_id[id(variable)]
+
     issues: list[VariableIssue] = []
-    fake_analyzer = SimpleNamespace(
+    fake_analyzer: Any = SimpleNamespace(
         bp=bp,
         limit_to_module_path=None,
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
+        _selected_issue_kinds=None,
         contexts_by_module_path={
             ("BasePicture", "Nested", "Display"): SimpleNamespace(
                 env={"steptext": context_var},
@@ -83,11 +136,13 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
             )
         },
         type_graph=SimpleNamespace(
-            iter_leaf_field_paths=lambda _datatype: [("CleanCycle",), ("WaitCleanCycle",)],
-            record=lambda _datatype: None,
+            iter_leaf_field_paths=_leaf_field_paths,
+            expand_leaf_paths=_leaf_field_paths,
+            record=_no_record,
         ),
-        is_from_root_origin=lambda origin_file, origin_lib=None: True,
-        get_usage=lambda variable: usage_by_id[id(variable)],
+        _warn_ambiguous_record=_ignore_ambiguity,
+        is_from_root_origin=_always_root_origin,
+        get_usage=_usage_for,
         append_issue=issues.append,
     )
 
@@ -97,15 +152,14 @@ def test_unused_datatype_fields_include_context_only_variable_usage():
 
 
 def test_analyze_variables_library_target_counts_dependency_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="LSH", datatype=Simple_DataType.STRING),
-            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+            Variable(name="LSH", datatype=ScalarDatatype.STRING),
+            Variable(name="DrainPipe", datatype=ScalarDatatype.STRING),
         ],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -115,25 +169,22 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         moduleparameters=[],
         localvariables=[
             Variable(name="OPText", datatype="ApplOpTxtType"),
-            Variable(name="Sink", datatype=Simple_DataType.STRING),
+            Variable(name="Sink", datatype=ScalarDatatype.STRING),
         ],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
-                        ],
-                    )
-                ]
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
+                    ],
+                )
+            ]
+        ),
         origin_file="ApplLib.s",
         origin_lib="ApplLib",
     )
@@ -142,26 +193,23 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         moduleparameters=[],
         localvariables=[
             Variable(name="OPText", datatype="ApplOpTxtType"),
-            Variable(name="Sink", datatype=Simple_DataType.STRING),
+            Variable(name="Sink", datatype=ScalarDatatype.STRING),
         ],
         submodules=[ModuleTypeInstance(header=_hdr("Consumer"), moduletype_name="ConsumerType", parametermappings=[])],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadRootField",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("Sink"), value=_varref("OPText.DrainPipe")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadRootField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("Sink"), value=_varref("OPText.DrainPipe")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -171,8 +219,8 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
         moduletype_defs=[support_typedef, dependency_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -195,15 +243,14 @@ def test_analyze_variables_library_target_counts_dependency_typedef_field_reads(
 
 
 def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_reads():
-    from sattlint.analyzers.variables import analyze_variables  # noqa: PLC0415
 
     op_text_type = DataType(
         name="ApplOpTxtType",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="LSH", datatype=Simple_DataType.STRING),
-            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+            Variable(name="LSH", datatype=ScalarDatatype.STRING),
+            Variable(name="DrainPipe", datatype=ScalarDatatype.STRING),
         ],
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
@@ -213,9 +260,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduleparameters=[],
         localvariables=[Variable(name="OPText", datatype="ApplOpTxtType")],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[], sequences=[])],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )
@@ -224,26 +270,23 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduleparameters=[],
         localvariables=[
             Variable(name="OPText", datatype="ApplOpTxtType"),
-            Variable(name="Sink", datatype=Simple_DataType.STRING),
+            Variable(name="Sink", datatype=ScalarDatatype.STRING),
         ],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadLSH",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadLSH",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("Sink"), value=_varref("OPText.LSH")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         origin_file="ApplLib.s",
         origin_lib="ApplLib",
     )
@@ -253,8 +296,8 @@ def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_
         moduletype_defs=[support_typedef, consumer_typedef],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
         origin_file="ApplSupportLib.s",
         origin_lib="ApplSupportLib",
     )

@@ -1,35 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import partial
+from pathlib import Path
 from typing import Any, cast
 
 from ._app_textual_shared import InteractionRequest, _MenuOption, _stringify_list_values, _stringify_value
-
-
-def _run_app_module_cfg_action(
-    self: Any,
-    attr_name: str,
-    label: str,
-    *,
-    action_id: str,
-    require_targets: bool = False,
-    action_text: str | None = None,
-    marks_dirty: bool = False,
-) -> None:
-    if require_targets and not self._targets_action_allowed(action_text or label.casefold()):
-        return
-    handlers = getattr(self, "_analysis_handlers", None)
-    action_fn = cast(dict[str, Callable[..., Any]], handlers).get(attr_name) if isinstance(handlers, dict) else None
-    if not callable(action_fn):
-        self._write_output(f"{label} is unavailable in the current Textual session.")
-        return
-    self._start_action(
-        label,
-        partial(cast(Callable[[Any], Any], action_fn), self._cfg),
-        action_id=action_id,
-        marks_dirty=marks_dirty,
-    )
 
 
 def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool = False) -> None:
@@ -38,32 +12,41 @@ def _prompt_setup_value(self: Any, field_key: str, *, label: str, is_list: bool 
 
     current_value = self._cfg.get(field_key)
     default_text = (
-        ", ".join(_stringify_list_values(current_value))
+        "\n".join(_stringify_list_values(current_value))
         if is_list
         else _stringify_value(cast(object | None, current_value))
     )
     message = (
-        f"Enter the full comma-separated list for {label}. Leave blank to clear the list."
+        f"Enter one folder per line for {label}. Leave blank to clear the list."
         if is_list
-        else f"Enter a new path for {label}."
+        else f"Enter a new folder path for {label}."
     )
     request = InteractionRequest(kind="prompt", message=message, default=default_text)
 
     def _apply_response(response: object) -> None:
-        raw_value = str(response or "").strip()
+        raw_value = str(response or "")
         new_value: list[str] | str = (
-            [part.strip() for part in raw_value.split(",") if part.strip()] if is_list else raw_value
+            [part.strip() for part in raw_value.splitlines() if part.strip()] if is_list else raw_value.strip()
         )
         if is_list:
-            if _stringify_list_values(self._cfg.get(field_key)) == tuple(cast(list[str], new_value)):
+            updated_values = list(cast(list[str], new_value))
+            if _stringify_list_values(self._cfg.get(field_key)) == tuple(updated_values):
                 return
-            self._cfg[field_key] = list(cast(list[str], new_value))
+            invalid = [value for value in updated_values if not Path(value).expanduser().is_dir()]
+            if invalid:
+                self._report_error("Invalid folder", f"These folders do not exist: {', '.join(invalid)}")
+                return
+            self._cfg[field_key] = updated_values
         else:
-            if self._cfg.get(field_key) == new_value:
+            updated_value = cast(str, new_value)
+            if self._cfg.get(field_key) == updated_value:
                 return
-            self._cfg[field_key] = new_value
-        self._persist_project()
-        self._dirty = self._dirty or not self._project_loaded()
+            if updated_value and not Path(updated_value).expanduser().is_dir():
+                self._report_error("Invalid folder", f"'{updated_value}' is not an existing folder.")
+                return
+            self._cfg[field_key] = updated_value
+        persisted = bool(self._persist_project())
+        self._dirty = self._dirty or not persisted
         self._setup_candidate_index = 0
         self._refresh_summary()
         self._refresh_view()

@@ -1,13 +1,113 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportMissingParameterType=false, reportAttributeAccessIssue=false
+# pyright: reportPrivateUsage=false
 """Focused tests for the cache class implementations."""
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import inspect
+from pathlib import Path
+from typing import cast
+
+import pytest
+from sattline_parser.models.ast_model import BasePicture, ModuleHeader
+
 from sattlint import cache as cache_module
-from sattlint.cache.classes import AnalysisReportCache, ASTCache, FoundationCache
+from sattlint.cache.classes import AnalysisReportCache, ASTCache
+from sattlint.models import _variable_issues as variable_issues_module
+from sattlint.models.project_graph import ProjectGraph
 
 
-def test_ast_cache_save_load_and_validate(tmp_path) -> None:
+def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
+    baseline = cache_module.compute_analysis_report_cache_key("project", "variables")
+    unrelated = cache_module.compute_analysis_report_cache_key("project", "same-cycle")
+
+    monkeypatch.setitem(cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS, "variables", "test-bump")
+
+    assert cache_module.compute_analysis_report_cache_key("project", "variables") != baseline
+    assert cache_module.compute_analysis_report_cache_key("project", "same-cycle") == unrelated
+
+
+@pytest.mark.parametrize("analyzer_key", ["variables", "datatype-fields", "dataflow", "icf"])
+def test_record_layout_analyzers_carry_a_report_cache_version(analyzer_key: str) -> None:
+    """A report whose findings follow record layout resolution must be versioned.
+
+    Without a tag the key is unchanged by the resolution change, so an entry
+    computed with the old name-only layouts would be reused.
+    """
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS.get(analyzer_key)
+
+
+def _variable_issue_layout_fingerprint() -> str:
+    """Hash the ordered field layout of every variable issue record."""
+    layouts = sorted(
+        (record.__qualname__, tuple(field.name for field in dataclasses.fields(record)))
+        for record in vars(variable_issues_module).values()
+        if inspect.isclass(record)
+        and dataclasses.is_dataclass(record)
+        and record.__module__ == variable_issues_module.__name__
+    )
+    encoded = "\n".join(f"{name}:{','.join(field_names)}" for name, field_names in layouts)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:16]
+
+
+def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> None:
+    """A cached variable report pickles these records by positional field order.
+
+    Adding or reordering a field leaves an older cached record partially
+    initialized, so a cache hit raises ``AttributeError`` much later while the
+    report is rendered. When the fingerprint below fails, bump the
+    ``variables`` and ``datatype-fields`` report cache versions and update the
+    expected fingerprint and tags in this test.
+    """
+    assert _variable_issue_layout_fingerprint() == "5a9a47422408ce18"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["variables"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["datatype-fields"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["same-cycle"] == "2026-11-26-language-identity"
+    # The string checks changed twice (literal-only analysis, analyzed-origin
+    # scope). A stale report would replay the old, out-of-scope findings.
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-capacity"] == "2026-11-26-language-identity"
+    assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-style"] == "2026-11-26-language-identity"
+
+
+def test_the_cached_model_version_changes_both_cache_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model shape change must not replay an entry built by the old shape."""
+    project_key = cache_module.compute_cache_key({})
+    report_key = cache_module.compute_analysis_report_cache_key(project_key, "variables")
+
+    monkeypatch.setattr(cache_module, "CACHE_MODEL_VERSION", cache_module.CACHE_MODEL_VERSION + 1)
+
+    assert cache_module.compute_cache_key({}) != project_key
+    assert cache_module.compute_analysis_report_cache_key(project_key, "variables") != report_key
+
+
+def _header(name: str) -> ModuleHeader:
+    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0))
+
+
+def test_a_real_cached_graph_round_trips_through_the_restricted_unpickler(tmp_path: Path) -> None:
+    source = tmp_path / "Demo.s"
+    source.write_text("x := 1;", encoding="utf-8")
+    picture = BasePicture(header=_header("Demo"), modulecode=None, moduledef=None)
+    graph = ProjectGraph(
+        ast_by_name={"Demo": picture},
+        source_files={source},
+        analysis_manifest_files=frozenset({source}),
+    )
+    cache = ASTCache(tmp_path / "caches")
+
+    cache.save("key", project=({"Demo": picture}, graph), files=[source])
+
+    payload = cast("dict[str, object] | None", cache.load_validated("key"))
+    assert payload is not None
+    restored_project = cast("tuple[dict[str, BasePicture], ProjectGraph]", payload["project"])
+    restored_asts, restored_graph = restored_project
+    assert isinstance(restored_asts["Demo"], BasePicture)
+    assert isinstance(restored_graph, ProjectGraph)
+    assert restored_graph.analysis_manifest_files == frozenset({source})
+
+
+def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = ASTCache(tmp_path / "caches")
@@ -18,9 +118,9 @@ def test_ast_cache_save_load_and_validate(tmp_path) -> None:
     assert cache.has_manifest("key") is True
     assert cache.has_cache_artifact("key") is True
     assert cache.manifest_paths("key") == {source}
-    payload = cache.load("key")
+    payload = cast("dict[str, object] | None", cache.load("key"))
     assert payload is not None and payload.get("project") == {"proj": True}
-    validated = cache.load_validated("key")
+    validated = cast("dict[str, object] | None", cache.load_validated("key"))
     assert validated is not None and validated.get("version") == cache_module.CACHE_VERSION
     assert cache.load_manifest("nope") is None
     assert cache.has_manifest("nope") is False
@@ -30,13 +130,13 @@ def test_ast_cache_save_load_and_validate(tmp_path) -> None:
     assert cache.has_cache_artifact("key") is False
 
 
-def test_ast_cache_save_with_missing_file_writes_nothing(tmp_path) -> None:
+def test_ast_cache_save_with_missing_file_writes_nothing(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     cache.save("key", project={"proj": True}, files=[tmp_path / "missing.sl"])
     assert cache.has_cache_artifact("key") is False
 
 
-def test_ast_cache_prune_orphan_artifacts(tmp_path) -> None:
+def test_ast_cache_prune_orphan_artifacts(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     (cache.cache_dir / "orphan.pickle").write_text("junk")
     (cache.cache_dir / "stray.manifest.json").write_text("{}")
@@ -49,7 +149,7 @@ def test_ast_cache_prune_orphan_artifacts(tmp_path) -> None:
     assert empty.ast_manifest_entries == 0
 
 
-def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path) -> None:
+def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = ASTCache(tmp_path / "caches")
@@ -61,19 +161,19 @@ def test_ast_cache_prune_stale_entries_validates_payloads(tmp_path) -> None:
     assert cache.has_cache_artifact("key") is True
 
 
-def test_ast_cache_drain_startup_prune_result(tmp_path) -> None:
+def test_ast_cache_drain_startup_prune_result(tmp_path: Path) -> None:
     cache = ASTCache(tmp_path / "caches")
     result = cache.drain_startup_prune_result()
     assert result.ast_payload_entries == 0
     assert result.ast_manifest_entries == 0
 
 
-def test_analysis_report_cache_roundtrip(tmp_path) -> None:
+def test_analysis_report_cache_roundtrip(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = AnalysisReportCache(tmp_path / "caches")
     assert cache.save("key", report={"report": True}, files=[source]) is True
-    payload = cache.load("key")
+    payload = cast("dict[str, object] | None", cache.load("key"))
     assert payload is not None and payload.get("report") == {"report": True}
     assert cache.validate(payload) is True
     assert cache.validate(payload, fast=True) is True
@@ -82,7 +182,7 @@ def test_analysis_report_cache_roundtrip(tmp_path) -> None:
     assert cache.load("missing") is None
 
 
-def test_analysis_report_cache_save_failure_and_clear(tmp_path) -> None:
+def test_analysis_report_cache_save_failure_and_clear(tmp_path: Path) -> None:
     cache = AnalysisReportCache(tmp_path / "caches")
     assert cache.save("key", report={"report": True}, files=[tmp_path / "missing.sl"]) is False
     source = tmp_path / "mod.sl"
@@ -95,7 +195,7 @@ def test_analysis_report_cache_save_failure_and_clear(tmp_path) -> None:
     assert cache.load("key3") is None
 
 
-def test_analysis_report_cache_prune_and_drain(tmp_path) -> None:
+def test_analysis_report_cache_prune_and_drain(tmp_path: Path) -> None:
     source = tmp_path / "mod.sl"
     source.write_text("x := 1;")
     cache = AnalysisReportCache(tmp_path / "caches")
@@ -105,34 +205,6 @@ def test_analysis_report_cache_prune_and_drain(tmp_path) -> None:
         path.write_text("junk")
     assert cache.prune_stale_entries() == 1
     assert cache.drain_startup_pruned_entries() >= 0
-
-
-def test_foundation_cache_roundtrip_and_prune(tmp_path) -> None:
-    source = tmp_path / "mod.sl"
-    source.write_text("x := 1;")
-    cache = FoundationCache(tmp_path / "caches")
-    assert cache.load("key") is None
-    cache.save("key", {"foundation": "payload"})
-    assert cache.load("key") == {"foundation": "payload"}
-    assert cache.load("other-key") is None
-    assert cache.prune_stale_entries() == 0
-    for path in cache.cache_dir.glob("*.pickle"):
-        path.write_text("not a pickle")
-    assert cache.prune_stale_entries() == 1
-    assert cache.drain_startup_pruned_entries() >= 0
-
-
-def test_foundation_cache_key_is_content_derived_and_distinct(tmp_path) -> None:
-    source = tmp_path / "mod.sl"
-    source.write_text("x := 1;")
-    manifest_a = {str(source): (1001, 6)}
-    manifest_b = {str(source): (1002, 6)}
-    key_a = cache_module.compute_foundation_cache_key("proj-key", manifest_a)
-    assert key_a == cache_module.compute_foundation_cache_key("proj-key", manifest_a)
-    assert key_a != cache_module.compute_foundation_cache_key("proj-key", manifest_b)
-    assert key_a != cache_module.compute_foundation_cache_key("proj-key-other", manifest_a)
-    report_key = cache_module.compute_analysis_report_cache_key("proj-key", "variables")
-    assert key_a != report_key
 
 
 def test_analysis_report_cache_key_tracks_analyzer_settings() -> None:
@@ -152,3 +224,16 @@ def test_analysis_report_cache_key_tracks_analyzer_settings() -> None:
         "cyclomatic-complexity",
         analysis_settings={"cyclomatic_module_threshold": 20},
     )
+
+
+def test_report_cache_removes_entries_from_another_generation(tmp_path: Path) -> None:
+    root = tmp_path / "caches" / "analysis_reports"
+    stale = root / "v0-p0.0.1"
+    stale.mkdir(parents=True)
+    (stale / "entry.pickle").write_bytes(b"stale")
+
+    cache = AnalysisReportCache(tmp_path / "caches")
+
+    assert cache.cache_dir.is_dir()
+    assert not stale.exists()
+    assert cache.drain_startup_pruned_entries() == 1

@@ -41,6 +41,17 @@ def collect_alarm_boolean_writes(
     return writes
 
 
+def collect_boolean_literal_writes(
+    modulecode: ModuleCode | None,
+    env: dict[str, Variable],
+) -> dict[str, AlarmBooleanWriteSummary]:
+    """Every boolean literal write, whatever the target is named."""
+    writes: dict[str, AlarmBooleanWriteSummary] = {}
+    for statement in iter_modulecode_statements(modulecode) if modulecode is not None else ():
+        collect_boolean_writes(statement, env, writes, alarm_only=False)
+    return writes
+
+
 def iter_modulecode_statements(modulecode: ModuleCode) -> list[object]:
     statements: list[object] = []
     for equation in modulecode.equationblocks or []:
@@ -78,30 +89,32 @@ def collect_boolean_writes(
     obj: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
+    *,
+    alarm_only: bool = True,
 ) -> None:
     if obj is None:
         return
 
     if isinstance(obj, Assignment):
-        record_boolean_write(obj.target, obj.value, env, writes)
-        collect_boolean_writes(obj.value, env, writes)
+        record_boolean_write(obj.target, obj.value, env, writes, alarm_only=alarm_only)
+        collect_boolean_writes(obj.value, env, writes, alarm_only=alarm_only)
         return
 
     if isinstance(obj, FuncCallStmt):
         call = obj.call
         if call.name.casefold() == "setbooleanvalue" and len(call.args) >= 2:
-            record_boolean_write(call.args[0], call.args[1], env, writes)
+            record_boolean_write(call.args[0], call.args[1], env, writes, alarm_only=alarm_only)
         for argument in call.args:
-            collect_boolean_writes(argument, env, writes)
+            collect_boolean_writes(argument, env, writes, alarm_only=alarm_only)
         return
 
     if isinstance(obj, IfStmt):
         for condition, branch_statements in obj.branches:
-            collect_boolean_writes(condition, env, writes)
+            collect_boolean_writes(condition, env, writes, alarm_only=alarm_only)
             for statement in branch_statements:
-                collect_boolean_writes(statement, env, writes)
+                collect_boolean_writes(statement, env, writes, alarm_only=alarm_only)
         for statement in obj.else_block or ():
-            collect_boolean_writes(statement, env, writes)
+            collect_boolean_writes(statement, env, writes, alarm_only=alarm_only)
 
 
 def record_boolean_write(
@@ -109,11 +122,13 @@ def record_boolean_write(
     expr: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
+    *,
+    alarm_only: bool = True,
 ) -> None:
     target_ref = varname_full(target)
     if not target_ref:
         return
-    if not looks_like_alarm_reference(target_ref, env):
+    if alarm_only and not looks_like_alarm_reference(target_ref, env):
         return
     bool_value = as_bool_literal(expr)
     if bool_value is None:
@@ -150,6 +165,7 @@ __all__ = [
     "AlarmBooleanWriteSummary",
     "as_bool_literal",
     "collect_alarm_boolean_writes",
+    "collect_boolean_literal_writes",
     "collect_boolean_writes",
     "iter_modulecode_statements",
     "iter_sequence_node_statements",

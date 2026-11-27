@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, cast
 
 from sattlint.parser_api import (
+    Assignment,
+    FuncCallStmt,
     IfStmt,
     ModuleCode,
     SFCAlternative,
@@ -15,11 +17,12 @@ from sattlint.parser_api import (
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import ImplicitLatchIssue, VariableIssue
 from ._reset_latching_paths import (
     BooleanPathState,
     all_boolean_paths_cover_false,
     boolean_path_covers_false,
+    boolean_write_key,
     collect_boolean_seq_block_paths,
     collect_boolean_seq_node_paths,
     collect_boolean_stmt_block_paths,
@@ -30,7 +33,7 @@ from ._reset_latching_paths import (
     record_boolean_function_call,
     record_boolean_write,
 )
-from ._reset_path_state import WriteMap
+from ._reset_path_state import WriteKey, WriteMap
 
 
 def check_for_modulecode_latching(
@@ -74,9 +77,38 @@ def scan_stmt_block_for_latching(
     *,
     site: str,
     sequence_name: str | None = None,
+    cleared_keys: set[WriteKey] | None = None,
 ) -> None:
+    _scan_stmt_block_stateful(
+        statements,
+        env,
+        path,
+        issues,
+        seen,
+        site=site,
+        sequence_name=sequence_name,
+        incoming=[BooleanPathState()],
+        cleared_keys=set(cleared_keys or ()),
+    )
+
+
+def _scan_stmt_block_stateful(
+    statements: list[Any],
+    env: dict[str, Variable],
+    path: list[str],
+    issues: list[VariableIssue],
+    seen: set[tuple[tuple[str, ...], str, str]],
+    *,
+    site: str,
+    sequence_name: str | None,
+    incoming: list[BooleanPathState],
+    cleared_keys: set[WriteKey],
+) -> list[BooleanPathState]:
+    block_clears = set(cleared_keys)
+    block_clears |= _collect_top_level_false_keys(statements, env)
+    states = incoming or [BooleanPathState()]
     for statement in statements:
-        scan_stmt_for_latching(
+        states = _scan_stmt_for_latching_stateful(
             statement,
             env,
             path,
@@ -84,7 +116,10 @@ def scan_stmt_block_for_latching(
             seen,
             site=site,
             sequence_name=sequence_name,
+            incoming=states,
+            cleared_keys=block_clears,
         )
+    return states
 
 
 def scan_stmt_for_latching(
@@ -96,43 +131,68 @@ def scan_stmt_for_latching(
     *,
     site: str,
     sequence_name: str | None = None,
+    cleared_keys: set[WriteKey] | None = None,
 ) -> None:
+    _scan_stmt_for_latching_stateful(
+        obj,
+        env,
+        path,
+        issues,
+        seen,
+        site=site,
+        sequence_name=sequence_name,
+        incoming=[BooleanPathState()],
+        cleared_keys=set(cleared_keys or ()),
+    )
+
+
+def _scan_stmt_for_latching_stateful(
+    obj: Any,
+    env: dict[str, Variable],
+    path: list[str],
+    issues: list[VariableIssue],
+    seen: set[tuple[tuple[str, ...], str, str]],
+    *,
+    site: str,
+    sequence_name: str | None,
+    incoming: list[BooleanPathState],
+    cleared_keys: set[WriteKey],
+) -> list[BooleanPathState]:
     if obj is None:
-        return
+        return incoming
     if isinstance(obj, IfStmt):
+        incoming_states = incoming or [BooleanPathState()]
         branch_states: list[tuple[str, list[BooleanPathState]]] = []
         for index, (_condition, branch_statements) in enumerate(obj.branches or []):
             label = "IF" if index == 0 else f"ELSIF:{index}"
-            states = collect_boolean_stmt_block_paths(
-                list(branch_statements) or [],
-                env,
-                [BooleanPathState()],
-            )
-            branch_states.append((label, states or [BooleanPathState()]))
-            scan_stmt_block_for_latching(
-                list(branch_statements) or [],
+            statements = list(branch_statements) or []
+            states = _scan_stmt_block_stateful(
+                statements,
                 env,
                 path,
                 issues,
                 seen,
                 site=f"{site} > {label}",
                 sequence_name=sequence_name,
+                incoming=[state.clone() for state in incoming_states],
+                cleared_keys=cleared_keys | _collect_top_level_false_keys(statements, env),
             )
-        else_states = (
-            collect_boolean_stmt_block_paths(list(obj.else_block) or [], env, [BooleanPathState()])
-            if obj.else_block
-            else [BooleanPathState()]
-        )
-        if obj.else_block:
-            scan_stmt_block_for_latching(
-                list(obj.else_block) or [],
+            branch_states.append((label, states or [BooleanPathState()]))
+        else_statements = list(obj.else_block or ())
+        if else_statements:
+            else_states = _scan_stmt_block_stateful(
+                else_statements,
                 env,
                 path,
                 issues,
                 seen,
                 site=f"{site} > ELSE",
                 sequence_name=sequence_name,
+                incoming=[state.clone() for state in incoming_states],
+                cleared_keys=cleared_keys | _collect_top_level_false_keys(else_statements, env),
             )
+        else:
+            else_states = [state.clone() for state in incoming_states]
 
         for label, states in branch_states:
             alternative_states = [
@@ -151,11 +211,13 @@ def scan_stmt_for_latching(
                 site=f"{site} > {label}",
                 role_prefix="implicit latch across alternative paths",
                 sequence_name=sequence_name,
+                cleared_keys=cleared_keys,
             )
-        return
-    if isinstance(obj, list):
-        for item in cast(list[Any], obj):
-            scan_stmt_for_latching(
+        return [*[state for _label, states in branch_states for state in states], *else_states]
+    if isinstance(obj, (list, tuple)):
+        states = incoming
+        for item in cast(list[Any] | tuple[Any, ...], obj):
+            states = _scan_stmt_for_latching_stateful(
                 item,
                 env,
                 path,
@@ -163,7 +225,56 @@ def scan_stmt_for_latching(
                 seen,
                 site=site,
                 sequence_name=sequence_name,
+                incoming=states,
+                cleared_keys=cleared_keys,
             )
+        return states
+    return collect_boolean_stmt_paths(obj, env, incoming)
+
+
+def _collect_top_level_false_keys(
+    statements: list[Any],
+    env: dict[str, Variable],
+) -> set[WriteKey]:
+    """False writes that run unconditionally in this statement list.
+
+    A false write at the top level of an equation block or a branch means the
+    value is reset every time that block runs, so a latch inside a nested
+    branch is not a latch.
+    """
+    keys: set[WriteKey] = set()
+    for statement in statements:
+        if isinstance(statement, Assignment):
+            if literal_boolean(statement.value) is False:
+                key = boolean_write_key(statement.target, env)
+                if key is not None:
+                    keys.add(key)
+        elif isinstance(statement, FuncCallStmt):
+            call = statement.call
+            if (
+                call.name.casefold() == "setbooleanvalue"
+                and len(call.args) >= 2
+                and literal_boolean(call.args[1]) is False
+            ):
+                key = boolean_write_key(call.args[0], env)
+                if key is not None:
+                    keys.add(key)
+    return keys
+
+
+def _sequence_init_false_keys(
+    nodes: list[Any],
+    env: dict[str, Variable],
+) -> set[WriteKey]:
+    """False writes in the first init step; it runs before any latch can persist."""
+    keys: set[WriteKey] = set()
+    for node in nodes:
+        if not isinstance(node, SFCStep) or node.kind != "init":
+            continue
+        keys |= _collect_top_level_false_keys(node.code.enter or [], env)
+        keys |= _collect_top_level_false_keys(node.code.active or [], env)
+        keys |= _collect_top_level_false_keys(node.code.exit or [], env)
+    return keys
 
 
 def scan_seq_nodes_for_latching(
@@ -175,7 +286,10 @@ def scan_seq_nodes_for_latching(
     *,
     site: str,
     sequence_name: str | None = None,
+    cleared_keys: set[WriteKey] | None = None,
 ) -> None:
+    sequence_clears = set(cleared_keys or ())
+    sequence_clears |= _sequence_init_false_keys(nodes, env)
     for node in nodes:
         if isinstance(node, SFCStep):
             step_site = f"{site} > STEP:{node.name}"
@@ -203,6 +317,7 @@ def scan_seq_nodes_for_latching(
                 site=step_site,
                 role_prefix="implicit latch across step exit",
                 sequence_name=sequence_name,
+                cleared_keys=sequence_clears,
             )
             scan_stmt_block_for_latching(
                 node.code.enter or [],
@@ -212,6 +327,7 @@ def scan_seq_nodes_for_latching(
                 seen,
                 site=f"{step_site}:ENTER",
                 sequence_name=sequence_name,
+                cleared_keys=sequence_clears,
             )
             scan_stmt_block_for_latching(
                 node.code.active or [],
@@ -221,6 +337,7 @@ def scan_seq_nodes_for_latching(
                 seen,
                 site=f"{step_site}:ACTIVE",
                 sequence_name=sequence_name,
+                cleared_keys=sequence_clears,
             )
             scan_stmt_block_for_latching(
                 node.code.exit or [],
@@ -230,6 +347,7 @@ def scan_seq_nodes_for_latching(
                 seen,
                 site=f"{step_site}:EXIT",
                 sequence_name=sequence_name,
+                cleared_keys=sequence_clears,
             )
             continue
         if isinstance(node, SFCAlternative):
@@ -250,6 +368,7 @@ def scan_seq_nodes_for_latching(
                     seen,
                     site=f"{site} > {label}",
                     sequence_name=sequence_name,
+                    cleared_keys=sequence_clears,
                 )
             for label, states in branch_states:
                 alternative_states = [
@@ -267,6 +386,7 @@ def scan_seq_nodes_for_latching(
                     site=f"{site} > {label}",
                     role_prefix="implicit latch across SFC alternatives",
                     sequence_name=sequence_name,
+                    cleared_keys=sequence_clears,
                 )
             continue
         if isinstance(node, SFCParallel):
@@ -279,6 +399,7 @@ def scan_seq_nodes_for_latching(
                     seen,
                     site=f"{site} > PAR:{index + 1}",
                     sequence_name=sequence_name,
+                    cleared_keys=sequence_clears,
                 )
             continue
         if isinstance(node, SFCSubsequence | SFCTransitionSub):
@@ -290,6 +411,7 @@ def scan_seq_nodes_for_latching(
                 seen,
                 site=site,
                 sequence_name=sequence_name,
+                cleared_keys=sequence_clears,
             )
 
 
@@ -303,21 +425,24 @@ def emit_branch_latch_issues(
     site: str,
     role_prefix: str,
     sequence_name: str | None,
+    cleared_keys: set[WriteKey] | None = None,
 ) -> None:
     true_writes: WriteMap = {}
     for state in branch_states:
         true_writes.update(state.true_writes)
 
+    cleared = cleared_keys or set()
     for key, (variable, field_path) in sorted(true_writes.items(), key=lambda item: (item[0][0], item[0][1])):
+        if key in cleared:
+            continue
         if all_boolean_paths_cover_false(alternative_states, key):
             continue
-        issue_key = (tuple(path), key[0], site.casefold())
+        issue_key = (tuple(path), f"{key[0]}.{key[1]}" if key[1] else key[0], site.casefold())
         if issue_key in seen:
             continue
         seen.add(issue_key)
         issues.append(
-            VariableIssue(
-                kind=IssueKind.IMPLICIT_LATCH,
+            ImplicitLatchIssue(
                 module_path=path.copy(),
                 variable=variable,
                 role=f"{role_prefix} at {site}",

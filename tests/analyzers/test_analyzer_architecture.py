@@ -1,15 +1,17 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnusedFunction=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import ast
 import re
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 
-from sattlint import cache as cache_module
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers._registry_dispatch import run_registry_analyzer
 from sattlint.analyzers._registry_spec_templates import AnalyzerSpecTemplate, default_spec_templates
@@ -21,6 +23,7 @@ from sattlint.analyzers.framework import (
     AnalyzerLifecycleMixin,
     BasePictureAnalyzer,
     SimpleReport,
+    VariableAnalysisArtifacts,
     build_analysis_context,
 )
 from sattlint.analyzers.plugin import (
@@ -43,11 +46,9 @@ from sattlint.analyzers.variables._variables_submodules import VariablesSubmodul
 
 ANALYZER_DIR = Path(__file__).resolve().parents[2] / "src" / "sattlint" / "analyzers"
 KEBAB_CASE_KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LEGACY_UNDERSCORE_ANALYZER_KEYS = frozenset()
 EXPLICIT_NON_REGISTRY_ANALYZE_FUNCTIONS = frozenset(
     {
         ("comment_code.py", "analyze_comment_code_files"),
-        ("modules.py", "analyze_module_duplicates"),
     }
 )
 
@@ -146,17 +147,11 @@ def _imports_banned_analyzer_boundary(module: ast.Module) -> bool:
     return False
 
 
-def test_registry_keys_are_kebab_case_or_explicit_legacy_allowlist() -> None:
-    templates = default_spec_templates()
-    underscore_keys = {template.key for template in templates if "_" in template.key}
-    assert underscore_keys == LEGACY_UNDERSCORE_ANALYZER_KEYS
-
-    invalid_kebab_keys = sorted(
-        template.key
-        for template in templates
-        if template.key not in LEGACY_UNDERSCORE_ANALYZER_KEYS and not KEBAB_CASE_KEY.fullmatch(template.key)
+def test_registry_keys_are_kebab_case() -> None:
+    invalid_keys = sorted(
+        template.key for template in default_spec_templates() if not KEBAB_CASE_KEY.fullmatch(template.key)
     )
-    assert invalid_kebab_keys == []
+    assert invalid_keys == []
 
 
 def test_public_analyze_functions_are_registry_backed_or_explicit_exceptions() -> None:
@@ -219,7 +214,7 @@ def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection
     for mixin in expected_mixins:
         assert mixin in VariablesAnalyzer.__mro__
 
-    assert "_add_issue" not in VariablesAnalyzer.__dict__
+    assert "_add_field_usage_asymmetry_issues" not in VariablesAnalyzer.__dict__
     assert "_repath_context" not in VariablesAnalyzer.__dict__
     assert "_canonical_path" not in VariablesAnalyzer.__dict__
     assert "_check_param_mapping" not in VariablesAnalyzer.__dict__
@@ -228,7 +223,7 @@ def test_variables_analyzer_uses_helper_mixins_instead_of_local_method_injection
     assert "run" not in VariablesAnalyzer.__dict__
     assert "_is_const_candidate" not in VariablesAnalyzer.__dict__
 
-    assert VariablesAnalyzer._add_issue.__qualname__.startswith("VariablesIssueCollectionMixin.")
+    assert VariablesAnalyzer._add_field_usage_asymmetry_issues.__qualname__.startswith("VariablesIssueCollectionMixin.")
     assert VariablesAnalyzer._repath_context.__qualname__.startswith("VariablesTraversalMixin.")
     assert VariablesAnalyzer._canonical_path.__qualname__.startswith("VariablesAccessMixin.")
     assert VariablesAnalyzer._check_param_mapping.__qualname__.startswith("VariablesContractsMixin.")
@@ -252,15 +247,15 @@ def test_reset_contamination_module_uses_single_class_backed_owner() -> None:
     assert not (ANALYZER_DIR / "_reset_contamination.py").exists()
 
 
-def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch) -> None:
+def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     context = AnalysisContext(
         base_picture=base_picture,
@@ -269,10 +264,14 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
         target_is_library=True,
         config={"mode": "test"},
     )
-    registry_stub = SimpleNamespace(
-        analyze_direct=lambda analysis_context: SimpleReport(name=analysis_context.base_picture.header.name),
-        analyze_picture=lambda base_picture, **kwargs: SimpleReport(name=base_picture.header.name, note=str(kwargs)),
-    )
+
+    def _analyze_direct(analysis_context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name=analysis_context.base_picture.header.name)
+
+    def _analyze_picture(base_picture: BasePicture, **kwargs: object) -> SimpleReport:
+        return SimpleReport(name=base_picture.header.name, note=str(kwargs))
+
+    registry_stub = SimpleNamespace(analyze_direct=_analyze_direct, analyze_picture=_analyze_picture)
 
     spec = AnalyzerSpecTemplate(
         key="demo",
@@ -308,10 +307,10 @@ def test_registry_helper_templates_and_runners_cover_remaining_paths(monkeypatch
 
     from sattlint.analyzers import _registry_specs as registry_specs_module  # noqa: PLC0415
 
-    direct_report = registry_specs_module._build_runner(direct_template, registry_stub)(context)
+    direct_report = cast(SimpleReport, registry_specs_module._build_runner(direct_template, registry_stub)(context))
     assert direct_report.name == "Root"
 
-    standard_report = registry_specs_module._build_runner(spec, registry_stub)(context)
+    standard_report = cast(SimpleReport, registry_specs_module._build_runner(spec, registry_stub)(context))
     assert "ControlLib" in (standard_report.note or "")
 
     deliveries = default_delivery_templates(shared_fixtures=("fixture-a", "fixture-b"))
@@ -336,8 +335,8 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     config = {"mode": "workspace"}
@@ -355,37 +354,24 @@ def test_build_analysis_context_normalizes_config_and_shared_artifacts() -> None
     assert context.unavailable_libraries == {"ControlLib"}
 
 
-class _FakeFoundationCache:
-    def __init__(self) -> None:
-        self.store: dict[str, object] = {}
-        self.saved: list[tuple[str, object]] = []
-
-    def load(self, key: str) -> object | None:
-        return self.store.get(key)
-
-    def save(self, key: str, foundation: object) -> None:
-        self.store[key] = foundation
-        self.saved.append((key, foundation))
-
-
-def _make_foundation():
+def _make_foundation() -> VariableAnalysisArtifacts:
     base_picture = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     return _build_foundation(base_picture)
 
 
 def test_ensure_foundation_builds_once_and_memoizes() -> None:
     shared = AnalysisSharedArtifacts()
-    build_calls = []
+    build_calls: list[int] = []
 
-    def build_fn():
+    def build_fn() -> VariableAnalysisArtifacts:
         build_calls.append(1)
         return _make_foundation()
 
@@ -396,46 +382,6 @@ def test_ensure_foundation_builds_once_and_memoizes() -> None:
     assert second is first
     assert len(build_calls) == 1
     assert shared.counters.variable_foundation_builds == 1
-
-
-def test_ensure_foundation_restores_from_cache_hit_without_rebuild() -> None:
-    shared = AnalysisSharedArtifacts()
-    fake_cache = _FakeFoundationCache()
-    cached = _make_foundation()
-    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
-    fake_cache.save(key, cached)
-    shared.foundation_cache = fake_cache
-    shared.foundation_project_cache_key = "proj"
-    shared.foundation_source_manifest = {"a.sl": (1, 2)}
-    build_calls = []
-
-    def build_fn():
-        build_calls.append(1)
-        return _make_foundation()
-
-    result = shared.ensure_foundation(build_fn)
-
-    assert result is cached
-    assert build_calls == []
-    assert shared.counters.variable_foundation_builds == 0
-    assert fake_cache.saved == [(key, cached)]
-
-
-def test_ensure_foundation_persists_build_on_cache_miss() -> None:
-    shared = AnalysisSharedArtifacts()
-    fake_cache = _FakeFoundationCache()
-    shared.foundation_cache = fake_cache
-    shared.foundation_project_cache_key = "proj"
-    shared.foundation_source_manifest = {"a.sl": (1, 2)}
-    foundation = _make_foundation()
-
-    result = shared.ensure_foundation(lambda: foundation)
-
-    key = cache_module.compute_foundation_cache_key("proj", {"a.sl": (1, 2)})
-    assert result is foundation
-    assert shared.counters.variable_foundation_builds == 1
-    assert fake_cache.saved == [(key, foundation)]
-    assert fake_cache.load(key) is foundation
 
 
 # ---- Phase G: public register_analyzer developer API ----
@@ -480,15 +426,54 @@ def test_register_analyzer_defaults_and_casefold_key() -> None:
     assert spec.contributes is None
     assert spec.direct_context is True
 
-    # Keys are canonicalized case-insensitively, so a re-registration with a different case
-    # overwrites the prior entry rather than introducing a duplicate key.
-    @register_analyzer(key="my-upper")
-    def run2(context: AnalysisContext) -> SimpleReport:
-        return SimpleReport(name="y")
+    # Keys are canonicalized case-insensitively, so a second registration with
+    # a different case is a duplicate key, not a silent replacement.
+    with pytest.raises(ValueError, match="already registered"):
 
-    specs = get_registered_plugin_analyzers()
-    assert len(specs) == 1
-    assert specs[0].run is run2
+        @register_analyzer(key="my-upper")
+        def run2(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="y")
+
+    (spec,) = get_registered_plugin_analyzers()
+    assert spec.run is run
+
+
+def test_plugin_order_is_independent_of_registration_order() -> None:
+    @register_analyzer(key="zeta-plugin")
+    def zeta(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="zeta")
+
+    @register_analyzer(key="alpha-plugin")
+    def alpha(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="alpha")
+
+    assert [spec.key for spec in get_registered_plugin_analyzers()] == ["alpha-plugin", "zeta-plugin"]
+
+
+def test_register_analyzer_rejects_a_builtin_key() -> None:
+    with pytest.raises(ValueError, match="reserved by a built-in analyzer"):
+
+        @register_analyzer(key="variables")
+        def run(context: AnalysisContext) -> SimpleReport:
+            return SimpleReport(name="shadow")
+
+    assert get_registered_plugin_analyzers() == ()
+    keys = [item.spec.key for item in registry_module.get_default_analyzer_catalog().analyzers]
+    assert keys.count("variables") == 1
+
+
+def test_plugin_registered_after_catalog_build_reaches_the_catalog() -> None:
+    before = registry_module.get_default_analyzer_catalog()
+
+    @register_analyzer(key="late-plugin")
+    def run(context: AnalysisContext) -> SimpleReport:
+        return SimpleReport(name="late")
+
+    after = registry_module.get_default_analyzer_catalog()
+
+    assert after is not before
+    assert "late-plugin" in {item.spec.key for item in after.analyzers}
+    assert "late-plugin" not in {item.spec.key for item in before.analyzers}
 
 
 def test_clear_registered_plugin_analyzers_resets_registry() -> None:
@@ -525,8 +510,8 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     shared = AnalysisSharedArtifacts()
     shared.variable_analysis = _make_foundation()
@@ -535,3 +520,17 @@ def test_plugin_analyzer_runs_with_full_context_and_shared_artifacts() -> None:
 
     assert isinstance(report, SimpleReport)
     assert context_sa == [shared]
+
+
+def test_delivery_metadata_acceptance_tests_exist() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+
+    deliveries = default_delivery_templates(shared_fixtures=())
+    missing = [
+        test_path
+        for delivery in deliveries
+        for test_path in delivery.acceptance_tests
+        if not (repo_root / test_path).is_file()
+    ]
+
+    assert missing == []

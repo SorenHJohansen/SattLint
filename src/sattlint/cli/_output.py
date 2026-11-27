@@ -10,10 +10,12 @@ import json
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Any
 
+from ..utils.terminal_text import sanitize_terminal_text
 from ._payloads import ErrorPayload
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class CliError(Exception):
@@ -46,41 +48,106 @@ def error_payload(error: CliError) -> ErrorPayload:
     }
 
 
+def write_stream(stream: Any, text: str) -> None:
+    """Write through a text stream without failing on a legacy code page.
+
+    ``PYTHONIOENCODING=ascii`` and legacy Windows consoles raise
+    ``UnicodeEncodeError`` on the first non-ASCII character, which would turn a
+    complete result into an internal error. The fallback encodes the document
+    as UTF-8 with backslash escapes and writes to the underlying buffer.
+    """
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        buffer = getattr(stream, "buffer", None)
+        if buffer is None:
+            raise
+        buffer.write(text.encode("utf-8", errors="backslashreplace"))
+    stream.flush()
+
+
+def encode_json_document(payload: Mapping[str, object]) -> str:
+    """Serialize a standalone JSON document, one per stream."""
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def encode_json_record(payload: Mapping[str, object]) -> str:
+    """Serialize one NDJSON record as a single line."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def _resolve_output_path(output: Path) -> Path:
+    return output.expanduser().resolve()
+
+
 def _write_text(text: str, output: Path | None) -> None:
     if output is None:
-        sys.stdout.write(text)
-        sys.stdout.flush()
+        write_stream(sys.stdout, text)
         return
-    resolved = output.expanduser().resolve()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(text, encoding="utf-8")
+    resolved = _resolve_output_path(output)
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise CliError(
+            f"Could not write {resolved}: {exc}",
+            code="output_write_failed",
+            exit_code=2,
+        ) from exc
 
 
 def emit_json(payload: Mapping[str, object], *, output: Path | None = None) -> None:
-    _write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", output)
+    _write_text(encode_json_document(payload), output)
 
 
 def emit_ndjson(records: Iterable[Mapping[str, object]], *, output: Path | None = None) -> None:
-    text = "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records)
-    _write_text(text, output)
+    """Write NDJSON records as they are produced.
+
+    Each record is flushed before the next one is requested from the iterator,
+    so a consumer reads partial results while the run is still feeding them.
+    """
+    if output is None:
+        for record in records:
+            write_stream(sys.stdout, encode_json_record(record))
+        return
+
+    resolved = _resolve_output_path(output)
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        with resolved.open("w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(encode_json_record(record))
+                handle.flush()
+    except OSError as exc:
+        raise CliError(
+            f"Could not write {resolved}: {exc}",
+            code="output_write_failed",
+            exit_code=2,
+        ) from exc
 
 
 def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
-    text = "\n".join(lines)
+    """Write human text, neutralizing control characters in every line.
+
+    Lines are sanitized before they are joined, so a finding or target name
+    cannot inject a second output line. Tabs are kept for column alignment;
+    newlines are refused because the sink owns the line structure.
+    """
+    text = "\n".join(sanitize_terminal_text(line, keep_tabs=True) for line in lines)
     if text:
         text += "\n"
     _write_text(text, output)
 
 
 def emit_error(error: CliError, *, output_format: str) -> None:
-    if output_format == "json":
-        sys.stderr.write(json.dumps(error_payload(error), ensure_ascii=False) + "\n")
-        sys.stderr.flush()
+    if output_format in {"json", "ndjson"}:
+        write_stream(sys.stderr, encode_json_document(error_payload(error)))
         return
-    sys.stderr.write(f"sattlint: {error.message}\n")
+    write_stream(sys.stderr, f"sattlint: {sanitize_terminal_text(error.message, keep_tabs=True)}\n")
     for key, value in error.details.items():
-        sys.stderr.write(f"  {key}: {value}\n")
-    sys.stderr.flush()
+        label = sanitize_terminal_text(str(key), keep_tabs=True)
+        detail = sanitize_terminal_text(str(value), keep_tabs=True)
+        write_stream(sys.stderr, f"  {label}: {detail}\n")
 
 
 def output_path(value: str | None) -> Path | None:
@@ -96,6 +163,8 @@ __all__ = [
     "emit_json",
     "emit_ndjson",
     "emit_text",
+    "encode_json_document",
+    "encode_json_record",
     "error_payload",
     "output_path",
 ]

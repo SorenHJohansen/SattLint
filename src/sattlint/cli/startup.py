@@ -22,6 +22,7 @@ from .. import console as console_module
 from ..application import analyze as analyze_application
 from ..application import change_review as change_review_application
 from ..application import project as project_application
+from ..application.cancellation import AnalysisCancellation
 from ..config.types import ConfigDict
 from ..core.interaction import (
     QuitAppError,
@@ -35,7 +36,8 @@ from ..core.interaction import (
 from ..core.interaction import (
     prompt as core_prompt,
 )
-from ..core.logging import apply_debug
+from ..core.logging import apply_debug, configure_logging
+from ..core.progress import ProgressCallback
 from ..core.terminal import clear_screen as core_clear_screen
 from ..core.terminal import clear_windows_console as core_clear_windows_console
 from ..project import support as support_module
@@ -44,23 +46,8 @@ from . import menu as cli_menu
 from ._interaction import (
     clear_textual_menu_interaction as _ui_clear_textual_menu_interaction,
 )
-from ._interaction import get_interactive_ui_mode as _ui_get_interactive_ui_mode
-from ._interaction import reset_interactive_ui_mode as _ui_reset_interactive_ui_mode
-from ._interaction import set_interactive_ui_mode as _ui_set_interactive_ui_mode
 from ._interaction import set_textual_menu_interaction as _ui_set_textual_menu_interaction
 from ._interaction import textual_menu_interaction as _ui_textual_menu_interaction
-
-
-def get_interactive_ui_mode() -> str:
-    return _ui_get_interactive_ui_mode()
-
-
-def set_interactive_ui_mode(ui_mode: str | None) -> None:
-    _ui_set_interactive_ui_mode(ui_mode)
-
-
-def reset_interactive_ui_mode() -> None:
-    _ui_reset_interactive_ui_mode()
 
 
 def set_textual_menu_interaction(interaction: Any) -> None:
@@ -116,10 +103,37 @@ def resolve_interactive_ui_mode(cfg: ConfigDict, override_ui_mode: str | None = 
     raise RuntimeError("Textual is required for interactive startup, but it is unavailable in this environment.")
 
 
+def _run_checks_result_in_subprocess(
+    cfg: ConfigDict,
+    selected_keys: list[str],
+    *,
+    project_path: str = "",
+    emit_output: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
+    cancellation: AnalysisCancellation | None = None,
+) -> Any:
+    """Keep the interactive app off the analysis heap.
+
+    An in-process run leaves its parsed project graphs and analyzer indexes in
+    the CPython arenas long after the findings are stored. The child process
+    exits when the run is saved, and the app loads the run record instead.
+    """
+    from ..application.subprocess_analysis import run_checks_result_in_subprocess  # noqa: PLC0415
+
+    return run_checks_result_in_subprocess(
+        cfg,
+        selected_keys,
+        project_path=project_path,
+        emit_output=emit_output,
+        progress=progress,
+        cancellation=cancellation,
+    )
+
+
 def analysis_handler_fns() -> dict[str, Callable[..., Any]]:
     return {
         "_run_checks": analyze_application.run_checks,
-        "run_checks_result": analyze_application.run_checks_result,
+        "run_checks_result": _run_checks_result_in_subprocess,
         "generate_change_review": change_review_application.generate_change_review,
     }
 
@@ -160,6 +174,34 @@ def build_cli_parser() -> argparse.ArgumentParser:
     return _build_cli_parser()
 
 
+def _stream_is_tty(stream: Any) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def interactive_terminal_available() -> bool:
+    """Return whether the interactive shell's input and output are terminals.
+
+    The Textual shell can only drive a real terminal. A pipe, a redirected
+    file, or a closed stdin leaves it waiting forever or writing escape
+    sequences into a non-terminal stream.
+    """
+    return _stream_is_tty(sys.stdin) and _stream_is_tty(sys.stdout)
+
+
+def _interactive_unavailable_text() -> str:
+    return (
+        "sattlint: the interactive shell needs a terminal on stdin and stdout. "
+        "Run a headless command instead, for example: "
+        "sattlint analyze --project path/to/project.slproj"
+    )
+
+
 def _run_cli(argv: list[str]) -> int:
     return cli_entry.run_cli(argv)
 
@@ -172,38 +214,60 @@ def main(
     config_path: Path | None = None,
     apply_debug_fn: Callable[[ConfigDict], None] = apply_debug,
     resolve_interactive_ui_mode_fn: Callable[[ConfigDict, str | None], str] | None = resolve_interactive_ui_mode,
-    set_interactive_ui_mode_fn: Callable[[str | None], None] | None = set_interactive_ui_mode,
-    reset_interactive_ui_mode_fn: Callable[[], None] | None = reset_interactive_ui_mode,
     emit_output_fn: Callable[..., None] = console_module.print_output,
     pause_fn: Callable[[], None] = pause,
+    is_interactive_fn: Callable[[], bool] = interactive_terminal_available,
+    build_parser_fn: Callable[[], argparse.ArgumentParser] = build_cli_parser,
     run_main_loop_fn: Callable[..., None] | None = None,
     summarize_targets_fn: Callable[[ConfigDict], str] = summarize_targets,
     save_config_fn: Callable[[Path, ConfigDict], None] = config_module.save_config,
     quit_app_error: type[BaseException] = QuitAppError,
 ) -> int:
-    if config_path is None:
-        config_path = config_module.get_config_path()
-    if run_main_loop_fn is None:
-        run_main_loop_fn = run_interactive_session
-
     cli_args = [] if argv is None else argv
     if cli_args:
         return run_cli_fn(cli_args)
 
+    # The Textual shell needs a real terminal on both ends. Without this gate a
+    # piped invocation hangs waiting for input or writes escape sequences into
+    # a non-terminal stdout, so report the usage and the headless alternative.
+    if not is_interactive_fn():
+        emit_output_fn(build_parser_fn().format_help().rstrip())
+        emit_output_fn(_interactive_unavailable_text())
+        return 2
+
+    # The interactive shell owns diagnostics; headless commands keep stderr
+    # reserved for their machine-readable channel. Without this the module
+    # loggers stay unconfigured and debug output is never visible.
+    configure_logging()
+
+    if run_main_loop_fn is None:
+        run_main_loop_fn = run_interactive_session
+    if config_path is None:
+        try:
+            config_path = config_module.get_config_path()
+        except OSError as exc:
+            emit_output_fn(f"Failed to resolve the configuration directory: {exc}")
+            return 2
+
     try:
         # The Textual shell always opens with no project loaded. Projects are
         # opened or created from within the shell via Open Project / New Project.
-        cfg, default_used = load_config_fn(config_path)
+        try:
+            cfg, default_used = load_config_fn(config_path)
+        except (OSError, ValueError) as exc:
+            emit_output_fn(f"Failed to load configuration from {config_path}: {exc}")
+            return 1
 
         apply_debug_fn(cfg)
-        resolved_ui_mode = "textual"
         if resolve_interactive_ui_mode_fn is not None:
-            resolved_ui_mode = resolve_interactive_ui_mode_fn(cfg, None)
+            try:
+                resolve_interactive_ui_mode_fn(cfg, None)
+            except (RuntimeError, ValueError) as exc:
+                emit_output_fn(f"Interactive startup failed: {exc}")
+                return 1
         if default_used:
-            emit_output_fn("Warning: Default config created. Open Setup before running analysis.")
+            emit_output_fn("Warning: Default config created. Open Configuration Settings before running analysis.")
             pause_fn()
-        if set_interactive_ui_mode_fn is not None:
-            set_interactive_ui_mode_fn(resolved_ui_mode)
         try:
             run_main_loop_kwargs: dict[str, Any] = {
                 "summarize_targets_fn": summarize_targets_fn,
@@ -213,8 +277,7 @@ def main(
             }
             run_main_loop_fn(cfg, **run_main_loop_kwargs)
         finally:
-            if reset_interactive_ui_mode_fn is not None:
-                reset_interactive_ui_mode_fn()
+            clear_textual_menu_interaction()
         return 0
     except quit_app_error:
         return 0

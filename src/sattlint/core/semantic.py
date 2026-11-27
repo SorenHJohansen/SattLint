@@ -19,17 +19,8 @@ from ..models.project_graph import ProjectGraph
 from ._semantic_index import SemanticIndexBuilder
 from ._semantic_snapshot import SemanticSnapshot, SymbolDefinition, SymbolReference
 from .call_signatures import CallSignatureOccurrence
-from .workspace_discovery import WorkspaceSourceDiscovery, single_entry_discovery
 
 log = logging.getLogger("SattLint")
-
-
-def _string_attr(value: object, attr_name: str) -> str | None:
-    raw = getattr(value, attr_name, None)
-    if isinstance(raw, str):
-        normalized = raw.strip()
-        return normalized or None
-    return None
 
 
 def _emit_parser_debug(message: str) -> None:
@@ -41,22 +32,16 @@ def _build_semantic_snapshot(
     *,
     entry_path: Path,
     workspace_root: Path,
-    discovery: WorkspaceSourceDiscovery,
     project_graph: ProjectGraph,
-    debug: bool,
     include_dependency_modules: bool = True,
+    build_reference_index: bool = True,
 ) -> SemanticSnapshot:
-    root_origin_for_basepicture = getattr(project_graph, "root_origin_for_basepicture", None)
-    root_origin = root_origin_for_basepicture(base_picture) if callable(root_origin_for_basepicture) else None
-    root_origin_file = (
-        _string_attr(root_origin, "origin_file")
-        if root_origin is not None
-        else getattr(base_picture, "origin_file", None)
-    )
+    root_origin = project_graph.root_origin_for_basepicture(base_picture)
+    root_origin_file = root_origin.origin_file if root_origin is not None else base_picture.origin_file
     root_origin_library = (
-        _string_attr(root_origin, "library_name")
-        if root_origin is not None
-        else getattr(base_picture, "origin_lib", None)
+        root_origin.library_name
+        if root_origin is not None and root_origin.library_name is not None
+        else base_picture.origin_lib
     )
     builder = SemanticIndexBuilder(
         base_picture,
@@ -65,6 +50,7 @@ def _build_semantic_snapshot(
         unavailable_libraries=project_graph.unavailable_libraries,
         include_dependency_modules=include_dependency_modules,
         graphics_attachments=project_graph.graphics_attachments_for(base_picture),
+        build_reference_index=build_reference_index,
     )
     builder_result = builder.build()
     symbol_table = builder_result.symbol_table
@@ -72,14 +58,13 @@ def _build_semantic_snapshot(
     definitions = builder_result.definitions
     definitions_by_key = builder_result.definitions_by_key
     moduletype_index = builder_result.moduletype_index
-    references_by_file = builder_result.references_by_file
+    references_by_source = builder_result.references_by_source
     references_by_definition_key = builder_result.references_by_definition_key
     call_signatures = builder_result.call_signatures
 
     return SemanticSnapshot(
         workspace_root=workspace_root,
         entry_file=entry_path,
-        discovery=discovery,
         base_picture=base_picture,
         project_graph=project_graph,
         symbol_table=symbol_table,
@@ -88,7 +73,7 @@ def _build_semantic_snapshot(
         call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
-        _references_by_file=references_by_file,
+        _references_by_source=references_by_source,
         _references_by_definition_key=references_by_definition_key,
     )
 
@@ -100,12 +85,15 @@ def load_source_snapshot(
     workspace_root: Path | None = None,
     debug: bool = False,
 ) -> SemanticSnapshot:
-    base_picture = parser_core_parse_source_text(source_text, debug=(_emit_parser_debug if debug else None))
+    base_picture = parser_core_parse_source_text(
+        source_text,
+        debug=(_emit_parser_debug if debug else None),
+        source_path=Path(source_file),
+    )
     return build_source_snapshot_from_basepicture(
         base_picture,
         source_file,
         workspace_root=workspace_root,
-        debug=debug,
     )
 
 
@@ -114,11 +102,9 @@ def build_source_snapshot_from_basepicture(
     source_file: Path,
     *,
     workspace_root: Path | None = None,
-    debug: bool = False,
 ) -> SemanticSnapshot:
     entry_path = Path(source_file).resolve()
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
-    discovery = single_entry_discovery(entry_path, root)
 
     project_graph = ProjectGraph()
     project_graph.index_from_basepic(
@@ -131,9 +117,7 @@ def build_source_snapshot_from_basepicture(
         base_picture,
         entry_path=entry_path,
         workspace_root=root,
-        discovery=discovery,
         project_graph=project_graph,
-        debug=debug,
     )
 
 
@@ -143,20 +127,18 @@ def build_snapshot_from_loaded_project(
     *,
     entry_file: Path,
     workspace_root: Path,
-    debug: bool = False,
     include_dependency_modules: bool = True,
+    build_reference_index: bool = True,
 ) -> SemanticSnapshot:
     resolved_entry_path = Path(entry_file).resolve()
     resolved_workspace_root = Path(workspace_root).resolve()
-    discovery = single_entry_discovery(resolved_entry_path, resolved_workspace_root)
     return _build_semantic_snapshot(
         base_picture,
         entry_path=resolved_entry_path,
         workspace_root=resolved_workspace_root,
-        discovery=discovery,
         project_graph=project_graph,
-        debug=debug,
         include_dependency_modules=include_dependency_modules,
+        build_reference_index=build_reference_index,
     )
 
 
@@ -165,7 +147,6 @@ __all__ = [
     "SemanticSnapshot",
     "SymbolDefinition",
     "SymbolReference",
-    "WorkspaceSourceDiscovery",
     "build_source_snapshot_from_basepicture",
     "load_source_snapshot",
 ]

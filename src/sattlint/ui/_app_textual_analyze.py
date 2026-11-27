@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import inspect
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from ..application.analyze import no_analyzer_selection_message
 from ._app_textual_actions import _label_value_renderable
 from ._app_textual_shared import (
     _ANALYZER_LIST_ID_PREFIX,
@@ -134,12 +137,30 @@ def _analyzers_section_spec() -> Any:
     return type(
         "SectionSpec",
         (),
-        {"section_id": "analyzers", "label": "Analyzers", "description": "Select one or more analyzers to run."},
+        {
+            "section_id": "analyzers",
+            "label": "Analyzers",
+            "description": (
+                "Select one or more analyzers to run. Opening a configuration preselects the "
+                "analyzers from its project file, and a run needs at least one selection."
+            ),
+        },
     )()
 
 
 def _analyzer_entry_ids(self: Any) -> tuple[str, ...]:
     return tuple(item.entry_id for _section, items in self._analyzer_section_groups() for item in items)
+
+
+def _ordered_analyzer_entry_ids(self: Any) -> tuple[str, ...]:
+    """Every available analyzer, in the order the unfiltered list shows.
+
+    Selections must survive a filter change, so this ignores ``_analyzer_items``
+    and the current filter text.
+    """
+    items = list(self._available_analyzer_items())
+    items.sort(key=lambda item: (item.category, item.label.casefold(), item.entry_id))
+    return tuple(item.entry_id for item in items)
 
 
 def _analyzer_entry(self: Any, entry_id: str | None) -> _AnalyzerItem | None:
@@ -152,16 +173,24 @@ def _analyzer_entry(self: Any, entry_id: str | None) -> _AnalyzerItem | None:
 
 
 def _normalize_analyze_state(self: Any) -> None:
-    valid_entry_ids = self._analyzer_entry_ids()
-    valid_entry_id_set = set(valid_entry_ids)
-    self._analyze_selected_entry_ids.intersection_update(valid_entry_id_set)
-    if self._analyze_focused_entry_id not in valid_entry_id_set:
-        self._analyze_focused_entry_id = valid_entry_ids[0] if valid_entry_ids else None
+    self._analyze_selected_entry_ids.intersection_update(self._ordered_analyzer_entry_ids())
+    visible_entry_ids = self._analyzer_entry_ids()
+    if self._analyze_focused_entry_id not in visible_entry_ids:
+        self._analyze_focused_entry_id = visible_entry_ids[0] if visible_entry_ids else None
+
+
+def _seed_analyze_selection(self: Any, keys: tuple[str, ...]) -> None:
+    """Preselect the analyzers a configuration names, dropping unknown keys."""
+    available = set(self._ordered_analyzer_entry_ids())
+    self._analyze_selected_entry_ids.clear()
+    self._analyze_selected_entry_ids.update(key for key in keys if key in available)
 
 
 def _ordered_selected_analyze_entry_ids(self: Any) -> tuple[str, ...]:
     self._normalize_analyze_state()
-    return tuple(entry_id for entry_id in self._analyzer_entry_ids() if entry_id in self._analyze_selected_entry_ids)
+    return tuple(
+        entry_id for entry_id in self._ordered_analyzer_entry_ids() if entry_id in self._analyze_selected_entry_ids
+    )
 
 
 def _selected_analyzer_keys(self: Any) -> tuple[str, ...]:
@@ -214,10 +243,13 @@ def _update_analyze_selection_list(
     selection_list: Any,
     items: tuple[_AnalyzerItem, ...],
 ) -> None:
+    options = [(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items]
+    if getattr(selection_list, "_sattlint_analyze_options", None) == options:
+        # The visible list did not change, so leave its scroll position alone.
+        return
     selection_list.clear_options()
-    selection_list.add_options(
-        [(item.label, item.entry_id, item.entry_id in self._analyze_selected_entry_ids) for item in items]
-    )
+    selection_list.add_options(options)
+    selection_list._sattlint_analyze_options = options
     if items:
         highlighted_index = 0
         if self._analyze_focused_entry_id is not None:
@@ -334,10 +366,13 @@ def _write_focused_entry_to_output(self: Any) -> None:
     self._normalize_analyze_state()
     focused_entry = self._analyzer_entry(self._analyze_focused_entry_id)
     self._analyze_help_shown = True
-    self._clear_session_output()
+    focused_entry_id = None if focused_entry is None else focused_entry.entry_id
+    if focused_entry_id is not None and focused_entry_id == getattr(self, "_analyze_help_entry_id", None):
+        return
     if focused_entry is None:
         self._write_output("Select an analyzer on the left to see what it reports.")
         return
+    self._analyze_help_entry_id = focused_entry_id
     description = self._analyzer_entry_description(focused_entry)
     segments: list[tuple[str, str]] = [
         ("Analyzer", focused_entry.label),
@@ -418,16 +453,35 @@ def _run_selected_analyzers(self: Any) -> None:
         return
     selected_keys = self._selected_analyzer_keys()
     if not selected_keys:
-        self._write_output("Select one or more analyzers in the list first.")
+        available = tuple(item.entry_id for item in self._available_analyzer_items())
+        self._write_output(no_analyzer_selection_message(available))
         return
+    # Snapshot the inputs so a project swap during the run cannot attribute
+    # the result to a different project than the one that was analyzed.
+    cfg = deepcopy(self._cfg)
+    project_path = "" if self._project_path is None else str(self._project_path)
     self._start_action(
         "Run selected analyzers",
-        lambda keys=selected_keys: self._execute_analyzers(keys),
+        lambda cancellation, keys=selected_keys, cfg=cfg, project_path=project_path: self._execute_analyzers(
+            keys, cfg=cfg, project_path=project_path, cancellation=cancellation
+        ),
         action_id="action-analyze",
+        cancellable=True,
     )
 
 
-def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
+def _execute_analyzers(
+    self: Any,
+    selected_keys: tuple[str, ...],
+    *,
+    cfg: Any | None = None,
+    project_path: str | None = None,
+    cancellation: Any | None = None,
+) -> None:
+    if cfg is None:
+        cfg = self._cfg
+    if project_path is None:
+        project_path = "" if self._project_path is None else str(self._project_path)
     self._emit_output_from_thread(f"Running {len(selected_keys)} selected analyzer(s).")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
@@ -440,19 +494,49 @@ def _execute_analyzers(self: Any, selected_keys: tuple[str, ...]) -> None:
     if not self._configured_target_names():
         self._emit_output_from_thread("No configured analysis targets are available.")
         return
-    result = handler(self._cfg, list(selected_keys))
+    handler_kwargs: dict[str, object] = {}
+    handler_parameters = inspect.signature(handler).parameters
+    if "project_path" in handler_parameters:
+        handler_kwargs["project_path"] = project_path
+    if "emit_output" in handler_parameters:
+        # Stream each reported line as the runner produces it instead of
+        # replaying a buffered transcript after the run.
+        handler_kwargs["emit_output"] = self._emit_output_from_thread
+    if "progress" in handler_parameters:
+        # Progress arrives on the worker thread; marshal it to the UI thread
+        # before it touches the status bar state.
+        handler_kwargs["progress"] = self._receive_analysis_progress
+    if cancellation is not None and "cancellation" in handler_parameters:
+        handler_kwargs["cancellation"] = cancellation
+    result = handler(cfg, list(selected_keys), **handler_kwargs)
     failures = tuple(getattr(result, "failures", ())) if result is not None else ()
-    if failures:
-        names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
-        self._emit_output_from_thread(f"Analysis finished with target load failures: {names}. Review the output above.")
+    analyzer_failures = tuple(getattr(result, "analyzer_failures", ())) if result is not None else ()
+    cancelled = bool(getattr(result, "cancelled", False)) if result is not None else False
+    if cancelled:
+        self._emit_output_from_thread("Analysis cancelled.")
+    elif failures or analyzer_failures:
+        problems: list[str] = []
+        if failures:
+            names = ", ".join(str(getattr(failure, "target_name", "")) for failure in failures)
+            total = getattr(result, "total_failed_targets", len(failures))
+            problems.append(f"{total} target(s) could not be loaded ({names})")
+        if analyzer_failures:
+            names = ", ".join(str(getattr(failure, "analyzer_name", "")) for failure in analyzer_failures)
+            problems.append(f"{len(analyzer_failures)} analyzer(s) failed ({names})")
+        self._emit_output_from_thread(
+            f"Analysis finished with problems: {'; '.join(problems)}. Review the output above."
+        )
     else:
         self._emit_output_from_thread("Selected analyzers completed.")
-    if result is not None:
-        self.call_from_thread(self._finish_analysis_run, result)
+    if result is not None and not cancelled:
+        self._call_on_ui(self._finish_analysis_run, result)
 
 
 def _finish_analysis_run(self: Any, result: Any) -> None:
-    del result
+    run_id = str(getattr(result, "run_id", "") or "").strip()
+    if not run_id:
+        self._write_output("This run was not saved to run history, so the Results view still shows earlier runs.")
+        return
     self._activate_view("results")
 
 
@@ -485,14 +569,20 @@ def _run_generate_change_review(self: Any) -> None:
     if not self._setup_has_targets():
         self._write_output("No configured analysis targets are available for Change Review.")
         return
+    cfg = deepcopy(self._cfg)
+    targets = list(self._configured_target_names())
     self._start_action(
         "Generate Change Review",
-        lambda: self._execute_generate_change_review(),
-        action_id="action-analyze",
+        lambda cfg=cfg, targets=targets: self._execute_generate_change_review(cfg, targets),
+        action_id="action-change-review",
     )
 
 
-def _execute_generate_change_review(self: Any) -> None:
+def _execute_generate_change_review(self: Any, cfg: Any | None = None, targets: list[str] | None = None) -> None:
+    if cfg is None:
+        cfg = self._cfg
+    if targets is None:
+        targets = list(self._configured_target_names())
     self._emit_output_from_thread("Generating Change Review for the configured project...")
     handler = None
     if isinstance(getattr(self, "_analysis_handlers", None), dict):
@@ -501,7 +591,7 @@ def _execute_generate_change_review(self: Any) -> None:
         self._emit_output_from_thread("The Change Review generator is unavailable in the current Textual session.")
         return
     try:
-        summary = handler(self._cfg, list(self._configured_target_names()))
+        summary = handler(cfg, targets)
     except Exception as exc:  # noqa: BLE001
         self._emit_output_from_thread(f"Change Review failed: {exc}")
         return
@@ -520,8 +610,10 @@ if TYPE_CHECKING:
         def _analyzer_items(self) -> tuple[_AnalyzerItem, ...]: ...
         def _analyzer_section_groups(self) -> tuple[tuple[Any, tuple[_AnalyzerItem, ...]], ...]: ...
         def _analyzer_entry_ids(self) -> tuple[str, ...]: ...
+        def _ordered_analyzer_entry_ids(self) -> tuple[str, ...]: ...
         def _analyzer_entry(self, entry_id: str | None) -> _AnalyzerItem | None: ...
         def _normalize_analyze_state(self) -> None: ...
+        def _seed_analyze_selection(self, keys: tuple[str, ...]) -> None: ...
         def _ordered_selected_analyze_entry_ids(self) -> tuple[str, ...]: ...
         def _selected_analyzer_keys(self) -> tuple[str, ...]: ...
         def _analyze_section_list_id(self, section_id: str) -> str: ...
@@ -535,12 +627,19 @@ if TYPE_CHECKING:
         def _set_analyze_filter_text(self, raw_text: object) -> None: ...
         def _prompt_analyze_filter(self) -> None: ...
         def _run_selected_analyzers(self) -> None: ...
-        def _execute_analyzers(self, selected_keys: tuple[str, ...]) -> None: ...
+        def _execute_analyzers(
+            self,
+            selected_keys: tuple[str, ...],
+            *,
+            cfg: Any | None = None,
+            project_path: str | None = None,
+            cancellation: Any | None = None,
+        ) -> None: ...
         def _finish_analysis_run(self, result: Any) -> None: ...
         def _clear_selected_analyzers(self) -> None: ...
         def _select_all_analyzers(self) -> None: ...
         def _run_generate_change_review(self) -> None: ...
-        def _execute_generate_change_review(self) -> None: ...
+        def _execute_generate_change_review(self, cfg: Any | None = None, targets: list[str] | None = None) -> None: ...
 else:
 
     class _TextualAnalyzeMixin:
@@ -555,8 +654,10 @@ else:
         _analyzer_items = _analyzer_items
         _analyzer_section_groups = _analyzer_section_groups
         _analyzer_entry_ids = _analyzer_entry_ids
+        _ordered_analyzer_entry_ids = _ordered_analyzer_entry_ids
         _analyzer_entry = _analyzer_entry
         _normalize_analyze_state = _normalize_analyze_state
+        _seed_analyze_selection = _seed_analyze_selection
         _ordered_selected_analyze_entry_ids = _ordered_selected_analyze_entry_ids
         _selected_analyzer_keys = _selected_analyzer_keys
         _analyze_section_list_id = _analyze_section_list_id

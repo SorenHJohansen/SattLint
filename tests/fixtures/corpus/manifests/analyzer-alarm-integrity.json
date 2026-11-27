@@ -5,7 +5,8 @@
     "expectation": {
         "expected_finding_ids": [
             "alarm.duplicate_condition",
-            "alarm.duplicate_tag"
+            "alarm.duplicate_tag",
+            "alarm.never_cleared"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,10 +16,11 @@
             },
             "summary.json": {
                 "analyzer_key": "alarm-integrity",
-                "finding_count": 8,
+                "finding_count": 9,
                 "rule_counts": {
                     "alarm.duplicate_condition": 4,
-                    "alarm.duplicate_tag": 4
+                    "alarm.duplicate_tag": 4,
+                    "alarm.never_cleared": 1
                 }
             }
         },

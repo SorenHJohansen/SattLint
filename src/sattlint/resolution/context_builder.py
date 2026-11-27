@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeInstance, SingleModule, Variable
 
-from ..models._variable_issues import IssueKind, VariableIssue
+from ..models._variable_issues import VariableIssue
 from ._alias_utils import varname_base, varname_full
 from ._moduletype_resolution import resolve_moduletype_def_strict
 from .paths import decorate_segment
@@ -27,7 +27,37 @@ class _TypedefContextTemplate:
     env: dict[str, Variable]
     moduleparameter_keys: frozenset[str]
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
-    unknown_parameter_targets: tuple[str, ...]
+
+
+def build_frame_scope(
+    frame: FrameModule,
+    parent_context: ScopeContext,
+    module_path: list[str],
+    display_module_path: list[str],
+) -> ScopeContext:
+    """Return the scope shared by every frame-module consumer.
+
+    A frame declares its own parameters and locals like any other module but
+    has no parameter mappings of its own. References the frame cannot resolve
+    fall through to the parent scope.
+    """
+    params = list(frame.moduleparameters or [])
+    locals_ = list(frame.localvariables or [])
+    env: dict[str, Variable] = {}
+    for variable in params:
+        env[variable.name.casefold()] = variable
+    for variable in locals_:
+        env[variable.name.casefold()] = variable
+
+    return ScopeContext(
+        env=env,
+        param_mappings={},
+        module_path=module_path,
+        display_module_path=display_module_path,
+        moduleparameter_keys=frozenset(variable.name.casefold() for variable in params),
+        current_library=parent_context.current_library,
+        parent_context=parent_context,
+    )
 
 
 def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) -> Variable | None:
@@ -194,28 +224,19 @@ class ContextBuilder:
         except ValueError:
             return None
 
-    def _emit_typedef_context_issues(
+    def _register_typedef_variables(
         self,
-        template: _TypedefContextTemplate,
+        moduletype: ModuleTypeDef,
         module_path: list[str],
+        library: str | None,
     ) -> None:
-        for target_display_name in template.unknown_parameter_targets:
-            self.issues.append(
-                VariableIssue(
-                    kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
-                    module_path=module_path.copy(),
-                    variable=None,
-                    role=f"unknown parameter mapping target {target_display_name!r}",
-                )
-            )
-
-    def _register_typedef_variables(self, moduletype: ModuleTypeDef, module_path: list[str]) -> None:
         for variable in moduletype.moduleparameters or []:
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=library,
             )
         for variable in moduletype.localvariables or []:
             self.symbol_table.add_variable_root(
@@ -223,6 +244,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=library,
             )
 
     def _build_typedef_context_template(
@@ -243,16 +265,16 @@ class ContextBuilder:
             env[variable.name.casefold()] = variable
 
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
-        unknown_parameter_targets: list[str] = []
         for parameter_mapping in instance.parametermappings or []:
             target_name = varname_base(parameter_mapping.target)
-            if not target_name or parameter_mapping.is_source_global:
+            if not target_name:
                 continue
-            target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
 
             if target_key not in param_keys:
-                unknown_parameter_targets.append(target_display_name)
+                continue
+
+            if parameter_mapping.is_source_global:
                 continue
 
             if parent_context is None:
@@ -277,7 +299,6 @@ class ContextBuilder:
             env=env,
             moduleparameter_keys=frozenset(param_keys.keys()),
             param_mappings=param_mappings,
-            unknown_parameter_targets=tuple(unknown_parameter_targets),
         )
 
     def build_for_basepicture(self) -> ScopeContext:
@@ -304,6 +325,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=self.root_library,
             )
         for variable in locals_:
             self.symbol_table.add_variable_root(
@@ -311,6 +333,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=self.root_library,
             )
 
         return ScopeContext(
@@ -345,6 +368,7 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.PARAMETER,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
         for variable in locals_:
             env[variable.name.casefold()] = variable
@@ -353,26 +377,21 @@ class ContextBuilder:
                 var=variable,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
+                library=parent_context.current_library,
             )
 
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
 
         for parameter_mapping in mod.parametermappings or []:
             target_name = varname_base(parameter_mapping.target)
-            if not target_name or parameter_mapping.is_source_global:
+            if not target_name:
                 continue
-            target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
 
             if target_key not in param_keys:
-                self.issues.append(
-                    VariableIssue(
-                        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
-                        module_path=module_path.copy(),
-                        variable=None,
-                        role=(f"unknown parameter mapping target {target_display_name!r}"),
-                    )
-                )
+                continue
+
+            if parameter_mapping.is_source_global:
                 continue
 
             full_source = varname_full(parameter_mapping.source)
@@ -401,6 +420,32 @@ class ContextBuilder:
             parent_context=parent_context,
         )
 
+    def build_for_frame(
+        self,
+        frame: FrameModule,
+        parent_context: ScopeContext,
+        module_path: list[str],
+        display_module_path: list[str],
+    ) -> ScopeContext:
+        """Build the scope of a frame module and register its declarations."""
+        for variable in frame.moduleparameters or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=variable,
+                kind=SymbolKind.PARAMETER,
+                type_graph=self.type_graph,
+                library=parent_context.current_library,
+            )
+        for variable in frame.localvariables or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=variable,
+                kind=SymbolKind.LOCAL,
+                type_graph=self.type_graph,
+                library=parent_context.current_library,
+            )
+        return build_frame_scope(frame, parent_context, module_path, display_module_path)
+
     def build_for_typedef(
         self,
         moduletype: ModuleTypeDef,
@@ -419,8 +464,8 @@ class ContextBuilder:
             template = self._build_typedef_context_template(moduletype, instance, parent_context)
             self._typedef_context_cache[cache_key] = template
 
-        self._emit_typedef_context_issues(template, module_path)
-        self._register_typedef_variables(moduletype, module_path)
+        current_library = moduletype.origin_lib or (parent_context.current_library if parent_context else None)
+        self._register_typedef_variables(moduletype, module_path, current_library)
 
         return ScopeContext(
             env=template.env,
@@ -428,6 +473,6 @@ class ContextBuilder:
             module_path=module_path,
             display_module_path=display_module_path,
             moduleparameter_keys=template.moduleparameter_keys,
-            current_library=parent_context.current_library if parent_context else None,
+            current_library=current_library,
             parent_context=parent_context,
         )

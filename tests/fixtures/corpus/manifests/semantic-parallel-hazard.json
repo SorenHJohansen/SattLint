@@ -1,10 +1,10 @@
 {
     "case_id": "semantic-parallel-hazard",
-    "target_file": "../semantic/analyzer/ModuleStructureIssues.s",
+    "target_file": "../semantic/workspace/ParallelWriteRace.s",
     "mode": "analyzer-same-cycle",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.same-cycle-shared-access"
+            "sfc_parallel_write_race"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -15,7 +15,7 @@
             "summary.json": {
                 "analyzer_key": "same-cycle",
                 "rule_counts": {
-                    "semantic.same-cycle-shared-access": 2
+                    "sfc_parallel_write_race": 1
                 }
             }
         },

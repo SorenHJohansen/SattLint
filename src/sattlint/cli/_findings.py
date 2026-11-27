@@ -3,14 +3,38 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
-from ..analyzers.catalog import canonicalize_analyzer_keys
-from ..application.findings import AnalysisFinding
+from ..analyzers.catalog import canonicalize_analyzer_keys, get_default_analyzer_catalog
+from ..application.findings import AnalysisFinding, Severity, finding_data_key, finding_severity
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
+
+_PROJECT_ANALYZER_TARGET = ""
+
+_SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
+
+
+def analyzer_default_severity(analyzer_key: str) -> Severity:
+    """The delivery default for an analyzer, or ``warning`` outside the catalog."""
+    for metadata in get_default_analyzer_catalog().analyzers:
+        if metadata.spec.key == analyzer_key:
+            return metadata.delivery.severity
+    return "warning"
+
+
+def effective_finding_severity(finding: AnalysisFinding, analyzer_key: str) -> Severity:
+    """The finding's saved severity, its kind severity, or its analyzer default.
+
+    Runs stored before severity was recorded carry ``None``. Resolving the kind
+    first keeps those historical findings consistent with a fresh run instead
+    of widening them to the analyzer's broader default.
+    """
+    return finding.severity or finding_severity(finding.kind) or analyzer_default_severity(analyzer_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +46,7 @@ class FlatFinding:
     analyzer_key: str
     analyzer_name: str
     finding: AnalysisFinding
+    severity: Severity
     module_path: tuple[str, ...]
     site: str | None
     context: str | None
@@ -41,7 +66,7 @@ def _finding_site(finding: AnalysisFinding) -> str | None:
 
 
 def _finding_context(finding: AnalysisFinding) -> str | None:
-    raw = finding.data.get("context")
+    raw = finding.data.get("relation", finding.data.get("context"))
     if raw is None:
         return None
     text = str(raw).strip()
@@ -65,8 +90,12 @@ def _finding_id(
         site or "",
         context or "",
         finding.message,
+        finding_data_key(finding),
     )
-    digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+    # A JSON array delimits parts unambiguously, so text that contains a
+    # separator character cannot shift the boundary into another field.
+    encoded = json.dumps(list(parts), ensure_ascii=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
     return f"f_{digest[:12]}"
 
 
@@ -77,45 +106,51 @@ def flat_findings(record: RunRecord) -> list[FlatFinding]:
     site, context, and message) collapse into one entry with an occurrence
     count.
     """
-    counts: dict[tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str], int] = {}
+    counts: dict[tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str, str], int] = {}
     representatives: dict[
-        tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str],
+        tuple[str, str, str, str | None, tuple[str, ...], str | None, str | None, str, str],
         FlatFinding,
     ] = {}
-    for target in record.targets:
-        for analyzer in target.analyzers:
-            for finding in analyzer.findings:
-                site = _finding_site(finding)
-                context = _finding_context(finding)
-                key = (
-                    target.target_name,
-                    analyzer.key,
-                    finding.kind,
-                    finding.rule_id,
-                    finding.module_path,
-                    site,
-                    context,
-                    finding.message,
-                )
-                counts[key] = counts.get(key, 0) + 1
-                if key not in representatives:
-                    representatives[key] = FlatFinding(
-                        id=_finding_id(
-                            target=target.target_name,
-                            analyzer_key=analyzer.key,
-                            finding=finding,
-                            site=site,
-                            context=context,
-                        ),
-                        target=target.target_name,
+    project_analyzers = getattr(record, "project_analyzers", ())
+    targets_with_analyzers = [
+        *((target.target_name, analyzer) for target in record.targets for analyzer in target.analyzers),
+        *((_PROJECT_ANALYZER_TARGET, analyzer) for analyzer in project_analyzers),
+    ]
+    for target_name, analyzer in targets_with_analyzers:
+        for finding in analyzer.findings:
+            site = _finding_site(finding)
+            context = _finding_context(finding)
+            key = (
+                target_name,
+                analyzer.key,
+                finding.kind,
+                finding.rule_id,
+                finding.module_path,
+                site,
+                context,
+                finding.message,
+                finding_data_key(finding),
+            )
+            counts[key] = counts.get(key, 0) + 1
+            if key not in representatives:
+                representatives[key] = FlatFinding(
+                    id=_finding_id(
+                        target=target_name,
                         analyzer_key=analyzer.key,
-                        analyzer_name=analyzer.name,
                         finding=finding,
-                        module_path=finding.module_path,
                         site=site,
                         context=context,
-                        occurrence_count=0,
-                    )
+                    ),
+                    target=target_name,
+                    analyzer_key=analyzer.key,
+                    analyzer_name=analyzer.name,
+                    finding=finding,
+                    severity=effective_finding_severity(finding, analyzer.key),
+                    module_path=finding.module_path,
+                    site=site,
+                    context=context,
+                    occurrence_count=0,
+                )
     flattened = [replace(entry, occurrence_count=counts[key]) for key, entry in representatives.items()]
     flattened.sort(
         key=lambda item: (
@@ -139,6 +174,7 @@ def finding_payload(finding: FlatFinding) -> FindingPayload:
         "analyzer": finding.analyzer_key,
         "analyzer_name": finding.analyzer_name,
         "kind": analysis.kind,
+        "severity": finding.severity,
         "rule_id": analysis.rule_id,
         "module_path": list(finding.module_path),
         "module": finding.module,
@@ -147,6 +183,10 @@ def finding_payload(finding: FlatFinding) -> FindingPayload:
         "message": analysis.message,
         "explanation": analysis.explanation,
         "suggestion": analysis.suggestion,
+        "file": analysis.file,
+        "line": analysis.line,
+        "column": analysis.column,
+        "end_line": analysis.end_line,
         "occurrence_count": finding.occurrence_count,
         "data": dict(analysis.data),
     }
@@ -194,7 +234,7 @@ def filter_findings(findings: Iterable[FlatFinding], filters: FindingFilters) ->
             continue
         if kinds and finding.finding.kind.casefold() not in kinds:
             continue
-        if rules and (finding.finding.rule_id or "").casefold() not in rules:
+        if rules and (finding.finding.rule_id or finding.finding.kind).casefold() not in rules:
             continue
         if not _matches_module(finding.module, filters.modules, exact=filters.exact_module):
             continue
@@ -222,8 +262,30 @@ def group_findings(findings: Iterable[FlatFinding], group_by: GroupBy) -> list[F
     ]
 
 
-def resolve_run(run_id: str | None) -> RunRecord:
-    selector = (run_id or "latest").strip() or "latest"
+def _same_project_path(left: str, right: str) -> bool:
+    return os.path.normcase(left) == os.path.normcase(right)
+
+
+def resolve_run(
+    run_id: str | None,
+    *,
+    project_path: str | None = None,
+    require_project_scope: bool = False,
+) -> RunRecord:
+    """Resolve a stored run, scoping ``latest`` to a project when one is given.
+
+    ``require_project_scope`` refuses ``latest`` when no project scope is
+    known. A machine-wide ``latest`` silently returns whichever project ran
+    last, so the CLI sets this. An explicit run id is already scoped and is
+    still resolved without a project.
+    """
+    selector = "latest" if run_id is None else run_id.strip()
+    if not selector:
+        raise CliError(
+            "Run selector is empty. Use 'latest', a run id, or a unique run-id prefix.",
+            code="run_invalid",
+            exit_code=2,
+        )
     summaries = list_runs()
     if not summaries:
         raise CliError(
@@ -232,12 +294,54 @@ def resolve_run(run_id: str | None) -> RunRecord:
             exit_code=2,
         )
     if selector == "latest":
-        selected = summaries[0].run_id
-    elif any(summary.run_id == selector for summary in summaries):
+        # `latest` means the newest run for the project being inspected, not
+        # the newest run on the machine.
+        if project_path:
+            matching = [
+                summary
+                for summary in summaries
+                if summary.project_path and _same_project_path(summary.project_path, project_path)
+            ]
+            if not matching:
+                raise CliError(
+                    "No analysis runs are recorded for this project.",
+                    code="no_runs_for_project",
+                    exit_code=2,
+                    details={"project": project_path},
+                )
+            summaries = matching
+        elif require_project_scope:
+            raise CliError(
+                "No project file was found from the current directory upward, so 'latest' has no "
+                "project scope. Pass --project PATH to choose the project, or --run ID to read a "
+                "specific stored run.",
+                code="run_scope_unknown",
+                exit_code=2,
+            )
+        # The newest record can be unreadable (truncated by a crash, written by
+        # an older schema). Fall back to the newest record that loads.
+        for summary in summaries:
+            record = load_run(summary.run_id)
+            if record is not None:
+                return record
+        raise CliError(
+            "No stored analysis run could be loaded.",
+            code="run_not_found",
+            exit_code=2,
+            details={"available": [summary.run_id for summary in summaries[:5]]},
+        )
+    if any(summary.run_id == selector for summary in summaries):
         selected = selector
     else:
         matches = [summary.run_id for summary in summaries if summary.run_id.startswith(selector)]
-        if len(matches) != 1:
+        if len(matches) > 1:
+            raise CliError(
+                f"Run prefix {selector!r} is ambiguous.",
+                code="run_ambiguous",
+                exit_code=2,
+                details={"matches": matches[:5]},
+            )
+        if not matches:
             raise CliError(
                 f"Run {selector!r} was not found.",
                 code="run_not_found",
@@ -255,12 +359,20 @@ def resolve_run(run_id: str | None) -> RunRecord:
     return record
 
 
-def run_payload(record: RunRecord) -> RunPayload:
+def run_payload(record: RunRecord, *, project_path: str | None = None) -> RunPayload:
+    """Serialize a run, naming the scope the query resolved when the run has none.
+
+    Runs stored before project scoping carry no project path. Naming the scope
+    the query actually used keeps the payload truthful for those runs while
+    leaving the shape unchanged. A run that names its own project keeps it, so
+    an explicitly selected run is never attributed to another project.
+    """
     return {
         "run_id": record.run_id,
         "started_at": record.started_at,
         "finished_at": record.finished_at,
         "project_tag": record.project_tag,
+        "project_path": record.project_path or project_path or "",
         "selected_analyzers": list(record.selected_analyzers),
         "cancelled": record.cancelled,
     }
@@ -271,23 +383,28 @@ def finding_summary(findings: Iterable[FlatFinding]) -> FindingSummary:
     by_analyzer: dict[str, int] = {}
     by_kind: dict[str, int] = {}
     by_module: dict[str, int] = {}
+    by_severity: dict[str, int] = dict.fromkeys(_SEVERITY_ORDER, 0)
     for finding in items:
         by_analyzer[finding.analyzer_key] = by_analyzer.get(finding.analyzer_key, 0) + 1
         by_kind[finding.finding.kind] = by_kind.get(finding.finding.kind, 0) + 1
         module = finding.module or "(unknown)"
         by_module[module] = by_module.get(module, 0) + 1
+        by_severity[finding.severity] = by_severity.get(finding.severity, 0) + 1
     return {
         "findings": len(items),
         "occurrences": sum(finding.occurrence_count for finding in items),
         "by_analyzer": dict(sorted(by_analyzer.items())),
         "by_kind": dict(sorted(by_kind.items())),
         "by_module": dict(sorted(by_module.items())),
+        "by_severity": by_severity,
     }
 
 
 __all__ = [
     "FindingFilters",
     "FlatFinding",
+    "analyzer_default_severity",
+    "effective_finding_severity",
     "filter_findings",
     "finding_payload",
     "finding_summary",

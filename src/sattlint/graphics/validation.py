@@ -4,7 +4,7 @@ The parser owns companion scanning: bindings, composite records, picture
 display records, and the structural messages those scans produce. This module
 turns the parser's ``GraphicsModel`` into the record shapes the analyzers
 consume and adds the checks that need the local workspace: literal
-PictureDisplay asset verification and the not-implemented asset warnings.
+PictureDisplay asset verification.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ __all__ = [
     "PictureDisplayPathRow",
     "PictureDisplayRecord",
     "is_unimplemented_picture_display_asset_path",
-    "unimplemented_picture_display_asset_message",
+    "picture_display_asset_candidate_paths",
     "validate_graphics_file",
     "validate_graphics_model",
     "validate_graphics_text",
@@ -88,26 +88,48 @@ class GraphicsCompositeRecord:
     family_code: str
 
 
-def _candidate_asset_paths(file_path: Path, asset_name: str) -> tuple[Path, ...]:
-    normalized_name = asset_name.replace("\\", "/")
-    basename = Path(normalized_name).name
-    candidates: list[Path] = []
+def picture_display_asset_candidate_paths(file_path: Path, asset_name: str) -> tuple[Path, ...]:
+    """The asset locations to probe for a PictureDisplay literal path.
+
+    An asset belongs to the program that references it, so the search covers
+    the program directory (the folder holding ``file_path``) and that folder's
+    ``scr`` subfolder only. A path that would leave those folders, meaning an
+    absolute path, one containing a ``..`` segment, or one whose real location
+    is outside after following links, has no candidate at all.
+    """
+    normalized_name = asset_name.strip().replace("\\", "/")
+    if not normalized_name:
+        return ()
+    asset_path = Path(normalized_name)
+    basename = asset_path.name
+    if not basename or asset_path.is_absolute() or ".." in asset_path.parts:
+        return ()
+    program_dir = file_path.parent
+    program_root = _real_path(program_dir)
+    candidates = (
+        program_dir / normalized_name,
+        program_dir / basename,
+        program_dir / "scr" / normalized_name,
+        program_dir / "scr" / basename,
+    )
+    unique: list[Path] = []
     seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.as_posix().casefold()
+        if key in seen:
+            continue
+        if not _real_path(candidate).is_relative_to(program_root):
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return tuple(unique)
 
-    for parent in (file_path.parent, *file_path.parents):
-        for candidate in (
-            parent / normalized_name,
-            parent / basename,
-            parent / "scr" / normalized_name,
-            parent / "scr" / basename,
-        ):
-            key = candidate.as_posix().casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append(candidate)
 
-    return tuple(candidates)
+def _real_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path.absolute()
 
 
 def is_unimplemented_picture_display_asset_path(path_text: str) -> bool:
@@ -118,10 +140,6 @@ def is_unimplemented_picture_display_asset_path(path_text: str) -> bool:
         stripped = stripped[4:].strip()
     lowered = stripped.casefold()
     return lowered.endswith(".wmf") or lowered.endswith(".emf")
-
-
-def unimplemented_picture_display_asset_message() -> str:
-    return ".emf and .wmf resolution is not implemented"
 
 
 def _validate_literal_path(
@@ -151,27 +169,12 @@ def _validate_literal_path(
                 length=len(stripped),
             )
         if is_unimplemented_picture_display_asset_path(stripped):
-            return GraphicsMessage(
-                severity="warning",
-                message=unimplemented_picture_display_asset_message(),
-                line=line,
-                column=column,
-                length=len(stripped),
-            )
-        if any(candidate.exists() for candidate in _candidate_asset_paths(file_path, asset_name)):
+            return None
+        if any(candidate.exists() for candidate in picture_display_asset_candidate_paths(file_path, asset_name)):
             return None
         return GraphicsMessage(
             severity="warning",
             message=f"PictureDisplay asset {stripped!r} could not be verified from this workspace",
-            line=line,
-            column=column,
-            length=len(stripped),
-        )
-
-    if is_unimplemented_picture_display_asset_path(stripped):
-        return GraphicsMessage(
-            severity="warning",
-            message=unimplemented_picture_display_asset_message(),
             line=line,
             column=column,
             length=len(stripped),

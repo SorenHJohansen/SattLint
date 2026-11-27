@@ -17,14 +17,18 @@ this adapter through ``build_parser_binding`` + ``load_parser_project`` +
 
 Known behaviour approximations:
 
-* Programs the parser silently drops under ``strict=False`` (missing code file
-  or unparseable source) surface as *missing* SattLint-side. No corpus fixture
-  exercises the parse-failure branch.
+* ``SattLineProject.load`` is all or nothing: the parser returns a complete
+  declared closure or raises a ``ProjectLoadError`` subclass. A target that
+  cannot load is recorded as a graph failure at the load seam, never as a
+  partial closure. ``load_parser_projects`` uses the parser's ``load_many``
+  only when the complete batch cannot exist, and keeps every target that does.
 * The parser resolves a program's graph and ``.g``/``.y`` companion. SattLint
   consumes the parsed ``GraphicsModel`` through ``attach_graphics_companion``
   and owns only the workspace asset checks, correlation, and notice wording.
-* The parser load is hermetic (``cache_dir=None``); the parser runs its own
-  program-level caches from a cache directory SattLint never passes.
+* ``binding.parser_cache_dir`` enables the parser's own per-file lookup and AST
+  caches. The parser refuses a directory it cannot prove is private to the
+  user and falls back to an in-memory load, so the cache is an optimization,
+  never a correctness dependency.
 """
 
 from __future__ import annotations
@@ -35,20 +39,26 @@ from pathlib import Path
 from time import perf_counter
 
 from sattlint.parser_api import (
+    DependencyCycleError,
     Diagnostic,
     DiagnosticCode,
     LoadMode,
     LoadValidation,
+    ModuleTypeCycleError,
+    ProjectLoadError,
     ProjectLookup,
     SattLineProgram,
     SattLineProject,
+    TargetLoadResult,
 )
 from sattlint.parser_api import read_dependency_names as parser_read_dependency_names
 
+from ..config.string_capacities import STANDARD_STRING_CAPACITIES, StringCapacities
 from ..core.syntax import CodeMode
 from ..graphics.graphics_helpers import attach_graphics_companion
-from ..models.project_graph import ProjectGraph
-from ..validation.shared import StructuralValidationError, ValidationNotice
+from ..models.project_graph import ProjectFailure, ProjectGraph
+from ..utils.casefolding import unit_equal, unit_key
+from ..validation.policy import error_for, notice_for
 from .loading_support import (
     record_project_failure as _record_project_failure,
 )
@@ -59,37 +69,41 @@ from .loading_support import (
 LoadStageTimingSink = Callable[[str, str, float], None]
 
 #: Parser rules SattLint deliberately does not enforce. Duplicate sibling names
-#: are accepted here because the version-drift analyzer fixtures use same-name
-#: siblings with different datecodes; the old adapter passed
+#: are accepted here because inline copies legitimately share a role name with
+#: different datecodes; the old adapter passed
 #: ``enforce_unique_submodule_names=False`` for the same reason.
 #: Language diagnostics owned by the parser CLI, not by SattLint analyzers.
 #:
-#: Project mode loads partial workspaces: proprietary libraries and unrelated
-#: dependencies may be absent, so the parser reports names it cannot resolve.
-#: SattLint suppresses these four codes at load rather than turning a partial
-#: workspace into a hard failure. SattLint analyzers report the structural
-#: problems they can prove (for example duplicate siblings); undefined names
-#: and unknown datatype/moduletype names stay the parser CLI's responsibility.
+#: A load returns a target's complete declared closure or raises, so a missing
+#: library is no longer a load condition. A program can still name a datatype or
+#: module type that no loaded file declares, and the parser reports that per
+#: file. SattLint keeps these codes out of the load result and lets its
+#: analyzers own the structural findings they can prove (for example duplicate
+#: siblings); undefined names and unknown datatype/moduletype names stay the
+#: parser CLI's responsibility.
 #: Do not add a code here without a written reason and a corpus case.
 _SUPPRESSED_DIAGNOSTIC_CODES = frozenset(
     {
         # Duplicate sibling module names are reported by the module-structure
         # analyzer; the loader keeps the first definition and continues.
         DiagnosticCode.DUPLICATE_SIBLING_SUBMODULE,
-        # Undefined names usually belong to an unavailable external library in
-        # project mode. The parser CLI reports them; SattLint does not.
+        # An undefined name is reported by the parser CLI, not by SattLint.
         DiagnosticCode.UNDEFINED_VARIABLE,
-        # Unknown datatype names are expected when a dependency library is not
-        # available; the datatype analyzers report what they can resolve.
+        # A datatype name can belong to a library outside the loaded closure;
+        # the datatype analyzers report what they can resolve.
         DiagnosticCode.UNKNOWN_DATATYPE_NAME,
-        # Unknown moduletype names are expected for the same missing-library
-        # reason; moduletype resolution reports ambiguity separately.
+        # A module type name can sit outside the loaded closure; moduletype
+        # resolution reports ambiguity separately.
         DiagnosticCode.UNKNOWN_MODULETYPE_NAME,
+        # The variables analyzer owns unknown mapping targets and reports them
+        # for every mapping source, so the root must still be indexed for that
+        # analysis.
+        DiagnosticCode.PARAMETER_MAPPING_TARGET_UNKNOWN,
     }
 )
 
 
-def _project_memo_factory() -> dict[tuple[str, bool, str], SattLineProject]:
+def _project_memo_factory() -> dict[tuple[str, str], SattLineProject]:
     return {}
 
 
@@ -100,10 +114,10 @@ def _indexed_names_factory() -> set[str]:
 class CircularDependencyError(RuntimeError):
     """Exception raised when circular dependencies are detected."""
 
-    def __init__(self, library: str, cycle_path: list[str]):
+    def __init__(self, library: str, cycle_path: list[str], *, message: str | None = None):
         self.library = library
         self.cycle_path = cycle_path
-        super().__init__(f"Circular dependency detected: {' -> '.join([*cycle_path, cycle_path[0]])}")
+        super().__init__(message or f"Circular dependency detected: {' -> '.join([*cycle_path, cycle_path[0]])}")
 
 
 class DependencyVersionCompatibilityError(RuntimeError):
@@ -122,14 +136,20 @@ def record_missing_library(
     strict: bool,
     requester: str | None = None,
 ) -> None:
-    if requester and requester.casefold() != name.casefold():
+    if requester and not unit_equal(requester, name):
         message = f"Missing code file for dependency '{name}' referenced by '{requester}' ({mode})"
     else:
         message = f"Missing code file for '{name}' ({mode})"
     if strict:
         raise FileNotFoundError(message)
     graph.missing.append(message)
-    graph.unavailable_libraries.add(name.casefold())
+    graph.unavailable_libraries.add(unit_key(name))
+    # A missing library is a load failure like any other: keep the typed record
+    # beside the human message so consumers never have to parse the message.
+    graph.failures.setdefault(
+        unit_key(name),
+        ProjectFailure(name=name, message=message, detail=f"code file is missing ({mode})"),
+    )
 
 
 @dataclass(frozen=True)
@@ -149,11 +169,19 @@ class ParserProjectBinding:
     status_update_fn: Callable[[str], None] | None = None
     stage_timing_sink: LoadStageTimingSink | None = None
     graphics_timing_sink: Callable[[str, str, float], None] | None = None
+    #: The project's configured string capacities. Load-time graphics path
+    #: diagnostics infer string values, so they need the same capacities the
+    #: analysis context carries.
+    string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
+    #: Where the parser may keep its own per-file lookup and AST caches. Enabling
+    #: it makes a target stop re-parsing programs an earlier target in the same run
+    #: already parsed. ``None`` keeps the load hermetic.
+    parser_cache_dir: Path | None = None
     # Session-scoped adapter state, shared across every load/visit in one
     # binding lifetime. These are the analogues of the old loader shell's
     # ``_visited`` / ``_lib_by_name`` / status dedupe, and are excluded from
     # equality/repr so the frozen binding stays a value-like configuration.
-    _project_memo: dict[tuple[str, bool, str], SattLineProject] = field(
+    _project_memo: dict[tuple[str, str], SattLineProject] = field(
         default_factory=_project_memo_factory, compare=False, repr=False
     )
     _indexed_names: set[str] = field(default_factory=_indexed_names_factory, compare=False, repr=False)
@@ -181,55 +209,127 @@ def load_parser_project(
     binding: ParserProjectBinding,
     targets: Sequence[str],
     *,
-    strict: bool,
     validate: LoadValidation = LoadValidation.INVOKED,
 ) -> SattLineProject:
-    """Load ``targets`` through the parser, hermetically (no parser-side cache).
+    """Load ``targets`` through the parser.
 
-    ``cache_dir=None`` keeps the load fully in-memory; the project-level
-    analysis-result cache remains SattLint's replay/refresh layer.
+    ``binding.parser_cache_dir`` (when set) enables the parser's own per-file
+    lookup and AST caches: a program a previous target already parsed is reused
+    instead of parsed again, which is what keeps a multi-target run from parsing
+    the shared dependency closure once per target. With no cache dir the load is
+    fully in-memory and hermetic.
 
-    Single-target loads are memoized per binding (keyed by casefolded target
-    and strictness), the analogue of the old loader shell's ``_visited`` set:
+    Single-target loads are memoized per binding (keyed by unit identity and
+    validation scope), the analogue of the old loader shell's ``_visited`` set:
     the same target visited again within one load (e.g. a reverse-library
     consumer reachable through two different dependency files) is resolved and
     parsed only once.
     """
     if len(targets) == 1:
-        memo_key = (targets[0].casefold(), strict, validate.value)
+        memo_key = (unit_key(targets[0]), validate.value)
         memoized = binding._project_memo.get(memo_key)
         if memoized is not None:
             return memoized
-        project = _load_project(binding, targets, strict=strict, validate=validate)
+        project = _load_project(binding, targets, validate=validate)
         binding._project_memo[memo_key] = project
         return project
-    return _load_project(binding, targets, strict=strict, validate=validate)
+    return _load_project(binding, targets, validate=validate)
+
+
+def load_parser_projects(
+    binding: ParserProjectBinding,
+    targets: Sequence[str],
+    *,
+    validate: LoadValidation = LoadValidation.INVOKED,
+) -> dict[str, TargetLoadResult]:
+    """Load ``targets`` in one parser pass, keeping every target that succeeds.
+
+    The parser shares discovery and parsing across the targets, so a dependency
+    common to several of them is planned and parsed once. A target whose own
+    closure fails reports that error instead of discarding the others, which is
+    what keeps reverse-library consumers independent of each other.
+    """
+    results = SattLineProject.load_many(
+        roots=binding.roots,
+        mode=binding.parser_mode(),
+        targets=targets,
+        debug=binding.debug_fn,
+        cache_dir=binding.parser_cache_dir,
+        validate=validate,
+    )
+    for target, result in results.items():
+        if result.error is None:
+            continue
+        cycle = _cycle_error_for(result.error)
+        if cycle is not None:
+            # Keep SattLint's wording for a cycle, which is what a target
+            # failure record shows, instead of the parser's lowercase form.
+            results[target] = TargetLoadResult(target=target, error=ProjectLoadError(target, str(cycle)))
+    return results
+
+
+def _cycle_error_for(error: ProjectLoadError) -> CircularDependencyError | None:
+    if isinstance(error, ModuleTypeCycleError):
+        return _circular_dependency_error(error.cycle, program=error.program, message=str(error))
+    if isinstance(error, DependencyCycleError):
+        return _circular_dependency_error(error.cycle, program=error.program)
+    return None
 
 
 def _load_project(
     binding: ParserProjectBinding,
     targets: Sequence[str],
     *,
-    strict: bool,
     validate: LoadValidation,
 ) -> SattLineProject:
-    return SattLineProject.load(
-        roots=binding.roots,
-        mode=binding.parser_mode(),
-        targets=targets,
-        strict=strict,
-        debug=binding.debug_fn,
-        cache_dir=None,
-        validate=validate,
-    )
+    try:
+        return SattLineProject.load(
+            roots=binding.roots,
+            mode=binding.parser_mode(),
+            targets=targets,
+            debug=binding.debug_fn,
+            cache_dir=binding.parser_cache_dir,
+            validate=validate,
+        )
+    except ModuleTypeCycleError as exc:
+        # A self-instantiating module type is not a dependency cycle, so keep
+        # the parser's own explanation and only reuse the SattLint type.
+        raise _circular_dependency_error(exc.cycle, program=exc.program, message=str(exc)) from exc
+    except DependencyCycleError as exc:
+        raise _circular_dependency_error(exc.cycle, program=exc.program) from exc
 
 
-def find_code_path(binding: ParserProjectBinding, name: str, requester_dir: Path | None) -> Path | None:
-    return binding.new_lookup().find_code(name, requester_dir=requester_dir)
+def _circular_dependency_error(
+    cycle: Sequence[str], *, program: str = "?", message: str | None = None
+) -> CircularDependencyError:
+    """Translate a parser structural cycle into SattLint's cycle error.
+
+    The parser reports the full cycle with the first node repeated at the end;
+    ``CircularDependencyError`` stores the path without that repeat.
+    """
+    names = list(cycle)
+    if len(names) > 1 and names[0] == names[-1]:
+        names = names[:-1]
+    if not names:
+        names = [program]
+    return CircularDependencyError(names[0], names, message=message)
 
 
-def find_dependency_path(binding: ParserProjectBinding, name: str, requester_dir: Path | None) -> Path | None:
-    return binding.new_lookup().find_deps(name, requester_dir=requester_dir)
+def find_code_path(binding: ParserProjectBinding, name: str) -> Path | None:
+    return binding.new_lookup().find_code(name)
+
+
+def find_dependency_path(binding: ParserProjectBinding, name: str) -> Path | None:
+    """Find the dependency sidecar that belongs to ``name``'s resolved body.
+
+    A sidecar pairs with the body beside it and never crosses artifact families,
+    so the lookup goes through the body. A name with no body has no sidecar.
+    """
+    lookup = binding.new_lookup()
+    code_path = lookup.find_code(name)
+    if code_path is None:
+        return None
+    return lookup.find_deps_beside(code_path, name)
 
 
 def read_dependency_names(deps_path: Path) -> tuple[str, ...]:
@@ -269,8 +369,12 @@ def convert_project_into_graph(
     ``root_library_name_for_name`` and goes through this map — the same
     mechanism the recursive loader used.
 
-    A target that the parser dropped (no code found) is recorded as missing so
-    ``load_project``'s target-error report keeps its ``missing`` payload.
+    A target that the parser dropped is recorded as missing so
+    ``load_project``'s target-error report keeps its ``missing`` payload. A
+    target the loader could not resolve at all raises instead, because a load is
+    all or nothing, and that error reaches ``load_project`` as a target failure.
+    A project built directly from programs can still declare a cycle, so the
+    graph guard stays here for that input.
 
     ``index_program_view`` is false for an AST-only refresh: programs are still
     validated and indexed by name, but graphics attachment, dependency edges,
@@ -278,14 +382,13 @@ def convert_project_into_graph(
     """
     cycles = project.cycles()
     if cycles:
-        cycle = cycles[0]
         registry = project.programs()
-        path = [registry[step].name if step in registry else step for step in cycle]
-        raise CircularDependencyError(path[0], path[:-1])
+        declared = [registry[step].name if step in registry else step for step in cycles[0]]
+        raise _circular_dependency_error(declared)
     local_lib_names = {} if lib_names is None else lib_names
     indexed_names = binding._indexed_names
     root_names = [root_name, *extra_roots]
-    root_keys = frozenset(name.casefold() for name in root_names)
+    root_keys = frozenset(unit_key(name) for name in root_names)
     for program in project.programs().values():
         if _graph_has_name(graph, program.name, indexed_names):
             continue
@@ -299,9 +402,13 @@ def convert_project_into_graph(
             indexed_names=indexed_names,
             index_program_view=index_program_view,
         )
-    _record_missing_dependencies(project, graph, binding=binding, strict=strict)
     for name in root_names:
-        if _graph_has_name(graph, name, indexed_names) or name.casefold() in graph.unavailable_libraries:
+        key = unit_key(name)
+        # A root that is present but failed validation already has a failure
+        # entry, and that entry is what the target report shows. Recording it
+        # as missing as well would hide the validation detail behind a
+        # generic missing-file message.
+        if _graph_has_name(graph, name, indexed_names) or key in graph.unavailable_libraries or key in graph.failures:
             continue
         record_missing_library(
             graph,
@@ -327,13 +434,14 @@ def _index_program(
     code_path = program.source_path
     if code_path is None:
         return
-    is_root = name.casefold() in root_keys
+    is_root = unit_key(name) in root_keys
     try:
         _emit_status(binding, f"Loading {name}: validating {code_path.name}")
         _apply_diagnostics(program, graph, is_root=is_root, strict=strict)
         _emit_status(binding, f"Loading {name}: validation complete")
         graph.ast_by_name[name] = program.code
-        indexed_names.add(name.casefold())
+        graph.source_dependencies[unit_key(name)] = {unit_key(dep) for dep in program.dependencies}
+        indexed_names.add(unit_key(name))
         if not index_program_view:
             return
 
@@ -352,27 +460,46 @@ def _index_program(
             code_path=code_path,
             graph=graph,
             owner_name=name,
+            capacities=binding.string_capacities,
             timing_sink=binding.graphics_timing_sink,
             status_callback=_status_cb,
         )
         _emit_status(binding, f"Loading {name}: recording library")
         library_name = program.library or code_path.parent.name
-        lib_names[name.casefold()] = library_name
         _emit_status(binding, f"Loading {name}: adding deps")
         dep_libs = [
             lib
             for dep in program.dependencies
-            if (lib := graph.root_library_name_for_name(dep) or lib_names.get(dep.casefold()))
+            if (lib := graph.root_library_name_for_name(dep) or lib_names.get(unit_key(dep)))
         ]
-        graph.add_library_dependencies(library_name, dep_libs)
         _emit_status(binding, f"Loading {name}: indexing definitions")
         index_started_at = perf_counter()
-        graph.index_from_basepic(program.code, source_path=code_path, library_name=library_name)
+        # Index into a scratch graph first: a definition that fails halfway
+        # must not leave root origins, record or module-type definitions, or
+        # dependency edges behind for a program reported as failed.
+        delta = ProjectGraph()
+        delta.index_from_basepic(program.code, source_path=code_path, library_name=library_name, program_name=name)
+        graph.root_origins.update(delta.root_origins)
+        graph.moduletype_defs.update(delta.moduletype_defs)
+        graph.datatype_defs.update(delta.datatype_defs)
+        graph.source_files.update(delta.source_files)
+        graph.source_file_libraries.update(delta.source_file_libraries)
+        graph.add_library_dependencies(library_name, dep_libs)
+        lib_names[unit_key(name)] = library_name
         if binding.stage_timing_sink is not None:
             binding.stage_timing_sink(name, "index", perf_counter() - index_started_at)
     except Exception as ex:
         if strict:
             raise
+        # Validation, graphics, and indexing run after the name is committed
+        # to the graph, so a later failure must retract every trace of the
+        # partial program; otherwise it looks loaded while its definitions
+        # were never indexed.
+        graph.ast_by_name.pop(name, None)
+        graph.source_dependencies.pop(unit_key(name), None)
+        indexed_names.discard(unit_key(name))
+        graph.graphics_attachments.pop(name, None)
+        lib_names.pop(unit_key(name), None)
         _record_project_failure(graph, name, ex)
 
 
@@ -386,10 +513,9 @@ def _apply_diagnostics(
     """Translate the parser's diagnostics into SattLint policy outcomes.
 
     A datecode conflict is fatal under ``strict`` (the old loader raised it for
-    every program). A root program's final diagnostic is fatal; the same
-    diagnostic on a dependency becomes a notice. Tentative diagnostics, which
-    depend on a part of the closure that failed to load, are notices. Everything
-    else is a notice.
+    every program). A root program's first error is fatal; the same diagnostic
+    on a dependency becomes a notice. Every parser diagnostic is final, because
+    a project load returns a complete closure or raises.
     """
     conflicts = [item for item in program.diagnostics if item.code is DiagnosticCode.DATECODE_CONFLICT]
     if conflicts and strict:
@@ -399,66 +525,26 @@ def _apply_diagnostics(
     for diagnostic in program.diagnostics:
         if diagnostic.code in _SUPPRESSED_DIAGNOSTIC_CODES:
             continue
-        notice = _notice(diagnostic)
+        notice = notice_for(diagnostic)
         if diagnostic.code is DiagnosticCode.DATECODE_CONFLICT:
             _record_project_warning(graph, program.name, notice)
             continue
-        if not diagnostic.tentative and is_root:
+        if is_root:
             if first_error is None:
                 first_error = diagnostic
             continue
         _record_project_warning(graph, program.name, notice)
 
     if first_error is not None:
-        raise _structural_error(first_error)
-
-
-def _notice(diagnostic: Diagnostic) -> ValidationNotice:
-    span = diagnostic.span
-    return ValidationNotice(
-        message=diagnostic.message,
-        line=None if span is None else span.line,
-        column=None if span is None else span.column,
-        length=None if span is None else max(span.end - span.start, 0),
-    )
-
-
-def _structural_error(diagnostic: Diagnostic) -> StructuralValidationError:
-    notice = _notice(diagnostic)
-    return StructuralValidationError(
-        notice.message,
-        line=notice.line,
-        column=notice.column,
-        length=notice.length,
-    )
-
-
-def _record_missing_dependencies(
-    project: SattLineProject,
-    graph: ProjectGraph,
-    *,
-    binding: ParserProjectBinding,
-    strict: bool,
-) -> None:
-    for program in project.programs().values():
-        for dependency in program.dependencies:
-            if dependency.casefold() in project or dependency.casefold() in graph.unavailable_libraries:
-                continue
-            record_missing_library(
-                graph,
-                name=dependency,
-                mode=binding.mode.value,
-                strict=strict,
-                requester=program.name,
-            )
+        raise error_for(first_error)
 
 
 def _graph_has_name(graph: ProjectGraph, name: str, indexed_names: set[str]) -> bool:
-    key = name.casefold()
+    key = unit_key(name)
     if key in indexed_names:
         return True
     # Fallback for graphs populated outside this binding (e.g. test doubles).
-    return any(existing.casefold() == key for existing in graph.ast_by_name)
+    return any(unit_equal(existing, name) for existing in graph.ast_by_name)
 
 
 def _emit_status(binding: ParserProjectBinding, message: str) -> None:
@@ -479,6 +565,7 @@ __all__ = [
     "find_code_path",
     "find_dependency_path",
     "load_parser_project",
+    "load_parser_projects",
     "read_dependency_names",
     "record_missing_library",
 ]

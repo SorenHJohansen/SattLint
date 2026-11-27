@@ -13,6 +13,10 @@ def _moduleparameter_keys_factory() -> frozenset[str]:
     return frozenset()
 
 
+def _symbol_key_set_factory() -> set[tuple[str, ...]]:
+    return set()
+
+
 def _module_path_prefix_matches(reference_segments: list[str], module_path: list[str]) -> bool:
     if len(reference_segments) <= len(module_path):
         return False
@@ -20,6 +24,29 @@ def _module_path_prefix_matches(reference_segments: list[str], module_path: list
         reference.casefold() == segment.casefold()
         for reference, segment in zip(reference_segments, module_path, strict=False)
     )
+
+
+def find_nearest_declaration(
+    context: ScopeContext,
+    base_name: str,
+) -> tuple[Variable, list[str], list[str]] | None:
+    """Return the closest scope that declares ``base_name``, ignoring aliases.
+
+    ``resolve_variable`` follows a parameter mapping to the variable the
+    parameter aliases, which is what dataflow needs but skips the declarations
+    in between. Walking the environments instead finds the declaration a
+    reference actually names.
+    """
+    key = base_name.casefold()
+    current: ScopeContext | None = context
+    while current is not None:
+        variable = current.env.get(key)
+        if variable is not None:
+            module_path = list(getattr(current, "module_path", []))
+            display_path = list(getattr(current, "display_module_path", module_path))
+            return variable, module_path, display_path
+        current = getattr(current, "parent_context", None)
+    return None
 
 
 @dataclass
@@ -34,6 +61,8 @@ class ScopeContext:
     moduleparameter_keys: frozenset[str] = field(default_factory=_moduleparameter_keys_factory)
     current_library: str | None = None
     parent_context: ScopeContext | None = None
+    #: Symbols a direct child module can write through its parameter mappings.
+    submodule_mapped_source_keys: set[tuple[str, ...]] = field(default_factory=_symbol_key_set_factory)
     _resolve_cache: dict[str, tuple[Variable | None, str, list[str], list[str]]] = field(
         default_factory=_resolve_cache_factory,
         init=False,
@@ -103,6 +132,10 @@ class ScopeContext:
         result = None, field_path, self.module_path, self.display_module_path
         self._resolve_cache[cache_key] = result
         return result
+
+    def nearest_declaration(self, base_name: str) -> tuple[Variable, list[str], list[str]] | None:
+        """Return the closest scope that declares ``base_name``, ignoring aliases."""
+        return find_nearest_declaration(self, base_name)
 
     def resolve_global_name(self, base_name: str) -> tuple[Variable | None, list[str], list[str]]:
         """Resolve a GLOBAL-mapped name by walking up scopes (env only).

@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
+    ScalarDatatype,
     Sequence,
     SFCBodyItem,
     SFCCodeBlocks,
@@ -12,7 +13,6 @@ from sattline_parser.models.ast_model import (
     SFCStep,
     SFCSubsequence,
     SFCTransitionSub,
-    Simple_DataType,
     Variable,
 )
 from sattline_parser.models.expressions import Assignment, Compare, FuncCall, FuncCallStmt, IfStmt, VarRef
@@ -24,19 +24,15 @@ from sattlint.analyzers.sfc import collect_sfc_reachability_findings
 def _make_sequence(code: list[SFCBodyItem]) -> BasePicture:
     return BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        modulecodes=[
-            ModuleCode(
-                sequences=[Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
-                equationblocks=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            sequences=[Sequence(name="SeqMain", type="sequence", position=(0.0, 0.0), size=(1.0, 1.0), code=code)],
+            equationblocks=[],
+        ),
     )
 
 
 def _unreachable_labels(bp: BasePicture) -> list[str]:
-    return [
-        f"{finding.node_label}:{finding.terminated_by.get('kind')}" for finding in collect_sfc_reachability_findings(bp)
-    ]
+    return [f"{finding.node_label}:{finding.terminated_by.kind}" for finding in collect_sfc_reachability_findings(bp)]
 
 
 def test_sequence_nodes_after_break_are_owned_by_sfc_not_dataflow():
@@ -81,40 +77,36 @@ def test_call_output_inside_expression_invalidates_prior_constant():
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         localvariables=[
-            Variable(name="Text", datatype=Simple_DataType.STRING),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
-            Variable(name="Value", datatype=Simple_DataType.INTEGER),
+            Variable(name="Text", datatype=ScalarDatatype.STRING),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Value", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=VarRef(name="Status"), value=-1),
-                            Assignment(
-                                target=VarRef(name="Value"),
-                                value=FuncCall(
-                                    name="StringToInteger", args=(VarRef(name="Text"), VarRef(name="Status"))
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=VarRef(name="Status"), value=-1),
+                        Assignment(
+                            target=VarRef(name="Value"),
+                            value=FuncCall(name="StringToInteger", args=(VarRef(name="Text"), VarRef(name="Status"))),
+                        ),
+                        IfStmt(
+                            branches=(
+                                (
+                                    Compare(left=VarRef(name="Status"), op="==", right=-1),
+                                    (),
                                 ),
                             ),
-                            IfStmt(
-                                branches=(
-                                    (
-                                        Compare(left=VarRef(name="Status"), op="==", right=-1),
-                                        (),
-                                    ),
-                                ),
-                                else_block=(),
-                            ),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+                            else_block=(),
+                        ),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
     )
 
     kinds = {issue.kind for issue in analyze_dataflow(bp).issues}
@@ -127,39 +119,37 @@ def test_call_statement_output_invalidates_prior_constant():
     bp = BasePicture(
         header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
         localvariables=[
-            Variable(name="Text", datatype=Simple_DataType.STRING),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="Text", datatype=ScalarDatatype.STRING),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=VarRef(name="Status"), value=-1),
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="StringToInteger",
-                                    args=(VarRef(name="Text"), VarRef(name="Status")),
-                                )
-                            ),
-                            IfStmt(
-                                branches=(
-                                    (
-                                        Compare(left=VarRef(name="Status"), op="==", right=-1),
-                                        (),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=VarRef(name="Status"), value=-1),
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="StringToInteger",
+                                args=(VarRef(name="Text"), VarRef(name="Status")),
+                            )
+                        ),
+                        IfStmt(
+                            branches=(
+                                (
+                                    Compare(left=VarRef(name="Status"), op="==", right=-1),
+                                    (),
                                 ),
-                                else_block=(),
                             ),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+                            else_block=(),
+                        ),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
     )
 
     kinds = {issue.kind for issue in analyze_dataflow(bp).issues}

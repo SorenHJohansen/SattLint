@@ -1,19 +1,41 @@
+# pyright: reportPrivateUsage=false
+import pytest
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
 from sattlint.analyzers.shared import _validators as validators_module
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
+from sattlint.reporting.variables_report import UnusedIssue
 from sattlint.resolution.type_graph import TypeGraph
-from tests.helpers.analyzers_variables_support import *
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_min_max_mapping_mismatch_detected():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="MaxValue", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="MaxValue", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("MaxValue"),
@@ -28,14 +50,14 @@ def test_min_max_mapping_mismatch_detected():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="MinValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="MaxValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="MinValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="MaxValue", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -45,8 +67,8 @@ def test_min_max_mapping_mismatch_detected():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -58,11 +80,11 @@ def test_min_max_mapping_mismatch_detected():
 def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="MinValue", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("MinValue"),
@@ -77,11 +99,11 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="MinValue", datatype=ScalarDatatype.INTEGER)],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -91,8 +113,8 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -113,11 +135,11 @@ def test_min_max_mapping_validator_recognizes_mn_mx_bound_suffixes():
 def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_small_string():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
@@ -132,11 +154,11 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="SourceValue", datatype=ScalarDatatype.STRING)],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -146,8 +168,8 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -167,11 +189,11 @@ def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_smal
 def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_large_string():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.STRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=ScalarDatatype.STRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
@@ -186,11 +208,11 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.IDENTSTRING)],
+        localvariables=[Variable(name="SourceValue", datatype=ScalarDatatype.IDENTSTRING)],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -200,8 +222,8 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -213,21 +235,21 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
 def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_name_exists_elsewhere():
     unrelated = SingleModule(
         header=_hdr("Unrelated"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="Name", datatype=ScalarDatatype.STRING)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Name", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Name", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
@@ -242,11 +264,11 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[unrelated, child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -256,8 +278,8 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -269,11 +291,11 @@ def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_n
 def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_parameter():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
@@ -292,8 +314,8 @@ def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_para
         moduletype_defs=[],
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -313,11 +335,11 @@ def test_string_mapping_mismatch_is_reported_for_string_literal_to_narrower_para
 def test_string_mapping_mismatch_is_not_reported_for_short_string_literal_that_fits_parameter():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("TargetValue"),
@@ -336,8 +358,8 @@ def test_string_mapping_mismatch_is_not_reported_for_short_string_literal_that_f
         moduletype_defs=[],
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -351,16 +373,16 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
         name="OpsamDvType",
         description=None,
         datecode=None,
-        var_list=[Variable(name="StopText", datatype=Simple_DataType.IDENTSTRING)],
+        var_list=[Variable(name="StopText", datatype=ScalarDatatype.IDENTSTRING)],
     )
 
     activate_button = SingleModule(
         header=_hdr("ActivateButton"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Text", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Text", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
@@ -375,11 +397,11 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
 
     panel = SingleModule(
         header=_hdr("Panel"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Name", datatype=ScalarDatatype.STRING)],
         localvariables=[],
         submodules=[activate_button],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("Name"),
@@ -394,11 +416,11 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[Variable(name="DV", datatype="OpsamDvType")],
         submodules=[panel],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -408,8 +430,8 @@ def test_string_mapping_mismatch_uses_resolved_datatype_field_metadata():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -431,16 +453,16 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
         name="OpsamDvType",
         description=None,
         datecode=None,
-        var_list=[Variable(name="StopText", datatype=Simple_DataType.IDENTSTRING)],
+        var_list=[Variable(name="StopText", datatype=ScalarDatatype.IDENTSTRING)],
     )
 
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Text", datatype=Simple_DataType.IDENTSTRING)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Text", datatype=ScalarDatatype.IDENTSTRING)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("Text"),
@@ -455,11 +477,11 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[Variable(name="DV", datatype="OpsamDvType")],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -469,8 +491,8 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -479,20 +501,21 @@ def test_string_mapping_mismatch_ignores_direct_record_field_mapping_when_field_
     assert not any(issue.kind is IssueKind.STRING_MAPPING_MISMATCH for issue in analyzer.issues)
 
 
-def test_unknown_parameter_target_detected_for_single_module_mapping():
+@pytest.mark.parametrize("is_source_global", [False, True])
+def test_extra_mapping_target_is_accepted_for_single_module(is_source_global: bool) -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="DeclaredValue", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("MissingValue"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
-                is_source_global=False,
+                is_source_global=is_source_global,
                 source=_varref("SourceValue"),
                 source_literal=None,
             )
@@ -501,11 +524,11 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="SourceValue", datatype=ScalarDatatype.INTEGER)],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -515,28 +538,26 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
-def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
+@pytest.mark.parametrize("is_source_global", [False, True])
+def test_extra_mapping_target_is_accepted_for_moduletype_instance(is_source_global: bool) -> None:
     typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="DeclaredValue", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     instance = ModuleTypeInstance(
         header=_hdr("Child"),
@@ -546,7 +567,7 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
                 target=_varref("MissingValue"),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
-                is_source_global=False,
+                is_source_global=is_source_global,
                 source=_varref("SourceValue"),
                 source_literal=None,
             )
@@ -554,11 +575,11 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
     )
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="SourceValue", datatype=ScalarDatatype.INTEGER)],
         submodules=[instance],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     bp = BasePicture(
@@ -567,17 +588,15 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
         moduletype_defs=[typedef],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
     issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "Parent", "Child"]
-    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+    assert issues == []
 
 
 def test_singlemodule_groupconn_marks_child_parameter_used():
@@ -586,21 +605,21 @@ def test_singlemodule_groupconn_marks_child_parameter_used():
 
     child = SingleModule(
         header=child_header,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[Variable(name="ScanGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -610,8 +629,8 @@ def test_singlemodule_groupconn_marks_child_parameter_used():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -632,11 +651,11 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
     child = SingleModule(
         header=child_header,
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[Variable(name="ScanGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
                 target=_varref("ScanGroup"),
@@ -651,11 +670,11 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[Variable(name="ParentGroup", datatype="GroupData")],
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -665,17 +684,15 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
         moduletype_defs=[],
         localvariables=[],
         submodules=[parent],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
     unused = {
-        (tuple(issue.module_path), issue.variable.name)
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED and issue.variable is not None
+        (tuple(issue.module_path), issue.variable.name) for issue in analyzer.issues if isinstance(issue, UnusedIssue)
     }
 
     assert (("Root", "Parent"), "ParentGroup") not in unused
@@ -683,25 +700,23 @@ def test_singlemodule_groupconn_with_mapping_marks_child_and_parent_used():
 
 
 def test_validator_helper_branches_cover_string_and_minmax_helpers():
-    string_validator = validators_module.StringMappingValidator()
+    string_validator = validators_module.StringMappingValidator(STANDARD_STRING_CAPACITIES)
     minmax_validator = validators_module.MinMaxValidator()
 
-    assert string_validator._is_string_simple_type(Simple_DataType.STRING) is True
+    assert string_validator._is_string_simple_type(ScalarDatatype.STRING) is True
     assert string_validator._is_string_simple_type("String") is False
     assert string_validator._string_limit("String") is None
     assert (
         string_validator.check_string_mapping(
-            Variable(name="Target", datatype=Simple_DataType.INTEGER),
-            Variable(name="Source", datatype=Simple_DataType.STRING),
+            Variable(name="Target", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.STRING),
             ["Root"],
         )
         == []
     )
 
     assert minmax_validator._mapping_name_text({}) is None
-    assert (
-        minmax_validator._mapping_name_text(Variable(name="MinLimit", datatype=Simple_DataType.INTEGER)) == "MinLimit"
-    )
+    assert minmax_validator._mapping_name_text(Variable(name="MinLimit", datatype=ScalarDatatype.INTEGER)) == "MinLimit"
     assert minmax_validator._mapping_name_text("MaxLimit") == "MaxLimit"
     assert minmax_validator._mapping_name_text(5) is None
     assert minmax_validator._tokenize_name("MaxPressure2Limit") == {"max", "pressure", "2", "limit"}
@@ -719,8 +734,8 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
     assert (
         minmax_validator.check_min_max_mapping(
             ambiguous_mapping,
-            Variable(name="MinMaxWindow", datatype=Simple_DataType.INTEGER),
-            Variable(name="MinSource", datatype=Simple_DataType.INTEGER),
+            Variable(name="MinMaxWindow", datatype=ScalarDatatype.INTEGER),
+            Variable(name="MinSource", datatype=ScalarDatatype.INTEGER),
             ["Root"],
         )
         == []
@@ -737,17 +752,17 @@ def test_validator_helper_branches_cover_string_and_minmax_helpers():
     assert (
         minmax_validator.check_min_max_mapping(
             blank_mapping,
-            Variable(name="", datatype=Simple_DataType.INTEGER),
-            Variable(name="", datatype=Simple_DataType.INTEGER),
+            Variable(name="", datatype=ScalarDatatype.INTEGER),
+            Variable(name="", datatype=ScalarDatatype.INTEGER),
             ["Root"],
         )
         == []
     )
 
 
-def test_contract_mapping_validator_helper_branches(monkeypatch):
+def test_contract_mapping_validator_helper_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     validator = validators_module.ContractMappingValidator(TypeGraph({}))
-    source_var = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    source_var = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
     target_var = Variable(name="AnyParam", datatype="AnyType")
     mapping = ParameterMapping(
         target=_varref("AnyParam"),
@@ -758,14 +773,17 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
         source_literal=None,
     )
 
-    monkeypatch.setattr(
-        validators_module,
-        "_resolve_variable_field_datatype",
-        lambda _var, field_path, _graph: Simple_DataType.BOOLEAN if tuple(field_path) == ("child",) else None,
-    )
+    def _field_datatype(
+        _variable: Variable,
+        field_path: tuple[str, ...],
+        _graph: object,
+    ) -> ScalarDatatype | None:
+        return ScalarDatatype.BOOLEAN if tuple(field_path) == ("child",) else None
+
+    monkeypatch.setattr(validators_module, "_resolve_variable_field_datatype", _field_datatype)
 
     assert validator._resolve_target_datatype("AnyParam", target_var) == ("AnyType", None)
-    assert validator._resolve_target_datatype("AnyParam.child", target_var) == (Simple_DataType.BOOLEAN, "child")
+    assert validator._resolve_target_datatype("AnyParam.child", target_var) == (ScalarDatatype.BOOLEAN, "child")
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
@@ -776,9 +794,9 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
             source_literal=1,
         ),
         None,
-    ) == (Simple_DataType.INTEGER, "1")
+    ) == (ScalarDatatype.INTEGER, "1")
     assert validator._resolve_source_datatype(mapping, None) == (None, "Source")
-    assert validator._resolve_source_datatype(mapping, source_var) == (Simple_DataType.INTEGER, "Source")
+    assert validator._resolve_source_datatype(mapping, source_var) == (ScalarDatatype.INTEGER, "Source")
     assert validator._resolve_source_datatype(
         ParameterMapping(
             target=_varref("AnyParam"),
@@ -789,13 +807,13 @@ def test_contract_mapping_validator_helper_branches(monkeypatch):
             source_literal=None,
         ),
         source_var,
-    ) == (Simple_DataType.BOOLEAN, "Source.child")
+    ) == (ScalarDatatype.BOOLEAN, "Source.child")
 
 
-def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
+def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     validator = validators_module.ContractMappingValidator(TypeGraph({}))
-    target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
-    source_var = Variable(name="Source", datatype=Simple_DataType.STRING)
+    target_var = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    source_var = Variable(name="Source", datatype=ScalarDatatype.STRING)
     mapping = ParameterMapping(
         target=_varref("Target"),
         source_type=MappingSource.VARIABLE,
@@ -805,10 +823,16 @@ def test_contract_mapping_validator_datatype_resolution_branches(monkeypatch):
         source_literal=None,
     )
 
-    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (None, None))
+    def _unresolved_target(*_args: object) -> tuple[ScalarDatatype | str | None, str | None]:
+        return (None, None)
+
+    def _integer_target(*_args: object) -> tuple[ScalarDatatype | str | None, str | None]:
+        return (ScalarDatatype.INTEGER, None)
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", _unresolved_target)
     assert validator.resolve_target_datatype("Target", target_var) == (None, None)
 
-    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (Simple_DataType.INTEGER, None))
-    assert validator.resolve_target_datatype("Target", target_var) == (Simple_DataType.INTEGER, None)
+    monkeypatch.setattr(validator, "_resolve_target_datatype", _integer_target)
+    assert validator.resolve_target_datatype("Target", target_var) == (ScalarDatatype.INTEGER, None)
 
-    assert validator.resolve_source_datatype(mapping, source_var) == (Simple_DataType.STRING, "Source")
+    assert validator.resolve_source_datatype(mapping, source_var) == (ScalarDatatype.STRING, "Source")

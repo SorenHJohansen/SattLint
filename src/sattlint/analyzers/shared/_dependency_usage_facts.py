@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sattlint.parser_api import (
@@ -11,19 +10,14 @@ from sattlint.parser_api import (
     IfStmt,
     ModuleCode,
     ModuleTypeDef,
-    SFCAlternative,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransition,
-    SFCTransitionSub,
     VarRef,
-    get_function_signature,
     walk,
 )
 
+from ...core.call_signatures import resolve_call_signature
 from ...resolution.scope import ScopeContext
 from .._dependency_usage_scope_support import DependencyUsageScopeSupportMixin
+from .statement_sites import BlockKind, iter_statement_sites
 
 
 @dataclass(frozen=True)
@@ -49,6 +43,7 @@ class CallFact:
 class StatementFact:
     module_path: tuple[str, ...]
     site: str
+    block_kind: BlockKind
     reads: tuple[FactRef, ...]
     writes: tuple[FactRef, ...]
     calls: tuple[CallFact, ...]
@@ -121,41 +116,8 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     ) -> None:
         if modulecode is None:
             return
-        for equation in modulecode.equationblocks or []:
-            site = f"equation block {equation.name!r}"
-            for statement in equation.code or []:
-                self._append_statement_fact(statement, context, module_path, site)
-        for sequence in modulecode.sequences or []:
-            self._walk_sequence_nodes(sequence.code or [], context, module_path, sequence.name or "")
-
-    def _walk_sequence_nodes(
-        self,
-        nodes: Sequence[object],
-        context: ScopeContext,
-        module_path: list[str],
-        sequence_name: str,
-    ) -> None:
-        for node in nodes:
-            if isinstance(node, SFCStep):
-                for phase, statements in (
-                    ("ENTER", node.code.enter or []),
-                    ("ACTIVE", node.code.active or []),
-                    ("EXIT", node.code.exit or []),
-                ):
-                    site = f"sequence {sequence_name!r} step {node.name!r} {phase}"
-                    for statement in statements:
-                        self._append_statement_fact(statement, context, module_path, site)
-                continue
-            if isinstance(node, SFCTransition) and node.condition is not None:
-                site = f"sequence {sequence_name!r} transition {node.name!r} condition"
-                self._append_statement_fact(node.condition, context, module_path, site)
-                continue
-            if isinstance(node, SFCAlternative | SFCParallel):
-                for branch in node.branches or []:
-                    self._walk_sequence_nodes(branch, context, module_path, sequence_name)
-                continue
-            if isinstance(node, SFCSubsequence | SFCTransitionSub):
-                self._walk_sequence_nodes(node.body or [], context, module_path, sequence_name)
+        for event in iter_statement_sites(modulecode):
+            self._append_statement_fact(event.node, context, module_path, event.site, event.block_kind)
 
     def _append_statement_fact(
         self,
@@ -163,6 +125,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
         context: ScopeContext,
         module_path: list[str],
         site: str,
+        block_kind: BlockKind,
     ) -> None:
         reads: list[FactRef] = []
         writes: list[FactRef] = []
@@ -184,6 +147,7 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
             StatementFact(
                 module_path=tuple(module_path),
                 site=site,
+                block_kind=block_kind,
                 reads=tuple(reads),
                 writes=tuple(writes),
                 calls=tuple(calls),
@@ -298,13 +262,13 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
     ) -> None:
         call_name = call.name
         args = list(call.args) if call.args else []
-        signature = get_function_signature(call_name)
+        signature = resolve_call_signature(call_name)
         resolved_args: list[FactRef | None] = []
         for index, argument in enumerate(args):
-            direction = "in"
-            if signature is not None and index < len(signature.parameters):
-                direction = signature.parameters[index].direction
-            if direction in {"in", "in var", "inout"}:
+            parameter = (
+                signature.parameters[index] if signature is not None and index < len(signature.parameters) else None
+            )
+            if parameter is None or parameter.is_input:
                 self._collect_node_facts(
                     argument,
                     context,
@@ -316,7 +280,12 @@ class DependencyUsageFactCollector(DependencyUsageScopeSupportMixin):
                 )
             resolved = self._resolve_ref(argument, context)
             resolved_args.append(resolved)
-            if direction in {"out", "inout"} and resolved is not None and resolved.key not in seen_writes:
+            if (
+                parameter is not None
+                and parameter.is_output
+                and resolved is not None
+                and resolved.key not in seen_writes
+            ):
                 seen_writes.add(resolved.key)
                 writes.append(resolved)
         calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))

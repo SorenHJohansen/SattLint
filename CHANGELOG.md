@@ -8,8 +8,164 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Security
+
+- Human-facing output treats project text as untrusted. Terminal and Results
+  view labels replace C0, DEL, C1, and Unicode format characters with a visible
+  `?`, so an escape sequence or bidirectional override in a target, module, or
+  finding name cannot change the terminal or hide text. Change Review Markdown
+  picks a code fence longer than any backtick run in the source, so a snippet
+  cannot close its block and inject a heading. JSON and NDJSON output keep the
+  original values.
+- The cache directory is no longer a trust boundary. A project graph manifest now
+  carries its own magic and HMAC-SHA256 signature under the same key as the
+  payload, so a writer who can reach the cache directory cannot pair a signed old
+  payload with a fresh-looking file snapshot. The signing key is read only from a
+  regular file of the expected size that the current user owns and that group and
+  other cannot read or write; a symlink, a foreign owner, or a wider mode makes the
+  entry a miss instead of being followed. Cached pickles are decoded by a
+  restricted unpickler that resolves only the SattLint and parser model modules and
+  a small allow list of standard library modules, so a crafted payload cannot call
+  a process launch or another arbitrary global. Cache keys now include the cached
+  model version and the key schema moved to 3, so entries written before this
+  release are not reused and an older unsigned manifest is discarded. The AST
+  cache also applies its payload budget after each save instead of only at
+  startup.
+- A project file cannot silently point the tool at an unrelated directory.
+  `program_dir`, `ABB_lib_dir`, `icf_dir`, and every `other_lib_dirs` entry must
+  resolve under the directory that contains the `.slproj` file. An external
+  root fails to load with a message that names the raw value, the resolved
+  path, the project root, and the `allow_external_roots = true` opt in. Loading
+  warns about absolute roots and raw values with a `..` component, including
+  ones that still resolve inside the project.
+- Generated artifacts and diagnostics are owner-only and bounded. Change Review
+  creates its dedicated output directory with mode `0700`, narrows an existing
+  broader directory, and writes both artifacts atomically with mode `0600`. The
+  profile log lives in a `0700` directory, is created with mode `0600`, and is
+  capped at 8 MiB: before an append would exceed the cap it rotates to
+  `profile.jsonl.1`. The log is opened without following a symlink and is
+  written only when the opened descriptor is a regular file. A stored run keeps
+  at most 2,000 output lines and 512 KiB of output text, caps each analyzer
+  summary at 4,000 characters, and caps the serialized record at 8 MiB. When
+  session output is not enough, stored findings are dropped target-first and
+  then module trees, while each analyzer keeps its reported `issue_count`. A
+  shortened record carries `truncated: true` and a `truncation_note` naming what
+  was cut, including how many findings were stored versus reported, so an
+  oversized diagnostic is never stored silently.
+
 ### Added
 
+- Analysis input size limits. `[analysis].source_byte_limit` (default 8 MiB)
+  refuses a target before the parser reads a source file that is too large,
+  `[analysis].icf_byte_limit` (default 16 MiB) bounds the ICF read, and
+  `[analysis].project_byte_limit` (default 512 MiB) bounds the combined source
+  size over every configured root. A refused load names the file or total and
+  the setting to raise, and the run continues instead of aborting. ICF
+  reference parsing is now a linear scan instead of a backtracking regular
+  expression, so a long colon-free line cannot stall the analyzer.
+- Findings can carry a source location. JSON output gains optional `file`,
+  `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
+  view show the location when an analyzer records one. Missing locations stay
+  `null` instead of being invented. The headless CLI JSON contract moves from
+  `schema_version` 1 to 2 to carry the added finding fields.
+- Findings carry a severity of `error`, `warning`, or `info`, assigned per
+  finding kind so correctness defects and style advice stay apart. `analyze`
+  and `findings` add a `by_severity` count to their summaries, text lines gain a
+  severity tag, `show` reports the severity, and JSON finding payloads carry a
+  `severity` field. `--fail-on` now accepts `error`, `warning`, `any`, and
+  `none`; the default remains `any`, and `--fail-on warning` is the recommended
+  CI gate. The analyze summary names the threshold as `fail_on`.
+- Analysis can compare a run with a checked-in `.sattlint-baseline.json`.
+  `analyze --baseline` reports added, moved, changed, stale, and unchanged
+  findings and fails only on new or more severe ones at the `--fail-on`
+  threshold. `baseline update` accepts the current findings and prunes stale
+  entries, and `baseline diff` reports the comparison without writing. Finding
+  identities now use an unambiguous encoding, so delimiter-like text in a
+  finding cannot collide with another finding.
+- The checked-in `.sattlint-baseline.json` has its own `schema_version: 1`,
+  separate from the CLI JSON schema.
+
+### Fixed
+
+- A run no longer hangs when an analyzer worker process dies before it reports.
+  Every analyzer that has not answered yet finishes with a failed result that
+  names the lost worker, so the run exits with those diagnostics instead of
+  waiting forever. Stopping a run early still terminates its workers promptly.
+
+## [2026.11.6] - 2026-11-26
+
+### Added
+
+- The shell's status bar now reports live analysis progress: percentage
+  complete, an estimated time left, the target and analyzer currently running,
+  and elapsed time, next to the open project's name and its configured target
+  count. The analysis child process emits typed progress records on stderr,
+  which the shell parses; `sattlint analyze --progress` exposes the same stream
+  to scripts.
+- The Analyze view can cancel a running analysis with **Cancel run** or `Esc`.
+  The analysis child process is stopped together with the analyzer workers it
+  forked, and the run is discarded unless it had already finished saving. Quit
+  also stops a running analysis before leaving, and never waits for an analyzer
+  to finish.
+- A comprehensive documentation set under `docs/`, indexed from
+  `docs/README.md`, covering installation, project files, configuration, the
+  CLI, analyzers, architecture, loading, the analysis pipeline, semantics,
+  caching, run history, Change Review, the interactive UI, development,
+  testing, CI, and troubleshooting.
+- The documentation checker now validates heading anchors, requires every
+  page under `docs/` to be linked from `docs/README.md`, and verifies that the
+  root README points at the documentation index. The same checker runs as a
+  pre-commit hook when Markdown changes.
+- A project file can select its analyzers with a top-level `analyzers = [...]`
+  list, so a checked-in project reproduces a run. `--analyzer` still wins over
+  the project list, and `sattlint project show` reports the selection.
+- Per-target analyzers run in a forked worker pool when a target selects more
+  than one, with `sattlint analyze --jobs N` controlling the worker count. The
+  parent loads the target once and the workers inherit that graph, so a run is
+  no longer limited to one core while printing the same sections in the same
+  order. Analyzers that share work run as one job: `datatype-fields` reuses the
+  views `variables` publishes instead of repeating the variable traversal.
+- The variable analyzer only sweeps dependency module types that can reach the
+  analyzed library's declarations, instead of walking every module type in the
+  merged view. On a large project that is 54 types instead of 1879 and turns
+  the dominant phase from 16 seconds into 50 milliseconds.
+- `sattlint analyze --refresh-ast` rebuilds each target's parsed project graph
+  while still reusing the parser's per-file cache.
+- `findings` text grouping prints analyzer and finding labels instead of
+  machine identifiers, and NDJSON output starts with an envelope record that
+  carries the run, filters, summary, and groups.
+- Change Review reports module parameter connection changes, such as a
+  submodule parameter remapped to another source, with the connection text on
+  both sides.
+- The Results view marks modules that own findings, separates module-parameter
+  findings from local-variable findings, and lets a finding be acknowledged for
+  the selected run with a checkmark and dimmed text. Clicking a module now shows
+  its findings without collapsing the tree.
+  A module that owns findings turns green once every finding it owns is
+  acknowledged, and the color follows each acknowledgement toggle.
+- Two opt-in string analyzers, both scoped to the analyzed unit: module types
+  from dependency libraries are not walked even when the analyzed tree
+  instantiates them, so a finding never describes code this project does not
+  own. `string-capacity` reports literal initializers,
+  assignments, parameter mappings, and string-procedure writes that exceed a
+  declared string capacity. `string-style` suggests a narrower string datatype
+  when every literal a local receives fits, and names the string-specific copy
+  procedure when a generic copy is used between strings. Both resolve only
+  literals and same-module locals: no value is carried across a module boundary
+  or a branch, so a module costs its own statements instead of a whole-program
+  fixed point.
+- The SFC analyzer reports a fork that jumps back to the step it belongs to,
+  and a fork that targets an element in another sequence.
+- The variable analyzer reports Secure candidates: local numeric or boolean
+  values that are written in a step and later read by a transition guard, so a
+  restart before that transition could lose them. OpSave values are no longer
+  reported as missing a reset; instead, a reset path that writes an OpSave value
+  is reported as reset contamination.
+- A `module-layout` analyzer. It checks that each module's clipping rectangle
+  has area and an origin at the center or bottom-left corner, that clipping and
+  placed module sizes follow the drawing grid, that placement is aligned to the
+  containing module's grid, and that no graphics or interactor object sits
+  entirely outside the visible area. Geometry driven by variables is skipped.
 - `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, and `FEATURE_GUIDE.md`
   document the security intake, the stable and preview surfaces, community
   expectations, and the headless command reference.
@@ -17,9 +173,176 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   that does not exist.
 - A question issue template, and a dependency audit job in CI.
 - `uv.lock` pins the development environment that CI installs.
+- A module type usage analyzer reports module types the analyzed target defines
+  but no loaded consumer invokes, following source-level dependencies across
+  programs.
+- The Results view groups findings by the persisted module hierarchy and shows
+  the selected module's findings as plain text with expandable detail.
+- The SFC checks report a sequence that does not begin with an initial step.
 
 ### Changed
 
+- Project discovery prefers a literal `.slproj` and otherwise accepts the only
+  `*.slproj` file in the nearest ancestor directory. Two or more named files is
+  an error that lists the candidates and asks for `--project`, and an explicit
+  `--project` skips discovery. `findings` and `show` resolve `latest` within the
+  discovered project and refuse the lookup when no project is found.
+- `sattlint analyze` runs per-target analyzers in order by default. Pass
+  `--jobs 0` to pick a worker count from the CPU count, or `--jobs N` for an
+  explicit number of forked workers.
+- Upgraded `sattline-parser` to `2026.11.9` and pinned it exactly, with
+  `uv.lock` regenerated.
+- Reverse-library consumers load in one parser pass that keeps every consumer
+  that succeeds, so one broken consumer no longer discards the healthy ones or
+  forces their shared closure to be parsed again.
+- Project-layer unit names, origin matching, and picture-display module-type
+  matching use the parser's language identity instead of Unicode case folding,
+  so `Library` and `library` still match while `Straße` and `STRASSE` stay
+  distinct.
+- Change Review slices source lines with the parser's line rule (CRLF, LF, and a
+  lone CR), so snippets line up with the spans the parser reports, and its
+  source-file keys use the same language identity.
+- `sattlint analyze --no-cache` now means what it always documented: ignore
+  stored analyzer reports. It no longer discards the parsed project graph or the
+  parser's per-file cache, which made a one-target run re-parse for over two
+  minutes where a cached load takes seconds. Rebuilding the graph is now an
+  explicit `--refresh-ast`.
+- Project files are version 2 and must declare a top-level
+  `[string_capacities]` table with `identstring`, `tagstring`, `string`,
+  `linestring`, and `maxstring` as positive integers. A missing table, a
+  missing or unknown key, and a non-positive value are load errors that name
+  the problem, and a version 1 project is rejected with a message naming the
+  table and the standard values (15, 30, 40, 80, 140). The values feed string
+  inference and validation, PictureDisplay path resolution, and the project
+  cache key, so changing a capacity invalidates cached results.
+- String inference stops as soon as its string values stop changing, even when
+  an unrelated integer counter keeps growing. A value whose known/unknown status
+  oscillated between passes is reported as unknown instead of being recomputed
+  until the pass limit. The PictureDisplay path analyzer benefits from the
+  shorter run.
+- Analyzer selection is always explicit. A run names its analyzers with
+  `--analyzer` or the project's `analyzers` list; a run that names none fails
+  with an error that lists every selectable analyzer, in both the CLI and the
+  Textual Analyze view. The Analyze view preselects the project's list when a
+  configuration is opened.
+- Record layouts resolve per library, so two libraries that define the same
+  record name keep their own fields and leaf paths. When a name is declared
+  by more than one library and the caller cannot decide, the analyzer warns
+  and treats the type as a leaf instead of guessing a layout or failing the
+  run.
+- Run timing values are typed inside the run pipeline while the stored run
+  record keeps its existing JSON shape, and the run collector is split into
+  execution, record, and result seams without changing cancellation,
+  streaming, or persistence.
+- Root symbol paths are qualified by the program's identity, and record
+  definitions are stored by library, name, and file, so the project graph no
+  longer overwrites a same-named record from another library. Field expansion
+  still resolves through one type graph per project. Failure detail is carried by
+  the typed failure record instead of being re-read from prose markers, and the
+  unused workspace-discovery surface is gone.
+- Reset-contamination classifies compound guards, so a reset written under
+  `NOT Seq.Reset AND Guard` is reported as a reset rather than run code. A
+  shared procedure-status sink names every call binding, shadowing includes
+  module parameters, and compound-condition flags travel as a typed record.
+- Per-typedef usage facts are keyed by library and type name, aliases propagate
+  deepest link first so mapping chains no longer depend on link order, and the
+  datatype leaf-path rule is shared by both callers instead of living twice with
+  different cycle and unknown-record behavior.
+- String inference reads SFC step, branch, and subsequence code, and a frame
+  module scope is built from its own parameters and locals.
+- Cross-site dataflow scanning groups accesses by symbol path instead of
+  comparing every pair and re-walking the module tree, with unchanged findings.
+- Frame modules get one scope builder shared by the analyzer, the semantic
+  snapshot, and dependency-usage resolution, so all three agree on parameters,
+  parent chain, and keys.
+- The CLI streams NDJSON records as they are produced, uses one JSON document
+  encoder for stdout, NDJSON, and the stderr error envelope, treats blank filter
+  values, a negative `--limit`, and `--exact-module` without `--module` as usage
+  errors, and reports project settings, version, and config path in text.
+- Report sections are rendered from the same set that is counted, table widths
+  follow the rendered cells, ordering is case-insensitive where identifiers are,
+  and an empty module path has a single label.
+- Cache payloads are signed before their manifests are published, cache and run
+  files are owner-only, the signing key lives outside the cache root, a read
+  never creates it, and a manifest is validated before its payload is
+  unpickled. An empty file set stores no entry, and cache-keying carries an
+  explicit schema version.
+- Run ids must be a single path segment, unsafe ids are rejected, listing a run
+  store never writes, orphan sidecars are pruned, and corrupt scalar fields
+  reject the record instead of degrading silently.
+- The TUI keeps the open project path separate from the user configuration path,
+  so a run started before a project is opened is no longer attributed to the
+  configuration file. Session-log trimming keeps the reader's position, error
+  dialogs do not stack, focus returns after a dialog, and the guidance notes
+  render again.
+- Change Review resolves a relative output folder against the configuration
+  directory, names artifacts from the review's UTC timestamp, searches block
+  headers case-insensitively, reads each source file once, and keeps blocks and
+  calls that stopped being touched in the related context.
+- The unreachable foundation analysis cache and its disk-restore path are gone;
+  per-run memoization stays. Cache keys carry an explicit schema version and
+  read the installed parser release from the parser surface; the key payload is
+  canonical JSON, and lookup-root order stays significant because an earlier
+  root wins during discovery.
+- Config validation asks the parser's own code-discovery surface whether a
+  target exists instead of restating the extension table.
+- The reference index keys occurrences by library and file, so a query cannot
+  return a definition from another library that has a same-named file.
+- Problem records are rebuilt rather than mutated: typedef path rewriting
+  returns new issues and hits, and no frozen record is changed in place.
+- Analyzer direction checks use the call-parameter predicates instead of seven
+  separately hardcoded direction sets.
+- The plugin registry rejects a duplicate key and lists analyzers in canonical
+  order, so import order no longer decides the catalogue.
+- ICF drift is rendered from structured records instead of parsing the
+  producer's wording with regular expressions.
+- Analyzer output streams to the UI as each line is produced, and the
+  completion message distinguishes failure and cancellation.
+- Assets load on demand with an empty-text fallback instead of at import time.
+- Missing libraries are recorded as typed failure entries rather than prose, and
+  a companion code body that cannot be parsed warns and names the skipped path
+  checks.
+- Root origins are keyed by program name, so a project with several programs
+  reports each target's own source file and library. A graph with unavailable
+  libraries or target failures is no longer cached, and an unusable cache
+  directory degrades to running without a cache at every entry point.
+- `.slproj` values are validated against the project defaults: missing keys take
+  their defaults, wrong types raise a project error at exit 2, and unknown keys
+  are reported and ignored.
+- `--rule` matches a finding's rule ID and falls back to its kind. The analyzer
+  catalogue no longer publishes the always-empty `rule_ids` field.
+- The CLI writes UTF-8 with backslash escapes when stdout or stderr cannot
+  encode a character, reports an output-file failure at exit 2, treats a closed
+  pipe as exit 141, and reports an invalid `--ui` value without a traceback.
+- Config and project saves are atomic, and saving settings no longer requires
+  the configured directories to exist.
+- Run records are written atomically with collision-free ids; per-run analyzer
+  findings are stored in a separate project-level bucket instead of a phantom
+  target. The run-record schema is version 2.
+- Reverse consumers are discovered for every analyzed target, not only for
+  targets the loader classifies as libraries by their location. The scan
+  prefers the mode's dependency sidecar (`.l` in draft, `.z` in official) and
+  falls back to the other one when a program has no preferred sidecar, so a
+  program that exists in only one body family still contributes its uses.
+- Module-type usage treats a type as unused when it has no invocation at all,
+  or exactly one invocation and that invocation is its declaring file. Two or
+  more invocations count as use, wherever they occur, and the analyzed target's
+  program/library label no longer changes the result.
+- The reset-contamination and implicit-latch scans now cover module-type
+  instances and their nested modules exactly once, with a recursion guard.
+  Read-before-write findings name the variable in text reports, and
+  spec-compliance typedef findings use the `TypeDef:` path tag.
+- A plugin analyzer cannot claim a built-in analyzer key, and the cached
+  analyzer catalogue rebuilds whenever the plugin registry changes.
+- The interactive shell configures logging before it starts, and only a
+  boolean `debug` value enables debug output.
+- Boolean latch path merging deduplicates and caps its frontier like the
+  non-boolean reset scan, so a wide parallel fan-out cannot grow without
+  bound. Mapped string literals take their capacity from the target datatype
+  instead of always assuming `MAXSTRING`.
+- The semantic index records single-module parameters and locals with their
+  own symbol kinds, and module-type instance parameters and locals likewise,
+  matching the typedef path.
 - CI installs the locked environment with `uv sync --frozen`, runs a Markdown
   style gate, and cancels superseded pull request runs.
 - The release workflow validates the package version against the tag, accepts
@@ -27,6 +350,267 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The pull request template, issue templates, and release notes in
   `CONTRIBUTING.md` match the shipped commands.
 - The pinned Ruff version matches the pre-commit hook revision.
+- Upgraded `sattline-parser` to `2026.11.6` and pinned it exactly, with
+  `uv.lock` regenerated. The parser renames `Simple_DataType` to
+  `ScalarDatatype`, stores module layout blocks as the singular `moduledef` and
+  `modulecode` fields, and removes the interim graphics payload classes. The
+  2026.11.6 delta is additive for this codebase: no imported name or signature
+  changed except for new keyword fields and new project helpers.
+- Project loading is all or nothing. A missing or unparseable body, sidecar, or
+  companion now fails the target with a message that names the artifact,
+  instead of dropping the program silently. SattLint catches the parser load
+  errors at every load seam, reports the failure, and continues with the next
+  analyzed target.
+- Every cache version is bumped, so an entry written before the parser upgrade
+  is rejected rather than decoded into the new model.
+- A declared dependency that is not present is no longer recorded as a missing
+  library, because the parser refuses to return a partial project.
+- A module type definition no longer carries parameter mappings, so the
+  variables analyzer checks mappings only on submodules and module-type
+  instances, which is where the grammar allows them.
+- Dependency sidecar lookup is requester independent and pairs a sidecar with
+  the selected body's own prefix, matching the parser's ordered roots.
+- The unknown parameter mapping target rule stays with SattLint's variables
+  analyzer, so a root that carries that finding is still indexed.
+- The Analyze view no longer offers a Cancel control that could not stop a
+  running analysis, since the analysis pipeline has no cancellation checkpoint.
+- A companion is paired only with the artifact family of its body, and companion
+  stems match case-insensitively, following the parser rules.
+- PictureDisplay path diagnosis is computed once per target and reused by the
+  analyzer instead of being repeated.
+- The unused SFC parallel-write collector and contract-index subsystem are
+  removed.
+- The same-cycle shared access rule is removed; its findings repeated the
+  parallel-branch rules and fired on ordinary module interaction. The
+  parallel read/write and parallel write rules stay.
+- Cyclomatic complexity defaults, parameter mapping checks, read-before-write,
+  state-reset, and parallel-branch analysis were tightened to drop false
+  positives.
+
+### Removed
+
+- The engineering-spec compliance analyzer and its `analysis.spec_compliance`
+  prefix settings, and the module version-drift analyzer with its comparison
+  helpers. Stored runs still render their findings. Analyzer report caches are
+  invalidated for the remaining analyzers.
+- The default analyzer set (`--analyzer` is now always required or comes from
+  the project file).
+- The unused tracing module, the unreachable foundation-cache store, the unused
+  workspace-discovery subsystem, the duplicate comment-hit model, and the
+  test-only second loader. Corpus and crash-sweep tests now exercise the
+  production project loader.
+
+### Fixed
+
+- A run where one target fails to load now reports the successful targets'
+  findings and marks the failed target instead of discarding the whole result.
+  The command exits 2, the partial run is not saved to history, failure reports
+  are capped at 12 entries per section, an unreadable file is reported as a read
+  error, and parser positions reach the machine-readable diagnostic.
+- The analysis child process no longer imports modules from the analyzed
+  project directory, so a project file named like the package cannot run code
+  inside it.
+- A bare `sattlint` prints the usage and exits 2 when stdin or stdout is not a
+  terminal, instead of starting the interactive shell and writing escape
+  sequences into a pipe.
+- Picture display path analysis reads tuple-shaped parser collections again,
+  and string inference, latch scanning, magic-number walking, and cyclomatic
+  complexity walk both list and tuple child collections.
+- Magic-number and record-component-order findings no longer leak into the
+  opt-in datatype-field analyzer, so selecting both analyzers does not
+  duplicate findings.
+- Implicit-latch detection now respects a clear before or after the branch, a
+  branch that ends false, a record field, and a reset in the sequence init
+  step. A flag that is genuinely only set is still reported.
+- Never-cleared alarm findings use the alarm source's condition mapping instead
+  of the variable name, and root globals are merged across modules so a clear
+  in a sibling module counts.
+- Dataflow no longer treats an interactor's `OutVar_` write, a builtin output
+  argument, or a cross-module write to a root global as a constant fact.
+- A step's outgoing transition guard also reaches the first transition of an
+  `ALTERNATIVESEQ` branch, and a forward fork target is not reported as
+  unreachable.
+- Reset contamination is detected in code declared directly on the
+  BasePicture, not only inside submodules and module types.
+- The Results view includes per-run analyzer findings, keeps findings with
+  different payloads in separate rows, and acknowledges them separately.
+- `latest` refuses to fall back to another project's run, old-schema run files
+  are pruned, and clearing acknowledgements reports a failed removal.
+- The analyzer corpus executes manifests by `mode` instead of file-name prefix,
+  rejects duplicate JSON keys and count drift, runs with the cache disabled,
+  and covers the datatype-field and module-type-usage analyzers.
+  silently instead of being reported as unresolved, and they no longer emit a
+  graphics validation warning.
+- Value-widget bindings (`TextBox_`, `CheckBox_`, `OptBut_`, `ComBut_`) count as
+  reads as well as writes, so a variable displayed only by a widget is no
+  longer reported as never read.
+- A variable wired into an out-of-origin or unresolved submodule is treated as
+  consumed and is no longer reported as unused or never read. This applies to
+  locals and module parameters.
+- Reads in cyclic equation blocks are no longer reported as read-before-write;
+  equation-block writes still initialize later step reads.
+- A step's outgoing transition is evaluated before that step's `EXITCODE`, so a
+  reset written on exit no longer makes the guard look permanently false.
+- A `:Old` read is no longer folded to the declaration default after the
+  variable has been written, so a scan-history check is not reported as an
+  always-false condition.
+- A condition is no longer folded to a constant when it reads an unmapped
+  module parameter of a library target, a local a submodule writes through a
+  parameter mapping, or an `OpSave` declaration initializer that only applies to
+  the first start.
+- Reset contamination recognizes a module's own `Reset`/`ResetOld` block, does
+  not treat a sequence whose `.Reset` is externally driven as a reset path, and
+  lets a reset of a record field clear its nested fields.
+- An unused module-type parameter is not reported when the analyzed target is a
+  library, because the connecting program outside the target consumes it.
+- The datatype duplication finding now reports field groups that several record
+  datatypes repeat, suggesting a nested record, instead of counting variables
+  that share a complex type.
+- Non-State multi-site writes treat equations guarded by different
+  ``NOT <Seq>.Reset`` flags as mutually exclusive, so sibling operation
+  equations no longer look like concurrent writers.
+- An enable flag that defaults to True is not reported as an unsafe startup
+  default when the thing it enables is an alarm, warning, message, log, or
+  display rather than equipment or logic.
+- Non-state multi-site findings require two write sites that can run in the
+  same scan, use canonical module paths, and no longer treat a terminal step as
+  a self-loop. Same-cycle reports an invoked parallel node once.
+- Datatype-field findings are reported only for datatypes and fields with no
+  consumer in the scanned workspace; a module that leaves some fields untouched
+  no longer produces per-instance read-only or never-read findings.
+- ICF programs are derived from each file's entries instead of the filename, so
+  a multi-program file validates each referenced program. The journal-parameter
+  record-completeness rule is removed; the identity rule covers the
+  DCStoMES/MEStoMES groups only.
+- Module-type usage is decided by the reverse consumer closure, including
+  transitive consumers and the ABB root. One consumer suppresses the finding,
+  and `PRIVATE_` definitions are never reported.
+- Module cyclomatic complexity is the worst nested scope, not the sum of every
+  equation block and step.
+- SFC branch checks ignore the empty terminal step that closes a parallel
+  branch and compare transition guards only between sibling alternative
+  branches. An alarm is considered cleared when a submodule writes its bound
+  parameter to `False`.
+- A datatype that nothing declares or uses is reported once as an unused
+  datatype; once a field is touched, the report names the unused fields.
+- A failed analyzer names only the exception type in run history, CI output,
+  and the UI; the full exception text appears when debug is enabled.
+- Findings carry the scope in `context` and a parameter mapping in `relation`
+  instead of overloading one key with both meanings.
+- A completed run keeps its findings when one analyzer fails; only the failing
+  analyzer is reported. Duplicate module-type names resolve within their own
+  library, and datatype-field findings stay inside the analyzed target.
+- The UI treats view text as plain text, so a message with brackets cannot lose
+  text or abort the error dialog.
+- File-open, new-configuration, and quit actions respect the busy and modal
+  guards, and an analysis run snapshots its configuration and project path.
+- Configured targets are matched case-insensitively for the self-check, and a
+  wrong-typed config value is rejected at load instead of failing later.
+- A newly added ICF file invalidates the cached report. The unreachable
+  foundation cache is gone, so there is no separate store left to clear.
+- A failed program index no longer leaves root origins, record or module-type
+  definitions, dependency edges, or a source file behind for a program that is
+  reported as failed.
+- ICF validation recognises an already-loaded program by its program name
+  instead of the literal `BasePicture` keyword, so the in-memory program is
+  reused.
+- The parser dependency moves to 2026.11.7: a `SUBSEQUENCE`, `SUBSEQSTEP`, or
+  `SUBSEQTRANSITION` wrapper may reuse the name of an element inside its own
+  body without a false duplicate-name finding. Sibling steps and transitions
+  must still be unique.
+- Change Review continues with the remaining targets when one target fails and
+  names every failure; it reports an error only when every target fails.
+- An analyzer filter hides entries without clearing their selection, so the
+  selection survives filtering and returns when the filter is cleared.
+- A second interaction request waits for the active one instead of being
+  completed as a denial, and cancelling a prompt or confirmation no longer runs
+  the submission handler. Escape no longer re-saves a value or reports an empty
+  name.
+- Change Review source snippets are decoded with the parser's source reader, so
+  compressed and byte-coded files keep exact character offsets.
+- The AST refresh modal renders a bounded status tail and can always be closed,
+  including while a rebuild is still running.
+- A run with a failed analyzer is saved to run history with that analyzer marked
+  failed, instead of being discarded, so the other analyzers' findings stay
+  reviewable.
+- Module-type resolution prefers the definition declared in the same source
+  file, hides `PRIVATE_` types from other units, and follows the unit's
+  dependency sidecar before the shared library folder. Duplicate type names in
+  one library folder therefore resolve instead of failing the analyzer.
+- Datatype-field findings stay inside the analyzed target. Dependency and
+  reverse-consumer typedef bodies still contribute usage evidence, but no longer
+  produce findings, and a `TypeDef:` path is only rewritten to an invocation
+  inside the target rather than into another loaded unit.
+- A rebuilt target or project list keeps its highlight, so Open and Remove stay
+  enabled and act on the visible selection.
+- Change Review compares datatypes, block, step and sequence names, and module
+  paths case-insensitively, like the language does.
+- Change Review reports steps with no code and steps nested in alternative,
+  parallel or subsequence bodies as membership changes.
+- Change Review snippet lookup is keyed by library and file, so same-named
+  files in different libraries no longer read the wrong source.
+- Change Review pairs reordered and shifted statements by position and target,
+  so a changed `IF` block is one change instead of an add plus a remove, and an
+  inserted statement does not misalign the statements after it.
+- Change Review keeps a transition's own span (including a literal condition)
+  and derives block spans from their statements.
+- Record-field declarations retain their initializer and modifiers in Change
+  Review.
+- Frame-module code is indexed in the frame's own variable scope, so its
+  references and call signatures are visible to Change Review.
+- Read-only findings no longer include constant fields, and a parameter mapping
+  that targets a name outside the declared list is no longer reported.
+- The Results view hides empty module branches and keeps a finding's site,
+  duplicate count, and previous writes visible.
+- A reverse-library consumer that cannot load no longer discards the selected
+  library's analysis. The batch falls back to one load per consumer, records the
+  failing consumer, and keeps the library findings.
+- ICF analysis reports a load-failure issue when a referenced program cannot be
+  loaded instead of raising out of the analyzer.
+- An AST refresh reports a target that cannot load and continues with the rest
+  of the analyzed targets.
+- An unknown parameter mapping target is reported for a mapping from a global
+  source as well, matching the parser rule.
+- An analyzer that raises now fails the command instead of producing an empty
+  finding set with a zero exit code, and the failed run is not persisted.
+- An unusable cache directory degrades to running without a cache instead of
+  aborting analysis, and a cache write error no longer fails a target.
+- An empty target list is reported as a configuration error instead of an
+  internal error.
+- `import sattlint.runs` works on its own; the application package no longer
+  imports run persistence eagerly.
+- A misspelled configuration key warns instead of being silently discarded.
+- Interactive startup reports a malformed configuration cleanly instead of
+  printing a traceback.
+- Repeated modules with parameter mappings no longer report false drift caused
+  by differing source positions, and datatype names compare case-insensitively.
+- A module type instance resolves its body against the type's own library
+  instead of the caller's library.
+- A same-named datatype declared in different case no longer produces two
+  entries with load-order dependent field resolution.
+- An unknown PictureDisplay asset path can no longer resolve outside the
+  program directory, and very large asset paths are rejected.
+- The analysis summary counts loaded targets rather than the per-run analyzer
+  pseudo-target.
+- Run history records the project file, so adding or removing a target no
+  longer hides earlier runs, and two projects with the same target names no
+  longer share entries.
+- The output log trims in batches instead of rebuilding the whole widget for
+  every line once retention is reached.
+- A failed setup save marks the project dirty instead of reporting the values as
+  saved, and the file-browser add path no longer mutates the config before the
+  duplicate-target check.
+- Deleting a stored analysis run asks for confirmation.
+- The Results view no longer presents an older stored run as the result of a run
+  that was not saved.
+- Moving through stored runs no longer reads and rebuilds on every highlight.
+- The AST refresh status fallback no longer touches widgets from a worker
+  thread.
+- Text reports use section labels instead of internal kind identifiers.
+- The corpus harness fails on a missing target instead of skipping, counts every
+  emitted finding, and every manifest family is schema checked.
+- The release smoke, the Markdown gate, and the contributor documentation now
+  describe what the workflows actually run.
 
 ## [2026.11.4] - 2026-11-12
 
@@ -426,6 +1010,7 @@ parser AST migration.
 
 - This entry establishes the changelog baseline for future tagged releases.
 
+[2026.11.6]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.6
 [2026.11.4]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.11.4
 [2026.9.3]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.3
 [2026.9.2]: https://github.com/SorenHJohansen/SattLint/releases/tag/v2026.9.2

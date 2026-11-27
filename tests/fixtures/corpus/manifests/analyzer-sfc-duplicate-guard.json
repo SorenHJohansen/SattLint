@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-sfc-duplicate-guard",
+    "target_file": "../valid/UnCompressedFullGrammar.s",
+    "mode": "analyzer-sfc",
+    "expectation": {
+        "expected_finding_ids": [
+            "sfc_duplicate_transition_guard"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "sfc"
+            },
+            "summary.json": {
+                "analyzer_key": "sfc",
+                "finding_count": 4,
+                "rule_counts": {
+                    "sfc_duplicate_transition_guard": 4
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

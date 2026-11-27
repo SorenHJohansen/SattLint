@@ -1,7 +1,18 @@
-# pyright: reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
+import pytest
 from lark.exceptions import UnexpectedInput
 
 from sattlint.utils import text_processing
+
+
+def _always_valid(_text: str) -> bool:
+    return True
+
+
+def _never_valid(_text: str) -> bool:
+    return False
 
 
 def test_text_processing_advance_position_handles_crlf_and_lf() -> None:
@@ -11,7 +22,9 @@ def test_text_processing_advance_position_handles_crlf_and_lf() -> None:
     assert text_processing._advance_position("A", None, 3, 4) == (3, 5, 0)
 
 
-def test_text_processing_is_valid_code_via_grammar_handles_blank_and_expression_fallback(monkeypatch) -> None:
+def test_text_processing_is_valid_code_via_grammar_handles_blank_and_expression_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _FakeUnexpectedInput(UnexpectedInput):
         def __init__(self) -> None:
             pass
@@ -47,31 +60,37 @@ def test_text_processing_extract_code_candidates_handles_empty_and_trailing_frag
     assert "trailing branch" in candidates
 
 
-def test_text_processing_comment_code_indicators_returns_empty_when_no_valid_code(monkeypatch) -> None:
-    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: False)
+def test_text_processing_comment_code_indicators_returns_empty_when_no_valid_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", _never_valid)
 
     indicators = text_processing._comment_code_indicators("Counter := Counter + 1;")
 
     assert indicators == ()
 
 
-def test_text_processing_comment_code_indicators_ignores_template_ellipsis(monkeypatch) -> None:
-    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: True)
+def test_text_processing_comment_code_indicators_ignores_template_ellipsis(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", _always_valid)
 
     assert text_processing._comment_code_indicators("IF NOT StateSequence.Reset THEN ... ENDIF;") == ()
     assert text_processing._comment_code_indicators("IF NOT StateSequence.Reset THEN \u2026 ENDIF;") == ()
 
 
-def test_text_processing_comment_code_indicators_keeps_code_with_stray_ellipsis(monkeypatch) -> None:
-    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: True)
+def test_text_processing_comment_code_indicators_keeps_code_with_stray_ellipsis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", _always_valid)
 
     indicators = text_processing._comment_code_indicators("Counter := OldValue ... ;")
 
     assert "assignment" in indicators
 
 
-def test_text_processing_comment_code_indicators_returns_assignment_and_call_when_valid(monkeypatch) -> None:
-    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", lambda _text: True)
+def test_text_processing_comment_code_indicators_returns_assignment_and_call_when_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(text_processing, "_is_valid_code_via_grammar", _always_valid)
 
     indicators = text_processing._comment_code_indicators("Counter := CallSomething(A);")
 

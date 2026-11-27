@@ -1,4 +1,6 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from pathlib import Path
 
 from sattline_parser.models.ast_model import (
@@ -8,7 +10,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -18,8 +20,12 @@ from sattlint.analyzers.icf import (
     validate_icf_entries_against_program,
 )
 from sattlint.reporting.icf_report import (
+    ICFDriftEntry,
+    ICFDriftEntryChange,
+    ICFDriftOrderingMismatch,
     ICFEntry,
     ICFSkippedEntry,
+    ICFUnitDrift,
     ICFValidationIssue,
     ICFValidationReport,
     _format_drift_detail,
@@ -52,7 +58,7 @@ def _entry(
     )
 
 
-def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path):
+def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path: Path):
     icf_file = tmp_path / "Program.icf"
     icf_file.write_text(
         "[Unit Unit221A]\n"
@@ -75,12 +81,12 @@ def test_icf_validation_reports_valid_and_invalid_entries():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -120,7 +126,7 @@ def test_icf_validation_reports_valid_and_invalid_entries():
 def test_icf_validation_skips_placeholder_h_dot_value():
     bp = BasePicture(
         header=_header("IsoFK3"),
-        submodules=[SingleModule(header=_header("Unit265A"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit265A"), moduledef=None)],
     )
 
     entries = [
@@ -148,7 +154,7 @@ def test_icf_validation_skips_placeholder_h_dot_value():
 def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
     bp = BasePicture(
         header=_header("Program"),
-        submodules=[SingleModule(header=_header("Unit"), moduledefs=[])],
+        submodules=[SingleModule(header=_header("Unit"), moduledef=None)],
     )
 
     entries = [
@@ -173,16 +179,14 @@ def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
     assert "unparseable SattLine reference (expected Program:Path value)" in summary
 
 
-def test_icf_validation_placeholder_counts_as_covered_for_completeness():
-    # Record has two fields; one resolves normally, one is bound to H::. placeholder.
-    # The completeness check must not report the placeholder field as missing.
+def test_icf_validation_placeholder_is_skipped_not_treated_as_a_missing_field():
     fill_record = DataType(
         name="FillRecord",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Tid_Start", datatype=Simple_DataType.TIME),
-            Variable(name="Fyld_TidTotal", datatype=Simple_DataType.REAL),
+            Variable(name="Tid_Start", datatype=ScalarDatatype.TIME),
+            Variable(name="Fyld_TidTotal", datatype=ScalarDatatype.REAL),
         ],
     )
     dv = DataType(
@@ -193,7 +197,7 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -231,11 +235,11 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
     bp = BasePicture(
@@ -263,13 +267,13 @@ def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
 def test_icf_validation_marks_unresolved_module_segment_in_detail():
     display = SingleModule(
         header=_header("Display"),
-        moduledefs=[],
+        moduledef=None,
     )
     level2 = FrameModule(header=_header("L2"), submodules=[display])
     level1 = FrameModule(header=_header("L1"), submodules=[level2])
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         submodules=[level1],
     )
     start_master = FrameModule(header=_header("StartMaster"), submodules=[unit])
@@ -306,7 +310,7 @@ def test_icf_validation_prefers_draft_moduletype_locals_after_instance_path_reso
         name="DiluteLogType",
         description=None,
         datecode=None,
-        var_list=[Variable(name="RunNumber", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="RunNumber", datatype=ScalarDatatype.INTEGER)],
     )
 
     transfer_fallback = ModuleTypeDef(
@@ -362,14 +366,14 @@ def test_icf_validation_requires_simple_leaf_datatype():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[
-            Variable(name="Simple", datatype=Simple_DataType.REAL),
+            Variable(name="Simple", datatype=ScalarDatatype.REAL),
             Variable(name="Complex", datatype="Rec"),
         ],
     )
@@ -421,12 +425,12 @@ def test_icf_validation_exposes_resolved_entries_for_reuse():
         name="Rec",
         description=None,
         datecode=None,
-        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="FieldA", datatype=ScalarDatatype.INTEGER)],
     )
 
     unit = SingleModule(
         header=_header("Unit"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="T", datatype="Rec")],
     )
 
@@ -457,7 +461,7 @@ def test_icf_validation_exposes_resolved_entries_for_reuse():
     assert report.resolved_entries[0].module_path == ["Program", "Unit"]
     assert report.resolved_entries[0].field_path == "FieldA"
     assert report.resolved_entries[0].leaf_name == "FieldA"
-    assert report.resolved_entries[0].datatype is Simple_DataType.INTEGER
+    assert report.resolved_entries[0].datatype is ScalarDatatype.INTEGER
 
 
 def test_icf_validation_flags_unit_and_group_mismatches():
@@ -465,7 +469,7 @@ def test_icf_validation_flags_unit_and_group_mismatches():
         name="Channel",
         description=None,
         datecode=None,
-        var_list=[Variable(name="OPR_ID", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER)],
     )
     journal = DataType(
         name="JournalRecord",
@@ -474,12 +478,12 @@ def test_icf_validation_flags_unit_and_group_mismatches():
         var_list=[
             Variable(name="T", datatype="Channel"),
             Variable(name="S", datatype="Channel"),
-            Variable(name="J", datatype=Simple_DataType.INTEGER),
+            Variable(name="J", datatype=ScalarDatatype.INTEGER),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="HygienicStatus", datatype="JournalRecord")],
     )
     bp = BasePicture(
@@ -521,134 +525,82 @@ def test_icf_validation_flags_unit_and_group_mismatches():
     assert "group tag mismatch" in reasons
 
 
-def test_icf_validation_flags_missing_journal_parameter_record_fields():
+def test_icf_validation_accepts_a_partial_journal_parameter_group():
+    channel = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SEQ", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TRY", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TIME", datatype=ScalarDatatype.TIME),
+        ],
+    )
     dilute = DataType(
         name="DiluteRecord",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="RunNumber", datatype=Simple_DataType.INTEGER),
-            Variable(name="Duration", datatype=Simple_DataType.INTEGER),
-            Variable(name="PWVolume", datatype=Simple_DataType.REAL),
+            Variable(name="RunNumber", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Duration", datatype=ScalarDatatype.INTEGER),
+            Variable(name="PWVolume", datatype=ScalarDatatype.REAL),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221X"),
-        moduledefs=[],
-        localvariables=[Variable(name="Dilute", datatype="DiluteRecord")],
+        moduledef=None,
+        localvariables=[
+            Variable(name="T", datatype="Channel"),
+            Variable(name="Dilute", datatype="DiluteRecord"),
+        ],
     )
     bp = BasePicture(
         header=_header("Program"),
-        datatype_defs=[dilute],
+        datatype_defs=[channel, dilute],
         submodules=[unit],
     )
 
+    identity_keys = ("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME")
     entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(identity_keys, start=1)
+    ]
+    entries.append(
         _entry(
             "RunNumber",
             "Program:Unit221X.Dilute.RunNumber",
+            line_no=7,
             unit="Unit221X",
             journal="Transfer",
             group="JournalData_Parameters",
-        ),
-        _entry(
-            "Duration",
-            "Program:Unit221X.Dilute.Duration",
-            line_no=2,
-            unit="Unit221X",
-            journal="Transfer",
-            group="JournalData_Parameters",
-        ),
-    ]
-
-    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
-    summary = report.summary()
-
-    assert any(issue.reason == "missing journal parameter fields" for issue in report.issues)
-    assert any("PWVolume" in (issue.detail or "") for issue in report.issues)
-    assert "record Dilute missing 1 fields: PWVolume" in summary
-    assert "RunNumber =>" not in summary
-
-
-def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_coverage():
-    user = DataType(
-        name="UserRecord",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="UserID", datatype=Simple_DataType.STRING),
-            Variable(name="UserName", datatype=Simple_DataType.STRING),
-        ],
+        )
     )
-    log_value = DataType(
-        name="LogValueRecord",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="status", datatype=Simple_DataType.INTEGER),
-            Variable(name="meaning", datatype=Simple_DataType.STRING),
-            Variable(name="User", datatype="UserRecord"),
-        ],
-    )
-    unit = SingleModule(
-        header=_header("Unit221A"),
-        moduledefs=[],
-        localvariables=[Variable(name="LogValue", datatype="LogValueRecord")],
-    )
-    bp = BasePicture(
-        header=_header("Program"),
-        datatype_defs=[user, log_value],
-        submodules=[unit],
-    )
-
-    entries = [
-        _entry(
-            "status",
-            "Program:Unit221A.LogValue.status",
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "meaning",
-            "Program:Unit221A.LogValue.meaning",
-            line_no=2,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserID",
-            "Program:Unit221A.LogValue.User.UserID",
-            line_no=3,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserName",
-            "Program:Unit221A.LogValue.User.UserName",
-            line_no=4,
-            unit="Unit221A",
-            journal="HygienicStatus",
-            group="JournalData_Parameters",
-        ),
-    ]
 
     report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
 
-    assert report.valid_entries == 4
+    assert report.valid_entries == len(entries)
+    assert report.issues == []
     assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
 
 
-def test_icf_validation_checks_nested_journal_parameter_record_only():
+def test_icf_validation_accepts_a_partial_nested_journal_parameter_group():
     cry_fill = DataType(
         name="CryFillRecord",
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Tid_Start", datatype=Simple_DataType.TIME),
-            Variable(name="Tid_Stop", datatype=Simple_DataType.TIME),
+            Variable(name="Tid_Start", datatype=ScalarDatatype.TIME),
+            Variable(name="Tid_Stop", datatype=ScalarDatatype.TIME),
         ],
     )
     dv = DataType(
@@ -656,14 +608,13 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="AIT001AlarmEnable", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AITT001EnableAlarm", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="AIT001AlarmEnable", datatype=ScalarDatatype.BOOLEAN),
             Variable(name="CRY_Fyld1", datatype="CryFillRecord"),
         ],
     )
     unit = SingleModule(
         header=_header("Unit265A"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[Variable(name="Dv", datatype="DvRecord")],
     )
     bp = BasePicture(
@@ -684,11 +635,145 @@ def test_icf_validation_checks_nested_journal_parameter_record_only():
 
     report = validate_icf_entries_against_program(bp, entries, expected_program="IsoFK3")
 
-    issue = next(issue for issue in report.issues if issue.reason == "missing journal parameter fields")
-    assert "Dv.CRY_Fyld1" in (issue.detail or "")
-    assert "Tid_Stop" in (issue.detail or "")
-    assert "AIT001AlarmEnable" not in (issue.detail or "")
-    assert "AITT001EnableAlarm" not in (issue.detail or "")
+    assert report.valid_entries == 1
+    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
+
+
+def test_icf_validation_accepts_a_complete_journal_identity_group_without_journal_type():
+    record = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SEQ", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TRY", datatype=ScalarDatatype.INTEGER),
+            Variable(name="TIME", datatype=ScalarDatatype.TIME),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221X"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Channel")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME"), start=1)
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    assert report.valid_entries == 6
+    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
+
+
+def test_icf_validation_flags_an_incomplete_journal_identity_group():
+    record = DataType(
+        name="Channel",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CYCLE", datatype=ScalarDatatype.INTEGER),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221X"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Channel")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221X.T.{key}",
+            line_no=line_no,
+            unit="Unit221X",
+            journal="Transfer",
+            group="JournalData_DCStoMES",
+        )
+        for line_no, key in enumerate(("OPR_ID", "CR_ID", "CYCLE"), start=1)
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    missing_field_issues = [issue for issue in report.issues if issue.reason == "missing journal parameter fields"]
+    assert len(missing_field_issues) == 1
+    assert missing_field_issues[0].detail is not None
+    assert missing_field_issues[0].detail.endswith("missing identity keys: SEQ, TRY, TIME")
+    summary = report.summary()
+    assert "missing journal parameter fields" in summary
+    assert "missing identity keys: SEQ, TRY, TIME" in summary
+
+
+def test_icf_validation_flags_an_incomplete_mes_response_group():
+    response = DataType(
+        name="ResponseRecord",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="RESULT_CODE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RESULT_TEXT", datatype=ScalarDatatype.STRING),
+            Variable(name="RET_VAL", datatype=ScalarDatatype.INTEGER),
+        ],
+    )
+    unit = SingleModule(
+        header=_header("Unit221B"),
+        moduledef=None,
+        localvariables=[Variable(name="S", datatype="ResponseRecord")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[response],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            key,
+            f"Program:Unit221B.S.{path}",
+            line_no=line_no,
+            unit="Unit221B",
+            journal="HygienicStatus",
+            group="JournalData_MEStoDCS",
+        )
+        for line_no, (key, path) in enumerate(
+            (
+                ("RESULT_CODE", "RESULT_CODE"),
+                ("RESULT_TEXT", "RESULT_TEXT"),
+                ("LMES_RET_VAL", "RET_VAL"),
+            ),
+            start=1,
+        )
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    missing_field_issues = [issue for issue in report.issues if issue.reason == "missing journal parameter fields"]
+    assert len(missing_field_issues) == 1
+    assert missing_field_issues[0].detail is not None
+    assert missing_field_issues[0].detail.endswith("missing identity keys: LMES_RET_TEXT")
 
 
 def test_icf_validation_accepts_flattened_statechange_channel_names():
@@ -697,17 +782,17 @@ def test_icf_validation_accepts_flattened_statechange_channel_names():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="RESULT_CODE", datatype=Simple_DataType.INTEGER),
-            Variable(name="RESULT_TEXT", datatype=Simple_DataType.STRING),
-            Variable(name="RET_VAL", datatype=Simple_DataType.INTEGER),
-            Variable(name="RET_TEXT", datatype=Simple_DataType.STRING),
+            Variable(name="RESULT_CODE", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RESULT_TEXT", datatype=ScalarDatatype.STRING),
+            Variable(name="RET_VAL", datatype=ScalarDatatype.INTEGER),
+            Variable(name="RET_TEXT", datatype=ScalarDatatype.STRING),
         ],
     )
     unit = SingleModule(
         header=_header("Unit221B"),
-        moduledefs=[],
+        moduledef=None,
         localvariables=[
-            Variable(name="PUC_Stop_STATE_NO", datatype=Simple_DataType.INTEGER),
+            Variable(name="PUC_Stop_STATE_NO", datatype=ScalarDatatype.INTEGER),
             Variable(name="PUC_Stop_S", datatype="ResponseRecord"),
         ],
     )
@@ -765,8 +850,8 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="OPR_ID", datatype=Simple_DataType.INTEGER),
-            Variable(name="CR_ID", datatype=Simple_DataType.INTEGER),
+            Variable(name="OPR_ID", datatype=ScalarDatatype.INTEGER),
+            Variable(name="CR_ID", datatype=ScalarDatatype.INTEGER),
         ],
     )
     journal = DataType(
@@ -839,6 +924,10 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
     drift_issues = [issue for issue in report.issues if issue.reason == "unit structure drift"]
     assert len(drift_issues) == 1
     assert drift_issues[0].entry.unit == "Unit221B"
+    assert drift_issues[0].drift is not None
+    assert drift_issues[0].drift.current_unit == "Unit221B"
+    assert drift_issues[0].drift.reference_unit == "Unit221A"
+    assert drift_issues[0].drift.entry_changes[0].kind == "missing"
     assert drift_issues[0].detail is not None
     assert drift_issues[0].detail.startswith(
         "current unit Unit221B (unit type ApplTank) differs from reference unit Unit221A: missing 1 entries ("
@@ -860,7 +949,7 @@ def test_icf_validation_ignores_case_only_key_differences_for_unit_structure():
         name="RecipeRecord",
         description=None,
         datecode=None,
-        var_list=[Variable(name="tid_henstandMax", datatype=Simple_DataType.REAL)],
+        var_list=[Variable(name="tid_henstandMax", datatype=ScalarDatatype.REAL)],
     )
     appl_tank = ModuleTypeDef(
         name="ApplTank",
@@ -902,145 +991,95 @@ def test_icf_validation_ignores_case_only_key_differences_for_unit_structure():
     assert not any(issue.reason == "unit structure drift" for issue in report.issues)
 
 
-def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
-    user = DataType(
-        name="ACSUserType",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="UserID", datatype=Simple_DataType.STRING),
-            Variable(name="UserName", datatype=Simple_DataType.STRING),
-        ],
-    )
-    signoff = DataType(
-        name="ACSSignOffType",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="Time", datatype=Simple_DataType.TIME),
-            Variable(name="User", datatype="ACSUserType"),
-            Variable(name="Privilege", datatype=Simple_DataType.STRING),
-            Variable(name="SignOffResult", datatype=Simple_DataType.STRING),
-            Variable(name="Meaning", datatype=Simple_DataType.STRING),
-        ],
-    )
-    signoff_log = DataType(
-        name="ACSSignOffLOGData",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="SignOffResult", datatype="ACSSignOffType"),
-            Variable(name="Description", datatype=Simple_DataType.STRING),
-            Variable(name="Answer", datatype=Simple_DataType.STRING),
-            Variable(name="LogTag", datatype=Simple_DataType.STRING),
-        ],
-    )
-    unit = SingleModule(
-        header=_header("Unit221A"),
-        moduledefs=[],
-        localvariables=[Variable(name="HSSetLogData", datatype="ACSSignOffLOGData")],
-    )
-    bp = BasePicture(
-        header=_header("Program"),
-        datatype_defs=[user, signoff, signoff_log],
-        submodules=[unit],
-    )
-
-    entries = [
-        _entry(
-            "UserID",
-            "Program:Unit221A.HSSetLogData.SignOffResult.User.UserID",
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "UserName",
-            "Program:Unit221A.HSSetLogData.SignOffResult.User.UserName",
-            line_no=2,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Time",
-            "Program:Unit221A.HSSetLogData.SignOffResult.Time",
-            line_no=3,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Privilege",
-            "Program:Unit221A.HSSetLogData.SignOffResult.Privilege",
-            line_no=4,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "SignOffResult",
-            "Program:Unit221A.HSSetLogData.SignOffResult.SignOffResult",
-            line_no=5,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Description",
-            "Program:Unit221A.HSSetLogData.Description",
-            line_no=6,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "Answer",
-            "Program:Unit221A.HSSetLogData.Answer",
-            line_no=7,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-        _entry(
-            "LogTag",
-            "Program:Unit221A.HSSetLogData.LogTag",
-            line_no=8,
-            unit="Unit221A",
-            journal="HSSignOffLog",
-            group="JournalData_Parameters",
-        ),
-    ]
-
-    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
-
-    assert report.valid_entries == 8
-    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
-
-
 def test_icf_report_formats_extra_entries_and_ordering_guidance():
-    lines = _format_drift_detail(
-        "current unit Unit221B (unit type ApplTank) differs from reference unit Unit221A: "
-        "extra 1 entries ([Group JournalData_DCStoMES] TagB => Program:StartMaster.<UNIT>.TagB); "
-        "entry ordering differs (first mismatch at position 2: expected TagA but found TagB)"
+    def _drift_entry(key: str, value: str) -> ICFDriftEntry:
+        return ICFDriftEntry(operation="", journal="", group="JournalData_DCStoMES", key=key, value=value)
+
+    drift = ICFUnitDrift(
+        current_unit="Unit221B",
+        unit_type="ApplTank",
+        reference_unit="Unit221A",
+        entry_changes=(
+            ICFDriftEntryChange(
+                kind="extra",
+                count=1,
+                entries=(_drift_entry("TagB", "Program:StartMaster.<UNIT>.TagB"),),
+            ),
+        ),
+        ordering=ICFDriftOrderingMismatch(
+            position=2,
+            expected=_drift_entry("TagA", "Program:StartMaster.<UNIT>.TagA"),
+            found=_drift_entry("TagB", "Program:StartMaster.<UNIT>.TagB"),
+        ),
     )
+
+    lines = _format_drift_detail(drift)
 
     assert "      compared units: Unit221B vs Unit221A (unit type ApplTank)" in lines
     assert "      - extra 1 entries" in lines
     assert "        action: remove these extra entries from current unit" in lines
     assert "      - entry ordering differs" in lines
     assert "        first mismatch position: 2" in lines
-    assert any(line.strip().startswith("expected: TagA") for line in lines)
-    assert any(line.strip().startswith("found: TagB") for line in lines)
+    assert any(line.strip().startswith("expected: [Group JournalData_DCStoMES] TagA =>") for line in lines)
+    assert any(line.strip().startswith("found: [Group JournalData_DCStoMES] TagB =>") for line in lines)
     assert "        action: reorder current unit entries to match reference unit order" in lines
 
 
-def test_icf_report_formats_unstructured_drift_parts_and_skips_empty_segments():
-    lines = _format_drift_detail("entry ordering differs (current order is unstable); ; trailing note for operators")
+def test_icf_report_renders_drift_from_structure_not_producer_wording():
+    entry = ICFEntry(file_path=Path("Program.icf"), line_no=4, section="Unit", key="TagA", value="1")
+    report = ICFValidationReport(
+        icf_file=Path("Program.icf"),
+        program_name="Program",
+        total_entries=1,
+        validated_entries=1,
+        valid_entries=0,
+        skipped_entries=0,
+        issues=[
+            ICFValidationIssue(
+                entry=entry,
+                reason="unit structure drift",
+                detail="producer wording that no longer matches the renderer's old patterns",
+                drift=ICFUnitDrift(
+                    current_unit="Unit221B",
+                    unit_type="ApplTank",
+                    reference_unit="Unit221A",
+                    entry_changes=(
+                        ICFDriftEntryChange(
+                            kind="missing",
+                            count=1,
+                            entries=(ICFDriftEntry(operation="", journal="", group="", key="TagA", value="1"),),
+                        ),
+                    ),
+                ),
+            )
+        ],
+    )
 
-    assert "        current order is unstable" in lines
-    assert "        action: reorder current unit entries to match reference unit order" in lines
-    assert "      - trailing note for operators" in lines
+    summary = report.summary()
+
+    assert "compared units: Unit221B vs Unit221A (unit type ApplTank)" in summary
+    assert "missing 1 entries" in summary
+    assert "producer wording" not in summary
+
+
+def test_icf_report_formats_a_structured_ordering_mismatch_only():
+    drift = ICFUnitDrift(
+        current_unit="Unit221B",
+        unit_type="family ApplTank",
+        reference_unit="Unit221A",
+        ordering=ICFDriftOrderingMismatch(
+            position=1,
+            expected=ICFDriftEntry(operation="", journal="", group="", key="TagA", value="1"),
+            found=ICFDriftEntry(operation="", journal="", group="", key="TagB", value="2"),
+        ),
+    )
+
+    lines = _format_drift_detail(drift)
+
+    assert "      - entry ordering differs" in lines
+    assert "        first mismatch position: 1" in lines
+    assert any(line.strip() == "expected: TagA => 1" for line in lines)
+    assert any(line.strip() == "found: TagB => 2" for line in lines)
 
 
 def test_icf_report_summary_uses_section_fallback_and_skipped_context_details():

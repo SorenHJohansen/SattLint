@@ -44,7 +44,7 @@ def summarize_targets(
 ) -> str:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
-        return "No analysis targets configured yet. Open Setup first."
+        return "No analysis targets configured yet. Open Configuration Settings first."
     if len(targets) == 1:
         return f"1 target configured: {targets[0]}"
     preview = ", ".join(targets[:3])

@@ -1,12 +1,25 @@
-from sattline_parser.models.expressions import Assignment
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    DataType,
+    Equation,
+    IntLiteral,
+    ModuleCode,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 
-from tests.helpers.analyzers_suites_support import *
-
-
-def test_opt_in_analyzer_is_not_in_default_cli_keys():
-    from sattlint.analyzers.registry import get_actual_cli_analyzer_keys  # noqa: PLC0415
-
-    assert "version-drift" not in get_actual_cli_analyzer_keys()
+from sattlint.analyzers.variable_usage_reporting import (
+    debug_variable_usage,
+    report_datatype_usage,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_variable_usage_datatype_report_returns_not_found_message():
@@ -16,8 +29,8 @@ def test_variable_usage_datatype_report_returns_not_found_message():
         moduletype_defs=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     report = report_datatype_usage(bp, "MissingValue")
@@ -31,8 +44,8 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
         description=None,
         datecode=None,
         var_list=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Target", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Target", datatype=ScalarDatatype.INTEGER),
         ],
     )
     bp = BasePicture(
@@ -43,36 +56,34 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
         submodules=[
             SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[
                     Variable(name="Dv", datatype="UsageRecord"),
                     Variable(name="Mirror", datatype="UsageRecord"),
-                    Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+                    Variable(name="Sink", datatype=ScalarDatatype.INTEGER),
                 ],
                 submodules=[],
-                modulecodes=[
-                    ModuleCode(
-                        equationblocks=[
-                            Equation(
-                                name="Usage",
-                                position=(0.0, 0.0),
-                                size=(1.0, 1.0),
-                                code=[
-                                    Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
-                                    Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
-                                    Assignment(target=_varref("Mirror"), value=_varref("Dv")),
-                                    Assignment(target=_varref("Dv"), value=_varref("Mirror")),
-                                ],
-                            )
-                        ]
-                    )
-                ],
+                modulecode=ModuleCode(
+                    equationblocks=[
+                        Equation(
+                            name="Usage",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[
+                                Assignment(target=_varref("Sink"), value=_varref("Dv.Source")),
+                                Assignment(target=_varref("Dv.Target"), value=IntLiteral(1)),
+                                Assignment(target=_varref("Mirror"), value=_varref("Dv")),
+                                Assignment(target=_varref("Dv"), value=_varref("Mirror")),
+                            ],
+                        )
+                    ]
+                ),
                 parametermappings=[],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     datatype_report = report_datatype_usage(bp, "Dv")

@@ -23,10 +23,26 @@ from ..semantic_diff import ChangeChange
 _RELEVANT_DEFINITION_ROLES = {"read", "produced", "dependency"}
 
 
+def _longest_backtick_run(source: str) -> int:
+    """Length of the longest run of backticks anywhere in ``source``."""
+    longest = 0
+    current = 0
+    for char in source:
+        if char == "`":
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
 def _code_block(source: str | None) -> str:
     if source is None:
         return "_(no source selected)_"
-    return "\n```\n" + source.rstrip("\n") + "\n```\n"
+    # A fence longer than any run in the source cannot be closed by the source
+    # itself, so a ``# heading`` line stays inside the block.
+    fence = "`" * max(3, _longest_backtick_run(source) + 1)
+    return f"\n{fence}\n" + source.rstrip("\n") + f"\n{fence}\n"
 
 
 def _kind_label(kind: str) -> str:
@@ -66,6 +82,8 @@ def _render_summary(review: ChangeReview) -> list[str]:
 def _render_direct_context(change: ChangeChange) -> list[str]:
     context = change.semantic_context
     if context is None:
+        return []
+    if not context.sequence_name and not context.reads and not context.produces and not context.callees:
         return []
     lines: list[str] = ["#### Direct semantic context", ""]
     if context.sequence_name:
@@ -188,10 +206,8 @@ def _render_definition_sources(fact: SymbolFact) -> list[str]:
         lines.extend(["**Draft:**", "", _code_block(draft)])
     elif official:
         lines.extend(["**Official:**", "", _code_block(official)])
-    elif draft:
-        lines.extend(["**Draft:**", "", _code_block(draft)])
     else:
-        lines.extend([_code_block(official)])
+        lines.extend(["**Draft:**", "", _code_block(draft)])
     return lines
 
 

@@ -14,7 +14,12 @@ from sattlint.parser_api import (
 )
 
 from ...config.analysis import unsafe_default_tokens
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
+    DeclarationRole,
+)
+from ...reporting.variables_report import UnsafeBooleanDefaultIssue
 from ...utils.casefolding import casefold_equal, casefold_key
 from ..shared._walk_utils import iter_nested_modules
 
@@ -26,6 +31,32 @@ _UNSAFE_DEFAULT_REASONS: dict[str, str] = {
 }
 _DEFAULT_UNSAFE_DEFAULT_REASON = "which starts enabled at startup"
 
+# ``Enable`` alone is too broad: flags that enable an alarm, a message, or a
+# display are safe to default True and activating them is not an equipment
+# hazard. Only an enable flag whose target is not one of these is treated as
+# potentially starting equipment or logic.
+_SAFE_ENABLE_TARGETS = frozenset(
+    {
+        "alarm",
+        "display",
+        "history",
+        "info",
+        "journal",
+        "log",
+        "logging",
+        "message",
+        "msg",
+        "monitor",
+        "monitoring",
+        "statistic",
+        "statistics",
+        "status",
+        "text",
+        "trend",
+        "warning",
+    }
+)
+
 
 def collect_unsafe_default_issues(self: Any) -> None:
     """Append ``IssueKind.UNSAFE_BOOLEAN_DEFAULT`` issues for unsafe True defaults."""
@@ -35,7 +66,7 @@ def collect_unsafe_default_issues(self: Any) -> None:
     tokens = unsafe_default_tokens(getattr(self, "_config", None))
     bp = cast(BasePicture, self.bp)
     root_path = [bp.header.name]
-    _check_unsafe_defaults(self, root_path, bp.localvariables, tokens)
+    _check_unsafe_defaults(self, root_path, bp.localvariables, tokens, declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE)
     _walk_nested_modules(self, bp.submodules or [], root_path, tokens)
 
     for moduletype in bp.moduletype_defs or []:
@@ -45,8 +76,12 @@ def collect_unsafe_default_issues(self: Any) -> None:
         ):
             continue
         typedef_path = [*root_path, f"TypeDef:{moduletype.name}"]
-        _check_unsafe_defaults(self, typedef_path, moduletype.moduleparameters, tokens)
-        _check_unsafe_defaults(self, typedef_path, moduletype.localvariables, tokens)
+        _check_unsafe_defaults(
+            self, typedef_path, moduletype.moduleparameters, tokens, declaration_role=DECLARATION_ROLE_MODULE_PARAMETER
+        )
+        _check_unsafe_defaults(
+            self, typedef_path, moduletype.localvariables, tokens, declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE
+        )
         _walk_nested_modules(self, moduletype.submodules or [], typedef_path, tokens)
 
 
@@ -59,8 +94,12 @@ def _walk_nested_modules(
     for child, child_path in iter_nested_modules(children, parent_path=parent_path):
         if not isinstance(child, SingleModule):
             continue
-        _check_unsafe_defaults(self, child_path, child.moduleparameters, tokens)
-        _check_unsafe_defaults(self, child_path, child.localvariables, tokens)
+        _check_unsafe_defaults(
+            self, child_path, child.moduleparameters, tokens, declaration_role=DECLARATION_ROLE_MODULE_PARAMETER
+        )
+        _check_unsafe_defaults(
+            self, child_path, child.localvariables, tokens, declaration_role=DECLARATION_ROLE_LOCAL_VARIABLE
+        )
 
 
 def _check_unsafe_defaults(
@@ -68,16 +107,18 @@ def _check_unsafe_defaults(
     module_path: list[str],
     variables: list[Variable] | None,
     tokens: tuple[str, ...],
+    *,
+    declaration_role: DeclarationRole,
 ) -> None:
     for variable in variables or []:
         reason = _unsafe_default_reason(variable, tokens)
         if reason is None:
             continue
-        issue = VariableIssue(
-            kind=IssueKind.UNSAFE_BOOLEAN_DEFAULT,
+        issue = UnsafeBooleanDefaultIssue(
             module_path=module_path.copy(),
             variable=variable,
             role=f"defaults to True, {reason}",
+            declaration_role=declaration_role,
             site=".".join(module_path),
             context=f"{variable.name} = TRUE",
         )
@@ -93,8 +134,11 @@ def _unsafe_default_reason(variable: Variable, tokens: tuple[str, ...]) -> str |
     variable_tokens = _identifier_tokens(variable.name)
     for token in tokens:
         normalized_token = casefold_key(token)
-        if normalized_token in variable_tokens:
-            return _UNSAFE_DEFAULT_REASONS.get(normalized_token, _DEFAULT_UNSAFE_DEFAULT_REASON)
+        if normalized_token not in variable_tokens:
+            continue
+        if normalized_token == "enable" and _SAFE_ENABLE_TARGETS.intersection(variable_tokens):
+            continue
+        return _UNSAFE_DEFAULT_REASONS.get(normalized_token, _DEFAULT_UNSAFE_DEFAULT_REASON)
     return None
 
 

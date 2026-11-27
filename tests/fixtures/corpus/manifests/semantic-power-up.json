@@ -1,10 +1,10 @@
 {
     "case_id": "semantic-power-up",
-    "target_file": "../semantic/analyzer/TestStringsInPictureDisplay.s",
+    "target_file": "../semantic/analyzer/UnsafeDefaults.s",
     "mode": "analyzer-variables",
     "expectation": {
         "expected_finding_ids": [
-            "semantic.unsafe-default-true"
+            "unsafe_boolean_default"
         ],
         "artifact_fragments": {
             "status.json": {
@@ -14,8 +14,12 @@
             },
             "summary.json": {
                 "analyzer_key": "variables",
+                "finding_count": 6,
                 "rule_counts": {
-                    "semantic.unsafe-default-true": 2
+                    "magic_number": 1,
+                    "never_read": 1,
+                    "unsafe_boolean_default": 2,
+                    "unused": 2
                 }
             }
         },

@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from sattlint.parser_api import (
     BasePicture,
+    DataType,
     ModuleHeader,
     ModuleTypeDef,
-    Simple_DataType,
+    ScalarDatatype,
     SourceSpan,
     Variable,
 )
 
 from ..models._variable_issues import VariableIssue
-from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
+from ..models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments, program_identity
 from ..resolution import (
     CanonicalPath,
     CanonicalSymbolTable,
@@ -24,9 +25,11 @@ from ..resolution import (
     SymbolKind,
     TypeGraph,
     decorate_segment,
+    resolve_record,
 )
 from ..resolution.scope import ScopeContext
 from ._semantic_helpers import (
+    SourceFileKey,
     cf,
     format_datatype,
     resolve_field_datatype,
@@ -50,7 +53,7 @@ class SemanticIndex:
     definitions: tuple[SymbolDefinition, ...]
     definitions_by_key: dict[tuple[str, ...], SymbolDefinition]
     moduletype_index: dict[str, list[ModuleTypeDef]]
-    references_by_file: dict[str, tuple[ReferenceOccurrence, ...]]
+    references_by_source: dict[SourceFileKey, tuple[ReferenceOccurrence, ...]]
     references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]]
     call_signatures: tuple[CallSignatureOccurrence, ...]
 
@@ -64,13 +67,15 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         unavailable_libraries: set[str] | None = None,
         include_dependency_modules: bool = True,
         graphics_attachments: GraphicsAttachments | None = None,
+        build_reference_index: bool = True,
     ):
         self.base_picture = base_picture
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.root_origin_file = root_origin_file if root_origin_file is not None else base_picture.origin_file
         self.root_origin_library = root_origin_library if root_origin_library is not None else base_picture.origin_lib
         self.include_dependency_modules = include_dependency_modules
-        self.type_graph = TypeGraph.from_basepicture(base_picture)
+        self.build_reference_index = build_reference_index
+        self.type_graph = TypeGraph.from_basepicture(base_picture, root_library=root_origin_library)
         self.symbol_table = CanonicalSymbolTable()
         self.unavailable_libraries = unavailable_libraries or set()
         self._issues: list[VariableIssue] = []
@@ -78,16 +83,25 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             v.name.casefold(): v for v in (*(base_picture.moduleparameters or []), *(base_picture.localvariables or []))
         }
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
-        self._definitions_in_order: list[SymbolDefinition] = []
-        self._references_by_file: dict[str, list[ReferenceOccurrence]] = {}
+        self._references_by_source: dict[SourceFileKey, list[ReferenceOccurrence]] = {}
         self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
         self._call_signatures: list[CallSignatureOccurrence] = []
         self._moduletype_index: dict[str, list[ModuleTypeDef]] = {}
         self._datatype_field_definitions = self._build_datatype_field_definitions()
         for moduletype in base_picture.moduletype_defs or []:
             self._moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+        self._known_typedef_ids = {
+            id(moduletype) for moduletypes in self._moduletype_index.values() for moduletype in moduletypes
+        }
+        # Resolution derives the root module path from ``header.name``, which is
+        # the literal keyword for a loaded program. Give it a root view named by
+        # the program's identity so reference keys match definition keys.
+        root_picture = base_picture
+        identity = program_identity(base_picture)
+        if base_picture.header.name != identity:
+            root_picture = replace(base_picture, header=replace(base_picture.header, name=identity))
         self.context_builder = ContextBuilder(
-            base_picture=base_picture,
+            base_picture=root_picture,
             symbol_table=self.symbol_table,
             type_graph=self.type_graph,
             issues=self._issues,
@@ -109,8 +123,11 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self,
     ) -> SemanticIndex:
         root_context = self.context_builder.build_for_basepicture()
-        root_module_path = (self.base_picture.header.name,)
-        root_display_path = (decorate_segment(self.base_picture.header.name, "BP"),)
+        # ``header.name`` holds the ``BasePicture`` keyword for a loaded
+        # program, so the path root must use the program's identity instead.
+        root_name = program_identity(self.base_picture)
+        root_module_path = (root_name,)
+        root_display_path = (decorate_segment(root_name, "BP"),)
         self._record_variables(
             self.base_picture.moduleparameters or [],
             module_path=root_module_path,
@@ -135,7 +152,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         )
         self._record_call_signatures(
             self.base_picture.moduledef,
-            module_path=(self.base_picture.header.name,),
+            module_path=root_module_path,
             source_file=self.root_origin_file,
             source_library=self.root_origin_library,
         )
@@ -147,7 +164,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         )
         self._record_call_signatures(
             self.base_picture.modulecode,
-            module_path=(self.base_picture.header.name,),
+            module_path=root_module_path,
             source_file=self.root_origin_file,
             source_library=self.root_origin_library,
         )
@@ -159,18 +176,20 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         self._walk_submodules(
             self.base_picture.submodules or [],
             parent_context=root_context,
-            module_path=(self.base_picture.header.name,),
-            display_module_path=(decorate_segment(self.base_picture.header.name, "BP"),),
+            module_path=root_module_path,
+            display_module_path=root_display_path,
             current_origin_file=self.root_origin_file,
             current_origin_library=self.root_origin_library,
         )
         return SemanticIndex(
             symbol_table=self.symbol_table,
             type_graph=self.type_graph,
-            definitions=tuple(self._definitions_in_order),
+            # Derive the ordered list from the keyed map so the two views can
+            # never disagree about which definition owns a canonical path.
+            definitions=tuple(self._definitions_by_key.values()),
             definitions_by_key=self._definitions_by_key,
             moduletype_index=self._moduletype_index,
-            references_by_file={key: tuple(value) for key, value in self._references_by_file.items()},
+            references_by_source={key: tuple(value) for key, value in self._references_by_source.items()},
             references_by_definition_key={
                 key: tuple(value) for key, value in self._references_by_definition_key.items()
             },
@@ -179,49 +198,97 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
 
     def _build_datatype_field_definitions(
         self,
-    ) -> dict[tuple[str, tuple[str, ...]], tuple[Variable, str | None, str | None]]:
-        datatype_index = {dt.name.casefold(): dt for dt in (self.base_picture.datatype_defs or [])}
-        results: dict[tuple[str, tuple[str, ...]], tuple[Variable, str | None, str | None]] = {}
+    ) -> dict[tuple[str, str, tuple[str, ...]], tuple[Variable, str | None, str | None]]:
+        """Index nested field definitions per declaring library.
+
+        Two libraries may each declare a record with the same name and a
+        different field layout, so the root type name alone cannot identify a
+        definition. Keys carry the library of the record that declares the root
+        type.
+        """
+        datatypes_by_key: dict[tuple[str, str], DataType] = {}
+        for datatype in self.base_picture.datatype_defs or []:
+            key = (cf(datatype.origin_lib or ""), datatype.name.casefold())
+            datatypes_by_key[key] = datatype
+
+        def resolve_datatype(type_name: str, library: str | None) -> DataType | None:
+            """Resolve through the type graph so identity matches every other consumer."""
+            record = resolve_record(self.type_graph, type_name, library=library)
+            if record is None:
+                return None
+            return datatypes_by_key.get(((record.library or "").casefold(), type_name.casefold()))
+
+        results: dict[tuple[str, str, tuple[str, ...]], tuple[Variable, str | None, str | None]] = {}
 
         def walk(
             root_type_name: str,
+            root_library: str | None,
             current_type_name: str,
+            current_library: str | None,
             prefix: tuple[str, ...],
-            active_types: set[str],
+            active_types: frozenset[tuple[str, str]],
         ) -> None:
-            current_key = current_type_name.casefold()
-            if current_key in active_types:
-                return
-            datatype = datatype_index.get(current_key)
+            datatype = resolve_datatype(current_type_name, current_library)
             if datatype is None:
                 return
+            type_key = ((datatype.origin_lib or "").casefold(), current_type_name.casefold())
+            if type_key in active_types:
+                return
 
-            next_active = set(active_types)
-            next_active.add(current_key)
+            next_active = active_types | {type_key}
             for variable_field in datatype.var_list or []:
                 path = (*prefix, variable_field.name)
-                results[(root_type_name.casefold(), tuple(cf(segment) for segment in path))] = (
+                results[
+                    ((root_library or "").casefold(), root_type_name.casefold(), tuple(cf(segment) for segment in path))
+                ] = (
                     variable_field,
                     datatype.origin_file,
                     datatype.origin_lib,
                 )
-                if not isinstance(variable_field.datatype, Simple_DataType):
-                    walk(root_type_name, str(variable_field.datatype), path, next_active)
+                if not isinstance(variable_field.datatype, ScalarDatatype):
+                    walk(
+                        root_type_name,
+                        root_library,
+                        str(variable_field.datatype),
+                        datatype.origin_lib or current_library,
+                        path,
+                        next_active,
+                    )
 
         for datatype in self.base_picture.datatype_defs or []:
-            walk(datatype.name, datatype.name, (), set())
+            walk(
+                datatype.name,
+                datatype.origin_lib,
+                datatype.name,
+                datatype.origin_lib,
+                (),
+                frozenset(),
+            )
         return results
 
     def _lookup_field_definition(
         self,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_path: tuple[str, ...],
+        *,
+        library: str | None = None,
     ) -> tuple[Variable, str | None, str | None] | None:
-        if isinstance(root_type, Simple_DataType):
+        """Return the declaration of one nested field, preferring the record's library.
+
+        ``library`` is the library whose code uses the variable. The record's
+        own declaring library wins once it is resolved, so a dependency record
+        still reports the file and library that declare the field.
+        """
+        if isinstance(root_type, ScalarDatatype):
             return None
-        return self._datatype_field_definitions.get(
-            (root_type.casefold(), tuple(cf(segment) for segment in field_path))
-        )
+        path_key = tuple(cf(segment) for segment in field_path)
+        record = resolve_record(self.type_graph, root_type, library=library)
+        if record is not None:
+            key = ((record.library or "").casefold(), root_type.casefold(), path_key)
+            definition = self._datatype_field_definitions.get(key)
+            if definition is not None:
+                return definition
+        return self._datatype_field_definitions.get(((library or "").casefold(), root_type.casefold(), path_key))
 
     def _record_graphics_attachments(self, context: ScopeContext) -> None:
         """Index references and calls inside graphics bindings.
@@ -232,7 +299,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         recorded source location intact.
         """
         source_file = self.graphics_attachments.file_name
-        module_path = (self.base_picture.header.name,)
+        module_path = (program_identity(self.base_picture),)
         for binding in self.graphics_attachments.bindings:
             value = binding.value
             if value is None:
@@ -326,20 +393,37 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
                 modifiers=self._variable_modifiers(variable),
             )
 
-            for field_segments in self.type_graph.iter_leaf_field_paths(variable.datatype):
+            for field_segments in self.type_graph.iter_leaf_field_paths(
+                variable.datatype,
+                library=origin_library,
+            ):
                 if not field_segments:
                     continue
-                field_definition = self._lookup_field_definition(variable.datatype, field_segments)
+                field_definition = self._lookup_field_definition(
+                    variable.datatype,
+                    field_segments,
+                    library=origin_library,
+                )
+                field_variable = field_definition[0] if field_definition else None
                 self._record_definition(
                     canonical_path=root_path.join(*field_segments),
                     kind="field",
-                    datatype=resolve_field_datatype(self.type_graph, variable.datatype, field_segments),
+                    datatype=resolve_field_datatype(
+                        self.type_graph,
+                        variable.datatype,
+                        field_segments,
+                        library=origin_library,
+                    ),
                     module_path=module_path,
                     display_module_path=display_module_path,
                     field_path=".".join(field_segments),
                     origin_file=field_definition[1] if field_definition else origin_file,
                     origin_library=field_definition[2] if field_definition else origin_library,
-                    declaration_span=field_definition[0].declaration_span if field_definition else None,
+                    declaration_span=field_variable.declaration_span if field_variable is not None else None,
+                    initializer=self._initializer_text(field_variable.init_value)
+                    if field_variable is not None
+                    else None,
+                    modifiers=self._variable_modifiers(field_variable) if field_variable is not None else (),
                 )
 
     def _record_definition(
@@ -347,7 +431,7 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
         *,
         canonical_path: CanonicalPath,
         kind: str,
-        datatype: Simple_DataType | str | None,
+        datatype: ScalarDatatype | str | None,
         module_path: tuple[str, ...],
         display_module_path: tuple[str, ...],
         field_path: str | None,
@@ -371,7 +455,6 @@ class _SemanticIndexBuilder(SemanticIndexReferenceSupportMixin):
             modifiers=modifiers,
         )
         self._definitions_by_key[canonical_path.key()] = definition
-        self._definitions_in_order.append(definition)
 
 
 SemanticIndexBuilder = _SemanticIndexBuilder

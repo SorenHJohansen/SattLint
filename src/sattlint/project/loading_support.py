@@ -1,31 +1,26 @@
 # pyright: reportUnusedFunction=false
 from __future__ import annotations
 
-import inspect
 import logging
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
+from collections import defaultdict
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, cast
 
 from lark.exceptions import VisitError
 
-from sattlint.parser_api import BasePicture
+from sattlint.parser_api import BasePicture, ProjectLoadError
 
 from ..config.types import ConfigDict
-from ..core import profiling as profiling_module
-from ..core.debug import debug_enabled, log_debug_exception
+from ..core.debug import debug_enabled
 from ..core.syntax import CodeMode, deps_ext_candidates, normalize_code_mode
 from ..models.project_graph import ProjectFailure, ProjectGraph
-from ..validation.shared import ValidationNotice, ValidationWarning, coerce_validation_notice
+from ..models.project_graph_warnings import record_project_warning as record_project_warning
+from ..utils.casefolding import unit_key
+from .support import LOAD_FAILURE_MARKER, PARSE_FAILURE_MARKER
 
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index")
 log = logging.getLogger("SattLint")
-
-
-def _safe_count(value: object) -> int:
-    if isinstance(value, Sized):
-        return len(value)
-    return 0
 
 
 def _format_named_timings(label: str, timings: Mapping[str, float]) -> str:
@@ -62,21 +57,17 @@ def _emit_debug_load_summary(
         return
 
     emit_output_fn(
-        f"DEBUG load summary for {target_name}: source_files={_safe_count(getattr(graph, 'source_files', None))}, "
-        f"warnings={_safe_count(getattr(graph, 'warnings', None))}, "
-        f"missing={_safe_count(getattr(graph, 'missing', None))}, "
-        f"unavailable_libraries={_safe_count(getattr(graph, 'unavailable_libraries', None))}"
+        f"DEBUG load summary for {target_name}: source_files={len(graph.source_files)}, "
+        f"warnings={len(graph.warnings)}, "
+        f"missing={len(graph.missing)}, "
+        f"unavailable_libraries={len(graph.unavailable_libraries)}"
     )
 
-    stage_timings = getattr(graph, "load_stage_timings", None)
-    if isinstance(stage_timings, Mapping) and stage_timings:
-        emit_output_fn(
-            _format_refresh_stage_timings(dict(cast(Mapping[str, float], stage_timings)), refresh_mode="full")
-        )
+    if graph.load_stage_timings:
+        emit_output_fn(_format_refresh_stage_timings(dict(graph.load_stage_timings), refresh_mode="full"))
 
-    graphics_timings = getattr(graph, "graphics_load_timings", None)
-    if isinstance(graphics_timings, Mapping) and graphics_timings:
-        emit_output_fn(_format_named_timings("Graphics load phase totals", cast(Mapping[str, float], graphics_timings)))
+    if graph.graphics_load_timings:
+        emit_output_fn(_format_named_timings("Graphics load phase totals", dict(graph.graphics_load_timings)))
 
 
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
@@ -84,13 +75,26 @@ def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, mani
     graph.analysis_manifest_files = frozenset(manifest_files)
 
 
-def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
+def _workspace_dependency_suffixes(mode: CodeMode | str | None) -> tuple[str, ...]:
+    """Dependency-sidecar extensions in preference order.
+
+    Draft prefers ``.l`` and falls back to ``.z``; official uses ``.z``. The
+    fallback matters because a program can exist only in one body family (an
+    official ``.x``/``.z`` program inside a draft project), and skipping its
+    dependency list would hide the uses it contributes.
+    """
     resolved_mode = normalize_code_mode(mode) or CodeMode.OFFICIAL
     return deps_ext_candidates(resolved_mode)
 
 
 def _collect_analysis_timings(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False)) or profiling_module.create_profiler().enabled
+    """Always collect load timings for a saved run.
+
+    The sinks only add a couple of ``perf_counter`` calls per loaded program,
+    and a run that cannot attribute its time is hard to act on. Cache hits
+    clear the report anyway, so a warm load simply records no stage timings.
+    """
+    return True
 
 
 def _with_status_line(
@@ -102,34 +106,29 @@ def _with_status_line(
         return run_fn(cast(Callable[[str], None], status_update_fn))
 
 
-def _call_load_project_compat(
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    cfg: ConfigDict,
-    *,
-    target_name: str,
-    **kwargs: object,
-) -> tuple[BasePicture, ProjectGraph]:
-    try:
-        signature = inspect.signature(load_project_fn)
-    except (TypeError, ValueError):
-        return load_project_fn(cfg, target_name=target_name, **kwargs)
-
-    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
-    if accepts_kwargs:
-        return load_project_fn(cfg, target_name=target_name, **kwargs)
-
-    supported_kwargs = {name: value for name, value in kwargs.items() if name in signature.parameters}
-    return load_project_fn(cfg, target_name=target_name, **supported_kwargs)
-
-
 def _iter_workspace_reverse_library_consumer_dependency_files(
     cfg: ConfigDict,
 ) -> Iterator[tuple[str, Path]]:
-    seen_targets: set[str] = set()
-    base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
-    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "official")))
+    raw_program_dir = cfg.get("program_dir")
+    raw_other_lib_dirs = cfg.get("other_lib_dirs")
+    raw_abb_lib_dir = cfg.get("ABB_lib_dir")
+    if not raw_program_dir:
+        return
+    other_lib_dirs = raw_other_lib_dirs or []
+    base_dirs = [
+        Path(str(raw_program_dir)),
+        *(Path(str(path)) for path in other_lib_dirs),
+        # A library can sit in the vendor root and still import the analyzed
+        # target; the workspace-wide scan sees those consumers only when that
+        # root is part of the search.
+        *([Path(str(raw_abb_lib_dir))] if raw_abb_lib_dir else []),
+    ]
+    suffixes = _workspace_dependency_suffixes(cfg.get("mode", "official"))
 
-    for base_dir in base_dirs:
+    # One sidecar per program: the most preferred suffix wins, and a program
+    # whose preferred sidecar is absent still contributes through the fallback.
+    chosen: dict[str, tuple[tuple[int, int], Path]] = {}
+    for directory_rank, base_dir in enumerate(base_dirs):
         if not base_dir.exists() or not base_dir.is_dir():
             continue
         try:
@@ -139,16 +138,18 @@ def _iter_workspace_reverse_library_consumer_dependency_files(
         except OSError:
             continue
 
-        for suffix in suffixes:
-            for deps_path in files:
-                if deps_path.suffix.casefold() != suffix:
-                    continue
-                target_name = deps_path.stem
-                target_key = target_name.casefold()
-                if target_key in seen_targets:
-                    continue
-                seen_targets.add(target_key)
-                yield target_name, deps_path
+        for deps_path in files:
+            suffix = deps_path.suffix.casefold()
+            if suffix not in suffixes:
+                continue
+            rank = (suffixes.index(suffix), directory_rank)
+            target_key = unit_key(deps_path.stem)
+            current = chosen.get(target_key)
+            if current is None or rank < current[0]:
+                chosen[target_key] = (rank, deps_path)
+
+    for _rank, deps_path in chosen.values():
+        yield deps_path.stem, deps_path
 
 
 def _include_reverse_library_consumers(
@@ -157,95 +158,73 @@ def _include_reverse_library_consumers(
     selected_target: str,
     root_bp: BasePicture,
     graph: ProjectGraph,
-    find_dependency_path_fn: Callable[[str, Path | None], Path | None],
+    find_dependency_path_fn: Callable[[str], Path | None],
     read_dependency_names_fn: Callable[[Path | None], list[str]],
     visit_targets_fn: Callable[[list[tuple[str, Path | None]]], None],
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    is_within_directory_fn: Callable[[Path, Path], bool],
-    target_is_library_fn: Callable[..., bool],
-    source_paths_for_current_target_fn: Callable[[BasePicture, ProjectGraph], set[Path]],
 ) -> None:
-    if not target_is_library_fn(
-        cfg,
-        root_bp,
-        graph,
-        source_paths_for_current_target_fn=source_paths_for_current_target_fn,
-        is_within_directory_fn=is_within_directory_fn,
-    ):
-        return
+    # A dependant that references the selected target is a real use whether the
+    # target is called a program or a library. The old program/library gate
+    # depended on where the file lived (``program_dir``), so a library stored
+    # beside its programs had no consumers loaded and its types looked unused.
+    del root_bp
+    selected_key = unit_key(selected_target)
+    # unit key -> (directory that holds its sidecar, configured spelling, dependencies)
+    candidates: dict[str, tuple[Path, str, set[str]]] = {}
 
-    selected_key = selected_target.casefold()
-    requester_dir = Path(cfg["program_dir"])
-    queued_targets: set[tuple[str, str]] = set()
-    pending_targets: list[tuple[str, Path | None]] = []
-
-    def _queue_reverse_consumer(target_name: str, deps_path: Path | None) -> None:
-        if deps_path is None or target_name.casefold() == selected_key:
+    def _remember(target_name: str, deps_path: Path | None, dependencies: list[str]) -> None:
+        if deps_path is None:
             return
-
-        queue_key = (target_name.casefold(), str(deps_path.parent).casefold())
-        if queue_key in queued_targets:
+        key = unit_key(target_name)
+        if key == selected_key:
             return
-        queued_targets.add(queue_key)
-        pending_targets.append((target_name, deps_path.parent))
+        entry: tuple[Path, str, set[str]] | None = candidates.get(key)
+        if entry is None:
+            entry = (deps_path.parent, target_name, set())
+            candidates[key] = entry
+        entry[2].update(unit_key(dependency) for dependency in dependencies if dependency)
 
     for candidate in require_analyzed_targets_fn(cfg):
-        if candidate.casefold() == selected_key:
-            continue
-
-        deps_path = find_dependency_path_fn(candidate, requester_dir)
-        candidate_dependencies = read_dependency_names_fn(deps_path)
-        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
-            continue
-
-        _queue_reverse_consumer(candidate, deps_path)
+        deps_path = find_dependency_path_fn(candidate)
+        _remember(candidate, deps_path, read_dependency_names_fn(deps_path))
 
     for candidate, deps_path in _iter_workspace_reverse_library_consumer_dependency_files(cfg):
-        if candidate.casefold() == selected_key:
-            continue
+        _remember(candidate, deps_path, read_dependency_names_fn(deps_path))
 
-        candidate_dependencies = read_dependency_names_fn(deps_path)
-        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
-            continue
+    consumers_of: dict[str, set[str]] = defaultdict(set)
+    for entry_key, (_directory, _name, dependencies) in candidates.items():
+        for dependency in dependencies:
+            if dependency != entry_key:
+                consumers_of[dependency].add(entry_key)
 
-        _queue_reverse_consumer(candidate, deps_path)
+    # A consumer is anything that imports the selected target, directly or
+    # through another unit. Transitivity matters because a module type used
+    # inside a module type that a consumer imports is still a use, and that
+    # imported unit only enters the graph through the consumer's own consumers.
+    ordered_consumers: list[str] = []
+    seen = {selected_key}
+    pending_keys = [selected_key]
+    while pending_keys:
+        current = pending_keys.pop(0)
+        for consumer in sorted(consumers_of.get(current, ())):
+            if consumer in seen:
+                continue
+            seen.add(consumer)
+            ordered_consumers.append(consumer)
+            pending_keys.append(consumer)
 
     # Load and convert every reverse consumer in one batched parser load so
     # their shared dependency closure is parsed once instead of once per
     # consumer; each consumer is still validated as its own root target.
+    pending_targets: list[tuple[str, Path | None]] = [
+        (candidates[key][1], candidates[key][0]) for key in ordered_consumers
+    ]
     if pending_targets:
         visit_targets_fn(pending_targets)
 
 
-def iter_loaded_projects(
-    cfg: ConfigDict,
-    *,
-    use_cache: bool,
-    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
-    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
-    emit_output_fn: Callable[..., None],
-) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-    for target_name in require_analyzed_targets_fn(cfg):
-        try:
-            project_bp, graph = _call_load_project_compat(
-                load_project_fn,
-                cfg,
-                target_name=target_name,
-                use_cache=use_cache,
-                collect_stage_timings=_collect_analysis_timings(cfg),
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
-            emit_output_fn(f"\n=== Target: {target_name} ===")
-            emit_output_fn("? Failed to load target:")
-            emit_output_fn(exc)
-            continue
-        _emit_debug_load_summary(cfg, target_name=target_name, graph=graph, emit_output_fn=emit_output_fn)
-        yield target_name, project_bp, graph
-
-
 def record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
-    message = f"{name} parse/transform error: {exception}"
+    message = f"{name}{PARSE_FAILURE_MARKER}{exception}"
     line = getattr(exception, "line", None)
     column = getattr(exception, "column", None)
     length = getattr(exception, "length", None)
@@ -254,21 +233,28 @@ def record_project_failure(graph: ProjectGraph, name: str, exception: Exception)
         column = column if column is not None else getattr(exception.orig_exc, "column", None)
         length = length if length is not None else getattr(exception.orig_exc, "length", None)
     graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(
+    graph.failures[unit_key(name)] = ProjectFailure(
         name=name,
         message=message,
+        detail=str(exception),
         line=line,
         column=column,
         length=length,
     )
 
 
-def record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
-    notice = coerce_validation_notice(message)
-    graph.warnings.append(f"{name}: {notice.message}")
-    warning_notices = getattr(graph, "warning_notices", None)
-    if isinstance(warning_notices, list):
-        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
+def record_project_load_failure(graph: ProjectGraph, name: str, error: ProjectLoadError) -> None:
+    """Record a target the parser could not load at all.
+
+    The error already names the failing program, its message, and the
+    dependency edge it was reached through, so the entry keeps that detail
+    instead of relabelling it as a parse or transform failure. There is no
+    source position to attach: the failure happened before a program AST
+    existed.
+    """
+    message = f"{name}{LOAD_FAILURE_MARKER}{error}"
+    graph.missing.append(message)
+    graph.failures[unit_key(name)] = ProjectFailure(name=name, message=message, detail=str(error))
 
 
 def format_debug_list(title: str, entries: Iterable[str]) -> str:
@@ -278,20 +264,4 @@ def format_debug_list(title: str, entries: Iterable[str]) -> str:
 
     lines = [f"{title} ({len(items)}):"]
     lines.extend(f"  - {item}" for item in items)
-    return "\n".join(lines)
-
-
-def format_debug_missing_entries(entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return "Missing/failed: none"
-
-    lines = [f"Missing/failed ({len(items)}):"]
-    for item in items:
-        library_name, separator, detail = item.partition(" parse/transform error: ")
-        if separator:
-            lines.append(f"  - {library_name}")
-            lines.append(f"    parse/transform error: {detail}")
-            continue
-        lines.append(f"  - {item}")
     return "\n".join(lines)

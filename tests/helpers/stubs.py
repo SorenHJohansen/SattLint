@@ -1,4 +1,3 @@
-# pyright: reportAssignmentType=false
 """Typed test stubs for reusable dynamic helpers.
 
 Prefer these helpers over ad hoc ``SimpleNamespace`` or inline lambda doubles
@@ -12,7 +11,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypedDict
+
+from sattlint.utils.casefolding import unit_key
 
 
 def _string_list() -> list[str]:
@@ -43,14 +43,6 @@ def _nested_float_dict() -> dict[str, dict[str, float]]:
     return {}
 
 
-class RealContext(TypedDict):
-    cfg: dict[str, Any]
-    var_name: str
-    module_path: str
-    module_var: str
-    module_name: str
-
-
 @dataclass(slots=True)
 class NamedHeader:
     name: str
@@ -73,10 +65,14 @@ class RootOriginStub:
         return None if self.source_path is None else self.source_path.name
 
 
+def _root_origin_dict() -> dict[str, RootOriginStub]:
+    return {}
+
+
 @dataclass(slots=True)
 class AnalysisGraphStub:
     ast_by_name: dict[str, object] = field(default_factory=_object_dict)
-    root_origins: dict[str, RootOriginStub] = field(default_factory=_object_dict)
+    root_origins: dict[str, RootOriginStub] = field(default_factory=_root_origin_dict)
     missing: list[str] = field(default_factory=_string_list)
     unavailable_libraries: set[str] = field(default_factory=_string_set)
     warnings: list[str] = field(default_factory=_string_list)
@@ -95,10 +91,10 @@ class AnalysisGraphStub:
         source_path: Path | None = None,
         library_name: str | None = None,
     ) -> None:
-        self.root_origins[name.casefold()] = RootOriginStub(source_path=source_path, library_name=library_name)
+        self.root_origins[unit_key(name)] = RootOriginStub(source_path=source_path, library_name=library_name)
 
     def root_origin_for_name(self, name: str) -> RootOriginStub | None:
-        return self.root_origins.get(name.casefold())
+        return self.root_origins.get(unit_key(name))
 
     def root_origin_for_basepicture(self, bp: object) -> RootOriginStub | None:
         header = getattr(bp, "header", None)
@@ -178,7 +174,6 @@ __all__ = [
     "NamedObject",
     "NoOpWriter",
     "NullWriter",
-    "RealContext",
     "RecordingWriter",
     "make_input",
     "named_object",

@@ -15,6 +15,22 @@ SattLint is a Python toolkit for SattLine projects. It provides configurable sta
 
 ---
 
+## Documentation
+
+The full documentation set lives in [docs/README.md](docs/README.md). Start
+with the page that matches what you are doing:
+
+- [Getting started](docs/getting-started.md) for installation and a first run
+- [Project files](docs/project-files.md) and
+  [Configuration](docs/configuration.md) for settings
+- [CLI reference](docs/cli.md) for automation
+- [Analyzers](docs/analyzers.md) for every check and its selection
+- [Architecture](docs/architecture.md) for how the code is organized
+- [Change Review](docs/change-review.md) for official-versus-draft reviews
+- [Development](docs/development.md) for contributing
+
+---
+
 ## Requirements
 
 - **Windows** or **Linux**
@@ -80,14 +96,21 @@ The same capabilities are available without the TUI for scripts and AI agents:
 ```bash
 sattlint project show --project app.slproj --format json
 sattlint analyzers list --format json
-sattlint analyze --project app.slproj --format json
+sattlint analyze --project app.slproj --analyzer variables --format json
 sattlint findings --run latest --module Root.A --group-by module --format json
 sattlint show <finding-id> --format json
+sattlint baseline update --project app.slproj
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
 ```
 
 Commands write data to stdout and diagnostics to stderr. JSON output carries a
 `schema_version`; finding IDs are stable across runs. Text and Markdown output
 use human-readable finding labels; structured output keeps the machine IDs.
+
+A checked-in `.sattlint-baseline.json` lets a pipeline fail only on new or more
+severe findings. `sattlint baseline update` accepts reviewed findings and prunes
+stale ones, while `sattlint analyze --baseline` is the CI gate. `findings` stays
+a read-only query and never applies the baseline.
 
 Exit codes:
 
@@ -96,6 +119,9 @@ Exit codes:
 - `2` — usage, configuration, project, or target-loading error
 - `3` — internal error
 - `130` — interrupted
+
+With `--baseline`, exit `1` means an added or changed finding crossed the
+`--fail-on` threshold.
 
 ---
 
@@ -136,6 +162,64 @@ across machines.
 
 Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
 directly.
+
+### String capacities
+
+A project file is version 2: `slproj_version = 2`. Version 2 requires a
+top-level `[string_capacities]` table, so every checked-in project states the
+capacity of each SattLine string datatype instead of inheriting a hidden
+default:
+
+```toml
+slproj_version = 2
+
+[string_capacities]
+identstring = 15
+tagstring = 30
+string = 40
+linestring = 80
+maxstring = 140
+```
+
+The table is **required, not optional**. All five keys must be present, every
+value must be a positive integer, and no other key is accepted. The values
+above are the standard capacities, and they are what a new project is
+scaffolded with.
+
+A project file that omits the table, omits one of its keys, adds an unknown
+key, or uses a non-positive value fails to load with an error that names the
+problem. A version 1 project is rejected with a message naming the required
+table and the standard values.
+
+The values are not cosmetic. They drive:
+
+- **String inference** — the configured capacity of each string datatype is
+  used when literal, copy, and concatenation results are sized.
+- **String validation** — the variables analyzer checks assignments and
+  variable-to-parameter mappings against the destination capacity.
+- **PictureDisplay path resolution** — display-path literals are sized from
+  the configured capacities, so a resolved path and its destination agree.
+- **The project cache key** — the table is part of the key, so changing a
+  capacity invalidates cached analysis results.
+
+### Analyzer selection
+
+Every run names the analyzers it uses; there is no default set. List the keys
+in the project file so a checked-in project reproduces its run:
+
+```toml
+analyzers = ["variables", "sfc", "dataflow"]
+```
+
+`sattlint analyzers list` prints the selectable keys. `--analyzer` on the
+command line overrides the project list:
+
+```bash
+sattlint analyze --project app.slproj --analyzer variables --analyzer sfc
+```
+
+A run with no selection, on the command line or in the project file, fails
+with an error that lists every selectable analyzer.
 
 When SattLint analyzes a target, all SattLine discovery, dependency resolution,
 and parsing run in `sattline-parser`'s project layer (`SattLineProject.load`);
@@ -237,7 +321,10 @@ and **App Settings → Run History** controls how many runs are retained.
 
 ## For Developers
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, tests, and tooling.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and
+[docs/development.md](docs/development.md) for the code rules, validation
+ladder, and analyzer development. The documentation index is
+[docs/README.md](docs/README.md).
 
 ---
 

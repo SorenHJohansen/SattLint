@@ -1,11 +1,10 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportAttributeAccessIssue=false
 """AST guard enforcing casefold-only normalization for SattLine identifiers.
 
-SattLine identifiers (variable / module-type / datatype / program names) must be
-normalized with ``casefold`` (via ``utils.casefolding.casefold_key`` or
-``.casefold()``), never ``.lower()`` — ``casefold`` is the only normalization that
-handles non-ASCII names uniformly. ``.lower()`` is reserved for genuinely
-non-identifier strings (file suffixes, mode/config strings, CLI prompts).
+SattLine identifiers must be normalized with the parser's own identity rule
+(``utils.casefolding.unit_key`` for unit and module-type names) or with
+``casefold`` for text that is not a name the parser owns, never ``.lower()``.
+``.lower()`` is reserved for genuinely non-identifier strings (file suffixes,
+mode/config strings, CLI prompts).
 
 Mechanical enforcement, mirroring ``tests/test_dependency_guard.py``: walks the
 AST of every ``src/sattlint`` module and fails via plain ``assert`` if a
@@ -48,6 +47,8 @@ def _lower_call_sites(module: ast.AST) -> list[ast.Call]:
 
 
 def _violation_for(call: ast.Call) -> str | None:
+    if not isinstance(call.func, ast.Attribute):
+        return None
     receiver = call.func.value
     if isinstance(receiver, ast.Attribute):
         if receiver.attr in _IDENTIFIER_CARRYING_ATTRS:

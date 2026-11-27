@@ -6,10 +6,9 @@ from collections.abc import Callable
 
 from sattlint.parser_api import SourceSpan, VarRef
 
-from ..models._validation_notice import ValidationNotice
+from ..models._validation_notice import ValidationNotice, ValidationWarning, coerce_validation_notice
 
 __all__ = [
-    "RawSourceValidationError",
     "StructuralValidationError",
     "ValidationNotice",
     "ValidationWarning",
@@ -21,7 +20,6 @@ __all__ = [
 ]
 
 
-type ValidationWarning = ValidationNotice | str
 type ValidationWarningSink = Callable[[ValidationWarning], None]
 
 
@@ -40,31 +38,10 @@ class StructuralValidationError(ValueError):
         self.length = length
 
 
-class RawSourceValidationError(StructuralValidationError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        length: int | None = None,
-    ):
-        super().__init__(message)
-        self.line = line
-        self.column = column
-        self.length = length
-
-
 def span_kwargs(span: SourceSpan | None) -> dict[str, int]:
     if span is None:
         return {}
     return {"line": span.line, "column": span.column}
-
-
-def coerce_validation_notice(value: ValidationWarning) -> ValidationNotice:
-    if isinstance(value, ValidationNotice):
-        return value
-    return ValidationNotice(message=value)
 
 
 def warn_or_raise(

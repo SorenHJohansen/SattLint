@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from sattlint.parser_api import BuiltinFunction, BuiltinParameter, get_function_signature
@@ -27,12 +27,14 @@ class CallParameter:
         return self.builtin.direction
 
     @property
-    def sorting(self) -> str:
-        return self.builtin.sorting
+    def is_input(self) -> bool:
+        """Whether the caller's argument is read by the callee."""
+        return self.direction in {"in", "in var", "inout"}
 
     @property
-    def ownership(self) -> str:
-        return self.builtin.ownership
+    def is_output(self) -> bool:
+        """Whether the callee writes back into the caller's argument."""
+        return self.direction in {"out", "inout"}
 
     @property
     def channel_kind(self) -> str | None:
@@ -46,7 +48,7 @@ class CallParameter:
 
     @property
     def is_status_channel(self) -> bool:
-        return self.channel_kind is not None and self.direction in {"out", "inout"}
+        return self.channel_kind is not None and self.is_output
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,27 +56,15 @@ class CallSignature:
     """Derived view over one parser ``BuiltinFunction``."""
 
     builtin: BuiltinFunction
-    source: str = "builtin"
+    #: Built once: analyzers index this tuple per call site.
+    parameters: tuple[CallParameter, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", tuple(CallParameter(parameter) for parameter in self.builtin.parameters))
 
     @property
     def name(self) -> str:
         return self.builtin.name
-
-    @property
-    def call_type(self) -> Literal["Function", "Procedure"]:
-        return "Function" if self.builtin.kind == "function" else "Procedure"
-
-    @property
-    def return_type(self) -> str | None:
-        return self.builtin.return_type
-
-    @property
-    def parameters(self) -> tuple[CallParameter, ...]:
-        return tuple(CallParameter(parameter) for parameter in self.builtin.parameters)
-
-    @property
-    def status_parameters(self) -> tuple[CallParameter, ...]:
-        return tuple(parameter for parameter in self.parameters if parameter.is_status_channel)
 
 
 @dataclass(frozen=True, slots=True)

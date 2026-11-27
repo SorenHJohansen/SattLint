@@ -8,24 +8,21 @@ single import boundary.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from sattlint.parser_api import BasePicture, ModuleTypeDef, SourceSpan
 
-from ..models._variable_issues import VariableIssue
 from ..models.project_graph import ProjectGraph
 from ..resolution import CanonicalPathKey, CanonicalSymbolTable, TypeGraph
-from ..resolution.access_graph import AccessEvent
 from ._semantic_helpers import (
+    SourceFileKey,
     cf,
     identifier_contains_column,
-    source_file_key,
+    reference_file_key,
 )
 from .call_signatures import CallSignatureOccurrence
-from .workspace_discovery import WorkspaceSourceDiscovery
 
 __all__ = [
     "ReferenceOccurrence",
@@ -103,23 +100,8 @@ class _ReferenceOccurrence:
 ReferenceOccurrence = _ReferenceOccurrence
 
 DefinitionKey = CanonicalPathKey
-ReferencesByFile = dict[str, tuple[ReferenceOccurrence, ...]]
+ReferencesByFile = dict[SourceFileKey, tuple[ReferenceOccurrence, ...]]
 ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
-AccessesByDefinitionKey = dict[DefinitionKey, tuple[AccessEvent, ...]]
-EffectFlowEdges = dict[DefinitionKey, tuple[DefinitionKey, ...]]
-EffectFlowDisplayNames = dict[DefinitionKey, str]
-
-
-def _accesses_by_definition_key_factory() -> AccessesByDefinitionKey:
-    return {}
-
-
-def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
-    return {}
-
-
-def _effect_flow_edges_factory() -> EffectFlowEdges:
-    return {}
 
 
 def _moduletype_index_factory() -> dict[str, list[ModuleTypeDef]]:
@@ -130,7 +112,7 @@ def _references_by_definition_key_factory() -> ReferencesByDefinitionKey:
     return {}
 
 
-def _references_by_file_factory() -> ReferencesByFile:
+def _references_by_source_factory() -> ReferencesByFile:
     return {}
 
 
@@ -149,13 +131,11 @@ class SemanticSnapshot:
 
     workspace_root: Path
     entry_file: Path
-    discovery: WorkspaceSourceDiscovery
     base_picture: BasePicture
     project_graph: ProjectGraph
     symbol_table: CanonicalSymbolTable
     type_graph: TypeGraph
     definitions: tuple[SymbolDefinition, ...]
-    diagnostics: tuple[VariableIssue, ...] = ()
     call_signatures: tuple[CallSignatureOccurrence, ...] = ()
     _definitions_by_key: dict[DefinitionKey, SymbolDefinition] = field(
         default_factory=_symbol_definition_map_factory,
@@ -167,8 +147,8 @@ class SemanticSnapshot:
         repr=False,
         compare=False,
     )
-    _references_by_file: ReferencesByFile = field(
-        default_factory=_references_by_file_factory,
+    _references_by_source: ReferencesByFile = field(
+        default_factory=_references_by_source_factory,
         repr=False,
         compare=False,
     )
@@ -177,21 +157,18 @@ class SemanticSnapshot:
         repr=False,
         compare=False,
     )
-    _accesses_by_definition_key: AccessesByDefinitionKey = field(
-        default_factory=_accesses_by_definition_key_factory,
-        repr=False,
-        compare=False,
-    )
-    _effect_flow_edges: EffectFlowEdges = field(
-        default_factory=_effect_flow_edges_factory,
-        repr=False,
-        compare=False,
-    )
-    _effect_flow_display_names: EffectFlowDisplayNames = field(
-        default_factory=_effect_flow_display_names_factory,
-        repr=False,
-        compare=False,
-    )
+
+    @property
+    def _references_by_file(self) -> dict[str, tuple[ReferenceOccurrence, ...]]:
+        """Basename view of the reference index, merged across libraries.
+
+        The authoritative index is library-qualified; this merge keeps the
+        per-file consumers working where a single file is walked at a time.
+        """
+        merged: dict[str, list[ReferenceOccurrence]] = {}
+        for (_library, name), occurrences in self._references_by_source.items():
+            merged.setdefault(name, []).extend(occurrences)
+        return {name: tuple(items) for name, items in merged.items()}
 
     def list_symbols(
         self, query: str = "", *, roots_only: bool = False, limit: int | None = None
@@ -239,14 +216,27 @@ class SemanticSnapshot:
         source_file: Path | str,
         line: int,
         column: int,
+        *,
+        source_library: str | None = None,
     ) -> list[SymbolDefinition]:
-        file_key = source_file_key(source_file)
+        library_key = (
+            source_library.casefold() if source_library is not None else self._library_key_for_source(source_file)
+        )
+        file_key = reference_file_key(source_file, library_key)
         if file_key is None:
             return []
 
+        # The index is library-qualified, so a lookup can only reach occurrences
+        # recorded for the queried library. Occurrences recorded without a known
+        # library share one unqualified bucket, which is checked as a fallback.
+        occurrences = [
+            *self._references_by_source.get(file_key, ()),
+            *(() if file_key[0] is None else self._references_by_source.get((None, file_key[1]), ())),
+        ]
+
         matches: list[SymbolDefinition] = []
         seen: set[tuple[str, ...]] = set()
-        for occurrence in self._references_by_file.get(file_key, ()):
+        for occurrence in occurrences:
             if not occurrence.matches(line, column):
                 continue
             definition_key = occurrence.definition_key_for_column(column)
@@ -280,26 +270,16 @@ class SemanticSnapshot:
             return references[:limit]
         return references
 
-    def iter_access_events_by_definition(
-        self,
-        *,
-        roots_only: bool = False,
-    ) -> Iterator[tuple[SymbolDefinition, tuple[AccessEvent, ...]]]:
-        for definition in self.definitions:
-            if roots_only and definition.field_path is not None:
-                continue
-            definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
-            yield definition, self._accesses_by_definition_key.get(definition_key, ())
-
     def find_references_at(
         self,
         source_file: Path | str,
         line: int,
         column: int,
         *,
+        source_library: str | None = None,
         limit: int | None = None,
     ) -> list[SymbolReference]:
-        definitions = self.find_definitions_at(source_file, line, column)
+        definitions = self.find_definitions_at(source_file, line, column, source_library=source_library)
         if not definitions:
             return []
 
@@ -353,6 +333,20 @@ class SemanticSnapshot:
             ],
         }
 
+    def _library_key_for_source(self, source_path: Path | str) -> str:
+        """The declared library for a source file, falling back to its directory.
+
+        The loader records the library a program was loaded from, which can
+        differ from the directory that holds the file. Prefer that declaration
+        so a query and an occurrence agree about library identity.
+        """
+        source = Path(str(source_path))
+        resolved = source.resolve()
+        for known_path, library in self.project_graph.source_file_libraries.items():
+            if known_path.resolve() == resolved:
+                return library.casefold()
+        return source.parent.name.casefold()
+
     def find_call_signatures(
         self,
         query: str = "",
@@ -361,24 +355,17 @@ class SemanticSnapshot:
         limit: int | None = None,
     ) -> list[CallSignatureOccurrence]:
         needle = query.strip().casefold()
-        file_key = source_file_key(source_path) if source_path is not None else None
-        library_key = None
-        if source_path is not None:
-            source = Path(str(source_path))
-            library_key = source.parent.name.casefold()
+        library_key = None if source_path is None else self._library_key_for_source(source_path)
+        file_key = reference_file_key(source_path, library_key) if source_path is not None else None
 
         matches: list[CallSignatureOccurrence] = []
         for occurrence in self.call_signatures:
             if needle and occurrence.name.casefold() != needle:
                 continue
-            if file_key is not None and source_file_key(occurrence.source_file) != file_key:
-                continue
-            if (
-                library_key is not None
-                and occurrence.source_library is not None
-                and occurrence.source_library.casefold() != library_key
-            ):
-                continue
+            if file_key is not None:
+                occurrence_key = reference_file_key(occurrence.source_file, occurrence.source_library)
+                if occurrence_key != file_key and occurrence_key != (None, file_key[1]):
+                    continue
             matches.append(occurrence)
         if limit is not None:
             return matches[:limit]

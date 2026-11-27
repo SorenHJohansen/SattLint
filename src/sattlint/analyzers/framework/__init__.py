@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from sattlint.parser_api import BasePicture
 
+from ...config.string_capacities import (
+    STANDARD_STRING_CAPACITIES,
+    StringCapacities,
+    resolve_string_capacities,
+)
+from ...config.types import ConfigDict
+from ...core.timings import PhaseTiming
+from ...models.project_graph import ProjectGraph
 from ._shared_analysis import AnalysisSharedArtifacts, CollectedViews, VariableAnalysisArtifacts
 from .issue import Findings, Issue, format_report_header
 
@@ -26,6 +34,8 @@ __all__ = [
     "CollectedViews",
     "Findings",
     "Issue",
+    "ProgramAstBatchLoader",
+    "ProgramAstLoader",
     "Report",
     "SimpleReport",
     "VariableAnalysisArtifacts",
@@ -71,7 +81,7 @@ class AnalyzerLifecycleMixin:
         self._status_update_fn = status_update_fn
         self._status_prefix = status_prefix or f"Analyzing {trace_namespace}"
         self._last_status_message = None
-        self._phase_timings: list[dict[str, str | float]] = []
+        self._phase_timings: list[PhaseTiming] = []
 
     def trace(self, action: str, **data: Any) -> None:
         self._trace(action, **data)
@@ -83,13 +93,13 @@ class AnalyzerLifecycleMixin:
         trace_recorder.event(getattr(self, "_trace_namespace", "analyzer"), action, **data)
 
     @property
-    def phase_timings(self) -> list[dict[str, str | float]]:
-        return [dict(phase) for phase in getattr(self, "_phase_timings", [])]
+    def phase_timings(self) -> list[PhaseTiming]:
+        return list(cast(list[PhaseTiming], getattr(self, "_phase_timings", [])))
 
     def _record_phase_timing(self, phase: str, started_at: float, ended_at: float | None = None) -> None:
         completed_at = perf_counter() if ended_at is None else ended_at
         duration_ms = round((completed_at - started_at) * 1000, 3)
-        self._phase_timings.append({"phase": phase, "duration_ms": duration_ms})
+        self._phase_timings.append(PhaseTiming(phase=phase, duration_ms=duration_ms))
         self._trace("phase-complete", phase_name=phase, duration_ms=duration_ms)
 
     def _update_status(self, detail: str) -> None:
@@ -116,6 +126,30 @@ class Analyzer(Protocol):
     """Callable protocol for analyzer functions registered in AnalyzerSpec."""
 
     def __call__(self, context: AnalysisContext) -> Report: ...
+
+
+class ProgramAstLoader(Protocol):
+    """Contract for loading one program AST outside the caller's own layer.
+
+    A caller that owns the project loader passes the loader in; the analyzer
+    layer never imports the project package directly.
+    """
+
+    def __call__(self, cfg: ConfigDict, program_name: str) -> tuple[BasePicture, ProjectGraph]: ...
+
+
+class ProgramAstBatchLoader(Protocol):
+    """Contract for loading several program ASTs in one parser pass.
+
+    The returned graph holds every program, and the mapping gives each
+    requested program its own picture from that graph.
+    """
+
+    def __call__(
+        self,
+        cfg: ConfigDict,
+        program_names: Sequence[str],
+    ) -> tuple[dict[str, BasePicture], ProjectGraph]: ...
 
 
 @dataclass
@@ -163,8 +197,10 @@ class AnalysisContext:
     target_is_library: bool = False
     config: dict[str, Any] | None = None
     shared_artifacts: AnalysisSharedArtifacts | None = None
-    variables_collector_class: type[Any] | None = None
     include_dependency_moduletype_usage: bool | None = None
+    program_ast_loader: ProgramAstLoader | None = None
+    program_ast_batch_loader: ProgramAstBatchLoader | None = None
+    string_capacities: StringCapacities = STANDARD_STRING_CAPACITIES
 
     @property
     def unavailable_libraries(self) -> set[str]:
@@ -180,8 +216,9 @@ def build_analysis_context(
     config: Mapping[str, Any] | None = None,
     shared_artifacts: AnalysisSharedArtifacts | None = None,
     create_shared_artifacts: bool = False,
-    variables_collector_class: type[Any] | None = None,
     include_dependency_moduletype_usage: bool | None = None,
+    program_ast_loader: ProgramAstLoader | None = None,
+    program_ast_batch_loader: ProgramAstBatchLoader | None = None,
 ) -> AnalysisContext:
     resolved_shared_artifacts = shared_artifacts
     if resolved_shared_artifacts is None and create_shared_artifacts:
@@ -207,8 +244,10 @@ def build_analysis_context(
         target_is_library=target_is_library,
         config={} if config is None else dict(config),
         shared_artifacts=resolved_shared_artifacts,
-        variables_collector_class=variables_collector_class,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
+        program_ast_loader=program_ast_loader,
+        program_ast_batch_loader=program_ast_batch_loader,
+        string_capacities=resolve_string_capacities(config),
     )
 
 

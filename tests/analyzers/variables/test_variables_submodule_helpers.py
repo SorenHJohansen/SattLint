@@ -1,8 +1,8 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportArgumentType=false
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from sattline_parser.ast import MappingSource, VarRef
@@ -14,7 +14,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -25,6 +25,20 @@ from sattlint.analyzers.variables import _variables_submodules as variables_subm
 
 def _ns(**kwargs: Any) -> Any:
     return SimpleNamespace(**kwargs)
+
+
+def _ignore_call(*args: object, **kwargs: object) -> None:
+    """Accept and discard an analyzer callback."""
+
+
+def _root_origin(*args: object, **kwargs: object) -> bool:
+    """Every origin belongs to the root program."""
+    return True
+
+
+def _unresolved_variable(ref: object) -> tuple[Variable | None, str | None, list[str], list[str]]:
+    """Every variable reference is unresolved."""
+    return (None, None, [], [])
 
 
 class _UsageStub:
@@ -64,8 +78,8 @@ def test_submodule_mapping_and_display_helpers() -> None:
     parent_context = _ns(display_module_path=["Root"])
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
         submodules=[],
     )
     inst = ModuleTypeInstance(
@@ -84,39 +98,43 @@ def test_submodule_mapping_and_display_helpers() -> None:
     ]
 
 
-def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    repathed = _ns(name="repathed")
+def test_frame_module_subtree_walks_code_in_the_frame_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame_scope = _ns(name="frame-scope")
     frame_calls: list[tuple[str, object, list[str]]] = []
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
         submodules=[],
     )
+
+    def _walk_moduledef(moduledef: object, context: object, path: list[str]) -> None:
+        frame_calls.append(("def", context, path))
+
+    def _walk_module_code(modulecode: object, context: object, path: list[str]) -> None:
+        frame_calls.append(("code", context, path))
+
+    def _walk_submodules(helper: object, children: object, context: object, path: list[str]) -> None:
+        frame_calls.append(("subs", context, path))
+
     frame_helper: Any = _ns(
-        repath_context=lambda context, **kwargs: repathed,
-        walk_moduledef=lambda moduledef, context, path: frame_calls.append(("def", context, path)),
-        walk_module_code=lambda modulecode, context, path: frame_calls.append(("code", context, path)),
+        walk_moduledef=_walk_moduledef,
+        walk_module_code=_walk_module_code,
         contexts_by_module_path={},
     )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_walk_submodules",
-        lambda helper, children, context, path: frame_calls.append(("subs", context, path)),
-    )
+    monkeypatch.setattr(variables_submodules_module, "_walk_submodules", _walk_submodules)
 
     variables_submodules_module._walk_framemodule_subtree(
         frame_helper,
         frame,
-        _ns(),
-        ["Root", "Frame"],
+        frame_scope,
         ["Root", "Frame"],
     )
 
     assert frame_calls == [
-        ("def", repathed, ["Root", "Frame"]),
-        ("code", repathed, ["Root", "Frame"]),
-        ("subs", repathed, ["Root", "Frame"]),
+        ("def", frame_scope, ["Root", "Frame"]),
+        ("code", frame_scope, ["Root", "Frame"]),
+        ("subs", frame_scope, ["Root", "Frame"]),
     ]
 
 
@@ -125,12 +143,11 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
     checked: list[tuple[list[str], str | None]] = []
     dependency_typedef = ModuleTypeDef(
         name="DependencyType",
-        moduleparameters=[Variable(name="signal", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="signal", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="DependencyType.s",
         origin_lib="SupportLib",
     )
@@ -156,36 +173,53 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
             ),
         ],
     )
+
+    def _no_external_type(name: str) -> bool:
+        return False
+
+    def _not_root_origin(*args: object, **kwargs: object) -> bool:
+        return False
+
+    def _empty_env(*args: object, **kwargs: object) -> Any:
+        return _ns(env={})
+
+    def _resolve_dependency(*args: object, **kwargs: object) -> ModuleTypeDef:
+        return dependency_typedef
+
+    def _record_propagation(helper: object, mapping: object, **kwargs: str | None) -> None:
+        propagated.append(kwargs["external_typename"])
+
+    def _record_mapping_check(
+        child: object,
+        parent_env: object,
+        parent_context: list[str] | None = None,
+        parent_path: list[str] | None = None,
+        current_library: str | None = None,
+    ) -> None:
+        resolved_path = parent_path if parent_path is not None else parent_context
+        assert resolved_path is not None
+        checked.append((resolved_path, current_library))
+
     helper: Any = _ns(
-        is_external_typename=lambda name: False,
+        is_external_typename=_no_external_type,
         bp=_ns(),
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
-        is_from_root_origin=lambda *args, **kwargs: False,
-        check_param_mappings_for_type_instance=lambda child, parent_env, parent_context=None, parent_path=None, current_library=None: (
-            checked.append(((parent_path if parent_path is not None else parent_context), current_library))
-        ),
-        context_builder=_ns(build_for_typedef=lambda *args, **kwargs: _ns(env={})),
+        is_from_root_origin=_not_root_origin,
+        check_param_mappings_for_type_instance=_record_mapping_check,
+        context_builder=_ns(build_for_typedef=_empty_env),
         param_reads_by_typedef={},
         param_ui_reads_by_typedef={},
         param_non_ui_reads_by_typedef={},
         param_writes_by_typedef={},
         analyzing_typedefs=set(),
-        analyze_typedef_with_context=lambda *args, **kwargs: None,
+        analyze_typedef_with_context=_ignore_call,
         alias_links=[],
         contexts_by_module_path={},
     )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "resolve_moduletype_def_strict",
-        lambda *args, **kwargs: dependency_typedef,
-    )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_propagate_mapping_to_parent",
-        lambda helper, mapping, **kwargs: propagated.append(kwargs["external_typename"]),
-    )
+    monkeypatch.setattr(variables_submodules_module, "resolve_moduletype_def_strict", _resolve_dependency)
+    monkeypatch.setattr(variables_submodules_module, "_propagate_mapping_to_parent", _record_propagation)
 
     variables_submodules_module._walk_moduletype_instance_subtree(
         helper,
@@ -196,7 +230,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         ["Root", "Dep"],
     )
 
-    assert checked == [(["Root", "Dep"], "ProjectLib")]
+    assert checked == [(["Root", "Dep"], "SupportLib")]
     assert propagated == [None, "DependencyType"]
 
     propagated.clear()
@@ -214,7 +248,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
 
 
 def test_submodule_lookup_and_duplication_helpers() -> None:
-    env_var = Variable(name="Signal", datatype=Simple_DataType.INTEGER)
+    env_var = Variable(name="Signal", datatype=ScalarDatatype.INTEGER)
     assert (
         variables_submodules_module._lookup_env_var_from_varname_dict(
             _ns(),
@@ -237,7 +271,7 @@ def test_submodule_lookup_and_duplication_helpers() -> None:
         name="DeclaredPayload",
         description=None,
         datecode=None,
-        var_list=[Variable(name="Leaf", datatype=Simple_DataType.INTEGER)],
+        var_list=[Variable(name="Leaf", datatype=ScalarDatatype.INTEGER)],
     )
     issues: list[VariableIssue] = []
     variables_submodules_module._detect_datatype_duplications(
@@ -252,10 +286,10 @@ def test_submodule_lookup_and_duplication_helpers() -> None:
                     Variable(name="OnlyOne", datatype="ExternalPayload"),
                 ],
                 submodules=[],
-                modulecodes=[],
-                moduledefs=[],
+                modulecode=None,
+                moduledef=None,
             ),
-            is_from_root_origin=lambda *args, **kwargs: True,
+            is_from_root_origin=_root_origin,
             append_issue=issues.append,
         )
     )
@@ -268,34 +302,37 @@ def test_walk_submodules_respects_limit_paths(monkeypatch: pytest.MonkeyPatch) -
     walked_calls: list[str] = []
     frame = FrameModule(
         header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledefs=[],
-        modulecodes=[],
+        moduledef=None,
+        modulecode=None,
         submodules=[],
     )
-    walker: Any = _ns(limit_to_module_path=["Elsewhere"], repath_context=lambda context, **kwargs: _ns())
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_walk_submodule_headers",
-        lambda *args, **kwargs: skipped_calls.append("headers"),
+
+    def _build_frame_context(*args: object, **kwargs: object) -> Any:
+        return _ns()
+
+    def _skip_headers(*args: object, **kwargs: object) -> None:
+        skipped_calls.append("headers")
+
+    def _skip_frame(*args: object, **kwargs: object) -> None:
+        skipped_calls.append("frame")
+
+    def _walk_headers(*args: object, **kwargs: object) -> None:
+        walked_calls.append("headers")
+
+    def _walk_frame(*args: object, **kwargs: object) -> None:
+        walked_calls.append("frame")
+
+    walker: Any = _ns(
+        limit_to_module_path=["Elsewhere"],
+        context_builder=_ns(build_for_frame=_build_frame_context),
     )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_walk_framemodule_subtree",
-        lambda *args, **kwargs: skipped_calls.append("frame"),
-    )
+    monkeypatch.setattr(variables_submodules_module, "_walk_submodule_headers", _skip_headers)
+    monkeypatch.setattr(variables_submodules_module, "_walk_framemodule_subtree", _skip_frame)
     variables_submodules_module._walk_submodules(walker, [frame], _ns(display_module_path=["Root"]), ["Root"])
 
     walker.limit_to_module_path = None
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_walk_submodule_headers",
-        lambda *args, **kwargs: walked_calls.append("headers"),
-    )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_walk_framemodule_subtree",
-        lambda *args, **kwargs: walked_calls.append("frame"),
-    )
+    monkeypatch.setattr(variables_submodules_module, "_walk_submodule_headers", _walk_headers)
+    monkeypatch.setattr(variables_submodules_module, "_walk_framemodule_subtree", _walk_frame)
     variables_submodules_module._walk_submodules(walker, [frame], _ns(display_module_path=["Root"]), ["Root"])
 
     assert skipped_calls == []
@@ -304,34 +341,39 @@ def test_walk_submodules_respects_limit_paths(monkeypatch: pytest.MonkeyPatch) -
 
 def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.MonkeyPatch) -> None:
     propagate_calls: list[str | None] = []
+
+    def _no_external_type(name: str) -> bool:
+        return False
+
+    def _empty_env(*args: object, **kwargs: object) -> Any:
+        return _ns(env={})
+
+    def _raise_missing_typedef(*args: object, **kwargs: object) -> ModuleTypeDef:
+        raise ValueError("missing")
+
+    def _record_propagation(helper: object, mapping: object, **kwargs: str | None) -> None:
+        propagate_calls.append(kwargs["external_typename"])
+
     helper: Any = _ns(
-        is_external_typename=lambda name: False,
+        is_external_typename=_no_external_type,
         bp=_ns(),
         unavailable_libraries=set(),
         analyzed_target_is_library=True,
         include_dependency_moduletype_usage=False,
-        is_from_root_origin=lambda *args, **kwargs: True,
-        check_param_mappings_for_type_instance=lambda *args, **kwargs: None,
-        context_builder=_ns(build_for_typedef=lambda *args, **kwargs: _ns(env={})),
+        is_from_root_origin=_root_origin,
+        check_param_mappings_for_type_instance=_ignore_call,
+        context_builder=_ns(build_for_typedef=_empty_env),
         param_reads_by_typedef={},
         param_ui_reads_by_typedef={},
         param_non_ui_reads_by_typedef={},
         param_writes_by_typedef={},
         analyzing_typedefs=set(),
-        analyze_typedef_with_context=lambda *args, **kwargs: None,
+        analyze_typedef_with_context=_ignore_call,
         alias_links=[],
         contexts_by_module_path={},
     )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "resolve_moduletype_def_strict",
-        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("missing")),
-    )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "_propagate_mapping_to_parent",
-        lambda helper, mapping, **kwargs: propagate_calls.append(kwargs["external_typename"]),
-    )
+    monkeypatch.setattr(variables_submodules_module, "resolve_moduletype_def_strict", _raise_missing_typedef)
+    monkeypatch.setattr(variables_submodules_module, "_propagate_mapping_to_parent", _record_propagation)
 
     external_child = ModuleTypeInstance(
         header=ModuleHeader(name="Ext", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
@@ -357,32 +399,36 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
     )
 
     alias_links: list[tuple[Variable, Variable, str]] = []
+
+    def _build_single_env(*args: object, **kwargs: object) -> Any:
+        return _ns(env={"input": Variable(name="Input", datatype=ScalarDatatype.INTEGER)})
+
+    def _single_usage(variable: Variable) -> _UsageStub:
+        return _UsageStub()
+
     single_helper: Any = _ns(
-        context_builder=_ns(
-            build_for_single=lambda *args, **kwargs: _ns(
-                env={"input": Variable(name="Input", datatype=Simple_DataType.INTEGER)}
-            )
-        ),
-        walk_moduledef=lambda *args, **kwargs: None,
-        walk_module_code=lambda *args, **kwargs: None,
-        get_usage=lambda variable: _UsageStub(),
+        context_builder=_ns(build_for_single=_build_single_env),
+        walk_moduledef=_ignore_call,
+        walk_module_code=_ignore_call,
+        get_usage=_single_usage,
         alias_links=alias_links,
-        check_param_mappings_for_single=lambda *args, **kwargs: None,
+        check_param_mappings_for_single=_ignore_call,
         contexts_by_module_path={},
     )
-    monkeypatch.setattr(variables_submodules_module, "_walk_submodules", lambda *args, **kwargs: None)
-    monkeypatch.setattr(variables_submodules_module, "_propagate_mapping_to_parent", lambda *args, **kwargs: None)
+    monkeypatch.setattr(variables_submodules_module, "_walk_submodules", _ignore_call)
+    monkeypatch.setattr(variables_submodules_module, "_propagate_mapping_to_parent", _ignore_call)
 
     single = SingleModule(
         header=ModuleHeader(name="Single", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Input", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[
             ParameterMapping(
-                target={"var_name": "Input"},
+                # Deliberately a mapping-name dict rather than a variable reference.
+                target=cast(VarRef, {"var_name": "Input"}),
                 source_type=MappingSource.VARIABLE,
                 is_duration=False,
                 is_source_global=False,
@@ -394,7 +440,7 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
     variables_submodules_module._walk_singlemodule_subtree(
         single_helper,
         single,
-        _ns(resolve_variable=lambda ref: (None, None, [], []), env={}),
+        _ns(resolve_variable=_unresolved_variable, env={}),
         ["Root"],
         ["Root", "Single"],
         ["Root", "Single"],
@@ -407,43 +453,44 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
 def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.MonkeyPatch) -> None:
     internal_typedef = ModuleTypeDef(
         name="InternalType",
-        moduleparameters=[Variable(name="signal", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="signal", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="Root.s",
         origin_lib="ProjectLib",
     )
+
+    def _no_external_type(name: str) -> bool:
+        return False
+
+    def _internal_env(*args: object, **kwargs: object) -> Any:
+        return _ns(env={"signal": Variable(name="signal", datatype=ScalarDatatype.INTEGER)})
+
+    def _resolve_internal(*args: object, **kwargs: object) -> ModuleTypeDef:
+        return internal_typedef
+
     internal_helper: Any = _ns(
-        is_external_typename=lambda name: False,
+        is_external_typename=_no_external_type,
         bp=_ns(),
         unavailable_libraries=set(),
         analyzed_target_is_library=False,
         include_dependency_moduletype_usage=False,
-        is_from_root_origin=lambda *args, **kwargs: True,
-        check_param_mappings_for_type_instance=lambda *args, **kwargs: None,
-        effect_flow_tracker=_ns(propagate_mapping_to_parent=lambda *args, **kwargs: None),
-        context_builder=_ns(
-            build_for_typedef=lambda *args, **kwargs: _ns(
-                env={"signal": Variable(name="signal", datatype=Simple_DataType.INTEGER)}
-            )
-        ),
+        is_from_root_origin=_root_origin,
+        check_param_mappings_for_type_instance=_ignore_call,
+        effect_flow_tracker=_ns(propagate_mapping_to_parent=_ignore_call),
+        context_builder=_ns(build_for_typedef=_internal_env),
         param_reads_by_typedef={},
         param_ui_reads_by_typedef={},
         param_non_ui_reads_by_typedef={},
         param_writes_by_typedef={},
         analyzing_typedefs=set(),
-        analyze_typedef_with_context=lambda *args, **kwargs: None,
+        analyze_typedef_with_context=_ignore_call,
         alias_links=[],
         contexts_by_module_path={},
     )
-    monkeypatch.setattr(
-        variables_submodules_module,
-        "resolve_moduletype_def_strict",
-        lambda *args, **kwargs: internal_typedef,
-    )
+    monkeypatch.setattr(variables_submodules_module, "resolve_moduletype_def_strict", _resolve_internal)
 
     internal_child = ModuleTypeInstance(
         header=ModuleHeader(name="Int", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
@@ -462,7 +509,7 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
     variables_submodules_module._walk_moduletype_instance_subtree(
         internal_helper,
         internal_child,
-        _ns(current_library="ProjectLib", env={}, resolve_variable=lambda ref: (None, None, [], [])),
+        _ns(current_library="ProjectLib", env={}, resolve_variable=_unresolved_variable),
         ["Root"],
         ["Root", "Int"],
         ["Root", "Int"],
@@ -476,29 +523,29 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         submodules=[
             FrameModule(
                 header=ModuleHeader(name="Frame", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-                moduledefs=[],
-                modulecodes=[],
+                moduledef=None,
+                modulecode=None,
                 submodules=[
                     SingleModule(
                         header=ModuleHeader(name="Nested", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
-                        moduledefs=[],
+                        moduledef=None,
                         moduleparameters=[Variable(name="Payload", datatype="ExternalPayload")],
                         localvariables=[],
                         submodules=[],
-                        modulecodes=[],
+                        modulecode=None,
                         parametermappings=[],
                     )
                 ],
             )
         ],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     frame_issues: list[VariableIssue] = []
     variables_submodules_module._detect_datatype_duplications(
         _ns(
             bp=frame_bp,
-            is_from_root_origin=lambda *args, **kwargs: True,
+            is_from_root_origin=_root_origin,
             append_issue=frame_issues.append,
         )
     )

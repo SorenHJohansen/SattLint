@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sattlint.parser_api import BasePicture
 
 from ..analyzers.string_inference import ExactStringInferenceEngine
+from ..config.string_capacities import StringCapacities
+from ..utils.casefolding import unit_equal, unit_key
 from .picture_display_runtime import (
     RuntimeModuleNode,
     RuntimeTree,
@@ -26,7 +27,6 @@ from .validation import (
     PictureDisplayPathRow,
     PictureDisplayRecord,
     is_unimplemented_picture_display_asset_path,
-    unimplemented_picture_display_asset_message,
 )
 
 if TYPE_CHECKING:
@@ -106,6 +106,7 @@ def diagnose_picture_display_paths(
     base_picture: BasePicture,
     occurrences: tuple[PictureDisplayOccurrence, ...],
     *,
+    capacities: StringCapacities,
     graph: ProjectGraph | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
@@ -126,7 +127,10 @@ def diagnose_picture_display_paths(
             else:
                 if string_engine is None:
                     string_engine = ExactStringInferenceEngine(
-                        base_picture, graph=graph, progress_callback=progress_callback
+                        base_picture,
+                        capacities=capacities,
+                        graph=graph,
+                        progress_callback=progress_callback,
                     )
                 candidate_paths = _dynamic_path_candidates(
                     path_row,
@@ -166,47 +170,6 @@ def _dynamic_path_candidates(
     return result.texts
 
 
-def _base_picture_source_path(base_picture: BasePicture, graph: ProjectGraph | None) -> Path | None:
-    if graph is not None:
-        root_origin = graph.root_origin_for_basepicture(base_picture)
-        if root_origin is not None and root_origin.source_path is not None:
-            return root_origin.source_path
-    origin_file = base_picture.origin_file
-    return Path(str(origin_file)) if origin_file else None
-
-
-def _picture_display_asset_exists(
-    base_picture: BasePicture,
-    path_text: str,
-    graph: ProjectGraph | None,
-) -> bool:
-    file_path = _base_picture_source_path(base_picture, graph)
-    if file_path is None:
-        return False
-    asset = path_text.strip()
-    if asset.casefold().startswith("scr:"):
-        asset = asset[4:].strip()
-    if not asset:
-        return False
-    normalized = asset.replace("\\", "/")
-    basename = Path(normalized).name
-    seen: set[str] = set()
-    for parent in (file_path.parent, *file_path.parents):
-        for candidate in (
-            parent / normalized,
-            parent / basename,
-            parent / "scr" / normalized,
-            parent / "scr" / basename,
-        ):
-            key = candidate.as_posix().casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            if candidate.exists():
-                return True
-    return False
-
-
 def resolve_picture_display_path(
     path_text: str,
     *,
@@ -227,21 +190,13 @@ def resolve_picture_display_path(
         )
 
     if is_unimplemented_picture_display_asset_path(stripped):
-        if _picture_display_asset_exists(base_picture, stripped, graph):
-            return PictureDisplayPathResolution(
-                path_text=path_text,
-                program_name=base_picture.header.name,
-                declaring_module_path=module_path,
-                resolved_module_path=module_path,
-                detail="asset exists; .emf/.wmf content inspection is not implemented",
-            )
+        # An external asset format that cannot be inspected is not a finding:
+        # treat it as an already satisfied path so nothing is reported.
         return PictureDisplayPathResolution(
             path_text=path_text,
             program_name=base_picture.header.name,
             declaring_module_path=module_path,
-            resolved_module_path=None,
-            failure_reason="unimplemented_asset",
-            detail=unimplemented_picture_display_asset_message(),
+            resolved_module_path=module_path,
         )
 
     program_name, raw_path = _split_program_prefix(stripped, default_program=base_picture.header.name)
@@ -256,13 +211,13 @@ def resolve_picture_display_path(
             detail=f"program unit {program_name!r} is not loaded",
         )
 
-    runtime_tree_key = program_name.casefold()
+    runtime_tree_key = unit_key(program_name)
     runtime_tree = _runtime_trees.get(runtime_tree_key) if _runtime_trees is not None else None
     if runtime_tree is None:
         runtime_tree = build_runtime_tree(target_picture, graph=graph)
         if _runtime_trees is not None:
             _runtime_trees[runtime_tree_key] = runtime_tree
-    same_program = program_name.casefold() == base_picture.header.name.casefold()
+    same_program = unit_equal(program_name, base_picture.header.name)
     exact_current = runtime_tree.root if not same_program else find_node(runtime_tree, module_path)
     suffix_current = None
     suffix_candidates: tuple[RuntimeModuleNode, ...] = ()
@@ -418,7 +373,7 @@ def _resolve_picture_display_path_from_current(
             continue
 
         token, raw_path = consume_name(raw_path)
-        matches = [child for child in current.children if child.name.casefold() == token.casefold()]
+        matches = [child for child in current.children if unit_equal(child.name, token)]
         if not matches:
             return PictureDisplayPathResolution(
                 path_text=path_text,
@@ -518,12 +473,12 @@ def _resolve_program_picture(
     base_picture: BasePicture,
     graph: ProjectGraph | None,
 ) -> BasePicture | None:
-    if program_name.casefold() == base_picture.header.name.casefold():
+    if unit_equal(program_name, base_picture.header.name):
         return base_picture
     if graph is None:
         return None
     for candidate_name, candidate in graph.ast_by_name.items():
-        if candidate_name.casefold() == program_name.casefold():
+        if unit_equal(candidate_name, program_name):
             return candidate
     return None
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence
+from sattlint.graphics.picture_display_paths import PictureDisplayOccurrence, PictureDisplayPathDiagnostic
 from sattlint.graphics.validation import GraphicsCompositeRecord, PictureDisplayRecord
 from sattlint.models.project_graph import GraphicsAttachments, ProjectGraph
 from sattlint.parser_api import BasePicture, GraphicsBinding
@@ -22,6 +22,8 @@ def graphics_attachments(
     composite_records: Iterable[GraphicsCompositeRecord] = (),
     picture_display_records: Iterable[PictureDisplayRecord] = (),
     picture_display_occurrences: Iterable[PictureDisplayOccurrence] = (),
+    picture_display_diagnostics: Iterable[PictureDisplayPathDiagnostic] = (),
+    picture_display_diagnostics_computed: bool = False,
 ) -> GraphicsAttachments:
     return GraphicsAttachments(
         file_name=file_name,
@@ -29,6 +31,8 @@ def graphics_attachments(
         composite_records=tuple(composite_records),
         picture_display_records=tuple(picture_display_records),
         picture_display_occurrences=tuple(picture_display_occurrences),
+        picture_display_diagnostics=tuple(picture_display_diagnostics),
+        picture_display_diagnostics_computed=picture_display_diagnostics_computed,
     )
 
 

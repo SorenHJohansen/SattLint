@@ -6,11 +6,18 @@ checked by Pyright instead of being assembled from untyped dicts.
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from ..analyzers.catalog import AnalyzerMetadataDict
+from ..application.findings import Severity
+from ..config.string_capacities import StringCapacitiesDict
+from ..project.support import LoadFailureKind
 
 type GroupBy = Literal["none", "module", "analyzer", "kind"]
+
+type FailOn = Literal["error", "warning", "any", "none"]
+
+type BaselineEntryStatus = Literal["unchanged", "moved", "changed", "added", "stale"]
 
 
 class ErrorInfo(TypedDict):
@@ -43,6 +50,8 @@ class ProjectInfo(TypedDict):
     slproj_version: int
     mode: str
     targets: list[str]
+    analyzers: list[str]
+    string_capacities: StringCapacitiesDict
     analysis: dict[str, object]
     paths: ProjectPaths
     config: ConfigInfo
@@ -58,7 +67,7 @@ class ProjectShowPayload(TypedDict):
 
 
 class AnalyzerInfo(AnalyzerMetadataDict):
-    default: bool
+    """One selectable analyzer. Selection is per run, so there is no default."""
 
 
 class AnalyzersListPayload(TypedDict):
@@ -73,6 +82,7 @@ class FindingPayload(TypedDict):
     analyzer: str
     analyzer_name: str
     kind: str
+    severity: Severity
     rule_id: str | None
     module_path: list[str]
     module: str
@@ -81,6 +91,10 @@ class FindingPayload(TypedDict):
     message: str
     explanation: str | None
     suggestion: str | None
+    file: str | None
+    line: int | None
+    column: int | None
+    end_line: int | None
     occurrence_count: int
     data: dict[str, object]
 
@@ -90,6 +104,7 @@ class RunPayload(TypedDict):
     started_at: str
     finished_at: str
     project_tag: str
+    project_path: str
     selected_analyzers: list[str]
     cancelled: bool
 
@@ -100,12 +115,14 @@ class FindingSummary(TypedDict):
     by_analyzer: dict[str, int]
     by_kind: dict[str, int]
     by_module: dict[str, int]
+    by_severity: dict[str, int]
 
 
 class AnalyzeSummary(FindingSummary, total=False):
     total_findings: int
     targets: int
     analyzers: int
+    fail_on: FailOn
 
 
 class FindingsSummary(FindingSummary, total=False):
@@ -124,6 +141,68 @@ class AnalyzeProject(TypedDict):
     targets: list[str]
 
 
+class TargetLoadFailurePayload(TypedDict):
+    """One target the loader could not prepare for analysis."""
+
+    target: str
+    kind: LoadFailureKind
+    message: str
+    path: str | None
+    line: int | None
+    column: int | None
+
+
+class BaselineDiffEntryPayload(TypedDict):
+    """One non-unchanged entry in a baseline comparison."""
+
+    status: BaselineEntryStatus
+    identity: str
+    analyzer: str
+    kind: str
+    severity: Severity
+    module: str
+    file: str | None
+    line: int | None
+    message: str
+    # A moved entry carries where the matched baseline entry used to be.
+    previous_file: NotRequired[str | None]
+    previous_line: NotRequired[int | None]
+    # A changed entry carries the severity the baseline accepted.
+    previous_severity: NotRequired[Severity]
+
+
+class BaselineBlockPayload(TypedDict):
+    """The comparison counts and records added to an analyze document."""
+
+    path: str
+    added: int
+    moved: int
+    changed: int
+    stale: int
+    unchanged: int
+    entries: list[BaselineDiffEntryPayload]
+
+
+class BaselineUpdatePayload(TypedDict):
+    schema_version: int
+    command: str
+    path: str
+    entry_count: int
+    generated_by: str
+    created: str
+    # Present only when a previous baseline existed and was compared.
+    added: NotRequired[int]
+    pruned: NotRequired[int]
+
+
+class BaselineDiffPayload(TypedDict):
+    schema_version: int
+    command: str
+    path: str
+    run: RunPayload
+    baseline: BaselineBlockPayload
+
+
 class AnalyzePayload(TypedDict):
     schema_version: int
     command: str
@@ -133,6 +212,12 @@ class AnalyzePayload(TypedDict):
     selected_analyzers: list[str]
     summary: AnalyzeSummary
     findings: list[FindingPayload]
+    # Present only when some targets loaded and some failed. The run is a
+    # partial result, is not stored in run history, and exits 2.
+    failures: NotRequired[list[TargetLoadFailurePayload]]
+    failed_targets: NotRequired[int]
+    # Present only when the run was compared with a baseline.
+    baseline: NotRequired[BaselineBlockPayload]
 
 
 class FindingsFilters(TypedDict):
@@ -169,9 +254,15 @@ __all__ = [
     "AnalyzeSummary",
     "AnalyzerInfo",
     "AnalyzersListPayload",
+    "BaselineBlockPayload",
+    "BaselineDiffEntryPayload",
+    "BaselineDiffPayload",
+    "BaselineEntryStatus",
+    "BaselineUpdatePayload",
     "ConfigInfo",
     "ErrorInfo",
     "ErrorPayload",
+    "FailOn",
     "FindingGroup",
     "FindingPayload",
     "FindingSummary",
@@ -184,4 +275,5 @@ __all__ = [
     "ProjectShowPayload",
     "RunPayload",
     "ShowPayload",
+    "TargetLoadFailurePayload",
 ]

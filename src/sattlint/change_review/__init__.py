@@ -8,7 +8,8 @@ The review is organized around equation blocks and sequences as units of
 behavioural context: for every semantic change it includes the complete
 containing block, the related blocks/sequences that read or write the changed
 variables, and the definitions of every variable involved — each with an
-explicit reason for inclusion.
+explicit reason for inclusion. Module-instance parameter connections are
+reviewed as first-class changes alongside code statements and declarations.
 
 This capability is intentionally independent of static analysis: no analyzers
 run, no diagnostics are collected, and the review never depends on analyzer
@@ -66,13 +67,13 @@ def _build_snippet_provider(official: VersionSnapshot, draft: VersionSnapshot) -
     return SourceTextProvider(source_files)
 
 
-def _snippet_fn(provider: SourceTextProvider) -> Callable[[str | None, object], str | None]:
-    def snippet(source_file: str | None, span: object) -> str | None:
+def _snippet_fn(provider: SourceTextProvider) -> Callable[[str | None, str | None, object], str | None]:
+    def snippet(source_file: str | None, source_library: str | None, span: object) -> str | None:
         start = getattr(span, "start", None)
         end = getattr(span, "end", None)
         if not isinstance(start, int) or not isinstance(end, int):
             return None
-        return provider.snippet(source_file, start, end)
+        return provider.snippet(source_file, start, end, library=source_library)
 
     return snippet
 

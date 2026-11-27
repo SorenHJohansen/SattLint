@@ -10,16 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-PRIORITY_CHANGED = 100
 PRIORITY_REFERENCED = 90
-PRIORITY_PRODUCED = 90
-PRIORITY_CONSUMER = 85
-PRIORITY_PRODUCER = 85
 PRIORITY_CALLEE = 80
-PRIORITY_CALLER = 80
-PRIORITY_S88 = 70
 PRIORITY_DEPENDENCY = 60
-PRIORITY_CONTAINING = 60
 
 
 @dataclass(frozen=True)
@@ -46,7 +39,6 @@ class SymbolFact:
     declared_by: str | None = None
     written_by: tuple[str, ...] = ()
     read_by: tuple[str, ...] = ()
-    containing_object: str | None = None
     declaration_source: str | None = None
     official_definition_source: str | None = None
     draft_definition_source: str | None = None
@@ -79,7 +71,6 @@ class ChangeSemanticContext:
 
     reads: tuple[SymbolFact, ...] = ()
     produces: tuple[SymbolFact, ...] = ()
-    callers: tuple[SymbolFact, ...] = ()
     callees: tuple[SymbolFact, ...] = ()
     containing_object: str | None = None
     sequence_name: str | None = None

@@ -7,7 +7,6 @@
             "semantic.condition-always-false",
             "semantic.read-only-non-const",
             "semantic.unreachable-sequence-node",
-            "semantic.unreachable-sequence-node",
             "semantic.unreachable-transition",
             "spec.sequence_step_prefix",
             "spec.transition_prefix"
@@ -21,7 +20,6 @@
                 "rule_counts": {
                     "semantic.condition-always-false": 2,
                     "semantic.read-only-non-const": 2,
-                    "semantic.unreachable-sequence-node": 1,
                     "semantic.unreachable-sequence-node": 2,
                     "semantic.unreachable-transition": 1,
                     "spec.sequence_step_prefix": 3,

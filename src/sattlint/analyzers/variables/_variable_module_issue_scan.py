@@ -7,13 +7,26 @@ from typing import TYPE_CHECKING
 
 from sattlint.parser_api import FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
+    DeclarationRole,
+)
+from ...reporting.variables_report import (
+    IssueKind,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadOnlyNonConstIssue,
+    UnusedIssue,
+    WriteWithoutEffectIssue,
+)
 from ._variables_contracts import (
     should_collect_any_issue_kinds as _should_collect_any_issue_kinds,
 )
 from ._variables_contracts import (
     should_collect_issue_kind as _should_collect_issue_kind,
 )
+from ._variables_status import has_out_of_origin_consumer as _has_out_of_origin_consumer
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -30,31 +43,12 @@ _MODULE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 
 
-def _append_issue(
-    self: VariablesAnalyzer,
-    kind: IssueKind,
-    path: list[str],
-    variable: Variable,
-    role: str,
-    field_path: str | None = None,
-) -> None:
-    self.append_issue(
-        VariableIssue(
-            kind=kind,
-            module_path=path.copy(),
-            variable=variable,
-            role=role,
-            field_path=field_path,
-        )
-    )
-
-
 def _collect_variable_issues(
     self: VariablesAnalyzer,
     variables: list[Variable] | None,
     path: list[str],
     *,
-    role: str,
+    role: DeclarationRole,
 ) -> None:
     collect_unused = _should_collect_issue_kind(self, IssueKind.UNUSED)
     collect_procedure_status = _should_collect_issue_kind(self, IssueKind.PROCEDURE_STATUS)
@@ -73,52 +67,68 @@ def _collect_variable_issues(
 
     for variable in variables or []:
         usage = self.get_usage(variable)
-        if collect_unused and usage.is_unused:
-            _append_issue(self, IssueKind.UNUSED, path, variable, role=role)
+        # A contract outside the analyzed origin proves the variable is consumed even
+        # though the read is invisible, so absence of use is not evidence of dead code.
+        consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+        if (
+            collect_unused
+            and usage.is_unused
+            and not consumed_out_of_origin
+            and not (role == DECLARATION_ROLE_MODULE_PARAMETER and getattr(self, "analyzed_target_is_library", False))
+        ):
+            self.append_issue(UnusedIssue(module_path=path.copy(), variable=variable, role=role, declaration_role=role))
             continue
 
         procedure_status = self.procedure_status_issue(variable, usage) if collect_procedure_status else None
         if collect_procedure_status and procedure_status is not None:
             status_role, field_path = procedure_status
-            _append_issue(
-                self,
-                IssueKind.PROCEDURE_STATUS,
-                path,
-                variable,
-                role=status_role,
-                field_path=field_path,
+            self.append_issue(
+                ProcedureStatusIssue(
+                    module_path=path.copy(),
+                    variable=variable,
+                    role=status_role,
+                    field_path=field_path,
+                    declaration_role=role,
+                )
             )
             continue
 
         if (
             collect_read_only_non_const
-            and role == "localvariable"
+            and role == DECLARATION_ROLE_LOCAL_VARIABLE
             and usage.is_read_only
             and not bool(variable.const)
             and self.is_const_candidate(variable)
         ):
-            _append_issue(self, IssueKind.READ_ONLY_NON_CONST, path, variable, role=role)
+            self.append_issue(
+                ReadOnlyNonConstIssue(module_path=path.copy(), variable=variable, role=role, declaration_role=role)
+            )
             continue
 
         if (
             collect_never_read
-            and role == "localvariable"
+            and role == DECLARATION_ROLE_LOCAL_VARIABLE
             and usage.written
             and not usage.read
+            and not consumed_out_of_origin
             and not self.has_ignorable_output_binding(variable)
         ):
-            _append_issue(self, IssueKind.NEVER_READ, path, variable, role=role)
+            self.append_issue(
+                NeverReadIssue(module_path=path.copy(), variable=variable, role=role, declaration_role=role)
+            )
             continue
 
         if (
             collect_write_without_effect
-            and role == "localvariable"
+            and role == DECLARATION_ROLE_LOCAL_VARIABLE
             and usage.read
             and usage.written
             and not self.has_output_effect(variable, path)
             and not self.has_procedure_status_binding(variable)
         ):
-            _append_issue(self, IssueKind.WRITE_WITHOUT_EFFECT, path, variable, role=role)
+            self.append_issue(
+                WriteWithoutEffectIssue(module_path=path.copy(), variable=variable, role=role, declaration_role=role)
+            )
 
 
 def collect_issues_from_module(
@@ -134,8 +144,8 @@ def collect_issues_from_module(
 
     my_path = [*path, mod.header.name]
     if isinstance(mod, SingleModule):
-        _collect_variable_issues(self, mod.moduleparameters, my_path, role="moduleparameter")
-        _collect_variable_issues(self, mod.localvariables, my_path, role="localvariable")
+        _collect_variable_issues(self, mod.moduleparameters, my_path, role=DECLARATION_ROLE_MODULE_PARAMETER)
+        _collect_variable_issues(self, mod.localvariables, my_path, role=DECLARATION_ROLE_LOCAL_VARIABLE)
         for child in mod.submodules or []:
             collect_issues_from_module(
                 self,
@@ -176,8 +186,8 @@ def collect_issues_from_module(
     if self.limit_to_module_path is None:
         return
 
-    _collect_variable_issues(self, moduletype.moduleparameters, my_path, role="moduleparameter")
-    _collect_variable_issues(self, moduletype.localvariables, my_path, role="localvariable")
+    _collect_variable_issues(self, moduletype.moduleparameters, my_path, role=DECLARATION_ROLE_MODULE_PARAMETER)
+    _collect_variable_issues(self, moduletype.localvariables, my_path, role=DECLARATION_ROLE_LOCAL_VARIABLE)
 
     child_library = moduletype.origin_lib or current_library
     for child in moduletype.submodules or []:

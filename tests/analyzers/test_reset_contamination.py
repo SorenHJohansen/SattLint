@@ -1,3 +1,4 @@
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
     CodeItem,
@@ -6,9 +7,10 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleHeader,
     ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
     Sequence,
     SFCBodyItem,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -16,7 +18,7 @@ from sattline_parser.models.expressions import Assignment, IfStmt, NotOp, VarRef
 
 from sattlint.analyzers import reset_contamination as reset_contamination_module
 from sattlint.analyzers.framework import AnalysisSharedArtifacts
-from sattlint.reporting.variables_report import VariableIssue
+from sattlint.reporting.variables_report import ImplicitLatchIssue, ResetContaminationIssue, VariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -71,32 +73,30 @@ def _typedef_with_latch(name: str) -> ModuleTypeDef:
         name=name,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="AlarmLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="AlarmLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="LatchEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("AlarmLatched"), value=True),),
-                                    ),
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="LatchEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("AlarmLatched"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
 
@@ -105,13 +105,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="ResetType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_reset.origin_file = "root.s"
 
@@ -119,13 +119,13 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         name="SkippedType",
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
-        moduledefs=[],
-        modulecodes=[_reset_modulecode()],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
     )
     typedef_skipped.origin_file = "other.s"
 
@@ -137,105 +137,183 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         datatype_defs=[],
         moduletype_defs=[typedef_reset, typedef_skipped, typedef_latch],
         localvariables=[
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="RootLatched", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="RootLatched", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="RootEq",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("RootLatched"), value=True),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="RootEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("RootLatched"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    )
-                ]
-            )
-        ],
-        moduledefs=[],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
     )
     bp.origin_file = "root.s"
 
     reset_issues: list[VariableIssue] = []
     reset_contamination_module.detect_reset_contamination(bp, reset_issues)
 
-    assert [(issue.module_path, issue.variable.name) for issue in reset_issues if issue.variable is not None] == [
-        (["Root", "TypeDef:ResetType"], "Counter")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in reset_issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:ResetType"], "Counter")]
 
     latch_issues: list[VariableIssue] = []
     reset_contamination_module.detect_implicit_latching(bp, latch_issues)
-    assert sorted((issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None) == [
+    assert sorted(
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ) == [
         (["Root"], "RootLatched"),
         (["Root", "TypeDef:LatchType"], "AlarmLatched"),
     ]
 
 
+def _reset_picture(
+    *,
+    run_target: str,
+    reset_target: str,
+    opsave: bool = False,
+    secure: bool = False,
+) -> BasePicture:
+    return BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="Persisted", datatype=ScalarDatatype.INTEGER, opsave=opsave, secure=secure),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=_reset_modulecode(run_target, reset_target),
+        moduledef=None,
+    )
+
+
+def test_opsave_value_is_not_reported_as_missing_reset() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Other", opsave=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [issue.variable.name for issue in issues if isinstance(issue, ResetContaminationIssue)] == []
+
+
+def test_opsave_value_written_on_a_reset_path_is_reported() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Persisted", opsave=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reset_issues = [issue for issue in issues if isinstance(issue, ResetContaminationIssue)]
+    assert len(reset_issues) == 1
+    assert reset_issues[0].variable.name == "Persisted"
+    assert reset_issues[0].role == "OpSave variable is reset"
+    assert reset_issues[0].explanation is not None
+
+
+def test_secure_value_still_requires_a_reset_write() -> None:
+    bp = _reset_picture(run_target="Persisted", reset_target="Other", secure=True)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reset_issues = [issue for issue in issues if isinstance(issue, ResetContaminationIssue)]
+    assert [issue.variable.name for issue in reset_issues] == ["Persisted"]
+    assert reset_issues[0].role == "localvariable"
+
+
+def test_reset_contamination_detects_root_modulecode_sequence() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=_reset_modulecode(),
+        moduledef=None,
+    )
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root"], "Counter")]
+
+
 def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        "ResetEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        NotOp(operand=_varref("OpSeq.Reset")),
-                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                    ),
-                                    (
-                                        NotOp(operand=_varref("SeqResetOld")),
-                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    "ResetEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
-                                else_block=(),
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
-                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                        ],
-                    ),
-                    _eq(
-                        "LatchEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("Latch"), value=True),),
-                                    ),
+                            else_block=(),
+                        ),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                ],
-                sequences=[_seq("OpSeq", [])],
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
@@ -254,70 +332,68 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     )
 
     assert any(
-        issue.module_path == ["Root", "Frame", "Child"]
-        and issue.variable is not None
+        isinstance(issue, ResetContaminationIssue)
+        and issue.module_path == ["Root", "Frame", "Child"]
         and issue.variable.name == "Counter"
         for issue in reset_issues
     )
-    assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
-        (["Root", "Frame", "Child"], "Latch")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in latch_issues if isinstance(issue, ImplicitLatchIssue)
+    ] == [(["Root", "Frame", "Child"], "Latch")]
 
 
 def test_reset_contamination_can_consume_shared_indexes() -> None:
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Start", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="Latch", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    _eq(
-                        "ResetEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        NotOp(operand=_varref("OpSeq.Reset")),
-                                        (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
-                                    ),
-                                    (
-                                        NotOp(operand=_varref("SeqResetOld")),
-                                        (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
-                                    ),
+        modulecode=ModuleCode(
+            equationblocks=[
+                _eq(
+                    "ResetEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    NotOp(operand=_varref("OpSeq.Reset")),
+                                    (Assignment(target=_varref("Counter"), value=_varref("ResetValue")),),
                                 ),
-                                else_block=(),
+                                (
+                                    NotOp(operand=_varref("SeqResetOld")),
+                                    (Assignment(target=_varref("Other"), value=_varref("ResetValue")),),
+                                ),
                             ),
-                            Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
-                        ],
-                    ),
-                    _eq(
-                        "LatchEq",
-                        [
-                            IfStmt(
-                                branches=(
-                                    (
-                                        _varref("Start"),
-                                        (Assignment(target=_varref("Latch"), value=True),),
-                                    ),
+                            else_block=(),
+                        ),
+                        Assignment(target=_varref("SeqResetOld"), value=_varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        IfStmt(
+                            branches=(
+                                (
+                                    _varref("Start"),
+                                    (Assignment(target=_varref("Latch"), value=True),),
                                 ),
-                                else_block=(),
-                            )
-                        ],
-                    ),
-                ],
-                sequences=[_seq("OpSeq", [])],
-            )
-        ],
+                            ),
+                            else_block=(),
+                        )
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
         parametermappings=[],
     )
     picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
@@ -329,3 +405,146 @@ def test_reset_contamination_can_consume_shared_indexes() -> None:
 
     assert first_build_count == 1
     assert shared_artifacts.counters.local_env_builds == 1
+
+
+def test_typedef_without_origin_file_uses_the_library_to_decide_ownership() -> None:
+    foreign = ModuleTypeDef(
+        name="ForeignType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+    )
+    foreign.origin_lib = "DependencyLib"
+
+    local = ModuleTypeDef(
+        name="LocalType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+    )
+    local.origin_lib = "RootLib"
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[foreign, local],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+        moduledef=None,
+    )
+    bp.origin_file = "root.s"
+    bp.origin_lib = "RootLib"
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    assert [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ] == [(["Root", "TypeDef:LocalType"], "Counter")]
+
+
+def test_recursive_module_type_is_analyzed_once_without_overflow() -> None:
+    recursive = ModuleTypeDef(
+        name="Recursive",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="SeqResetOld", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        moduledef=None,
+        modulecode=_reset_modulecode(),
+        submodules=[ModuleTypeInstance(header=_hdr("Inner"), moduletype_name="Recursive")],
+    )
+    recursive.origin_file = "root.s"
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[recursive],
+        localvariables=[],
+        submodules=[ModuleTypeInstance(header=_hdr("Outer"), moduletype_name="Recursive")],
+        modulecode=ModuleCode(equationblocks=[], sequences=[]),
+        moduledef=None,
+    )
+    bp.origin_file = "root.s"
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    reported = [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ]
+    # The instance path is analyzed once; the recursive inner instance and the
+    # root typedef list do not duplicate the finding.
+    assert reported == [(["Root", "Outer"], "Counter")]
+
+
+COMPOUND_RESET_GUARD_SOURCE = """"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Guard"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   GuardType = MODULEDEFINITION DateCode_ 1
+   LOCALVARIABLES
+      Counter: integer  := 0;
+      Guard: boolean  := False;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ModuleCode
+      EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+         IF OpSeq.Reset AND Guard THEN
+            Counter = 0;
+         ELSE
+            Counter = Counter + 1;
+         ENDIF;
+
+      SEQUENCE OpSeq (SeqControl, SeqTimer) COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
+         SEQINITSTEP Init
+         SEQTRANSITION TrDone WAIT_FOR False
+      ENDSEQUENCE
+   ENDDEF (*GuardType*);
+
+SUBMODULES
+   GuardUnit Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : GuardType;
+
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+
+ENDDEF (*BasePicture*);
+"""
+
+
+def test_compound_reset_guard_classifies_the_branch_as_a_reset_path() -> None:
+    bp = parser_core_parse_source_text(COMPOUND_RESET_GUARD_SOURCE)
+
+    issues: list[VariableIssue] = []
+    reset_contamination_module.detect_reset_contamination(bp, issues)
+
+    # ``OpSeq.Reset AND Guard`` only runs while the sequence is resetting, so the
+    # write inside that branch is a reset write and covers the run write in the
+    # alternative branch.
+    reported = [
+        (issue.module_path, issue.variable.name) for issue in issues if isinstance(issue, ResetContaminationIssue)
+    ]
+    assert reported == []

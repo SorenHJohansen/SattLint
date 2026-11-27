@@ -1,15 +1,18 @@
 """Access, effect-flow, and datatype helpers for variable analysis."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import difflib
 from typing import TYPE_CHECKING, Any
 
-from sattlint.parser_api import ParameterMapping, Simple_DataType, Variable
+from sattlint.parser_api import ParameterMapping, ScalarDatatype, Variable
 
-from ...resolution import AccessKind, CanonicalPath
+from ...resolution import AccessKind, AmbiguousRecordError, CanonicalPath, resolve_record
 from ...resolution.common import varname_full
-from ...resolution.scope import ScopeContext
+from ...resolution.scope import ScopeContext, find_nearest_declaration
+from ...resolution.type_graph import LeafExpansionIssue, LeafExpansionPolicy
 from ...utils.casefolding import is_anytype_name
 from ..shared.variable_utils import matches_root_origin
 
@@ -44,6 +47,32 @@ def _record_access(
     )
 
 
+def _record_secure_candidate_access(
+    self: VariablesAnalyzer,
+    variable: Variable,
+    field_path: str,
+    decl_module_path: list[str],
+    decl_display: list[str],
+    kind: AccessKind,
+) -> None:
+    """Record the step writes and transition reads the Secure heuristic uses."""
+    facts = getattr(self, "_secure_candidate_facts", None)
+    if facts is None or field_path:
+        return
+    site = _site_str(self)
+    if kind is AccessKind.WRITE and getattr(self, "_secure_in_step", False):
+        step_name = getattr(self, "_secure_step_name", None)
+        if step_name:
+            site = f"{site} > STEP:{step_name}"
+        facts.record_write(variable, decl_module_path, decl_display, site)
+        return
+    if kind is AccessKind.READ and getattr(self, "_secure_in_transition", False):
+        transition_name = getattr(self, "_secure_transition_name", None)
+        if transition_name:
+            site = f"{site} > TRANSITION:{transition_name}"
+        facts.record_transition_read(variable, decl_module_path, decl_display, site)
+
+
 def _mark_ref_access(
     self: VariablesAnalyzer,
     full_ref: str,
@@ -55,23 +84,34 @@ def _mark_ref_access(
 ) -> None:
     base = full_ref.split(".", 1)[0].casefold()
     local_field_path = full_ref.split(".", 1)[1] if "." in full_ref else ""
-    local_var = context.env.get(base)
-    if local_var is not None and base in context.param_mappings:
-        self.usage_tracker.mark_ref_access(
-            variable=local_var,
-            field_path=local_field_path,
-            decl_module_path=context.module_path,
-            context=context,
-            path=path,
-            kind=kind,
-            syntactic_ref=full_ref,
-            ui_read=is_ui_read,
-        )
+    declaration = find_nearest_declaration(context, base)
+    variable, field_path, decl_module_path, decl_display = context.resolve_variable(full_ref)
 
-    variable, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
+    # A reference names the declaration nearest to it even when a parameter
+    # mapping forwards the value to an outer variable. Resolving through the
+    # mapping would skip that declaration, so credit it explicitly; alias
+    # propagation then carries the usage on to the mapped source.
+    if declaration is not None:
+        declared_var, declared_path, _declared_display = declaration
+        if declared_var is not variable:
+            self.usage_tracker.mark_ref_access(
+                variable=declared_var,
+                field_path=local_field_path,
+                decl_module_path=declared_path,
+                context=context,
+                path=path,
+                kind=kind,
+                syntactic_ref=full_ref,
+                ui_read=is_ui_read,
+            )
+
     if variable is None:
         return
 
+    _record_secure_candidate_access(self, variable, field_path, decl_module_path, decl_display, kind)
+
+    if kind is AccessKind.WRITE:
+        self.effect_flow_tracker.record_controlled_write(full_ref, context)
     self.usage_tracker.mark_ref_access(
         variable=variable,
         field_path=field_path,
@@ -183,6 +223,12 @@ def _collect_effect_sink_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
 
 def _compute_effective_output_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
     sink_keys = _collect_effect_sink_keys(self)
+    for context in self.contexts_by_module_path.values():
+        for variable in context.env.values():
+            if self.get_usage(variable).ui_read:
+                key = self.effect_flow_tracker.resolve_local_effect_key(variable.name, context)
+                if key is not None:
+                    sink_keys.add(key)
     return self.effect_flow_tracker.compute_effective_output_keys(sink_keys)
 
 
@@ -206,21 +252,36 @@ def _pop_site(self: VariablesAnalyzer) -> None:
         self.site_stack.pop()
 
 
+def _reference_library(context: ScopeContext) -> str | None:
+    """Library whose code references a variable, or ``None`` when unknown.
+
+    A parser ``Variable`` carries no declaration library, so the referencing
+    scope is the only evidence available. A record name shared by several
+    libraries therefore resolves only when it is unique, the graph's root
+    library declares it, or the scope's library declares it.
+    """
+    return getattr(context, "current_library", None)
+
+
 def _strict_datatype_at_field_prefix(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_prefix: str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
     use_path: list[str],
-) -> Simple_DataType | str:
+    library: str | None = None,
+) -> ScalarDatatype | str:
     segments = [segment for segment in (field_prefix or "").split(".") if segment]
-    current: Simple_DataType | str = root_type
+    current: ScalarDatatype | str = root_type
+    # A field's type belongs to the library that declares the record holding it,
+    # so each resolved record supplies the library for the next segment.
+    field_library = library
 
     for segment in segments:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             site = _site_str(self)
             if self.fail_loudly:
                 raise ValueError(
@@ -238,7 +299,26 @@ def _strict_datatype_at_field_prefix(
         if current.casefold() in self.opaque_builtin_types:
             return current
 
-        record_type = self.type_graph.record(str(current))
+        ambiguity: list[AmbiguousRecordError] = []
+        record_type = resolve_record(
+            self.type_graph,
+            str(current),
+            library=field_library,
+            on_ambiguity=ambiguity.append,
+        )
+        if ambiguity:
+            exc = ambiguity[0]
+            site = _site_str(self)
+            detail = (
+                f"{fn_name}: at {' -> '.join(use_path)}"
+                f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                f"uses an ambiguous record datatype {str(current)!r}. {exc}"
+            )
+            if self.fail_loudly:
+                raise ValueError(detail) from exc
+            self._warn_ambiguous_record(exc)
+            return current
+
         if record_type is None:
             site = _site_str(self)
             if self.unavailable_libraries or not self.fail_loudly:
@@ -277,77 +357,65 @@ def _strict_datatype_at_field_prefix(
             )
 
         current = field_def.datatype
+        field_library = record_type.library
 
     return current
 
 
 def _iter_leaf_field_paths_strict(
     self: VariablesAnalyzer,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     *,
     fn_name: str,
     syntactic_ref: str,
     resolved_var_name: str,
+    library: str | None = None,
 ) -> list[tuple[str, ...]]:
-    if isinstance(root_type, Simple_DataType):
-        return [()]
-    if is_anytype_name(root_type):
-        return [()]
-
-    start = str(root_type)
-    results: list[tuple[str, ...]] = []
-    stack: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [(start, (), ())]
-
-    while stack:
-        type_name, prefix, chain = stack.pop()
-        key = type_name.casefold()
-
-        if key in {entry.casefold() for entry in chain}:
+    def _on_issue(issue: LeafExpansionIssue) -> None:
+        if issue.kind == "cycle":
             raise ValueError(
                 f"{fn_name}: datatype cycle detected while expanding {resolved_var_name!r} "
-                f"(ref {syntactic_ref!r}) at record datatype {type_name!r}."
+                f"(ref {syntactic_ref!r}) at record datatype {issue.type_name!r}."
             )
-
-        record_type = self.type_graph.record(type_name)
-        if record_type is None:
-            if key in self.opaque_builtin_types:
-                results.append(prefix)
-                continue
-            if self.unavailable_libraries:
-                self.warn(
-                    f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                    f"uses unknown record datatype {type_name!r}. Treating as leaf due to unavailable libraries."
-                )
-                results.append(prefix)
-                continue
-            if is_anytype_name(type_name):
-                results.append(prefix)
-                continue
+        if issue.kind == "ambiguous_record":
+            if library is None:
+                decision = "no library is available to decide it."
+            else:
+                decision = f"library {library!r} does not decide it."
+            detail = (
+                f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                f"uses record datatype {issue.type_name!r}, which several libraries declare; {decision}"
+            )
             if self.fail_loudly:
-                raise ValueError(
-                    f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                    f"uses unknown record datatype {type_name!r}."
-                )
+                raise ValueError(detail)
+            self._warn_ambiguous_record(AmbiguousRecordError(issue.type_name, issue.libraries))
+            return
+        if self.unavailable_libraries:
             self.warn(
                 f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
-                f"uses unknown record datatype {type_name!r}. Treating as leaf."
+                f"uses unknown record datatype {issue.type_name!r}. Treating as leaf due to unavailable libraries."
             )
-            results.append(prefix)
-            continue
+            return
+        if self.fail_loudly:
+            raise ValueError(
+                f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                f"uses unknown record datatype {issue.type_name!r}."
+            )
+        self.warn(
+            f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+            f"uses unknown record datatype {issue.type_name!r}. Treating as leaf."
+        )
 
-        if not record_type.fields_by_key:
-            results.append(prefix)
-            continue
+    def _is_opaque(type_name: str) -> bool:
+        return type_name.casefold() in self.opaque_builtin_types or is_anytype_name(type_name)
 
-        next_chain = (*chain, type_name)
-        for field in record_type.fields_by_key.values():
-            new_prefix = (*prefix, field.name)
-            if isinstance(field.datatype, Simple_DataType):
-                results.append(new_prefix)
-            else:
-                stack.append((str(field.datatype), new_prefix, next_chain))
-
-    return results
+    return list(
+        self.type_graph.expand_leaf_paths(
+            root_type,
+            library=library,
+            policy=LeafExpansionPolicy(is_opaque=_is_opaque, on_issue=_on_issue),
+        )
+    )
 
 
 def _mark_record_wide_builtin_access(
@@ -376,6 +444,7 @@ def _mark_record_wide_builtin_access(
         syntactic_ref=syntactic_ref,
         resolved_var_name=resolved_var.name,
         use_path=path,
+        library=_reference_library(context),
     )
 
     leaf_paths = _iter_leaf_field_paths_strict(
@@ -384,6 +453,7 @@ def _mark_record_wide_builtin_access(
         fn_name=fn_name,
         syntactic_ref=syntactic_ref,
         resolved_var_name=resolved_var.name,
+        library=_reference_library(context),
     )
 
     for leaf in leaf_paths:
@@ -414,8 +484,12 @@ def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> V
     variable = self.root_env.get(normalized)
     if variable:
         return variable
-    variables = self.any_var_index.get(normalized)
-    return variables[0] if variables else None
+    candidates = {id(candidate): candidate for candidate in self.any_var_index.get(normalized, ())}
+    if len(candidates) == 1:
+        return next(iter(candidates.values()))
+    # Several declarations share the name and none of them is the root
+    # variable, so any pick would attribute usage to the wrong declaration.
+    return None
 
 
 def is_from_root_origin(
@@ -572,14 +646,15 @@ class VariablesAccessMixin:
 
     def _strict_datatype_at_field_prefix(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         field_prefix: str,
         *,
         fn_name: str,
         syntactic_ref: str,
         resolved_var_name: str,
         use_path: list[str],
-    ) -> Simple_DataType | str:
+        library: str | None = None,
+    ) -> ScalarDatatype | str:
         return _strict_datatype_at_field_prefix(
             self,
             root_type,
@@ -588,15 +663,17 @@ class VariablesAccessMixin:
             syntactic_ref=syntactic_ref,
             resolved_var_name=resolved_var_name,
             use_path=use_path,
+            library=library,
         )
 
     def _iter_leaf_field_paths_strict(
         self: Any,
-        root_type: Simple_DataType | str,
+        root_type: ScalarDatatype | str,
         *,
         fn_name: str,
         syntactic_ref: str,
         resolved_var_name: str,
+        library: str | None = None,
     ) -> list[tuple[str, ...]]:
         return _iter_leaf_field_paths_strict(
             self,
@@ -604,6 +681,7 @@ class VariablesAccessMixin:
             fn_name=fn_name,
             syntactic_ref=syntactic_ref,
             resolved_var_name=resolved_var_name,
+            library=library,
         )
 
     def _mark_record_wide_builtin_access(

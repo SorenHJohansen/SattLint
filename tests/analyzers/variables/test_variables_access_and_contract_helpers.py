@@ -7,19 +7,25 @@ from typing import Any, cast
 import pytest
 from sattline_parser.ast import VarRef
 from sattline_parser.models.ast_model import (
+    DataType,
     FloatLiteral,
+    ScalarDatatype,
     SFCFork,
-    Simple_DataType,
     Variable,
 )
 
 from sattlint.analyzers import dataflow as dataflow_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.analyzers.shared import _dedupe as dedupe_module
+from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.analyzers.variables import _variables_access as variables_access_module
 from sattlint.analyzers.variables import _variables_contracts as variables_contracts_module
+from sattlint.core import call_signatures as call_signatures_module
+from sattlint.parser_api import BasePicture
 from sattlint.reporting.variables_report import IssueKind
 from sattlint.resolution import AccessKind, CanonicalPath
+from sattlint.resolution._alias_utils import find_all_aliases
+from sattlint.resolution.type_graph import TypeGraph
 from tests.helpers.variable_access_contract_support import (
     DataflowAnalyzerType,
     dependency_scope_mixin_impl,
@@ -27,7 +33,22 @@ from tests.helpers.variable_access_contract_support import (
     variables_access_impl,
     variables_contracts_impl,
 )
+from tests.helpers.variable_test_support import hdr
 from tests.helpers.variable_test_support import ns as _ns
+
+
+def _type_graph(*records: tuple[str, tuple[tuple[str, ScalarDatatype | str], ...]]) -> TypeGraph:
+    return TypeGraph.from_datatypes(
+        [
+            DataType(
+                name=name,
+                description=None,
+                datecode=None,
+                var_list=[Variable(name=field_name, datatype=datatype) for field_name, datatype in fields],
+            )
+            for name, fields in records
+        ]
+    )
 
 
 def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
@@ -73,6 +94,9 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
     def _record_function_call_effect_flow(fn_name: str | None, _args: list[object], _context: object) -> None:
         tracker_calls.append(("call", fn_name))
 
+    def _record_controlled_write(full_ref: str, _context: object) -> None:
+        tracker_calls.append(("controlled", full_ref))
+
     usage_tracker = _ns(
         record_access=_record_access,
         mark_ref_access=_mark_access,
@@ -88,14 +112,15 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
         collect_expression_effect_sources=_collect_expression_effect_sources,
         record_assignment_effect_flow=_record_assignment_effect_flow,
         record_function_call_effect_flow=_record_function_call_effect_flow,
+        record_controlled_write=_record_controlled_write,
     )
     helper: Any = SimpleNamespace(
         usage_tracker=usage_tracker,
         effect_flow_tracker=effect_tracker,
         root_env={},
-        any_var_index={"fallback": [Variable(name="Fallback", datatype=Simple_DataType.INTEGER)]},
+        any_var_index={"fallback": [Variable(name="Fallback", datatype=ScalarDatatype.INTEGER)]},
     )
-    variable = Variable(name="Demo", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="Demo", datatype=ScalarDatatype.INTEGER)
 
     def _resolve_variable(full_ref: str) -> tuple[Variable | None, str | None, list[str], None]:
         if full_ref == "local.field":
@@ -145,7 +170,7 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
 
 
 def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> None:
-    variable = Variable(name="Demo", datatype=Simple_DataType.INTEGER)
+    variable = Variable(name="Demo", datatype=ScalarDatatype.INTEGER)
     sink_keys = {("sink",)}
 
     def _is_from_root_origin(*_args: object) -> bool:
@@ -172,6 +197,7 @@ def test_variables_access_effect_and_site_helpers_cover_remaining_branches() -> 
             effect_key_for_variable=_effect_key_for_variable,
         ),
         effective_output_keys={("effect", "Demo", "Root")},
+        contexts_by_module_path={},
         site_stack=[],
     )
 
@@ -202,32 +228,24 @@ def test_shared_dedupe_helpers_cover_seen_and_index_paths() -> None:
 
 def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths() -> None:
     warnings: list[str] = []
-    record_with_known_field = _ns(
-        name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
-    )
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "Unknown":
-            return None
-        return record_with_known_field
-
     helper = make_strict_access_helper(
-        record_resolver=_resolve_record,
+        type_graph=_type_graph(
+            ("RecordType", (("Known", ScalarDatatype.INTEGER),)),
+        ),
         warnings=warnings,
     )
 
     assert (
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
-            Simple_DataType.INTEGER,
+            ScalarDatatype.INTEGER,
             "field",
             fn_name="Fn",
             syntactic_ref="Ref",
             resolved_var_name="Demo",
             use_path=["Root"],
         )
-        == Simple_DataType.INTEGER
+        == ScalarDatatype.INTEGER
     )
     assert any("cannot access field" in warning for warning in warnings)
 
@@ -235,7 +253,7 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
     with pytest.raises(ValueError):
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
-            Simple_DataType.INTEGER,
+            ScalarDatatype.INTEGER,
             "field",
             fn_name="Fn",
             syntactic_ref="Ref",
@@ -303,18 +321,10 @@ def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths(
 
 def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None:
     warnings: list[str] = []
-    record_with_known_field = _ns(
-        name="RecordType",
-        fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
-    )
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "Unknown":
-            return None
-        return record_with_known_field
-
     helper = make_strict_access_helper(
-        record_resolver=_resolve_record,
+        type_graph=_type_graph(
+            ("RecordType", (("Known", ScalarDatatype.INTEGER),)),
+        ),
         warnings=warnings,
     )
 
@@ -352,12 +362,6 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
     ) == [()]
     assert warnings
 
-    def _resolve_builtin_or_record(name: str) -> object | None:
-        if name in {"Unknown", "opaque"}:
-            return None
-        return record_with_known_field
-
-    helper.type_graph = _ns(record=_resolve_builtin_or_record)
     helper.opaque_builtin_types = {"opaque"}
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
@@ -377,14 +381,10 @@ def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None
 
 def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
     warnings: list[str] = []
-    helper = make_strict_access_helper(warnings=warnings)
-
-    def _resolve_record(name: str) -> object | None:
-        if name == "RecordType":
-            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype="AnyType")})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_record)
+    helper = make_strict_access_helper(
+        type_graph=_type_graph(("RecordType", (("Leaf", "AnyType"),))),
+        warnings=warnings,
+    )
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
         "RecordType",
@@ -393,14 +393,7 @@ def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
         resolved_var_name="Demo",
     ) == [("Leaf",)]
 
-    cyclic_record = _ns(fields_by_key={"self": _ns(name="Self", datatype="Loop")})
-
-    def _resolve_loop(name: str) -> object | None:
-        if name == "Loop":
-            return cyclic_record
-        return None
-
-    helper.type_graph = _ns(record=_resolve_loop)
+    helper.type_graph = _type_graph(("Loop", (("Self", "Loop"),)))
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
     with pytest.raises(ValueError):
@@ -419,10 +412,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
 
-    def _resolve_nested_record(name: str) -> object | None:
-        return _ns(name="RecordType", fields_by_key={"known": _ns(name="Known", datatype="Nested")})
-
-    helper.type_graph = _ns(record=_resolve_nested_record)
+    helper.type_graph = _type_graph(("RecordType", (("Known", "Nested"),)))
     with pytest.raises(ValueError):
         variables_access_impl._strict_datatype_at_field_prefix(
             helper,
@@ -448,7 +438,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
 
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
-        Simple_DataType.INTEGER,
+        ScalarDatatype.INTEGER,
         fn_name="Fn",
         syntactic_ref="Ref",
         resolved_var_name="Demo",
@@ -456,12 +446,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
 
     helper.fail_loudly = False
 
-    def _resolve_wrapper(name: str) -> object | None:
-        if name == "Wrapper":
-            return _ns(fields_by_key={"nested": _ns(name="Nested", datatype="AnyType")})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_wrapper)
+    helper.type_graph = _type_graph(("Wrapper", (("Nested", "AnyType"),)))
     helper.unavailable_libraries = set()
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
@@ -471,12 +456,7 @@ def test_variables_access_strict_and_leaf_helpers_cover_remaining_branches() -> 
         resolved_var_name="Demo",
     ) == [("Nested",)]
 
-    def _resolve_scalar_wrapper(name: str) -> object | None:
-        if name == "ScalarWrapper":
-            return _ns(fields_by_key={"leaf": _ns(name="Leaf", datatype=Simple_DataType.INTEGER)})
-        return None
-
-    helper.type_graph = _ns(record=_resolve_scalar_wrapper)
+    helper.type_graph = _type_graph(("ScalarWrapper", (("Leaf", ScalarDatatype.INTEGER),)))
     assert variables_access_impl._iter_leaf_field_paths_strict(
         helper,
         "ScalarWrapper",
@@ -663,7 +643,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     assert delegate_probe.unavailable_libraries == {"Lib"}
     assert (
         delegate_probe.build_scope_context(
-            [Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+            [Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
             param_mappings={},
             module_path=["Root"],
             current_library=None,
@@ -671,7 +651,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
         )[0]
         == "scope"
     )
-    assert delegate_probe.seed_state({}, ["Root"], [Variable(name="Local", datatype=Simple_DataType.INTEGER)]) == {
+    assert delegate_probe.seed_state({}, ["Root"], [Variable(name="Local", datatype=ScalarDatatype.INTEGER)]) == {
         ("seeded",): (("Root",), 1)
     }
     assert delegate_probe.build_single_context(_ns(), _ns(), ["Root", "Child"]) == ("single", ("Root", "Child"))
@@ -689,7 +669,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
     def _resolve_no_signature(_name: object) -> None:
         return None
 
-    monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_no_signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _resolve_no_signature)
     assert delegate_probe._apply_call_side_effects("Fn", [], context, state) is state
 
     applied_writes: list[tuple[str | None, object, tuple[str, ...], bool]] = []
@@ -720,7 +700,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
     delegate_probe._resolve_ref = _resolve_ref
     delegate_probe._apply_write_target = _apply_write_target
-    monkeypatch.setattr(dataflow_module, "get_function_signature", _resolve_signature)
+    monkeypatch.setattr(call_signatures_module, "get_function_signature", _resolve_signature)
 
     next_state = delegate_probe._apply_call_side_effects("Fn", ["skip", "old", "new"], context, state)
 
@@ -737,17 +717,22 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
     helper_probe: Any = DataflowAnalyzer.__new__(DataflowAnalyzer)
 
-    def _field(_datatype: object, field_name: str) -> object | None:
+    def _field(_datatype: object, field_name: str, *, library: object = None) -> object | None:
         if field_name == "missing":
             return None
         return _ns(datatype=None, state=True)
 
+    def _record(_datatype: object, *, library: object = None) -> object | None:
+        if _datatype == "RecordType":
+            return _ns(fields_by_key={"leaf": _field(_datatype, "leaf")}, library=library)
+        return None
+
     def _resolve_context_variable(full_name: str) -> tuple[Variable | None, str, list[str], None]:
         if full_name == "Missing":
             return (None, "", ["Root"], None)
-        return (Variable(name="Value", datatype=Simple_DataType.INTEGER), "", ["Root"], None)
+        return (Variable(name="Value", datatype=ScalarDatatype.INTEGER), "", ["Root"], None)
 
-    helper_probe._type_graph = _ns(field=_field)
+    helper_probe._type_graph = _ns(field=_field, record=_record)
 
     missing_context = _ns(
         module_path=["Root"],
@@ -786,7 +771,7 @@ def test_dataflow_facade_and_scalar_helpers_cover_remaining_branches(monkeypatch
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    parameter = Variable(name="Required", datatype=Simple_DataType.INTEGER)
+    parameter = Variable(name="Required", datatype=ScalarDatatype.INTEGER)
     mapping: Any = _ns(target={"var_name": "Required"})
     mod: Any = _ns(moduleparameters=[parameter], parametermappings=[mapping])
     calls: list[str] = []
@@ -895,8 +880,8 @@ def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatc
 
 def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
     guard_calls: list[str] = []
-    mapped_parameter = Variable(name="Mapped", datatype=Simple_DataType.INTEGER)
-    idle_parameter = Variable(name="Idle", datatype=Simple_DataType.INTEGER)
+    mapped_parameter = Variable(name="Mapped", datatype=ScalarDatatype.INTEGER)
+    idle_parameter = Variable(name="Idle", datatype=ScalarDatatype.INTEGER)
     mapping = _ns(target={"var_name": "Mapped"})
 
     def _append_guard_checked(*_args: object, **_kwargs: object) -> None:
@@ -965,9 +950,121 @@ def test_variables_contracts_cover_remaining_loop_and_guard_branches() -> None:
     variables_contracts_impl._check_param_mapping(
         check_helper,
         _ns(is_source_global=False, source={"var_name": "Unknown"}, source_literal=None),
-        Variable(name="Target", datatype=Simple_DataType.INTEGER),
+        Variable(name="Target", datatype=ScalarDatatype.INTEGER),
         {},
         cast(Any, None),
         ["Root"],
     )
     assert param_check_calls == []
+
+
+def test_issue_kind_gates_read_the_analyzer_selection() -> None:
+    header = hdr("Root")
+    restricted = VariablesAnalyzer(BasePicture(header=header), selected_issue_kinds={IssueKind.IMPLICIT_LATCH})
+    assert variables_contracts_impl.selected_issue_kinds(restricted) == frozenset({IssueKind.IMPLICIT_LATCH})
+    assert variables_contracts_impl.should_collect_issue_kind(restricted, IssueKind.IMPLICIT_LATCH)
+    assert not variables_contracts_impl.should_collect_issue_kind(restricted, IssueKind.UNUSED)
+    assert not variables_contracts_impl.should_collect_any_issue_kinds(restricted, frozenset({IssueKind.UNUSED}))
+    assert variables_contracts_impl.explicitly_selected_issue_kinds(restricted, frozenset({IssueKind.IMPLICIT_LATCH}))
+
+    unrestricted = VariablesAnalyzer(BasePicture(header=header))
+    assert variables_contracts_impl.selected_issue_kinds(unrestricted) is None
+    assert variables_contracts_impl.should_collect_issue_kind(unrestricted, IssueKind.UNUSED)
+    assert variables_contracts_impl.should_collect_any_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
+    assert not variables_contracts_impl.explicitly_selected_issue_kinds(unrestricted, frozenset({IssueKind.UNUSED}))
+
+
+def test_leaf_path_expansion_is_shared_between_graph_and_strict_helper() -> None:
+    graph = _type_graph(
+        ("Outer", (("Nested", "Mid"), ("Direct", ScalarDatatype.INTEGER))),
+        ("Mid", (("Inner", ScalarDatatype.INTEGER),)),
+        ("Loop", (("Self", "Loop"),)),
+    )
+    helper = make_strict_access_helper(type_graph=graph, fail_loudly=False, unavailable_libraries=set())
+
+    strict_paths = variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "Outer",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    )
+    assert tuple(strict_paths) == tuple(graph.iter_leaf_field_paths("Outer"))
+
+    assert tuple(graph.iter_leaf_field_paths("Loop")) == (("Self",),)
+    with pytest.raises(ValueError, match="datatype cycle"):
+        variables_access_impl._iter_leaf_field_paths_strict(
+            helper,
+            "Loop",
+            fn_name="Fn",
+            syntactic_ref="Ref",
+            resolved_var_name="Demo",
+        )
+
+    assert tuple(graph.iter_leaf_field_paths("MissingRecord")) == ((),)
+    with pytest.raises(ValueError, match="unknown record datatype"):
+        variables_access_impl._iter_leaf_field_paths_strict(
+            make_strict_access_helper(type_graph=graph, fail_loudly=True, unavailable_libraries=set()),
+            "MissingRecord",
+            fn_name="Fn",
+            syntactic_ref="Ref",
+            resolved_var_name="Demo",
+        )
+
+
+def test_ambiguous_global_name_is_not_resolved_to_an_arbitrary_declaration() -> None:
+    first = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
+    second = Variable(name="Shared", datatype=ScalarDatatype.INTEGER)
+    helper = _ns(root_env={}, any_var_index={"shared": [first, second]})
+
+    assert variables_access_impl._lookup_global_variable(helper, "shared") is None
+
+    helper.any_var_index["shared"] = [first, first]
+    assert variables_access_impl._lookup_global_variable(helper, "shared") is first
+
+
+def test_find_all_aliases_keeps_each_field_prefix_for_the_same_variable() -> None:
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+    child = Variable(name="Child", datatype=ScalarDatatype.INTEGER)
+
+    aliases = find_all_aliases(target, [(target, child, "Left"), (target, child, "Right")])
+
+    assert sorted(prefix for variable, prefix in aliases if variable is child) == ["Left", "Right"]
+
+
+def test_find_all_aliases_terminates_on_a_self_mapping() -> None:
+    target = Variable(name="Target", datatype=ScalarDatatype.INTEGER)
+
+    aliases = find_all_aliases(target, [(target, target, "Field")])
+
+    # The self mapping adds no distinct variable, and revisiting it would only
+    # extend the prefix forever, so the walk terminates with no aliases.
+    assert aliases == []
+
+
+def test_leaf_expansion_treats_nested_opaque_and_anytype_names_as_leaves() -> None:
+    graph = _type_graph(
+        ("Wrapper", (("Nested", "AnyType"),)),
+        ("OpaqueWrapper", (("Nested", "opaque"),)),
+    )
+    helper = make_strict_access_helper(
+        type_graph=graph,
+        fail_loudly=True,
+        unavailable_libraries=set(),
+        opaque_builtin_types={"opaque"},
+    )
+
+    assert variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "Wrapper",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    ) == [("Nested",)]
+    assert variables_access_impl._iter_leaf_field_paths_strict(
+        helper,
+        "OpaqueWrapper",
+        fn_name="Fn",
+        syntactic_ref="Ref",
+        resolved_var_name="Demo",
+    ) == [("Nested",)]

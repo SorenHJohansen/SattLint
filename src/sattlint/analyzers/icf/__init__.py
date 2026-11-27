@@ -1,32 +1,40 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sattlint.parser_api import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
 
 from ...reporting.icf_report import (
+    ICFDriftCountMismatch,
+    ICFDriftEntry,
+    ICFDriftEntryChange,
+    ICFDriftOrderingMismatch,
     ICFEntry,
     ICFResolvedEntry,
     ICFSkippedEntry,
+    ICFUnitDrift,
     ICFValidationIssue,
     ICFValidationReport,
+    summarize_icf_unit_drift,
 )
 from ...resolution.common import (
+    ModuleTypeResolutionCache,
     ResolvedModulePath,
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
-from ...resolution.type_graph import TypeGraph
+from ...resolution.type_graph import AmbiguousRecordError, TypeGraph, resolve_record
 from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 from ._icf_file_io import (
     decode_icf_text as _decode_icf_text_impl,
@@ -85,9 +93,18 @@ _GROUP_SUFFIX_RULES: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {
     },
 }
 
-_OPTIONAL_PARAMETER_RECORD_FIELDS: dict[str, set[str]] = {
-    "acssignofftype": {"meaning"},
+_IDENTITY_GROUP_FIELDS: dict[str, tuple[str, ...]] = {
+    "journaldata_dcstomes": ("OPR_ID", "CR_ID", "CYCLE", "SEQ", "TRY", "TIME"),
+    "journaldata_mestodcs": ("RESULT_CODE", "RESULT_TEXT", "LMES_RET_VAL", "LMES_RET_TEXT"),
 }
+
+
+@dataclass
+class _UnitTypeBucket:
+    """The units that share one resolved unit type."""
+
+    label: str
+    units: list[str]
 
 
 _decode_icf_text = _decode_icf_text_impl
@@ -166,57 +183,83 @@ def _resolve_unit_type_label(
     return fallback
 
 
-def _summarize_signature_diff(
-    reference: tuple[tuple[str, str, str, str, str], ...], current: tuple[tuple[str, str, str, str, str], ...]
-) -> str:
-    def _format_signature_entry(entry: tuple[str, str, str, str, str]) -> str:
-        operation, journal, group, key, value = entry
-        label_parts: list[str] = []
-        if operation:
-            label_parts.append(f"Operation {operation}")
-        if journal:
-            label_parts.append(f"Journal {journal}")
-        if group:
-            label_parts.append(f"Group {group}")
-        scope = " | ".join(label_parts)
-        scoped_key = key if not scope else f"[{scope}] {key}"
-        return f"{scoped_key} => {value}"
+_DRIFT_PREVIEW_LIMIT = 3
+type _SignatureEntry = tuple[str, str, str, str, str]
+type _Signature = tuple[_SignatureEntry, ...]
 
-    def _format_entry_list(entries: set[tuple[str, str, str, str, str]], *, limit: int = 3) -> str:
-        sorted_entries = sorted(entries)
-        preview = ", ".join(_format_signature_entry(entry) for entry in sorted_entries[:limit])
-        if len(sorted_entries) > limit:
-            preview = f"{preview}, ..."
-        return preview
 
+def _drift_entry(entry: _SignatureEntry) -> ICFDriftEntry:
+    operation, journal, group, key, value = entry
+    return ICFDriftEntry(operation=operation, journal=journal, group=group, key=key, value=value)
+
+
+def _signature_drift_parts(
+    reference: _Signature,
+    current: _Signature,
+) -> tuple[tuple[ICFDriftEntryChange, ...], ICFDriftCountMismatch | None, ICFDriftOrderingMismatch | None]:
     reference_set = set(reference)
     current_set = set(current)
-    parts: list[str] = []
     missing = reference_set - current_set
     extra = current_set - reference_set
+
+    changes: list[ICFDriftEntryChange] = []
     if missing:
-        parts.append(f"missing {len(missing)} entries ({_format_entry_list(missing)})")
+        changes.append(
+            ICFDriftEntryChange(
+                kind="missing",
+                count=len(missing),
+                entries=tuple(_drift_entry(entry) for entry in sorted(missing)[:_DRIFT_PREVIEW_LIMIT]),
+            )
+        )
     if extra:
-        parts.append(f"extra {len(extra)} entries ({_format_entry_list(extra)})")
-    if not parts and len(reference) != len(current):
-        parts.append(f"entry count {len(current)} != {len(reference)}")
-    if parts:
-        return "; ".join(parts)
+        changes.append(
+            ICFDriftEntryChange(
+                kind="extra",
+                count=len(extra),
+                entries=tuple(_drift_entry(entry) for entry in sorted(extra)[:_DRIFT_PREVIEW_LIMIT]),
+            )
+        )
+    if changes:
+        return tuple(changes), None, None
+    if len(reference) != len(current):
+        return (), ICFDriftCountMismatch(current=len(current), reference=len(reference)), None
 
     for index, (expected_entry, current_entry) in enumerate(zip(reference, current, strict=False), start=1):
         if expected_entry == current_entry:
             continue
         return (
-            "entry ordering differs "
-            f"(first mismatch at position {index}: expected {_format_signature_entry(expected_entry)} "
-            f"but found {_format_signature_entry(current_entry)})"
+            (),
+            None,
+            ICFDriftOrderingMismatch(
+                position=index,
+                expected=_drift_entry(expected_entry),
+                found=_drift_entry(current_entry),
+            ),
         )
 
-    return "entry ordering differs"
+    return (), None, None
+
+
+def _build_unit_drift(
+    current_unit: str,
+    unit_type: str,
+    reference_unit: str,
+    reference: _Signature,
+    current: _Signature,
+) -> ICFUnitDrift:
+    entry_changes, count_mismatch, ordering = _signature_drift_parts(reference, current)
+    return ICFUnitDrift(
+        current_unit=current_unit,
+        unit_type=unit_type,
+        reference_unit=reference_unit,
+        entry_changes=entry_changes,
+        count_mismatch=count_mismatch,
+        ordering=ordering,
+    )
 
 
 def _find_variable_in_module_scope(
-    module_def: Any,
+    module_def: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance,
     base_picture: BasePicture,
     var_name: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
@@ -271,10 +314,28 @@ def _find_variable_in_module_scope(
     return None
 
 
+def _resolve_module_path(
+    base_picture: BasePicture,
+    module_path: str,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None,
+    resolution_cache: ModuleTypeResolutionCache | None,
+) -> ResolvedModulePath:
+    """Resolve a path, sharing the module-type lookup cache when one is supplied."""
+    if resolution_cache is None:
+        return resolve_module_by_strict_path(base_picture, module_path, moduletype_index=moduletype_index)
+    return resolve_module_by_strict_path(
+        base_picture,
+        module_path,
+        moduletype_index=moduletype_index,
+        resolution_cache=resolution_cache,
+    )
+
+
 def _resolve_icf_path(
     base_picture: BasePicture,
     path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    resolution_cache: ModuleTypeResolutionCache | None = None,
 ) -> tuple[ResolvedModulePath | None, Variable | None, list[str]]:
     segments = [s for s in path.split(".") if s]
     if not segments:
@@ -284,11 +345,7 @@ def _resolve_icf_path(
         module_path = ".".join(segments[:i])
         resolved: ResolvedModulePath | None
         try:
-            resolved = resolve_module_by_strict_path(
-                base_picture,
-                module_path,
-                moduletype_index=moduletype_index,
-            )
+            resolved = _resolve_module_path(base_picture, module_path, moduletype_index, resolution_cache)
         except ValueError:
             resolved = None
 
@@ -324,6 +381,7 @@ def _describe_unresolved_icf_path(
     base_picture: BasePicture,
     path: str,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    resolution_cache: ModuleTypeResolutionCache | None = None,
 ) -> str:
     path_segments = _split_path(path)
     if not path_segments:
@@ -332,11 +390,7 @@ def _describe_unresolved_icf_path(
     for prefix_length in range(len(path_segments), 0, -1):
         module_prefix = ".".join(path_segments[:prefix_length])
         try:
-            resolved = resolve_module_by_strict_path(
-                base_picture,
-                module_prefix,
-                moduletype_index=moduletype_index,
-            )
+            resolved = _resolve_module_path(base_picture, module_prefix, moduletype_index, resolution_cache)
         except ValueError:
             continue
 
@@ -355,10 +409,11 @@ def _describe_unresolved_icf_path(
         if variable is None:
             marked_path = _mark_path_segment(path_segments, prefix_length)
             try:
-                resolve_module_by_strict_path(
+                _resolve_module_path(
                     base_picture,
                     ".".join(path_segments[: prefix_length + 1]),
-                    moduletype_index=moduletype_index,
+                    moduletype_index,
+                    resolution_cache,
                 )
             except ValueError as exc:
                 return f"{marked_path}; {exc}"
@@ -372,10 +427,11 @@ def _describe_unresolved_icf_path(
 
     for prefix_length in range(1, len(path_segments) + 1):
         try:
-            resolve_module_by_strict_path(
+            _resolve_module_path(
                 base_picture,
                 ".".join(path_segments[:prefix_length]),
-                moduletype_index=moduletype_index,
+                moduletype_index,
+                resolution_cache,
             )
         except ValueError as exc:
             return f"{_mark_path_segment(path_segments, prefix_length - 1)}; {exc}"
@@ -387,27 +443,40 @@ def _validate_field_path(
     type_graph: TypeGraph,
     root_var: Variable,
     field_segments: list[str],
+    *,
+    library: str | None = None,
 ) -> tuple[bool, str | None]:
     if not field_segments:
-        if isinstance(root_var.datatype, Simple_DataType):
+        if isinstance(root_var.datatype, ScalarDatatype):
             return True, None
         return (
             False,
             f"non-simple datatype {root_var.datatype} referenced without field path",
         )
 
-    current_type: Simple_DataType | str | None = root_var.datatype
+    current_type: ScalarDatatype | str | None = root_var.datatype
+    field_library = library
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return False, f"datatype {current_type.value} has no field {field!r}"
 
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
+        ambiguity: list[AmbiguousRecordError] = []
+        record = resolve_record(
+            type_graph,
+            str(current_type),
+            library=field_library,
+            on_ambiguity=ambiguity.append,
+        )
+        if ambiguity:
+            return False, str(ambiguity[0])
+        field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
+        if record is None or field_def is None:
             return False, f"field {field!r} not found in datatype {current_type}"
 
         current_type = field_def.datatype
+        field_library = record.library
 
-    if isinstance(current_type, Simple_DataType):
+    if isinstance(current_type, ScalarDatatype):
         return True, None
     return (
         False,
@@ -419,22 +488,27 @@ def _resolve_canonical_leaf_name(
     type_graph: TypeGraph,
     root_var: Variable,
     field_segments: list[str],
+    *,
+    library: str | None = None,
 ) -> str | None:
     if not field_segments:
         return root_var.name
 
-    current_type: Simple_DataType | str | None = root_var.datatype
+    current_type: ScalarDatatype | str | None = root_var.datatype
     resolved_name: str | None = None
+    field_library = library
     for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
+        if isinstance(current_type, ScalarDatatype):
             return None
 
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
+        record = resolve_record(type_graph, str(current_type), library=field_library)
+        field_def = record.fields_by_key.get(field.casefold()) if record is not None else None
+        if record is None or field_def is None:
             return None
 
         resolved_name = field_def.name
         current_type = field_def.datatype
+        field_library = record.library
 
     return resolved_name
 
@@ -446,9 +520,10 @@ def _validate_entry_reference_case(
     root_var: Variable,
     variable_name: str,
     field_segments: list[str],
+    library: str | None = None,
 ) -> ICFValidationIssue | None:
     reference_name = field_segments[-1] if field_segments else variable_name
-    resolved_name = _resolve_canonical_leaf_name(type_graph, root_var, field_segments)
+    resolved_name = _resolve_canonical_leaf_name(type_graph, root_var, field_segments, library=library)
     if resolved_name is None or reference_name == resolved_name or _cf(reference_name) != _cf(resolved_name):
         return None
     return ICFValidationIssue(
@@ -510,90 +585,37 @@ def _validate_value_prefix_consistency(entries: list[ICFEntry]) -> ICFValidation
     )
 
 
-def _validate_parameter_record_completeness(
-    type_graph: TypeGraph,
-    resolved_entries: list[ICFResolvedEntry],
-    placeholder_entries: list[ICFEntry] | None = None,
-) -> list[ICFValidationIssue]:
+def _validate_journal_identity_groups(entries: list[ICFEntry]) -> list[ICFValidationIssue]:
+    """Report an incomplete MES identity group.
+
+    ``JournalData_DCStoMES`` and ``JournalData_MEStoDCS`` are fixed-key
+    identity groups: once a group maps any of its keys it must map all of
+    them. ``JOURNAL_TYPE`` is not required because real configurations omit it.
+    A group that is absent is never a finding, and ``JournalData_Parameters``
+    is a deliberate per-journal subset, so it is never checked for
+    completeness.
+    """
+    grouped: dict[tuple[str | None, str | None, str], list[ICFEntry]] = {}
+    for entry in entries:
+        group = _normalize_group_name(entry.group)
+        if group is None or group not in _IDENTITY_GROUP_FIELDS:
+            continue
+        grouped.setdefault((entry.unit, entry.journal, group), []).append(entry)
+
     issues: list[ICFValidationIssue] = []
-    grouped: dict[
-        tuple[str | None, str | None, str | None, tuple[str, ...], str, tuple[str, ...], str], list[ICFResolvedEntry]
-    ] = {}
-
-    for resolved in resolved_entries:
-        if _normalize_group_name(resolved.entry.group) != "journaldata_parameters":
+    for (unit, journal, group), group_entries in grouped.items():
+        present = {_cf(entry.key) for entry in group_entries}
+        missing = [name for name in _IDENTITY_GROUP_FIELDS[group] if _cf(name) not in present]
+        if not missing:
             continue
-        if isinstance(resolved.root_datatype, Simple_DataType):
-            continue
-        if resolved.root_datatype is not None and not isinstance(resolved.root_datatype, str):
-            continue
-        if not resolved.field_path:
-            continue
-        field_segments = [segment for segment in resolved.field_path.split(".") if segment]
-        if not field_segments:
-            continue
-        record_path = tuple(field_segments[:-1])
-        datatype_name = resolve_record_datatype(type_graph, resolved.root_datatype, list(record_path))
-        if datatype_name is None:
-            continue
-        record = type_graph.record(datatype_name)
-        if record is None:
-            continue
-        key = (
-            resolved.entry.unit,
-            resolved.entry.journal,
-            resolved.entry.group,
-            tuple(resolved.module_path),
-            resolved.variable_name,
-            record_path,
-            datatype_name,
-        )
-        grouped.setdefault(key, []).append(resolved)
-
-    grouped_items = list(grouped.items())
-
-    for (unit, journal, group, module_path, variable_name, record_path, datatype_name), entries in grouped_items:
-        record = type_graph.record(datatype_name)
-        if record is None:
-            continue
-        expected_fields = {field.name: _cf(field.name) for field in record.fields_by_key.values()}
-        optional_fields = _OPTIONAL_PARAMETER_RECORD_FIELDS.get(_cf(datatype_name), set())
-        present = {_cf(resolved.leaf_name) for resolved in entries}
-        for ph in placeholder_entries or []:
-            if _normalize_group_name(ph.group) != "journaldata_parameters":
-                continue
-            if ph.unit != unit or ph.journal != journal or ph.group != group:
-                continue
-            present.add(_cf(ph.key))
-        for (
-            other_unit,
-            other_journal,
-            other_group,
-            other_module_path,
-            other_variable_name,
-            other_record_path,
-            _other_datatype,
-        ), _other_entries in grouped_items:
-            if other_unit != unit or other_journal != journal or other_group != group:
-                continue
-            if other_module_path != module_path or other_variable_name != variable_name:
-                continue
-            if len(other_record_path) <= len(record_path):
-                continue
-            if other_record_path[: len(record_path)] != record_path:
-                continue
-            present.add(_cf(other_record_path[len(record_path)]))
-        missing = [name for name, key in expected_fields.items() if key not in present and key not in optional_fields]
-        if missing:
-            record_label = variable_name if not record_path else f"{variable_name}.{'.'.join(record_path)}"
-            issues.append(
-                ICFValidationIssue(
-                    entry=entries[0].entry,
-                    reason="missing journal parameter fields",
-                    detail=f"record {record_label} missing {len(missing)} fields: {', '.join(sorted(missing))}",
-                )
+        label = journal or unit or group_entries[0].group or group
+        issues.append(
+            ICFValidationIssue(
+                entry=group_entries[0],
+                reason="missing journal parameter fields",
+                detail=(f"group {group_entries[0].group} for {label} is missing identity keys: " + ", ".join(missing)),
             )
-
+        )
     return issues
 
 
@@ -608,7 +630,7 @@ def _validate_unit_structure(
         if entry.unit:
             unit_entries.setdefault(entry.unit, []).append(entry)
 
-    typed_units: dict[str, dict[str, Any]] = {}
+    typed_units: dict[str, _UnitTypeBucket] = {}
     for unit_name, unit_specific_entries in unit_entries.items():
         type_key, type_label = _resolve_unit_type_label(
             base_picture,
@@ -616,12 +638,11 @@ def _validate_unit_structure(
             unit_specific_entries,
             moduletype_index=moduletype_index,
         )
-        bucket = typed_units.setdefault(type_key, {"label": type_label, "units": []})
-        bucket["units"].append(unit_name)
+        typed_units.setdefault(type_key, _UnitTypeBucket(label=type_label, units=[])).units.append(unit_name)
 
     for bucket in typed_units.values():
-        type_label = str(bucket["label"])
-        units = sorted(bucket["units"])
+        type_label = bucket.label
+        units = sorted(bucket.units)
         if len(units) < 2:
             continue
         reference_unit = units[0]
@@ -650,14 +671,19 @@ def _validate_unit_structure(
             current_signature = signatures[unit_name]
             if current_signature == reference_signature:
                 continue
+            drift = _build_unit_drift(
+                current_unit=unit_name,
+                unit_type=type_label,
+                reference_unit=reference_unit,
+                reference=reference_signature,
+                current=current_signature,
+            )
             issues.append(
                 ICFValidationIssue(
                     entry=unit_entries[unit_name][0],
                     reason="unit structure drift",
-                    detail=(
-                        f"current unit {unit_name} (unit type {type_label}) differs from reference unit {reference_unit}: "
-                        f"{_summarize_signature_diff(reference_signature, current_signature)}"
-                    ),
+                    detail=summarize_icf_unit_drift(drift),
+                    drift=drift,
                 )
             )
 
@@ -672,17 +698,23 @@ __all__ = [
 ]
 
 
-def validate_icf_entries_against_program(
+def _unavailable_dependency_detail(libraries: AbstractSet[str]) -> str:
+    names = ", ".join(sorted(libraries))
+    return f"could not validate because these libraries are unavailable: {names}"
+
+
+def validate_icf_entries_against_program(  # noqa: PLR0915
     base_picture: BasePicture,
     entries: list[ICFEntry],
     expected_program: str,
     debug: bool = False,
     moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+    unavailable_libraries: AbstractSet[str] | None = None,
 ) -> ICFValidationReport:
     type_graph = TypeGraph.from_basepicture(base_picture)
+    resolution_cache: ModuleTypeResolutionCache = {}
     issues: list[ICFValidationIssue] = []
     resolved_entries: list[ICFResolvedEntry] = []
-    placeholder_entries: list[ICFEntry] = []
     skipped_details: list[ICFSkippedEntry] = []
     validated = 0
     valid = 0
@@ -690,7 +722,6 @@ def validate_icf_entries_against_program(
 
     for entry in entries:
         if _is_placeholder_icf_value(entry.value):
-            placeholder_entries.append(entry)
             skipped_details.append(
                 ICFSkippedEntry(
                     entry=entry,
@@ -730,8 +761,19 @@ def validate_icf_entries_against_program(
             base_picture,
             path,
             moduletype_index=moduletype_index,
+            resolution_cache=resolution_cache,
         )
         if resolved is None or var is None:
+            if unavailable_libraries:
+                skipped_details.append(
+                    ICFSkippedEntry(
+                        entry=entry,
+                        reason="dependency unavailable",
+                        detail=_unavailable_dependency_detail(unavailable_libraries),
+                    )
+                )
+                skipped += 1
+                continue
             issues.append(
                 ICFValidationIssue(
                     entry=entry,
@@ -740,12 +782,13 @@ def validate_icf_entries_against_program(
                         base_picture,
                         path,
                         moduletype_index=moduletype_index,
+                        resolution_cache=resolution_cache,
                     ),
                 )
             )
             continue
 
-        ok, detail = _validate_field_path(type_graph, var, field_segments)
+        ok, detail = _validate_field_path(type_graph, var, field_segments, library=resolved.current_library)
         if not ok:
             issues.append(
                 ICFValidationIssue(
@@ -756,8 +799,23 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        leaf_datatype = resolve_leaf_datatype(type_graph, var, field_segments)
+        leaf_datatype = resolve_leaf_datatype(
+            type_graph,
+            var,
+            field_segments,
+            library=resolved.current_library,
+        )
         if leaf_datatype is None:
+            if unavailable_libraries:
+                skipped_details.append(
+                    ICFSkippedEntry(
+                        entry=entry,
+                        reason="dependency unavailable",
+                        detail=_unavailable_dependency_detail(unavailable_libraries),
+                    )
+                )
+                skipped += 1
+                continue
             issues.append(
                 ICFValidationIssue(
                     entry=entry,
@@ -767,7 +825,12 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        resolved_leaf_name = _resolve_canonical_leaf_name(type_graph, var, field_segments)
+        resolved_leaf_name = _resolve_canonical_leaf_name(
+            type_graph,
+            var,
+            field_segments,
+            library=resolved.current_library,
+        )
         resolved_entries.append(
             ICFResolvedEntry(
                 entry=entry,
@@ -777,6 +840,7 @@ def validate_icf_entries_against_program(
                 field_path=".".join(field_segments) or None,
                 leaf_name=resolved_leaf_name or (field_segments[-1] if field_segments else var.name),
                 datatype=leaf_datatype,
+                current_library=resolved.current_library,
             )
         )
 
@@ -786,6 +850,7 @@ def validate_icf_entries_against_program(
             root_var=var,
             variable_name=var.name,
             field_segments=field_segments,
+            library=resolved.current_library,
         )
         if key_case_issue is not None:
             issues.append(key_case_issue)
@@ -793,7 +858,7 @@ def validate_icf_entries_against_program(
 
         valid += 1
 
-    issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries, placeholder_entries))
+    issues.extend(_validate_journal_identity_groups(entries))
     issues.extend(_validate_unit_structure(base_picture, entries, moduletype_index=moduletype_index))
     prefix_consistency_issue = _validate_value_prefix_consistency(entries)
     if prefix_consistency_issue is not None:

@@ -3,65 +3,14 @@
 
 from __future__ import annotations
 
-import json
 import pickle
+import time
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
 from .. import cache as cache_module
-
-
-class FoundationCache:
-    """Persistent store for the cached analysis foundation (Phase E).
-
-    The foundation is a pure, deterministic function of the parsed ASTs, so it can be
-    content-addressed and restored across runs just like the per-file AST cache. Callers compute
-    the key via ``cache_module.compute_foundation_cache_key`` from the same source manifest the
-    AST cache keys on, plus the schema version. A schema-version mismatch (or any source change,
-    which changes the key) simply misses and triggers a rebuild; this is the conservative
-    first-pass invalidation from the architecture doc.
-    """
-
-    def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir / "foundation"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_pruned_entries = self.prune_stale_entries()
-
-    def _path(self, key: str) -> Path:
-        return self.cache_dir / f"{key}.pickle"
-
-    def load(self, key: str) -> object | None:
-        p = self._path(key)
-        if not p.exists():
-            return None
-        payload = cache_module._load_pickle_payload(p)
-        payload_map = cache_module._as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != cache_module.FOUNDATION_CACHE_SCHEMA_VERSION:
-            return None
-        return payload_map.get("foundation")
-
-    def save(self, key: str, foundation: object) -> None:
-        payload: dict[str, object] = {
-            "version": cache_module.FOUNDATION_CACHE_SCHEMA_VERSION,
-            "foundation": foundation,
-        }
-        cache_module._save_pickle_payload(self._path(key), payload)
-
-    def prune_stale_entries(self) -> int:
-        removed = 0
-        for path in self.cache_dir.glob("*.pickle"):
-            payload = cache_module._load_pickle_payload(path)
-            payload_map = cache_module._as_mapping(payload)
-            if payload_map is not None and payload_map.get("version") == cache_module.FOUNDATION_CACHE_SCHEMA_VERSION:
-                continue
-            if cache_module._remove_file(path):
-                removed += 1
-        return removed
-
-    def drain_startup_pruned_entries(self) -> int:
-        removed = self._startup_pruned_entries
-        self._startup_pruned_entries = 0
-        return removed
+from ..parser_api import PARSER_VERSION
 
 
 class ASTCache:
@@ -89,7 +38,7 @@ class ASTCache:
     def has_payload(self, key: str) -> bool:
         return self._path(key).exists()
 
-    def load_manifest(self, key: str) -> dict[str, tuple[int, int]] | None:
+    def load_manifest(self, key: str) -> cache_module.CacheManifest | None:
         return cache_module._load_manifest_payload(self._manifest_path(key))
 
     def has_manifest(self, key: str) -> bool:
@@ -120,24 +69,37 @@ class ASTCache:
             "project": project,
         }
 
-        with self._manifest_path(key).open("w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
-
+        # The payload is the data; the manifest is what makes it trusted. Write
+        # the payload first, so a failed write leaves the previous manifest
+        # paired with the previous payload instead of blessing a stale one.
         cache_module._save_pickle_payload(self._path(key), payload)
+        cache_module._save_manifest_payload(self._manifest_path(key), manifest)
+        self._prune_after_save()
+
+    def _prune_after_save(self) -> None:
+        """Enforce the payload budget after a write, best effort.
+
+        The budget was otherwise applied only at startup and by an explicit
+        prune, so one long run could write every target's graph without ever
+        looking at the limit. The entry is already durable, so a prune failure
+        must not fail the save.
+        """
+        try:
+            self.prune_over_budget_entries()
+        except OSError:
+            return
 
     def load_validated(self, key: str) -> object | None:
         manifest = self.load_manifest(key)
         if manifest is None:
             return None
 
-        payload = self.load(key)
-        if payload is None:
-            return None
-
+        # Validate the file snapshot before unpickling: a stale entry must not
+        # pay the deserialization cost only to be thrown away.
         if not cache_module._validate_manifest(manifest):
             return None
 
-        return payload
+        return self.load(key)
 
     def prune_startup_entries(self) -> cache_module.CachePruneResult:
         removed_payloads = 0
@@ -201,25 +163,67 @@ class ASTCache:
             ast_manifest_entries=removed_manifests,
         )
 
+    def prune_over_budget_entries(self, *, now: float | None = None) -> cache_module.CachePruneResult:
+        """Drop the least recently used entries once the family exceeds its budget."""
+        payload_paths = sorted(self.cache_dir.glob("*.pickle"))
+        over_budget = cache_module.payloads_over_budget(
+            payload_paths,
+            time.time() if now is None else now,
+        )
+        removed_payloads = 0
+        removed_manifests = 0
+        for payload_path in over_budget:
+            if not cache_module._remove_file(payload_path):
+                continue
+            removed_payloads += 1
+            manifest_path = self._manifest_path(payload_path.stem)
+            if manifest_path.exists() and cache_module._remove_file(manifest_path):
+                removed_manifests += 1
+        return cache_module.CachePruneResult(
+            ast_payload_entries=removed_payloads,
+            ast_manifest_entries=removed_manifests,
+        )
+
     def drain_startup_prune_result(self) -> cache_module.CachePruneResult:
         result = self._startup_prune_result
         self._startup_prune_result = cache_module.CachePruneResult()
         return result
 
     def clear(self, key: str) -> None:
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
-        manifest_path = self._manifest_path(key)
-        if manifest_path.exists():
-            manifest_path.unlink()
+        # A concurrent pruner may remove either file first; clearing is
+        # best-effort and must not raise into the caller's action.
+        cache_module._remove_file(self._path(key))
+        cache_module._remove_file(self._manifest_path(key))
 
 
 class AnalysisReportCache:
     def __init__(self, cache_dir: Path):
-        self.cache_dir = cache_dir / "analysis_reports"
+        self._root_dir = cache_dir / "analysis_reports"
+        self.cache_dir = self._root_dir / f"v{cache_module.ANALYSIS_REPORT_CACHE_VERSION}-p{PARSER_VERSION}"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._startup_pruned_entries = self.prune_stale_entries()
+        # An entry is only valid for the schema version and parser release
+        # that wrote it, and the key path carries both. Entries from another
+        # generation are never read again, so they are removed here rather
+        # than validated one by one on every construction.
+        self._startup_pruned_entries = self._prune_other_generations()
+
+    def _prune_other_generations(self) -> int:
+        removed = 0
+        for path in self._root_dir.iterdir():
+            if not path.is_dir():
+                # Only a versioned directory is ever read, so a payload written
+                # directly under the root by an older layout is unreachable.
+                if path.is_file() and cache_module._remove_file(path):
+                    removed += 1
+                continue
+            if path == self.cache_dir:
+                continue
+            for entry in path.iterdir():
+                if entry.is_file() and cache_module._remove_file(entry):
+                    removed += 1
+            with suppress(OSError):
+                path.rmdir()
+        return removed
 
     def _path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.pickle"
@@ -268,9 +272,7 @@ class AnalysisReportCache:
         return cache_module._validate_manifest(payload_map.get("files"))
 
     def clear(self, key: str) -> None:
-        p = self._path(key)
-        if p.exists():
-            p.unlink()
+        cache_module._remove_file(self._path(key))
 
     def clear_all(self) -> int:
         removed = 0

@@ -9,12 +9,12 @@ from sattlint.parser_api import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
 )
 
 from ..models.project_graph import ProjectGraph
-from ..resolution import TypeGraph
+from ..resolution import TypeGraph, resolve_record
 from ..resolution.common import resolve_moduletype_def_strict
 from .syntax import CodeMode
 
@@ -25,10 +25,10 @@ def _cf(value: str) -> str:
     return value.casefold()
 
 
-def _format_datatype(datatype: Simple_DataType | str | None) -> str | None:
+def _format_datatype(datatype: ScalarDatatype | str | None) -> str | None:
     if datatype is None:
         return None
-    if isinstance(datatype, Simple_DataType):
+    if isinstance(datatype, ScalarDatatype):
         return str(datatype.value)
     return str(datatype)
 
@@ -66,9 +66,11 @@ def _format_workspace_snapshot_failure(
     *,
     detail: str | None = None,
 ) -> str:
-    target_prefix = f"{entry_name} parse/transform error:"
+    failures_by_message = {failure.message: failure for failure in graph.failures.values()}
     dependency_issues = [
-        message for message in graph.missing if not message.casefold().startswith(target_prefix.casefold())
+        message
+        for message in graph.missing
+        if (failure := failures_by_message.get(message)) is None or failure.name.casefold() != entry_name.casefold()
     ]
     resolved = sorted(graph.ast_by_name.keys(), key=str.casefold)
     unavailable = sorted(graph.unavailable_libraries, key=str.casefold)
@@ -97,8 +99,8 @@ def _format_workspace_snapshot_failure(
         lines.append(f"Validation warnings ({len(graph.warnings)}):")
         for message in graph.warnings[:8]:
             lines.append(f"- {message}")
-        if len(dependency_issues) > 8:
-            lines.append(f"- ... (+{len(dependency_issues) - 8} more)")
+        if len(graph.warnings) > 8:
+            lines.append(f"- ... (+{len(graph.warnings) - 8} more)")
 
     return "\n".join(lines)
 
@@ -111,17 +113,31 @@ def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
 
 def _resolve_field_datatype(
     type_graph: TypeGraph,
-    root_type: Simple_DataType | str,
+    root_type: ScalarDatatype | str,
     field_path: tuple[str, ...],
-) -> Simple_DataType | str | None:
-    current: Simple_DataType | str = root_type
+    *,
+    library: str | None = None,
+) -> ScalarDatatype | str | None:
+    """Walk a field path and return its leaf datatype.
+
+    ``library`` is the library that uses ``root_type``; it decides which
+    same-named record from a different library supplies the field layout. This
+    helper has no warning channel, so an undecidable record name returns
+    ``None``: the layout is unknown and no leaf datatype is fabricated.
+    """
+    current: ScalarDatatype | str = root_type
+    field_library = library
     for segment in field_path:
-        if isinstance(current, Simple_DataType):
+        if isinstance(current, ScalarDatatype):
             return current
-        field = type_graph.field(str(current), segment)
+        record = resolve_record(type_graph, str(current), library=field_library)
+        if record is None:
+            return None
+        field = record.fields_by_key.get(_cf(segment))
         if field is None:
             return None
         current = field.datatype
+        field_library = record.library
     return current
 
 
@@ -131,10 +147,32 @@ def _normalize_mode(mode: CodeMode | str) -> CodeMode:
     return CodeMode(str(mode).strip().lower())
 
 
+type SourceFileKey = tuple[str | None, str]
+
+
 def _source_file_key(value: Path | str | None) -> str | None:
+    """Basename identity of a source file, casefolded.
+
+    Callers that must distinguish same-named files from different libraries use
+    :func:`_reference_file_key` instead: this basename key is only an index for
+    consumers that resolve references within one file at a time.
+    """
     if value is None:
         return None
     return Path(str(value)).name.casefold()
+
+
+def _reference_file_key(value: Path | str | None, library: str | None) -> SourceFileKey | None:
+    """Library-qualified identity of a source file, casefolded.
+
+    Two libraries can each hold ``Main.s``; keying reference occurrences by the
+    pair keeps their occurrences in separate buckets so a lookup for one
+    library can never return the other library's references.
+    """
+    name = _source_file_key(value)
+    if name is None:
+        return None
+    return (library.casefold() if library else None, name)
 
 
 def _identifier_contains_column(start_column: int, text: str, column: int) -> bool:
@@ -217,6 +255,7 @@ dedupe_moduletype_defs = _dedupe_moduletype_defs
 path_startswith = _path_startswith
 normalize_mode = _normalize_mode
 source_file_key = _source_file_key
+reference_file_key = _reference_file_key
 identifier_contains_column = _identifier_contains_column
 child_module_items = _child_module_items
 resolve_field_datatype = _resolve_field_datatype

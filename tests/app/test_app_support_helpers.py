@@ -1,11 +1,12 @@
-# pyright: reportArgumentType=false
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from sattlint.cli import menu as menu_module
+from sattlint.config.types import ConfigDict
 from sattlint.project import support as support_module
 
 
@@ -24,16 +25,40 @@ def test_target_load_error_categorizes_other_entries_and_warnings() -> None:
             "mystery warning",
         ],
         direct_dependencies=["DepA"],
+        failures={
+            "root": support_module.ProjectFailure(
+                "Root", "Root parse/transform error: bad syntax", detail="bad syntax"
+            ),
+            "depa": support_module.ProjectFailure(
+                "DepA", "Missing code file for 'DepA'", detail="code file is missing (draft)"
+            ),
+        },
     )
 
     message = str(error)
 
     assert "Root target validation errors (1):" in message
     assert "Failed direct dependencies (1):" in message
+    assert "  - DepA: code file is missing (draft)" in message
     assert "Other missing/failed entries (1):" in message
     assert "Root target warnings (1):" in message
     assert "Direct dependency warnings (1):" in message
     assert "Other warnings (1):" in message
+
+
+def test_target_load_error_does_not_infer_a_name_from_the_message_text() -> None:
+    error = support_module.TargetLoadError(
+        "Root",
+        resolved=[],
+        missing=["Missing code file for 'DepA'"],
+        warnings=[],
+        direct_dependencies=["DepA"],
+    )
+
+    message = str(error)
+
+    assert "Failed direct dependencies" not in message
+    assert "Other missing/failed entries (1):" in message
 
 
 def test_target_load_error_reports_missing_none_when_no_failures() -> None:
@@ -60,19 +85,19 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     assert printed[15] == "  - [Root.L1] '+MissingPanel'"
     assert printed[16] == "    module 'MissingPanel' was not found under 'Root.L1'"
     assert support_module.extract_warning_name("plain warning") is None
-    assert support_module.get_analyzed_targets({"analyzed_programs_and_libraries": "bad"}) == []
+    assert support_module.get_analyzed_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": "bad"})) == []
     assert (
-        menu_module.summarize_targets({"analyzed_programs_and_libraries": ["A", "B", "C", "D"]})
+        menu_module.summarize_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": ["A", "B", "C", "D"]}))
         == "4 targets configured: A, B, C, ..."
     )
     with pytest.raises(RuntimeError):
-        support_module.require_analyzed_targets({"analyzed_programs_and_libraries": []})
+        support_module.require_analyzed_targets(cast(ConfigDict, {"analyzed_programs_and_libraries": []}))
 
 
 def test_configured_icf_files_cover_error_paths(tmp_path: Path) -> None:
-    assert support_module.configured_icf_files({"icf_dir": ""}) == (None, [])
+    assert support_module.configured_icf_files(cast(ConfigDict, {"icf_dir": ""})) == (None, [])
 
     missing_dir = tmp_path / "missing"
-    icf_dir, icf_files = support_module.configured_icf_files({"icf_dir": str(missing_dir)})
+    icf_dir, icf_files = support_module.configured_icf_files(cast(ConfigDict, {"icf_dir": str(missing_dir)}))
     assert icf_dir == missing_dir
     assert icf_files == []

@@ -2,7 +2,7 @@
 
 Builds the ``ParserProjectBinding`` the project-loading application seams feed
 into :mod:`sattlint.project.parser_adapter`, plus the timing-helper aliases and
-cfg validation shared by the loader facade (``sattlint.engine``).
+the cfg validation the project loader runs before parsing.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Protocol, TypeGuard
 
+from ..config.string_capacities import resolve_string_capacities
 from ..core.syntax import CodeMode, normalize_code_mode
 from .parser_adapter import ParserProjectBinding
 
@@ -101,6 +102,7 @@ def build_parser_binding(
     status_update_fn: Callable[[str], None] | None = None,
     stage_timing_sink: LoadStageTimingSink | None = None,
     graphics_timing_sink: GraphicsLoadTimingSink | None = None,
+    parser_cache_dir: Path | None = None,
 ) -> ParserProjectBinding:
     validate_loader_config(cfg)
 
@@ -124,4 +126,6 @@ def build_parser_binding(
         status_update_fn=status_update_fn,
         stage_timing_sink=stage_timing_sink,
         graphics_timing_sink=graphics_timing_sink,
+        string_capacities=resolve_string_capacities(cfg),
+        parser_cache_dir=parser_cache_dir,
     )

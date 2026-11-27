@@ -11,6 +11,7 @@ from sattlint.parser_api import Variable
 from ...reporting.variables_report import VariableIssue
 from ...resolution import AccessGraph
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ._variables_contracts import TypedefUsageKey
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_status import ProcedureStatusBinding
 
@@ -28,11 +29,12 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _alias_links: list[tuple[Variable, Variable, str]]
     _procedure_status_bindings: dict[int, list[ProcedureStatusBinding]]
     _ignorable_output_variable_ids: set[int]
+    _out_of_origin_consumer_variable_ids: set[int]
     _any_var_index: dict[str, list[Variable]]
     _contract_validator: ContractMappingValidator
     _min_max_validator: MinMaxValidator
     _string_validator: StringMappingValidator
-    _analyzing_typedefs: set[str]
+    _analyzing_typedefs: set[TypedefUsageKey]
     _effect_flow_tracker: EffectFlowTracker
     _effective_output_keys: set[tuple[str, ...]]
     _site_stack: list[str]
@@ -83,6 +85,11 @@ class VariablesAnalyzerFacadePropertiesMixin:
         return self._state()._ignorable_output_variable_ids
 
     @property
+    def out_of_origin_consumer_variable_ids(self) -> set[int]:
+        """Variables wired into a child whose contract lives outside the analyzed origin."""
+        return self._state()._out_of_origin_consumer_variable_ids
+
+    @property
     def any_var_index(self) -> dict[str, list[Variable]]:
         return self._state()._any_var_index
 
@@ -99,7 +106,7 @@ class VariablesAnalyzerFacadePropertiesMixin:
         return self._state()._string_validator
 
     @property
-    def analyzing_typedefs(self) -> set[str]:
+    def analyzing_typedefs(self) -> set[TypedefUsageKey]:
         return self._state()._analyzing_typedefs
 
     @property

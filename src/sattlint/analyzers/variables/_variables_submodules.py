@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Any, cast
 
 from sattlint.parser_api import (
@@ -10,23 +13,23 @@ from sattlint.parser_api import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
     SingleModule,
     Variable,
-    VarRef,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...reporting.variables_report import NestedRecordCandidateIssue
 from ...resolution import decorate_segment
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.paths import path_startswith_casefold
 from ...resolution.scope import ScopeContext
-from ...types import VariableId
-from ...utils.casefolding import casefold_key, is_anytype_name
+from ...utils.casefolding import casefold_key
 from ..shared.variable_utils import external_mapping_usage, mapping_target_name
+from ._variables_contracts import typedef_usage_key
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+type ResolveVariableFn = Callable[[str], tuple[Variable | None, str, list[str], list[str]]]
 
 
 def _maybe_update_status(self: object, detail: str) -> None:
@@ -161,15 +164,9 @@ def _walk_singlemodule_subtree(
 def _walk_framemodule_subtree(
     self: VariablesAnalyzer,
     child: FrameModule,
-    parent_context: ScopeContext,
+    frame_context: ScopeContext,
     child_path: list[str],
-    child_display_path: list[str],
 ) -> None:
-    frame_context = self.repath_context(
-        parent_context,
-        module_path=child_path,
-        display_module_path=child_display_path,
-    )
     self.contexts_by_module_path[tuple(child_path)] = frame_context
     self.walk_moduledef(child.moduledef, frame_context, child_path)
     self.walk_module_code(child.modulecode, frame_context, child_path)
@@ -238,7 +235,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             external = True
 
     if moduletype:
-        mt_key = casefold_key(child.moduletype_name)
+        mt_key = typedef_usage_key(moduletype)
         typedef_context = self.context_builder.build_for_typedef(
             moduletype,
             child,
@@ -289,6 +286,8 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
     for mapping in child.parametermappings or []:
         full_source_name = _mapping_source_full_ref(mapping)
         target_name = mapping_target_name(mapping)
+        if external or dependency_owned_moduletype:
+            _record_out_of_origin_consumer_actual(self, mapping, parent_context, parent_context.env)
         mapping_reads = reads
         mapping_writes = writes
         known_external_usage = external_mapping_usage(child.moduletype_name, target_name) if external else None
@@ -303,6 +302,8 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
                 mapping_reads.add(target_name)
             if writes_to_source:
                 mapping_writes.add(target_name)
+        if dependency_owned_moduletype and mapping_reads is not None and target_name in mapping_reads:
+            self.effect_flow_tracker.record_external_mapping_input(mapping, parent_context.env, parent_context)
         _propagate_mapping_to_parent(
             self,
             mapping,
@@ -327,7 +328,7 @@ def _walk_moduletype_instance_subtree(  # noqa: PLR0915
             parent_env=parent_context.env,
             parent_context=parent_context,
             parent_path=[*parent_path, child_name],
-            current_library=parent_context.current_library,
+            current_library=moduletype.origin_lib or parent_context.current_library,
         )
 
 
@@ -350,18 +351,24 @@ def _walk_submodules(
             _maybe_update_status(self, f"walking module path {display_path}")
 
         child_display_path = _display_path_for_child(self, child, parent_context)
-        inst_context = self.repath_context(
-            parent_context,
-            module_path=child_path,
-            display_module_path=child_display_path,
-        )
 
         if isinstance(child, SingleModule):
             _walk_singlemodule_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
         elif isinstance(child, FrameModule):
-            _walk_submodule_headers(self, child, inst_context, child_path)
-            _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+            frame_context = self.context_builder.build_for_frame(
+                child,
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
+            _walk_submodule_headers(self, child, frame_context, child_path)
+            _walk_framemodule_subtree(self, child, frame_context, child_path)
         else:
+            inst_context = self.repath_context(
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
             _walk_submodule_headers(self, child, inst_context, child_path)
             _walk_moduletype_instance_subtree(
                 self,
@@ -401,88 +408,144 @@ def _propagate_mapping_to_parent(
     )
 
 
+def _record_out_of_origin_consumer_actual(
+    self: VariablesAnalyzer,
+    mapping: ParameterMapping,
+    parent_context: ScopeContext,
+    parent_env: dict[str, Variable],
+) -> None:
+    """Record the variable a child outside the analyzed origin consumes.
+
+    A mapping declares that the child's contract uses the value. When that contract
+    is unresolved or belongs to another origin, the analyzer cannot see the read,
+    so the absence of a read is not evidence that the variable is dead. Resolving
+    through the scope context finds ancestors, which a frame's own scope cannot.
+    """
+    full_source = _mapping_source_full_ref(mapping)
+    if full_source is None:
+        return
+
+    source_var: Variable | None = None
+    resolve_variable = cast(
+        "ResolveVariableFn | None",
+        getattr(parent_context, "resolve_variable", None),
+    )
+    if resolve_variable is not None:
+        source_var, _field_path, _decl_path, _decl_display_path = resolve_variable(full_source)
+
+    if source_var is None:
+        source_base = varname_base(full_source)
+        if source_base is not None:
+            source_var = parent_env.get(source_base)
+            if source_var is None:
+                lookup_global = cast(
+                    "Callable[[str], Variable | None] | None",
+                    getattr(self, "lookup_global_variable", None),
+                )
+                if lookup_global is not None:
+                    source_var = lookup_global(source_base)
+
+    if source_var is not None:
+        self.out_of_origin_consumer_variable_ids.add(id(source_var))
+
+
 def _lookup_env_var_from_varname_dict(
     self: VariablesAnalyzer,
     var_dict_or_other: Any,
     env: dict[str, Variable],
 ) -> Variable | None:
-    if isinstance(var_dict_or_other, VarRef):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    if isinstance(var_dict_or_other, str):
-        base = varname_base(var_dict_or_other)
-        if base is not None:
-            return env.get(base)
-    return None
+    base = varname_base(var_dict_or_other)
+    if base is None:
+        return None
+    return env.get(base)
+
+
+_MIN_NESTED_RECORD_FIELDS = 3
+_MAX_NESTED_RECORD_FIELDS = 32
+
+type _FieldSignature = tuple[str, str, bool, bool]
+
+
+def _empty_record_names() -> set[str]:
+    return set()
+
+
+@dataclass
+class _FieldWindow:
+    records: set[str] = field(default_factory=_empty_record_names)
+    display_fields: tuple[str, ...] = ()
+
+
+def _field_signature(field: Variable) -> _FieldSignature:
+    return (
+        casefold_key(field.name),
+        casefold_key(str(field.datatype_text)),
+        bool(field.state),
+        bool(field.const),
+    )
+
+
+def _contains_window(long: tuple[_FieldSignature, ...], short: tuple[_FieldSignature, ...]) -> bool:
+    if len(short) > len(long):
+        return False
+    return any(long[index : index + len(short)] == short for index in range(len(long) - len(short) + 1))
 
 
 def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
-    var_locations: list[tuple[Any, list[str], str]] = []
+    """Report shared field groups that can become a nested record."""
+    records = [
+        datatype
+        for datatype in self.bp.datatype_defs or []
+        if self.is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+        and _MIN_NESTED_RECORD_FIELDS <= len(datatype.var_list or []) <= _MAX_NESTED_RECORD_FIELDS
+    ]
+    fields_by_record = {
+        datatype.name: tuple(_field_signature(field) for field in (datatype.var_list or [])) for datatype in records
+    }
 
-    bp_path = [self.bp.header.name]
-    for variable in self.bp.localvariables or []:
-        var_locations.append((variable, bp_path.copy(), "localvariable"))
+    fields_display = {record.name: tuple(field.name for field in (record.var_list or [])) for record in records}
+    shared: dict[tuple[_FieldSignature, ...], _FieldWindow] = {}
+    record_names = list(fields_by_record)
+    for left_index, left_name in enumerate(record_names):
+        for right_name in record_names[left_index + 1 :]:
+            matcher = SequenceMatcher(
+                a=fields_by_record[left_name],
+                b=fields_by_record[right_name],
+                autojunk=False,
+            )
+            for block in matcher.get_matching_blocks():
+                if block.size < _MIN_NESTED_RECORD_FIELDS:
+                    continue
+                window = fields_by_record[left_name][block.a : block.a + block.size]
+                candidate = shared.setdefault(window, _FieldWindow())
+                candidate.records.update((left_name, right_name))
+                if not candidate.display_fields:
+                    candidate.display_fields = fields_display[left_name][block.a : block.a + block.size]
 
-    def _collect_from_module(mod: SingleModule | FrameModule | ModuleTypeInstance, path: list[str]) -> None:
-        if isinstance(mod, SingleModule):
-            my_path = [*path, mod.header.name]
-            for variable in mod.moduleparameters or []:
-                var_locations.append((variable, my_path.copy(), "moduleparameter"))
-            for variable in mod.localvariables or []:
-                var_locations.append((variable, my_path.copy(), "localvariable"))
-            for child in mod.submodules or []:
-                _collect_from_module(child, my_path)
-        elif isinstance(mod, FrameModule):
-            my_path = [*path, mod.header.name]
-            for child in mod.submodules or []:
-                _collect_from_module(child, my_path)
+    candidates = sorted(
+        ((window, candidate) for window, candidate in shared.items() if len(candidate.records) >= 2),
+        key=lambda item: (-len(item[0]), tuple(name.casefold() for name in sorted(item[1].records))),
+    )
 
-    for module in self.bp.submodules or []:
-        _collect_from_module(module, bp_path)
-
-    for moduletype in self.bp.moduletype_defs or []:
-        if not self.is_from_root_origin(
-            getattr(moduletype, "origin_file", None),
-            getattr(moduletype, "origin_lib", None),
+    kept: list[tuple[tuple[_FieldSignature, ...], set[str]]] = []
+    for window, candidate in candidates:
+        if all(len(fields_by_record[record_name]) == len(window) for record_name in candidate.records):
+            # Identical whole layouts should reuse one record, not nest a copy.
+            continue
+        if any(
+            _contains_window(kept_window, window) and candidate.records <= kept_records
+            for kept_window, kept_records in kept
         ):
             continue
-        td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
-        for variable in moduletype.moduleparameters or []:
-            var_locations.append((variable, td_path.copy(), "moduleparameter"))
-        for variable in moduletype.localvariables or []:
-            var_locations.append((variable, td_path.copy(), "localvariable"))
-
-    complex_vars = [
-        (variable, path, role)
-        for variable, path, role in var_locations
-        if not isinstance(variable.datatype, Simple_DataType) and not is_anytype_name(variable.datatype_text)
-    ]
-
-    by_datatype: dict[tuple[tuple[str, ...], str], list[tuple[Any, list[str], str]]] = {}
-    for variable, path, role in complex_vars:
-        datatype_key = casefold_key(variable.datatype_text)
-        scope_key = tuple(segment.casefold() for segment in path)
-        by_datatype.setdefault((scope_key, datatype_key), []).append((variable, path, role))
-
-    declared_record_names = {datatype.name.casefold() for datatype in self.bp.datatype_defs or []}
-    for (_scope_key, datatype_name), occurrences in by_datatype.items():
-        if len(occurrences) < 2:
-            continue
-        if datatype_name in declared_record_names:
-            continue
-
-        first_var, first_path, first_role = occurrences[0]
-        duplicate_locs = [(path, role, VariableId(variable.name)) for variable, path, role in occurrences[1:]]
-
+        kept.append((window, candidate.records))
         self.append_issue(
-            VariableIssue(
-                kind=IssueKind.DATATYPE_DUPLICATION,
-                module_path=first_path,
-                variable=first_var,
-                role=first_role,
-                duplicate_count=len(occurrences),
-                duplicate_locations=duplicate_locs,
+            NestedRecordCandidateIssue(
+                module_path=[self.bp.header.name],
+                field_names=candidate.display_fields,
+                record_names=tuple(sorted(candidate.records, key=str.casefold)),
             )
         )
 
@@ -519,11 +582,10 @@ class VariablesSubmodulesMixin:
     def _walk_framemodule_subtree(
         self: Any,
         child: FrameModule,
-        parent_context: ScopeContext,
+        frame_context: ScopeContext,
         child_path: list[str],
-        child_display_path: list[str],
     ) -> None:
-        _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+        _walk_framemodule_subtree(self, child, frame_context, child_path)
 
     def _walk_moduletype_instance_subtree(
         self: Any,

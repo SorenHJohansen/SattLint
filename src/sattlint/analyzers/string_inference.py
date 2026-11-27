@@ -18,17 +18,14 @@ from sattlint.parser_api import (
     Assignment,
     BasePicture,
     BinOp,
-    Equation,
     FrameModule,
     FuncCall,
     FuncCallStmt,
     IfStmt,
-    ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Sequence,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     TernaryOp,
     UnaryOp,
@@ -37,23 +34,19 @@ from sattlint.parser_api import (
     is_string_simple_type,
 )
 
+from ..config.string_capacities import StringCapacities
 from ..resolution.common import select_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext
 from ._string_models import (
     _MAX_CONTEXT_BUILD_DEPTH,
     _MAX_FIXED_POINT_PASSES,
-    _STRING_LIMITS,
     StringCandidate,
     StringInferenceResult,
     StringProvenanceSegment,
+    StringSlotKey,
     _AbstractState,
     _IntResult,
-    _LiteralBinding,
-    _ModuleContext,
     _noop_progress,
-    _ResolvedSlot,
-    _SlotKey,
-    _string_capacity_for_datatype,
 )
 from ._string_operations import (
     _apply_int_operator,
@@ -75,6 +68,17 @@ from ._string_operations import (
     _unknown_string_result,
     _with_end_cursor,
 )
+from .shared._string_capacity import capacity_for_datatype
+from .shared.statement_sites import iter_statement_sites
+from .string_contexts import (
+    AnalysisOriginScope,
+    LiteralBinding,
+    StringModuleContext,
+    declared_variables,
+    module_code,
+    resolve_string_slot,
+    resolve_string_target,
+)
 
 if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
@@ -92,21 +96,30 @@ class ExactStringInferenceEngine:
         self,
         base_picture: BasePicture,
         *,
+        capacities: StringCapacities,
         graph: ProjectGraph | None = None,
+        origin_scope: AnalysisOriginScope | None = None,
         progress_callback: Callable[[str], None] | None = None,
         debug: bool = False,
     ):
         self.base_picture = base_picture
         self.graph = graph
         self.debug = debug
+        self._capacities = capacities
+        #: When set, module types outside the analyzed unit are not walked or
+        #: expanded. Their instance keeps a scope for name resolution, but no
+        #: code, so a dependency's declarations never reach the checks.
+        self._origin_scope = origin_scope
         self._context_build_depth = 0
         self._context_build_limit_reported = False
         self._progress_callback: Callable[[str], None] = (
             progress_callback if progress_callback is not None else _noop_progress
         )
         self._moduletype_index = _candidate_moduletype_index(base_picture, graph)
-        self._contexts_by_path: dict[tuple[str, ...], _ModuleContext] = {}
-        self._execution_contexts: list[_ModuleContext] = []
+        self._contexts_by_path: dict[tuple[str, ...], StringModuleContext] = {}
+        self._execution_contexts: list[StringModuleContext] = []
+        # Every module type the tree resolves, keyed by declaration identity.
+        self._resolved_typedefs: dict[tuple[str, str, str], ModuleTypeDef] = {}
         if self.debug:
             log.debug(
                 "string-inference: building module context tree for root=%s (typedefs=%d)",
@@ -115,39 +128,68 @@ class ExactStringInferenceEngine:
             )
         self._root_context = self._build_basepicture_context()
         self._collect_contexts(self._root_context)
-        for moduletype in self.base_picture.moduletype_defs or []:
-            self._collect_contexts(self._build_typedef_root_context(moduletype))
+        self._build_reachable_typedef_roots()
         if self.debug:
             log.debug(
-                "string-inference: context tree built; %d contexts, %d executable",
+                "string-inference: context tree built; %d contexts, %d executable, %d instantiated types",
                 len(self._contexts_by_path),
                 len(self._execution_contexts),
+                len(self._resolved_typedefs),
             )
         self._initial_state = self._build_initial_state()
         self._solved_state: _AbstractState | None = None
+
+    def _build_reachable_typedef_roots(self) -> None:
+        """Add a declaration-path context for every type the tree instantiates.
+
+        The merged project view carries every module type of every dependency
+        library, and a large project has thousands. Expanding all of them used to
+        produce hundreds of thousands of contexts for a tree that instantiates a
+        few dozen types, and the length analysis then walked all of them on every
+        fixpoint pass. A type the analyzed tree never instantiates has no module
+        path to report against, so only reachable types get a root. Expanding one
+        can reach further types, so this repeats until nothing new appears.
+        """
+        built: set[tuple[str, str, str]] = set()
+        while True:
+            pending = [moduletype for identity, moduletype in self._resolved_typedefs.items() if identity not in built]
+            if not pending:
+                return
+            for moduletype in pending:
+                built.add(_typedef_identity(moduletype))
+                self._collect_contexts(self._build_typedef_root_context(moduletype))
 
     def infer(self, reference: str, *, module_path: tuple[str, ...] | list[str]) -> StringInferenceResult:
         self._ensure_solved()
         context = self._contexts_by_path.get(tuple(segment.casefold() for segment in module_path))
         if context is None:
             return StringInferenceResult()
-        resolved = _resolve_slot(context.scope, reference)
+        resolved = resolve_string_slot(context.scope, reference)
         if resolved is None or self._solved_state is None:
             return StringInferenceResult()
         return self._solved_state.string_values.get(
             resolved.key,
-            _unknown_string_result(max_length=_string_capacity_for_datatype(resolved.variable.datatype)),
+            _unknown_string_result(max_length=capacity_for_datatype(self._capacities, resolved.variable.datatype)),
         )
+
+    def module_contexts(self) -> tuple[StringModuleContext, ...]:
+        """Every module scope in the tree, including module type roots."""
+        return tuple(self._contexts_by_path.values())
+
+    def execution_contexts(self) -> tuple[StringModuleContext, ...]:
+        """The module scopes that carry code, in execution order."""
+        return tuple(self._execution_contexts)
 
     def _ensure_solved(self) -> None:
         if self._solved_state is not None:
             return
         state = self._initial_state.clone()
+        precise_state = _precise_state(state)
         for pass_idx in range(_MAX_FIXED_POINT_PASSES):
             self._progress_callback(f"resolving string values: pass {pass_idx + 1}/{_MAX_FIXED_POINT_PASSES}")
             next_state = state.clone()
-            written_string_keys: set[_SlotKey] = set()
-            written_int_keys: set[_SlotKey] = set()
+            written_string_keys: set[StringSlotKey] = set()
+            written_int_keys: set[StringSlotKey] = set()
             for context in self._execution_contexts:
                 updates = self._execute_module_context(context, state)
                 for key, value in updates.string_values.items():
@@ -165,10 +207,18 @@ class ExactStringInferenceEngine:
             if next_state == state:
                 self._solved_state = next_state
                 return
+            next_precise_state = _precise_state(next_state)
+            if next_precise_state == precise_state:
+                # Only the unknown flags differ, and they are oscillating. Fold
+                # both passes into a sound over-approximation and stop instead
+                # of replaying every context until the pass cap.
+                self._solved_state = _stabilize_unknown_flags(state, next_state)
+                return
+            precise_state = next_precise_state
             state = next_state
         self._solved_state = state
 
-    def _build_basepicture_context(self) -> _ModuleContext:
+    def _build_basepicture_context(self) -> StringModuleContext:
         root_scope = ScopeContext(
             env={variable.name.casefold(): variable for variable in self.base_picture.localvariables or []},
             param_mappings={},
@@ -177,16 +227,18 @@ class ExactStringInferenceEngine:
             current_library=getattr(self.base_picture, "origin_lib", None),
             parent_context=None,
         )
-        root = _ModuleContext(
+        root = StringModuleContext(
             path=(self.base_picture.header.name,),
             scope=root_scope,
             node=self.base_picture,
             literal_bindings=(),
+            origin_file=getattr(self.base_picture, "origin_file", None),
+            origin_lib=getattr(self.base_picture, "origin_lib", None),
         )
         root.nested = tuple(self._build_child_context(root, child) for child in self.base_picture.submodules or [])
         return root
 
-    def _build_typedef_root_context(self, moduletype: ModuleTypeDef) -> _ModuleContext:
+    def _build_typedef_root_context(self, moduletype: ModuleTypeDef) -> StringModuleContext:
         typedef_path = (self.base_picture.header.name, f"TypeDef:{moduletype.name}")
         env = {
             variable.name.casefold(): variable
@@ -202,28 +254,32 @@ class ExactStringInferenceEngine:
             current_library=moduletype.origin_lib or getattr(self.base_picture, "origin_lib", None),
             parent_context=self._root_context.scope,
         )
-        context = _ModuleContext(
+        context = StringModuleContext(
             path=typedef_path,
             scope=scope,
             node=moduletype,
             literal_bindings=(),
+            origin_file=getattr(moduletype, "origin_file", None),
+            origin_lib=getattr(moduletype, "origin_lib", None),
         )
         context.nested = tuple(self._build_child_context(context, child) for child in moduletype.submodules or [])
         return context
 
     def _build_child_context(
         self,
-        parent: _ModuleContext,
+        parent: StringModuleContext,
         child: SingleModule | FrameModule | ModuleTypeInstance,
-    ) -> _ModuleContext:
+    ) -> StringModuleContext:
         child_path = (*parent.path, child.header.name)
         if isinstance(child, SingleModule):
             scope = _build_single_scope(child, parent.scope, child_path)
-            context = _ModuleContext(
+            context = StringModuleContext(
                 path=child_path,
                 scope=scope,
                 node=child,
                 literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
             )
             context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
@@ -231,15 +287,28 @@ class ExactStringInferenceEngine:
             return context
 
         if isinstance(child, FrameModule):
+            frame_env = {
+                variable.name.casefold(): variable
+                for variable in [*(child.moduleparameters or []), *(child.localvariables or [])]
+            }
+            frame_param_keys = {variable.name.casefold() for variable in child.moduleparameters or []}
             scope = ScopeContext(
-                env={},
+                env=frame_env,
                 param_mappings={},
                 module_path=list(child_path),
                 display_module_path=list(child_path),
+                moduleparameter_keys=frozenset(frame_param_keys),
                 current_library=parent.scope.current_library,
                 parent_context=parent.scope,
             )
-            context = _ModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
+            context = StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=(),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
+            )
             context.nested = tuple(
                 self._build_child_context(context, grandchild) for grandchild in child.submodules or []
             )
@@ -260,8 +329,32 @@ class ExactStringInferenceEngine:
                 current_library=parent.scope.current_library,
                 parent_context=parent.scope,
             )
-            return _ModuleContext(path=child_path, scope=scope, node=child, literal_bindings=())
+            return StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=(),
+                origin_file=parent.origin_file,
+                origin_lib=parent.origin_lib,
+            )
 
+        if self._origin_scope is not None and not self._origin_scope.includes(
+            getattr(resolved_typedef, "origin_file", None),
+            getattr(resolved_typedef, "origin_lib", None),
+        ):
+            # Keep the instance's scope so a mapping in the analyzed unit still
+            # resolves, but do not walk the foreign body.
+            scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
+            return StringModuleContext(
+                path=child_path,
+                scope=scope,
+                node=child,
+                literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=getattr(resolved_typedef, "origin_file", None),
+                origin_lib=getattr(resolved_typedef, "origin_lib", None),
+            )
+
+        self._resolved_typedefs.setdefault(_typedef_identity(resolved_typedef), resolved_typedef)
         scope = _build_typedef_scope(resolved_typedef, child, parent.scope, child_path)
         self._context_build_depth += 1
         if self.debug:
@@ -284,18 +377,22 @@ class ExactStringInferenceEngine:
                 )
                 self._context_build_limit_reported = True
             self._context_build_depth -= 1
-            return _ModuleContext(
+            return StringModuleContext(
                 path=child_path,
                 scope=scope,
                 node=resolved_typedef,
                 literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+                origin_file=getattr(resolved_typedef, "origin_file", None),
+                origin_lib=getattr(resolved_typedef, "origin_lib", None),
             )
 
-        context = _ModuleContext(
+        context = StringModuleContext(
             path=child_path,
             scope=scope,
             node=resolved_typedef,
             literal_bindings=_literal_bindings_for_mappings(child.parametermappings, "parameter_mapping_literal"),
+            origin_file=getattr(resolved_typedef, "origin_file", None),
+            origin_lib=getattr(resolved_typedef, "origin_lib", None),
         )
         context.nested = tuple(
             self._build_child_context(context, grandchild) for grandchild in resolved_typedef.submodules or []
@@ -303,9 +400,9 @@ class ExactStringInferenceEngine:
         self._context_build_depth -= 1
         return context
 
-    def _collect_contexts(self, context: _ModuleContext) -> None:
+    def _collect_contexts(self, context: StringModuleContext) -> None:
         self._contexts_by_path[tuple(segment.casefold() for segment in context.path)] = context
-        if _module_code(context.node) is not None:
+        if module_code(context.node) is not None:
             self._execution_contexts.append(context)
         for child in context.nested:
             self._collect_contexts(child)
@@ -314,7 +411,7 @@ class ExactStringInferenceEngine:
         state = _AbstractState()
         for context in self._contexts_by_path.values():
             alias_keys = frozenset(context.scope.param_mappings.keys())
-            for variable in _declared_variables(context.node):
+            for variable in declared_variables(context.node):
                 if variable.name.casefold() in alias_keys:
                     continue
                 slot_key = _declaration_slot(context.path, variable.name)
@@ -325,9 +422,9 @@ class ExactStringInferenceEngine:
                         source_kind="initializer",
                         source_label=variable.name,
                         source_module_path=context.path,
-                        max_length=_string_capacity_for_datatype(variable.datatype),
+                        max_length=capacity_for_datatype(self._capacities, variable.datatype),
                     )
-                elif isinstance(init_value, int) and variable.datatype is Simple_DataType.INTEGER:
+                elif isinstance(init_value, int) and variable.datatype is ScalarDatatype.INTEGER:
                     state.int_values[slot_key] = _normalize_int_result(_IntResult((init_value,), False))
 
             for binding in context.literal_bindings:
@@ -335,21 +432,30 @@ class ExactStringInferenceEngine:
                 if target_key is None:
                     continue
                 if isinstance(binding.source_literal, str):
+                    target_name = varname_base(binding.target_ref)
+                    target_variable = context.scope.env.get(target_name) if target_name is not None else None
+                    capacity = (
+                        capacity_for_datatype(self._capacities, target_variable.datatype)
+                        if target_variable is not None
+                        else None
+                    )
                     state.string_values[target_key] = _result_for_literal(
                         binding.source_literal,
                         source_kind=binding.source_kind,
                         source_label=repr(binding.source_literal),
                         source_module_path=context.path,
-                        max_length=_STRING_LIMITS[Simple_DataType.MAXSTRING],
+                        max_length=capacity,
                     )
                 elif isinstance(binding.source_literal, int):
                     state.int_values[target_key] = _normalize_int_result(_IntResult((binding.source_literal,), False))
         return state
 
-    def _execute_module_context(self, context: _ModuleContext, state: _AbstractState) -> _AbstractState:
+    def _execute_module_context(self, context: StringModuleContext, state: _AbstractState) -> _AbstractState:
         local_state = state.clone()
-        for code_block in _module_code_blocks(context.node):
-            local_state = self._execute_statement_list(code_block, local_state, context.scope)
+        code = module_code(context.node)
+        if code is not None:
+            for event in iter_statement_sites(code):
+                local_state = self._execute_statement(event.node, local_state, context.scope)
         changed_strings = {
             key: value for key, value in local_state.string_values.items() if state.string_values.get(key) != value
         }
@@ -370,7 +476,7 @@ class ExactStringInferenceEngine:
         return current
 
     def _execute_statement(self, statement: object, state: _AbstractState, scope: ScopeContext) -> _AbstractState:
-        if isinstance(statement, list):
+        if isinstance(statement, (list, tuple)):
             return self._execute_statement_list(statement, state, scope)
         if isinstance(statement, Assignment):
             return self._execute_assignment(statement.target, statement.value, state, scope)
@@ -408,21 +514,23 @@ class ExactStringInferenceEngine:
         target_ref = varname_full(target_node)
         if not target_ref:
             return state
-        target_slot = _resolve_slot(scope, target_ref)
+        target_slot = resolve_string_slot(scope, target_ref)
         if target_slot is None:
             return state
         next_state = state.clone()
         int_result = self._eval_int_expr(value_node, state, scope)
         string_result = self._eval_string_expr(value_node, state, scope)
         target_is_string = is_string_simple_type(target_slot.variable.datatype)
-        target_is_integer = target_slot.variable.datatype is Simple_DataType.INTEGER
+        target_is_integer = target_slot.variable.datatype is ScalarDatatype.INTEGER
         if target_is_string or (
             target_slot.key.field_path
             and (string_result.candidates or string_result.unknown_text)
             and not int_result.values
         ):
             next_state.string_values[target_slot.key] = _with_end_cursor(
-                _retarget_string_result(string_result, target_result=_read_string_result(state, target_slot))
+                _retarget_string_result(
+                    string_result, target_result=_read_string_result(state, target_slot, capacities=self._capacities)
+                )
             )
             return next_state
         if int_result.values or (int_result.unknown and target_is_integer):
@@ -464,30 +572,30 @@ class ExactStringInferenceEngine:
     ) -> _AbstractState:
 
         if name == "clearstring" and len(args) >= 1:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 next_state.string_values[target_slot.key] = StringInferenceResult(
                     candidates=(StringCandidate(text=""),),
                     cursor_positions=(1,),
-                    max_length=_string_capacity_for_datatype(target_slot.variable.datatype),
+                    max_length=capacity_for_datatype(self._capacities, target_slot.variable.datatype),
                     overflow_operations=target_result.overflow_operations,
                     overflow_examples=target_result.overflow_examples,
                 )
             return next_state
 
         if name == "setstringpos" and len(args) >= 2:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 positions = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _set_cursor_positions(target_result, positions)
             return next_state
 
         if name == "cutstring" and len(args) >= 2:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 length_result = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _cut_string_result(target_result, length_result)
             return next_state
@@ -504,26 +612,28 @@ class ExactStringInferenceEngine:
     ) -> _AbstractState:
 
         if name in {"copystring", "copystringnosort"} and len(args) >= 2:
-            target_slot = _resolve_target_arg(scope, args[1])
+            target_slot = resolve_string_target(scope, args[1])
             if target_slot is not None:
                 source_result = self._eval_string_expr(args[0], state, scope)
                 next_state.string_values[target_slot.key] = _copy_into_target(
                     source_result,
                     target_slot.variable.datatype,
+                    capacities=self._capacities,
                     operation_name="CopyString" if name == "copystring" else "CopyStringNoSort",
-                    target_result=_read_string_result(state, target_slot),
+                    target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                 )
             return next_state
 
         if name == "concatenate" and len(args) >= 3:
-            target_slot = _resolve_target_arg(scope, args[2])
+            target_slot = resolve_string_target(scope, args[2])
             if target_slot is not None:
                 left = self._eval_string_expr(args[0], state, scope)
                 right = self._eval_string_expr(args[1], state, scope)
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 next_state.string_values[target_slot.key] = _concatenate_results(
                     left,
                     right,
+                    capacities=self._capacities,
                     target_result=target_result,
                     target_datatype=target_slot.variable.datatype,
                 )
@@ -540,41 +650,44 @@ class ExactStringInferenceEngine:
         next_state: _AbstractState,
     ) -> _AbstractState:
         if name == "insertstring" and len(args) >= 3:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 source_result = self._eval_string_expr(args[1], state, scope)
                 length_result = self._eval_int_expr(args[2], state, scope)
                 next_state.string_values[target_slot.key] = _insert_string_result(
                     target_result,
                     source_result,
                     length_result,
+                    capacities=self._capacities,
                     target_datatype=target_slot.variable.datatype,
                     operation_name="InsertString",
                 )
             return next_state
 
         if name == "putblanks" and len(args) >= 2:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 length_result = self._eval_int_expr(args[1], state, scope)
                 next_state.string_values[target_slot.key] = _put_blanks_result(
                     target_result,
                     length_result,
+                    capacities=self._capacities,
                     target_datatype=target_slot.variable.datatype,
                 )
             return next_state
 
         if name == "extractstring" and len(args) >= 3:
-            target_slot = _resolve_target_arg(scope, args[0])
+            target_slot = resolve_string_target(scope, args[0])
             if target_slot is not None:
-                target_result = _read_string_result(state, target_slot)
+                target_result = _read_string_result(state, target_slot, capacities=self._capacities)
                 source_result = self._eval_string_expr(args[1], state, scope)
                 length_result = self._eval_int_expr(args[2], state, scope)
                 next_state.string_values[target_slot.key] = _extract_string_result(
                     source_result,
                     length_result,
+                    capacities=self._capacities,
                     target_result=target_result,
                     target_datatype=target_slot.variable.datatype,
                     operation_name="ExtractString",
@@ -592,17 +705,17 @@ class ExactStringInferenceEngine:
         next_state: _AbstractState,
     ) -> _AbstractState:
         if len(args) >= 2:
-            target_slot = _resolve_target_arg(scope, args[1])
+            target_slot = resolve_string_target(scope, args[1])
             if target_slot is not None:
                 source_result = self._eval_string_expr(args[0], state, scope)
-                target_capacity = _string_capacity_for_datatype(target_slot.variable.datatype)
+                target_capacity = capacity_for_datatype(self._capacities, target_slot.variable.datatype)
                 if name == "nationaluppercase":
                     next_state.string_values[target_slot.key] = _transform_string_result(
                         source_result,
                         str.upper,
                         target_capacity,
                         operation_name="NationalUpperCase",
-                        target_result=_read_string_result(state, target_slot),
+                        target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                     )
                 else:
                     next_state.string_values[target_slot.key] = _transform_string_result(
@@ -610,7 +723,7 @@ class ExactStringInferenceEngine:
                         str.lower,
                         target_capacity,
                         operation_name="NationalLowerCase",
-                        target_result=_read_string_result(state, target_slot),
+                        target_result=_read_string_result(state, target_slot, capacities=self._capacities),
                     )
             return next_state
 
@@ -630,10 +743,10 @@ class ExactStringInferenceEngine:
             ref_name = varname_full(expr)
             if not ref_name:
                 return _unknown_string_result()
-            resolved = _resolve_slot(scope, ref_name)
+            resolved = resolve_string_slot(scope, ref_name)
             if resolved is None:
                 return _unknown_string_result()
-            return _read_string_result(state, resolved)
+            return _read_string_result(state, resolved, capacities=self._capacities)
 
         if isinstance(expr, TernaryOp):
             merged = StringInferenceResult()
@@ -655,7 +768,7 @@ class ExactStringInferenceEngine:
             ref_name = varname_full(expr)
             if not ref_name:
                 return _IntResult(unknown=True)
-            resolved = _resolve_slot(scope, ref_name)
+            resolved = resolve_string_slot(scope, ref_name)
             if resolved is None:
                 return _IntResult(unknown=True)
             return state.int_values.get(resolved.key, _IntResult(unknown=True))
@@ -706,37 +819,53 @@ class ExactStringInferenceEngine:
         return _IntResult(unknown=True)
 
 
-def _module_code(
-    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance,
-) -> ModuleCode | None:
-    return getattr(node, "modulecode", None)
+def _precise_state(
+    state: _AbstractState,
+) -> dict[StringSlotKey, tuple[tuple[StringCandidate, ...], tuple[int, ...], int | None]]:
+    """The string values a pass must reproduce to be stable.
+
+    Unknown flags are excluded because a cycle can flip them between passes
+    without changing any candidate, cursor position, or declared capacity.
+    Integer slots are excluded too: a counter that grows every scan is a
+    legitimate SattLine value, and the string values are what this engine
+    solves. A growing integer that feeds a string operation keeps that
+    operation's result changing, so the string comparison still catches it.
+    """
+    return {
+        key: (value.candidates, value.cursor_positions, value.max_length) for key, value in state.string_values.items()
+    }
 
 
-def _module_code_blocks(
-    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance,
-) -> tuple[list[object], ...]:
-    module_code = _module_code(node)
-    if module_code is None:
-        return ()
-    blocks: list[list[object]] = []
-    for equation in module_code.equationblocks or []:
-        if isinstance(equation, Equation):
-            blocks.append(list(equation.code or []))
-    for sequence in module_code.sequences or []:
-        if isinstance(sequence, Sequence):
-            blocks.append(list(sequence.code or []))
-    return tuple(blocks)
+def _stabilize_unknown_flags(state: _AbstractState, next_state: _AbstractState) -> _AbstractState:
+    """Fold two passes that differ only in unknown flags into one sound state.
 
-
-def _declared_variables(
-    node: BasePicture | SingleModule | FrameModule | ModuleTypeDef | ModuleTypeInstance,
-) -> tuple[Variable, ...]:
-    declared: list[Variable] = []
-    for attribute in ("moduleparameters", "localvariables"):
-        values = getattr(node, attribute, None)
-        if isinstance(values, list):
-            declared.extend(variable for variable in values if isinstance(variable, Variable))
-    return tuple(declared)
+    A flag that flipped in either direction is kept true, because the two
+    passes disagree about whether the value is fully known.
+    """
+    string_values: dict[StringSlotKey, StringInferenceResult] = {}
+    for key, value in next_state.string_values.items():
+        previous = state.string_values.get(key)
+        if previous is None:
+            string_values[key] = value
+            continue
+        string_values[key] = StringInferenceResult(
+            candidates=value.candidates,
+            cursor_positions=value.cursor_positions,
+            max_length=value.max_length,
+            unknown_text=previous.unknown_text or value.unknown_text,
+            unknown_cursor=previous.unknown_cursor or value.unknown_cursor,
+            unknown_max_length=previous.unknown_max_length or value.unknown_max_length,
+            overflow_operations=value.overflow_operations,
+            overflow_examples=value.overflow_examples,
+        )
+    int_values: dict[StringSlotKey, _IntResult] = {}
+    for key, value in next_state.int_values.items():
+        previous = state.int_values.get(key)
+        int_values[key] = _IntResult(
+            values=value.values,
+            unknown=value.unknown or (previous.unknown if previous is not None else False),
+        )
+    return _AbstractState(string_values=string_values, int_values=int_values)
 
 
 def _candidate_moduletype_index(
@@ -759,6 +888,14 @@ def _candidate_moduletype_index(
         seen.add(identity)
         index.setdefault(moduletype.name.casefold(), []).append(moduletype)
     return {key: tuple(value) for key, value in index.items()}
+
+
+def _typedef_identity(moduletype: ModuleTypeDef) -> tuple[str, str, str]:
+    return (
+        moduletype.name.casefold(),
+        (moduletype.origin_lib or "").casefold(),
+        (moduletype.origin_file or "").casefold(),
+    )
 
 
 def _resolve_typedef_for_instance(
@@ -850,14 +987,14 @@ def _field_aware_param_mappings(
 def _literal_bindings_for_mappings(
     mappings: list[ParameterMapping] | None,
     source_kind: str,
-) -> tuple[_LiteralBinding, ...]:
-    literal_bindings: list[_LiteralBinding] = []
+) -> tuple[LiteralBinding, ...]:
+    literal_bindings: list[LiteralBinding] = []
     for mapping in mappings or []:
         target_ref = varname_full(mapping.target)
         if not target_ref or mapping.source_literal is None:
             continue
         literal_bindings.append(
-            _LiteralBinding(
+            LiteralBinding(
                 target_ref=target_ref,
                 source_literal=mapping.source_literal,
                 source_kind=source_kind,
@@ -866,40 +1003,20 @@ def _literal_bindings_for_mappings(
     return tuple(literal_bindings)
 
 
-def _declaration_slot(module_path: tuple[str, ...], variable_name: str) -> _SlotKey:
-    return _SlotKey(
+def _declaration_slot(module_path: tuple[str, ...], variable_name: str) -> StringSlotKey:
+    return StringSlotKey(
         module_path=tuple(segment.casefold() for segment in module_path),
         variable_name=variable_name.casefold(),
         field_path="",
     )
 
 
-def _local_slot_key(module_path: tuple[str, ...], ref_name: str) -> _SlotKey | None:
+def _local_slot_key(module_path: tuple[str, ...], ref_name: str) -> StringSlotKey | None:
     if not ref_name:
         return None
     base_name, _, field_path = ref_name.partition(".")
-    return _SlotKey(
+    return StringSlotKey(
         module_path=tuple(segment.casefold() for segment in module_path),
         variable_name=base_name.casefold(),
         field_path=field_path.casefold(),
     )
-
-
-def _resolve_slot(scope: ScopeContext, ref_name: str) -> _ResolvedSlot | None:
-    variable, field_path, decl_path, _decl_display = scope.resolve_variable(ref_name)
-    if variable is None:
-        return None
-    slot_key = _SlotKey(
-        module_path=tuple(segment.casefold() for segment in decl_path),
-        variable_name=variable.name.casefold(),
-        field_path=field_path.casefold(),
-    )
-    display_name = variable.name if not field_path else f"{variable.name}.{field_path}"
-    return _ResolvedSlot(key=slot_key, display_name=display_name, decl_module_path=tuple(decl_path), variable=variable)
-
-
-def _resolve_target_arg(scope: ScopeContext, arg: object) -> _ResolvedSlot | None:
-    ref_name = varname_full(arg)
-    if not ref_name:
-        return None
-    return _resolve_slot(scope, ref_name)

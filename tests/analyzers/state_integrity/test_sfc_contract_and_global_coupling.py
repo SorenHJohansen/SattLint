@@ -1,35 +1,52 @@
 from sattline_parser.ast import MappingSource
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ModuleTypeDef,
+    ParameterMapping,
+    ScalarDatatype,
+    SingleModule,
+    Variable,
+)
 from sattline_parser.models.expressions import Assignment, VarRef
 
-from tests.helpers.analyzers_state_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_write_without_effect_detected_for_internal_value_chain():
     child = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Stage1", datatype=Simple_DataType.INTEGER),
-            Variable(name="Stage2", datatype=Simple_DataType.INTEGER),
+            Variable(name="Stage1", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Stage2", datatype=ScalarDatatype.INTEGER),
         ],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("Stage1"), value=1),
-                            Assignment(target=_varref("Stage2"), value=_varref("Stage1")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("Stage1"), value=1),
+                        Assignment(target=_varref("Stage2"), value=_varref("Stage1")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
 
@@ -37,8 +54,8 @@ def test_write_without_effect_detected_for_internal_value_chain():
         header=_hdr("Root"),
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -55,26 +72,24 @@ def test_write_without_effect_detected_for_internal_value_chain():
 def test_write_without_effect_is_not_reported_for_module_parameters() -> None:
     child = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="OutParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Sink", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="OutParam", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Sink", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("OutParam"), value=1),
-                            Assignment(target=_varref("Sink"), value=_varref("OutParam")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("OutParam"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("OutParam")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
 
@@ -82,8 +97,8 @@ def test_write_without_effect_is_not_reported_for_module_parameters() -> None:
         header=_hdr("Root"),
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -95,25 +110,23 @@ def test_write_without_effect_is_not_reported_for_module_parameters() -> None:
 def test_write_without_effect_is_not_reported_for_typedef_module_parameters() -> None:
     moduletype = ModuleTypeDef(
         name="WorkerType",
-        moduleparameters=[Variable(name="OutParam", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Sink", datatype=Simple_DataType.INTEGER)],
-        moduledefs=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("OutParam"), value=1),
-                            Assignment(target=_varref("Sink"), value=_varref("OutParam")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        moduleparameters=[Variable(name="OutParam", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Sink", datatype=ScalarDatatype.INTEGER)],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("OutParam"), value=1),
+                        Assignment(target=_varref("Sink"), value=_varref("OutParam")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
     )
 
     bp = BasePicture(
@@ -121,8 +134,8 @@ def test_write_without_effect_is_not_reported_for_typedef_module_parameters() ->
         localvariables=[],
         submodules=[],
         moduletype_defs=[moduletype],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -137,26 +150,24 @@ def test_write_without_effect_is_suppressed_for_mapped_output_path():
 
     child = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Out", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Internal", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Out", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Internal", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            Assignment(target=_varref("Internal"), value=1),
-                            Assignment(target=_varref("Out"), value=_varref("Internal")),
-                        ],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        Assignment(target=_varref("Internal"), value=1),
+                        Assignment(target=_varref("Out"), value=_varref("Internal")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[
             ParameterMapping(
                 target=out_target,
@@ -171,10 +182,10 @@ def test_write_without_effect_is_suppressed_for_mapped_output_path():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="FinalOutput", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="FinalOutput", datatype=ScalarDatatype.INTEGER)],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -189,48 +200,44 @@ def test_write_without_effect_is_suppressed_for_mapped_output_path():
 
 
 def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_global():
-    shared_value = Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)
+    shared_value = Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)
 
     writer = SingleModule(
         header=_hdr("Writer"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="WriteShared",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("SharedValue"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="WriteShared",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("SharedValue"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
     reader = SingleModule(
         header=_hdr("Reader"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Observed", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadShared",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadShared",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Observed"), value=_varref("SharedValue"))],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
 
@@ -238,8 +245,8 @@ def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_globa
         header=_hdr("Root"),
         localvariables=[shared_value],
         submodules=[writer, reader],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -263,23 +270,21 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
 
     writer = SingleModule(
         header=_hdr("Writer"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="Out", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="Out", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Produce",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Out"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Produce",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Out"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[
             ParameterMapping(
                 target=writer_out_target,
@@ -293,23 +298,21 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
     )
     reader = SingleModule(
         header=_hdr("Reader"),
-        moduledefs=[],
-        moduleparameters=[Variable(name="In", datatype=Simple_DataType.INTEGER)],
-        localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+        moduledef=None,
+        moduleparameters=[Variable(name="In", datatype=ScalarDatatype.INTEGER)],
+        localvariables=[Variable(name="Observed", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Consume",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Observed"), value=_varref("In"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Consume",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Observed"), value=_varref("In"))],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[
             ParameterMapping(
                 target=reader_in_target,
@@ -323,11 +326,11 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
     )
     coordinator = SingleModule(
         header=_hdr("Coordinator"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="SharedValue", datatype=ScalarDatatype.INTEGER)],
         submodules=[writer, reader],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -335,8 +338,8 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
         header=_hdr("Root"),
         localvariables=[],
         submodules=[coordinator],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -346,49 +349,45 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
 
 
 def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_module_subtree():
-    confined = Variable(name="ConfinedValue", datatype=Simple_DataType.INTEGER)
+    confined = Variable(name="ConfinedValue", datatype=ScalarDatatype.INTEGER)
 
     worker = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Observed", datatype=ScalarDatatype.INTEGER)],
         submodules=[
             SingleModule(
                 header=_hdr("Nested"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[
-                    ModuleCode(
-                        equationblocks=[
-                            Equation(
-                                name="WriteConfined",
-                                position=(0.0, 0.0),
-                                size=(1.0, 1.0),
-                                code=[Assignment(target=_varref("ConfinedValue"), value=1)],
-                            )
-                        ],
-                        sequences=[],
-                    )
-                ],
+                modulecode=ModuleCode(
+                    equationblocks=[
+                        Equation(
+                            name="WriteConfined",
+                            position=(0.0, 0.0),
+                            size=(1.0, 1.0),
+                            code=[Assignment(target=_varref("ConfinedValue"), value=1)],
+                        )
+                    ],
+                    sequences=[],
+                ),
                 parametermappings=[],
             )
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadConfined",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadConfined",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
 
@@ -396,8 +395,8 @@ def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_m
         header=_hdr("Root"),
         localvariables=[confined],
         submodules=[worker],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -415,48 +414,44 @@ def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_m
 
 
 def test_global_scope_minimization_is_not_reported_for_root_global_used_in_root_scope():
-    confined = Variable(name="ConfinedValue", datatype=Simple_DataType.INTEGER)
+    confined = Variable(name="ConfinedValue", datatype=ScalarDatatype.INTEGER)
 
     worker = SingleModule(
         header=_hdr("Worker"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="WriteConfined",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("ConfinedValue"), value=1)],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="WriteConfined",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("ConfinedValue"), value=1)],
+                )
+            ],
+            sequences=[],
+        ),
         parametermappings=[],
     )
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[confined, Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
+        localvariables=[confined, Variable(name="Observed", datatype=ScalarDatatype.INTEGER)],
         submodules=[worker],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="ReadAtRoot",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
-                    )
-                ],
-                sequences=[],
-            )
-        ],
-        moduledefs=[],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="ReadAtRoot",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Observed"), value=_varref("ConfinedValue"))],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)

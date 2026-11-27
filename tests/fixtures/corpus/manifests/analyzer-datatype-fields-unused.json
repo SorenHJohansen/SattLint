@@ -1,0 +1,33 @@
+{
+    "case_id": "analyzer-datatype-fields-unused",
+    "target_file": "../semantic/analyzer/UnusedDatatypeField.s",
+    "mode": "analyzer-datatype-fields",
+    "expectation": {
+        "expected_finding_ids": [
+            "unused_datatype_field"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0,
+                "analyzer_key": "datatype-fields"
+            },
+            "summary.json": {
+                "analyzer_key": "datatype-fields",
+                "finding_count": 1,
+                "rule_counts": {
+                    "unused_datatype_field": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

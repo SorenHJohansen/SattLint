@@ -1,6 +1,12 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false, reportMissingTypeArgument=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
+from collections.abc import Callable
+
+import pytest
 from sattline_parser.ast import MappingSource
 from sattline_parser.models.ast_model import (
+    Assignment,
     BasePicture,
     Equation,
     FrameModule,
@@ -11,7 +17,7 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
 )
@@ -32,21 +38,20 @@ def _varref(name: str) -> VarRef:
 
 
 def _event_detector_typedef(*, with_default_priority: bool) -> ModuleTypeDef:
-    severity = Variable(name="Severity", datatype=Simple_DataType.INTEGER)
+    severity = Variable(name="Severity", datatype=ScalarDatatype.INTEGER)
     if with_default_priority:
-        severity = Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2)
+        severity = Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2)
     return ModuleTypeDef(
         name="EventDetector1",
         moduleparameters=[
-            Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
             severity,
-            Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
         ],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
         origin_file="Root.s",
     )
 
@@ -55,8 +60,8 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="CondA", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="CondB", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN),
+            Variable(name="CondB", datatype=ScalarDatatype.BOOLEAN),
         ],
         moduletype_defs=[_event_detector_typedef(with_default_priority=True)],
         submodules=[
@@ -116,7 +121,7 @@ def test_alarm_integrity_detects_duplicate_tags_across_instances() -> None:
 def test_alarm_integrity_detects_duplicate_conditions_across_instances() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="SharedCondition", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="SharedCondition", datatype=ScalarDatatype.BOOLEAN)],
         moduletype_defs=[_event_detector_typedef(with_default_priority=True)],
         submodules=[
             ModuleTypeInstance(
@@ -175,19 +180,41 @@ def test_alarm_integrity_detects_duplicate_conditions_across_instances() -> None
 def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="AlarmTrip", datatype=Simple_DataType.BOOLEAN)],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
-                    )
-                ]
+        localvariables=[Variable(name="AlarmTrip", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[_event_detector_typedef(with_default_priority=True)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmA"),
+                moduletype_name="EventDetector1",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="TRIP",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmTrip"),
+                        source_literal=None,
+                    ),
+                ],
             )
         ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[FuncCallStmt(call=FuncCall(name="SetBooleanValue", args=(_varref("AlarmTrip"), True)))],
+                )
+            ]
+        ),
     )
 
     report = analyze_alarm_integrity(bp)
@@ -195,6 +222,86 @@ def test_alarm_integrity_detects_never_cleared_alarm_variable() -> None:
     never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
     assert len(never_cleared_issues) == 1
     assert "AlarmTrip" in never_cleared_issues[0].message
+
+
+def _submodule_write_back_bp(*, submodule_writes_false: bool) -> BasePicture:
+    write_value = not submodule_writes_false
+    alarm_check = ModuleTypeDef(
+        name="EventDetector1",
+        moduleparameters=[
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Output",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Condition"), value=write_value)],
+                )
+            ]
+        ),
+        origin_file="Root.s",
+    )
+    return BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="AlarmManStart", datatype=ScalarDatatype.BOOLEAN)],
+        moduletype_defs=[alarm_check],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("AlarmManStart"), value=True)],
+                )
+            ]
+        ),
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("AlarmManualCheck"),
+                moduletype_name="EventDetector1",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Tag"),
+                        source_type=MappingSource.VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source_literal="MANUAL",
+                    ),
+                    ParameterMapping(
+                        target=_varref("Condition"),
+                        source_type=MappingSource.VARIABLE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AlarmManStart"),
+                        source_literal=None,
+                    ),
+                ],
+            )
+        ],
+        origin_file="Root.s",
+    )
+
+
+def test_alarm_integrity_clears_alarm_through_submodule_parameter_write_back() -> None:
+    report = analyze_alarm_integrity(_submodule_write_back_bp(submodule_writes_false=True))
+
+    never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
+    assert never_cleared_issues == []
+
+
+def test_alarm_integrity_keeps_finding_when_submodule_never_writes_parameter_false() -> None:
+    report = analyze_alarm_integrity(_submodule_write_back_bp(submodule_writes_false=False))
+
+    never_cleared_issues = [issue for issue in report.issues if issue.kind == "alarm.never_cleared"]
+    assert len(never_cleared_issues) == 1
+    assert "AlarmManStart" in never_cleared_issues[0].message
 
 
 def test_alarm_integrity_analyzer_is_enabled_by_default() -> None:
@@ -227,11 +334,13 @@ def test_alarm_integrity_report_summary_covers_empty_and_populated_reports() -> 
     assert "[Root] later" in summary
 
 
-def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(monkeypatch) -> None:  # noqa: PLR0915
+def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatting(  # noqa: PLR0915
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bp = BasePicture(
         header=_hdr("Root"),
         origin_file="Root.s",
-        localvariables=[Variable(name="AlarmFlag", datatype=Simple_DataType.BOOLEAN, init_value=True)],
+        localvariables=[Variable(name="AlarmFlag", datatype=ScalarDatatype.BOOLEAN, init_value=True)],
     )
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
 
@@ -243,7 +352,7 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
     bp.origin_file = "Root.s"
 
     merged_env = analyzer._merge_env(
-        {"existing": Variable(name="Existing", datatype=Simple_DataType.INTEGER)}, bp.localvariables
+        {"existing": Variable(name="Existing", datatype=ScalarDatatype.INTEGER)}, bp.localvariables
     )
     assert set(merged_env) == {"existing", "alarmflag"}
 
@@ -415,18 +524,19 @@ def test_alarm_integrity_helper_methods_cover_origins_mappings_and_value_formatt
     assert analyzer._literal_signature("  Alarm.Tag  ") == "literal:alarm.tag"
     assert analyzer._literal_signature(None) == "literal:None"
 
-    monkeypatch.setattr(
-        alarm_integrity_module,
-        "resolve_moduletype_def_strict",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")),
-    )
+    def _missing_moduletype(*_args: object, **_kwargs: object) -> ModuleTypeDef:
+        raise ValueError("missing")
+
+    monkeypatch.setattr(alarm_integrity_module, "resolve_moduletype_def_strict", _missing_moduletype)
     assert analyzer._resolve_moduletype(instance, None) is None
 
 
-def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_deduping(monkeypatch) -> None:
+def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_deduping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bp = BasePicture(header=_hdr("Root"), origin_file="Root.s")
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
-    env = {"conda": Variable(name="CondA", datatype=Simple_DataType.BOOLEAN, init_value=True)}
+    env = {"conda": Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN, init_value=True)}
     typedef = _event_detector_typedef(with_default_priority=True)
 
     no_tag_instance = ModuleTypeInstance(
@@ -481,7 +591,11 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
             ),
         ],
     )
-    monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_args, **_kwargs: typedef)
+
+    def _resolve_to_typedef(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+        return typedef
+
+    monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolve_to_typedef)
     candidate = analyzer._collect_alarm_candidate(instance, ["Root", "AlarmA"], env, None)
     assert candidate is not None
     assert candidate.moduletype_label == "EventDetector1"
@@ -509,7 +623,11 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
             ),
         ],
     )
-    monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_args, **_kwargs: None)
+
+    def _resolve_to_none(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+        return None
+
+    monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolve_to_none)
     unknown_candidate = analyzer._collect_alarm_candidate(unknown_type_instance, ["Root", "AlarmUnknown"], env, None)
     assert unknown_candidate is None
     suppressed_candidate = analyzer._collect_alarm_candidate(
@@ -637,10 +755,10 @@ def test_alarm_integrity_candidate_and_issue_emitters_cover_suppression_and_dedu
     ]
 
 
-def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkeypatch) -> None:
+def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkeypatch: pytest.MonkeyPatch) -> None:
     bp = BasePicture(header=_hdr("Root"), origin_file="Root.s")
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
-    env = {"conda": Variable(name="CondA", datatype=Simple_DataType.BOOLEAN, init_value=True)}
+    env = {"conda": Variable(name="CondA", datatype=ScalarDatatype.BOOLEAN, init_value=True)}
     instance = ModuleTypeInstance(
         header=_hdr("Detector"),
         moduletype_name="Whatever",
@@ -667,15 +785,14 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         return ModuleTypeDef(
             name=name,
             moduleparameters=[
-                Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
-                Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
-                Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+                Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+                Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+                Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
             ],
             localvariables=[],
             submodules=[],
-            moduledefs=[],
-            modulecodes=[],
-            parametermappings=[],
+            moduledef=None,
+            modulecode=None,
             origin_file="Root.s",
         )
 
@@ -687,8 +804,15 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         "EventDetector1",
         "EventDetector2",
     }
+
+    def _resolver_for(candidate_name: str) -> Callable[[ModuleTypeInstance, str | None], ModuleTypeDef | None]:
+        def _resolve(_inst: ModuleTypeInstance, _current_library: str | None) -> ModuleTypeDef | None:
+            return _typedef_for(candidate_name)
+
+        return _resolve
+
     for name in known_detectors:
-        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolver_for(name))
         candidate = analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None)
         assert candidate is not None
         assert candidate.moduletype_label == name
@@ -704,50 +828,50 @@ def test_alarm_integrity_only_accepts_known_eventlib_detector_moduletypes(monkey
         "EventAnnunciator",
     }
     for name in non_detectors:
-        monkeypatch.setattr(analyzer, "_resolve_moduletype", lambda *_a, name=name, **_kw: _typedef_for(name))
+        monkeypatch.setattr(analyzer, "_resolve_moduletype", _resolver_for(name))
         assert analyzer._collect_alarm_candidate(instance, ["Root", "Detector"], env, None) is None
 
 
-def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear_writes(monkeypatch) -> None:
+def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     typedef = ModuleTypeDef(
         name="EventDetector1",
         moduleparameters=[
-            Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
-            Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
-            Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING),
+            Variable(name="Severity", datatype=ScalarDatatype.INTEGER, init_value=2),
+            Variable(name="Condition", datatype=ScalarDatatype.BOOLEAN),
         ],
-        localvariables=[Variable(name="TypeFlag", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="TypeFlag", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[])],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[]),
         origin_file="Root.s",
     )
     foreign_typedef = ModuleTypeDef(
         name="ForeignDetector",
-        moduleparameters=[Variable(name="Tag", datatype=Simple_DataType.TAGSTRING)],
+        moduleparameters=[Variable(name="Tag", datatype=ScalarDatatype.TAGSTRING)],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[ModuleCode(equationblocks=[])],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=ModuleCode(equationblocks=[]),
         origin_file="Other.s",
     )
     bp = BasePicture(
         header=_hdr("Root"),
         origin_file="Root.s",
-        localvariables=[Variable(name="RootFlag", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="RootFlag", datatype=ScalarDatatype.BOOLEAN)],
         submodules=[
             SingleModule(
                 header=_hdr("Single"),
-                moduledefs=[],
-                moduleparameters=[Variable(name="SingleParam", datatype=Simple_DataType.INTEGER)],
-                localvariables=[Variable(name="SingleLocal", datatype=Simple_DataType.BOOLEAN)],
+                moduledef=None,
+                moduleparameters=[Variable(name="SingleParam", datatype=ScalarDatatype.INTEGER)],
+                localvariables=[Variable(name="SingleLocal", datatype=ScalarDatatype.BOOLEAN)],
                 submodules=[],
-                modulecodes=[ModuleCode(equationblocks=[])],
+                modulecode=ModuleCode(equationblocks=[]),
                 parametermappings=[],
             ),
-            FrameModule(header=_hdr("Frame"), modulecodes=[ModuleCode(equationblocks=[])], submodules=[]),
+            FrameModule(header=_hdr("Frame"), modulecode=ModuleCode(equationblocks=[]), submodules=[]),
             ModuleTypeInstance(
                 header=_hdr("AlarmA"),
                 moduletype_name="EventDetector1",
@@ -771,19 +895,29 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
             ),
         ],
         moduletype_defs=[typedef, foreign_typedef],
-        modulecodes=[ModuleCode(equationblocks=[])],
+        modulecode=ModuleCode(equationblocks=[]),
     )
     analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
     visited_paths: list[tuple[str, ...]] = []
 
-    def _record_module_code(_modulecode, module_path, _env):
+    def _record_module_code(
+        _modulecode: ModuleCode,
+        module_path: list[str],
+        _env: dict[str, Variable],
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
         visited_paths.append(tuple(module_path))
 
     monkeypatch.setattr(analyzer, "_check_module_code", _record_module_code)
-    monkeypatch.setattr(
-        analyzer,
-        "_collect_alarm_candidate",
-        lambda inst, module_path, *_args, **_kwargs: alarm_integrity_module._AlarmCandidate(
+
+    def _stub_candidate(
+        inst: ModuleTypeInstance,
+        module_path: list[str],
+        *_args: object,
+        **_kwargs: object,
+    ) -> alarm_integrity_module._AlarmCandidate:
+        return alarm_integrity_module._AlarmCandidate(
             module_path=module_path.copy(),
             instance_name=inst.header.name,
             moduletype_label=inst.moduletype_name,
@@ -793,8 +927,9 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
             priority_display="1",
             condition_key="ref:rootflag",
             condition_display="RootFlag",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(analyzer, "_collect_alarm_candidate", _stub_candidate)
     monkeypatch.setattr(
         analyzer,
         "_emit_duplicate_tag_issues",
@@ -821,15 +956,17 @@ def test_alarm_integrity_run_walks_supported_nodes_and_module_code_filters_clear
     assert len(analyzer._candidates) == 1
 
     real_analyzer = alarm_integrity_module.AlarmIntegrityAnalyzer(bp)
-    monkeypatch.setattr(
-        alarm_integrity_module,
-        "_collect_alarm_boolean_writes",
-        lambda *_args, **_kwargs: {
-            "trip": type("Entry", (), {"values": {True}, "display": "AlarmTrip"})(),
-            "cleared": type("Entry", (), {"values": {True, False}, "display": "AlarmCleared"})(),
-            "false_only": type("Entry", (), {"values": {False}, "display": "AlarmFalse"})(),
-        },
-    )
+
+    def _boolean_write_entries(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "trip": type("Entry", (), {"values": {True}, "display": "RootFlag"})(),
+            "cleared": type("Entry", (), {"values": {True, False}, "display": "OtherFlag"})(),
+            "false_only": type("Entry", (), {"values": {False}, "display": "FalseOnly"})(),
+        }
+
+    monkeypatch.setattr(alarm_integrity_module, "_collect_boolean_literal_writes", _boolean_write_entries)
+    real_analyzer._candidates = analyzer._candidates
     real_analyzer._check_module_code(None, ["Root"], {})
     real_analyzer._check_module_code(ModuleCode(equationblocks=[]), ["Root"], {})
+    real_analyzer._emit_never_cleared_issues()
     assert [issue.kind for issue in real_analyzer.issues] == ["alarm.never_cleared"]

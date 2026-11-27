@@ -387,7 +387,7 @@ class _DataflowConditionMixin(_DataflowConditionFactsMixin):
             and right_value is not UNKNOWN
             and ((truth and operator == "==") or (not truth and operator == "<>"))
         ):
-            next_state = self._invalidate_symbol(state.copy(), resolved_left.key)
+            next_state = self._invalidate_symbol_for_write(state, resolved_left.key)
             next_state[resolved_left.key] = right_value
             return next_state
 
@@ -396,7 +396,7 @@ class _DataflowConditionMixin(_DataflowConditionFactsMixin):
             and left_value is not UNKNOWN
             and ((truth and operator == "==") or (not truth and operator == "<>"))
         ):
-            next_state = self._invalidate_symbol(state.copy(), resolved_right.key)
+            next_state = self._invalidate_symbol_for_write(state, resolved_right.key)
             next_state[resolved_right.key] = left_value
             return next_state
 

@@ -14,14 +14,16 @@ if TYPE_CHECKING:
 
 
 class UsageTracker:
-    def __init__(self):
+    def __init__(self, *, record_access_graph: bool = True, record_locations: bool = True) -> None:
+        self.record_access_graph = record_access_graph
+        self.record_locations = record_locations
         self._variable_usages: dict[int, VariableUsage] = {}
         self.access_graph = AccessGraph()
 
     def get_usage(self, variable: Variable) -> VariableUsage:
         vid = id(variable)
         if vid not in self._variable_usages:
-            self._variable_usages[vid] = VariableUsage()
+            self._variable_usages[vid] = VariableUsage(record_locations=self.record_locations)
         return self._variable_usages[vid]
 
     def record_access(
@@ -31,6 +33,8 @@ class UsageTracker:
         context: ScopeContext,
         syntactic_ref: str,
     ) -> None:
+        if not self.record_access_graph:
+            return
         self.access_graph.add(
             AccessEvent(
                 kind=kind,

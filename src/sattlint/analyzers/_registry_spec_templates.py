@@ -51,12 +51,18 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "'Running = False' on the other path.\n"
                 "\n"
                 "- Reset contamination - a value written during normal operation "
-                "is not reset on reset paths.\n"
+                "is not reset on reset paths, or an OpSave value is reset when it "
+                "should survive.\n"
                 "  Example: a step writes 'Output', but no step clears it when "
-                "ResetCmd arrives.\n"
+                "ResetCmd arrives, or a reset path clears an OpSave setpoint.\n"
+                "\n"
+                "- Secure candidate - a local value is written in a step and read by "
+                "a transition guard, so a restart before the transition would lose it.\n"
+                "  Example: a calculated target volume used by the next transition.\n"
                 "\n"
                 "- Read before write - a variable is read before it is written "
-                "or initialized in the same scope.\n"
+                "or initialized in the same scope. Reads in cyclic equation "
+                "blocks are not reported, because the block runs every scan.\n"
                 "  Example: 'Output = InputSignal;' when InputSignal has no init "
                 "value and is never written first.\n"
                 "\n"
@@ -86,19 +92,14 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "  Example: 'RunningState' is read or written by more than ten "
                 "modules.\n"
                 "\n"
-                "- Duplicated datatype - two datatypes have the same structure.\n"
-                "  Example: two RECORDs with the same fields but different "
-                "names.\n"
+                "- Extractable nested record - the same field group appears in "
+                "several records.\n"
+                "  Example: two RECORDs both declare Raw, Min, and Max.\n"
                 "\n"
                 "- Min/Max mapping mismatch - Min_/Max_ mappings do not match by "
                 "name.\n"
                 "  Example: 'MaxValue => MaxValue' is fine, but 'MinValue => "
                 "MinLimit' points to a different name.\n"
-                "\n"
-                "- Unknown parameter target - a mapping points to a parameter "
-                "that does not exist.\n"
-                "  Example: 'NotDeclared => RawInput' but the type has no "
-                "'NotDeclared' parameter.\n"
                 "\n"
                 "- Contract mismatch - connected parameters have different "
                 "types.\n"
@@ -132,20 +133,23 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             key="datatype-fields",
             name="Datatype field usage",
             description=(
-                "Checks three things about RECORD fields: unused, read-only, and "
-                "never-read fields.\n"
+                "Finds datatypes and RECORD fields that have no consumer in the "
+                "scanned workspace.\n"
                 "\n"
                 "Finds:\n"
                 "\n"
-                "- A field no code ever touches.\n"
+                "- Unused datatype - no loaded unit reads or writes any field.\n"
+                "  Example: a RECORD declared but never instantiated.\n"
+                "\n"
+                "- Unused field - no loaded unit reads or writes the field. A "
+                "field used by any instance, including a whole-record copy, is "
+                "not reported.\n"
                 "  Example: 'UnusedField' with no code path.\n"
                 "\n"
-                "- A field that is only read, never written.\n"
-                "  Example: a received record whose 'Status' field is never "
-                "written.\n"
-                "\n"
-                "- A field that is only written, never read back.\n"
-                "  Example: dead output logic.\n"
+                "A field is never reported just because one module holding the "
+                "datatype leaves it untouched. Findings say 'no consumer in the "
+                "scanned workspace'; they do not claim the field is dead outside "
+                "the analyzed set.\n"
                 "\n"
                 "This analyzer always loads the files that use the datatype, so "
                 "it is slower than a plain 'variables' run. Because of that it "
@@ -161,6 +165,64 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             ),
         ),
         AnalyzerSpecTemplate(
+            key="moduletype-usage",
+            name="Module-type usage",
+            description=(
+                "Finds module types that have no consumer.\n"
+                "\n"
+                "For a library target, builds the reverse consumer closure: every "
+                "unit that imports the declaring unit, plus its consumers, "
+                "transitively, across the program, library, and ABB roots. One "
+                "consumer is enough to suppress the finding.\n"
+                "\n"
+                "A type is reported only when no loaded unit invokes it outside "
+                "its declaring unit and the declaring unit has no consumer. "
+                "Definitions already marked PRIVATE_ are never reported. The "
+                "message names the declaring unit.\n"
+                "\n"
+                "This workspace-wide check is opt-in, like datatype-field usage."
+            ),
+            analyzer_attr="analyze_moduletype_usage",
+            context_kwargs=("analysis_context", "analyzed_target_is_library"),
+        ),
+        AnalyzerSpecTemplate(
+            key="module-layout",
+            name="Module layout",
+            description=(
+                "Checks that each module's clipping rectangle and placement follow the "
+                "drawing grid, and that drawn objects stay inside the visible area.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Invalid clipping bounds - the rectangle has no area.\n"
+                "  Example: both corners are written at the same point.\n"
+                "\n"
+                "- Origin not centered or at the bottom-left - the module's local origin "
+                "is somewhere else in its clipping rectangle.\n"
+                "  Example: clipping bounds (-1.0, -1.0) to (1.0, 1.66) place the origin "
+                "neither in the middle nor in a corner.\n"
+                "\n"
+                "- Size off grid - a clipping width, height, or placed module size is not "
+                "a multiple of the drawing grid.\n"
+                "  Example: a module placed 0.27 wide on a 0.02 grid.\n"
+                "\n"
+                "- Placement off grid - a module's position is not aligned to the grid of "
+                "the module that contains it.\n"
+                "  Example: a module placed at x = 0.05 on a 0.02 grid.\n"
+                "\n"
+                "- Object outside clipping bounds - a graphics or interactor object lies "
+                "entirely outside its module's clipping rectangle.\n"
+                "  Example: a text object drawn below the visible area.\n"
+                "\n"
+                "A module uses its own written Grid clause when it has one; otherwise the "
+                "configured default applies. Geometry driven by variables is skipped, "
+                "because its written numbers are not the drawn values."
+            ),
+            analyzer_attr="analyze_module_layout",
+            category="heuristic",
+            context_kwargs=("config", "analyzed_target_is_library"),
+        ),
+        AnalyzerSpecTemplate(
             key="picture-display-paths",
             name="PictureDisplay paths",
             description=(
@@ -172,10 +234,72 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "- Unresolved display path - a path points to a screen or module "
                 "that cannot be found in the project.\n"
                 "  Example: a button that opens '+MissingPanel' when no module "
-                "with that name exists."
+                "with that name exists.\n"
+                "\n"
+                "External .wmf and .emf assets are skipped silently: their content "
+                "cannot be inspected, so they are never reported as unresolved."
             ),
             analyzer_attr="analyze_picture_display_paths",
-            context_kwargs=("graph", "analyzed_target_is_library"),
+            context_kwargs=("graph", "analyzed_target_is_library", "string_capacities"),
+        ),
+        AnalyzerSpecTemplate(
+            key="string-capacity",
+            name="String capacity",
+            description=(
+                "Checks string values against the capacity of the datatype that stores them.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Literal overflow - an initializer or assignment is longer than the "
+                "declared string capacity.\n"
+                "  Example: a 16-character literal assigned to an identstring with a "
+                "15-character capacity.\n"
+                "\n"
+                "- Assignment overflow - an assignment copies a longer known string "
+                "into a smaller target.\n"
+                "\n"
+                "- Procedure overflow - InsertString, Concatenate, CopyString, "
+                "CopyStringNoSort, CopyVariable, CopyVarNoSort, ExtractString, "
+                "PutBlanks, or an integer conversion writes more characters into a "
+                "string than it can hold.\n"
+                "  Example: two identstrings joined into another identstring whose "
+                "combined length exceeds 15.\n"
+                "\n"
+                "Only values that are known from literals, initializers, parameter "
+                "mappings, or modelled string procedures are reported, so an unknown "
+                "input is never guessed."
+            ),
+            analyzer_attr="analyze_string_capacity",
+            context_kwargs=("graph", "string_capacities"),
+        ),
+        AnalyzerSpecTemplate(
+            key="string-style",
+            name="String style",
+            description=(
+                "Suggests a more precise string datatype or procedure when every "
+                "observed value is known.\n"
+                "\n"
+                "Finds:\n"
+                "\n"
+                "- Narrower datatype - a local string variable is declared wider than "
+                "its values need.\n"
+                "  Example: a string variable that only ever holds values of at most "
+                "10 characters could be an identstring.\n"
+                "\n"
+                "- Generic copy - CopyVariable or CopyVarNoSort copies between two "
+                "string variables.\n"
+                "  Example: 'CopyVariable(Source, Target, Status)' when both sides are "
+                "strings. CopyString is the string-specific copy; its last argument is "
+                "a Boolean case-sensitivity choice rather than the status output that "
+                "CopyVariable takes. CopyStringNoSort is the no-sort counterpart of "
+                "CopyVarNoSort.\n"
+                "\n"
+                "This analyzer is a suggestion set and is selected separately from the "
+                "capacity checks."
+            ),
+            analyzer_attr="analyze_string_style",
+            category="heuristic",
+            context_kwargs=("graph", "string_capacities"),
         ),
         AnalyzerSpecTemplate(
             key="icf",
@@ -210,7 +334,8 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "  Example: a group tag uses 'JournalData_Wrong' instead of "
                 "'JournalData_DCStoMES'.\n"
                 "\n"
-                "- ICF missing journal field - a needed report field is missing.\n"
+                "- ICF missing journal field - a required identity field is "
+                "missing from a DCStoMES or MEStoDCS group.\n"
                 "  Example: a journal entry has CR_ID but no OPR_ID.\n"
                 "\n"
                 "- ICF unit structure drift - the unit layout has changed.\n"
@@ -229,7 +354,7 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             analyzer_attr="analyze_icf_configuration",
             category="correctness",
             scope="per-run",
-            context_kwargs=("config", "debug"),
+            context_kwargs=("config", "debug", "program_ast_loader", "program_ast_batch_loader"),
         ),
         AnalyzerSpecTemplate(
             key="sfc",
@@ -238,6 +363,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "Checks all SFC sequences (step diagrams).\n"
                 "\n"
                 "Finds:\n"
+                "\n"
+                "- Missing initial step at sequence start - each sequence must "
+                "begin with SEQINITSTEP.\n"
+                "  Example: a sequence starts with SEQSTEP or SEQTRANSITION "
+                "instead of SEQINITSTEP.\n"
                 "\n"
                 "- Unreachable sequence node - a step can never run.\n"
                 "  Example: a step placed after a step that already ended the "
@@ -249,7 +379,17 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "\n"
                 "- Duplicate transition guard - two transitions have the same "
                 "condition.\n"
-                "  Example: TrA and TrB both wait for 'Ready == True'."
+                "  Example: TrA and TrB both wait for 'Ready == True'.\n"
+                "\n"
+                "- Self fork - a step or transition forks back to itself or to the "
+                "step it belongs to.\n"
+                "  Example: 'SEQTRANSITION Gate WAIT_FOR Ready SEQFORK Loop' where "
+                "Loop is the transition's own step.\n"
+                "\n"
+                "- Cross-sequence fork - a fork targets an element in a different "
+                "sequence.\n"
+                "  Example: a transition in sequence 'Startup' forks to a step in "
+                "sequence 'Running'."
             ),
             analyzer_attr="analyze_sfc",
             context_kwargs=("analysis_context",),
@@ -269,34 +409,6 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             analyzer_attr="analyze_comment_code",
             category="correctness",
             direct_context=True,
-        ),
-        AnalyzerSpecTemplate(
-            key="spec-compliance",
-            name="Engineering spec compliance",
-            description=(
-                "Checks the code against the engineering style rules.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Transition has no name - a transition has no name.\n"
-                "  Example: 'SEQTRANSITION WAIT_FOR Done'.\n"
-                "\n"
-                "- Wrong sequence step prefix - a step name does not start with "
-                "the configured prefix (default 'ST_').\n"
-                "  Example: 'SEQSTEP step_mix'.\n"
-                "\n"
-                "- Wrong transition prefix - a transition name does not start "
-                "with the configured prefix (default 'TR_').\n"
-                "  Example: 'SEQTRANSITION MyTrans'.\n"
-                "\n"
-                "- Wrong sequence name prefix - a sequence name does not start "
-                "with the configured prefix.\n"
-                "\n"
-                "- Wrong equation block name prefix - an equation block name "
-                "does not start with the configured prefix."
-            ),
-            analyzer_attr="analyze_spec_compliance",
-            context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "config"),
         ),
         AnalyzerSpecTemplate(
             key="alarm-integrity",
@@ -329,9 +441,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "\n"
                 "Finds:\n"
                 "\n"
-                "- High module complexity - a program or module has too many "
-                "paths.\n"
-                "  Example: a program with 11 paths when the limit is 10.\n"
+                "- High module complexity - a program or module has a scope with "
+                "too many paths. The figure is the worst equation block or step, "
+                "not the sum of all nested scopes.\n"
+                "  Example: a program whose worst equation block has 11 paths "
+                "when the limit is 10.\n"
                 "\n"
                 "- High step complexity - an SFC step has too many paths.\n"
                 "  Example: a step with many nested IF branches.\n"
@@ -348,15 +462,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             key="same-cycle",
             name="Same-cycle hazards",
             description=(
-                "Checks that the same variable is not read and written at the "
-                "same time in one scan cycle.\n"
+                "Checks for conflicting accesses to the same variable in "
+                "explicit parallel sequence branches. Shared access by ordinary "
+                "modules alone is not reported.\n"
                 "\n"
                 "Finds:\n"
-                "\n"
-                "- Same-cycle shared access - a shared variable is read and "
-                "written in the same scan by different modules.\n"
-                "  Example: module Reader does 'Output = SharedValue;' while "
-                "module Writer does 'SharedValue = 0;'.\n"
                 "\n"
                 "- Parallel read/write hazard - one parallel branch reads and "
                 "another writes the same variable.\n"
@@ -369,24 +479,6 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
             ),
             analyzer_attr="analyze_same_cycle",
             context_kwargs=("analysis_context", "debug", "unavailable_libraries", "analyzed_target_is_library"),
-        ),
-        AnalyzerSpecTemplate(
-            key="version-drift",
-            name="Version drift",
-            description=(
-                "Checks that two module types with the same name are really the "
-                "same version.\n"
-                "\n"
-                "Finds:\n"
-                "\n"
-                "- Version drift - two module types have the same name but "
-                "different DateCodes.\n"
-                "  Example: two 'Mixer' module types, one dated 2026-01-01 and "
-                "one dated 2026-06-01."
-            ),
-            analyzer_attr="analyze_version_drift",
-            category="correctness",
-            context_kwargs=("debug",),
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
@@ -425,10 +517,11 @@ def default_spec_templates() -> tuple[AnalyzerSpecTemplate, ...]:
                 "  Example: a transition waits for 'Level == 5' after an "
                 "ENTERCODE wrote 'Level = 5;'.\n"
                 "\n"
-                "- Non-state multi-site access - a non-State variable is read "
-                "and written in more than one place in one scan.\n"
-                "  Example: 'Temp' is read and written in two equation blocks in "
-                "the same scan."
+                "- Non-State multi-site write - a non-State variable is written "
+                "from two or more sites that can run in the same scan, so one "
+                "write is lost.\n"
+                "  Example: 'Temp' is written in an equation block and in an "
+                "active step; reads alone are not reported."
             ),
             analyzer_attr="analyze_dataflow",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library", "shared_artifacts"),

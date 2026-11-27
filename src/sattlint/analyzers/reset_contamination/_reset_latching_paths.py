@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import product
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -106,9 +105,9 @@ def collect_boolean_stmt_paths(
             call_states.append(next_state)
         return call_states or states
 
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         next_states = states
-        for item in cast(list[Any], obj):
+        for item in cast(list[Any] | tuple[Any, ...], obj):
             next_states = collect_boolean_stmt_paths(item, env, next_states)
         return next_states
 
@@ -176,20 +175,75 @@ def collect_boolean_seq_node_paths(
     return states
 
 
+_LATCH_FRONTIER_LIMIT = 64
+
+
+def _boolean_write_fingerprint(
+    bucket: dict[WriteKey, tuple[Variable, str]],
+) -> tuple[tuple[WriteKey, str, str], ...]:
+    return tuple(sorted((key, entry[0].name.casefold(), entry[1]) for key, entry in bucket.items()))
+
+
+def _boolean_state_fingerprint(
+    state: BooleanPathState,
+) -> tuple[tuple[tuple[WriteKey, str, str], ...], tuple[tuple[WriteKey, str, str], ...]]:
+    return (
+        _boolean_write_fingerprint(state.true_writes),
+        _boolean_write_fingerprint(state.false_writes),
+    )
+
+
+def _compact_boolean_path_states(
+    states: list[BooleanPathState],
+    *,
+    limit: int = _LATCH_FRONTIER_LIMIT,
+) -> list[BooleanPathState]:
+    if not states:
+        return []
+
+    distinct: dict[
+        tuple[tuple[tuple[WriteKey, str, str], ...], tuple[tuple[WriteKey, str, str], ...]],
+        BooleanPathState,
+    ] = {}
+    for state in states:
+        distinct.setdefault(_boolean_state_fingerprint(state), state)
+
+    exact_states = list(distinct.values())
+    if len(exact_states) <= limit:
+        return exact_states
+
+    # A parallel fan-out of this size is unusual. Collapsing the frontier keeps
+    # the analysis bounded; the merged writes stay a conservative superset of
+    # every path, matching the non-boolean frontier behaviour.
+    merged = BooleanPathState()
+    for state in exact_states:
+        merged.true_writes.update(state.true_writes)
+        merged.false_writes.update(state.false_writes)
+    return [merged]
+
+
 def merge_boolean_parallel_branch_results(
     branch_results: list[list[BooleanPathState]],
+    *,
+    limit: int = _LATCH_FRONTIER_LIMIT,
 ) -> list[BooleanPathState]:
     if not branch_results:
         return []
 
-    merged_states: list[BooleanPathState] = []
-    for combo in product(*branch_results):
-        merged = combo[0].clone()
-        for branch_state in combo[1:]:
-            merged.true_writes.update(branch_state.true_writes)
-            merged.false_writes.update(branch_state.false_writes)
-        merged_states.append(merged)
-    return merged_states
+    frontier = _compact_boolean_path_states(branch_results[0], limit=limit)
+    for branch in branch_results[1:]:
+        branch_frontier = _compact_boolean_path_states(branch, limit=limit)
+        next_frontier: list[BooleanPathState] = []
+        for left in frontier:
+            for right in branch_frontier:
+                merged = left.clone()
+                merged.true_writes.update(right.true_writes)
+                merged.false_writes.update(right.false_writes)
+                next_frontier.append(merged)
+        frontier = _compact_boolean_path_states(next_frontier, limit=limit)
+        if not frontier:
+            break
+    return frontier
 
 
 def record_boolean_assignment(
@@ -200,8 +254,32 @@ def record_boolean_assignment(
 ) -> None:
     bool_value = literal_boolean(expr)
     if bool_value is None:
+        clear_boolean_write(target, env, state)
         return
-    record_boolean_write(target, env, state.true_writes if bool_value else state.false_writes)
+    if bool_value:
+        _record_and_clear_opposite(target, env, state.true_writes, state.false_writes)
+    else:
+        _record_and_clear_opposite(target, env, state.false_writes, state.true_writes)
+
+
+def _record_and_clear_opposite(
+    target: Any,
+    env: dict[str, Variable],
+    bucket: WriteMap,
+    opposite: WriteMap,
+) -> None:
+    key = record_boolean_write(target, env, bucket)
+    if key is not None:
+        opposite.pop(key, None)
+
+
+def clear_boolean_write(target: Any, env: dict[str, Variable], state: BooleanPathState) -> None:
+    """Forget both verdicts for a non-literal write, so a prior fact cannot win."""
+    key = boolean_write_key(target, env)
+    if key is None:
+        return
+    state.true_writes.pop(key, None)
+    state.false_writes.pop(key, None)
 
 
 def record_boolean_function_call(
@@ -214,8 +292,12 @@ def record_boolean_function_call(
         return
     bool_value = literal_boolean(args[1])
     if bool_value is None:
+        clear_boolean_write(args[0], env, state)
         return
-    record_boolean_write(args[0], env, state.true_writes if bool_value else state.false_writes)
+    if bool_value:
+        _record_and_clear_opposite(args[0], env, state.true_writes, state.false_writes)
+    else:
+        _record_and_clear_opposite(args[0], env, state.false_writes, state.true_writes)
 
 
 def literal_boolean(expr: Any) -> bool | None:
@@ -224,19 +306,34 @@ def literal_boolean(expr: Any) -> bool | None:
     return None
 
 
-def record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
+def boolean_write_key(target: Any, env: dict[str, Variable]) -> WriteKey | None:
     if not isinstance(target, VarRef):
-        return
+        return None
     full_ref = target.name
     if not full_ref:
-        return
+        return None
     base, field_path = split_var_ref(full_ref)
-    if not base or field_path:
-        return
+    if not base:
+        return None
     variable = env.get(base.casefold())
-    if variable is None or variable.datatype_text.casefold() != "boolean":
-        return
-    out[(variable.name.casefold(), "")] = (variable, "")
+    if variable is None:
+        return None
+    if not field_path and variable.datatype_text.casefold() != "boolean":
+        return None
+    return (variable.name.casefold(), field_path.casefold())
+
+
+def record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) -> WriteKey | None:
+    key = boolean_write_key(target, env)
+    if key is None:
+        return None
+    full_ref = cast(VarRef, target).name
+    base, field_path = split_var_ref(full_ref)
+    variable = env.get(base.casefold())
+    if variable is None:
+        return None
+    out[key] = (variable, field_path)
+    return key
 
 
 def split_var_ref(var_ref: str) -> tuple[str, str]:
@@ -251,6 +348,8 @@ __all__ = [
     "BooleanPathState",
     "all_boolean_paths_cover_false",
     "boolean_path_covers_false",
+    "boolean_write_key",
+    "clear_boolean_write",
     "collect_boolean_seq_block_paths",
     "collect_boolean_seq_node_paths",
     "collect_boolean_stmt_block_paths",

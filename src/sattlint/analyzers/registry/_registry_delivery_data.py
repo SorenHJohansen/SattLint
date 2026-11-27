@@ -5,22 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 _ANALYZER_SUITE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers_suites_part1.py",
-    "tests/test_analyzers_suites_part2.py",
-    "tests/test_analyzers_suites_part3.py",
-    "tests/test_analyzers_suites_part4.py",
-    "tests/test_analyzers_suites_part5.py",
-    "tests/test_analyzers_suites_part6.py",
+    "tests/analyzers/suites/test_dataflow_sfc_transition_versiondrift.py",
+    "tests/analyzers/suites/test_module_diff_sfc_guard.py",
+    "tests/analyzers/suites/test_naming_alarm_integrity.py",
+    "tests/analyzers/suites/test_safety_taint_mms_usage.py",
+    "tests/analyzers/suites/test_sfc_dataflow_variables.py",
+    "tests/analyzers/suites/test_registry_catalog.py",
 )
-_APP_ACCEPTANCE_TESTS = ("tests/test_app_cli_commands.py",)
+_APP_ACCEPTANCE_TESTS = ("tests/app/test_cli.py",)
 
 
 @dataclass(frozen=True)
 class AnalyzerDeliveryTemplate:
     key: str
-    scope: str
+    delivery_scope: str
     implementation_bucket: str
-    cli_exposed: bool = False
     acceptance_tests: tuple[str, ...] = ()
     depends_on_artifacts: tuple[str, ...] = ()
     supports_baselines: bool = True
@@ -34,9 +33,8 @@ def default_delivery_templates(
     return (
         AnalyzerDeliveryTemplate(
             key="variables",
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="variables-reporting",
-            cli_exposed=True,
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
                 *_APP_ACCEPTANCE_TESTS,
@@ -46,7 +44,7 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="datatype-fields",
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="variables-reporting",
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
@@ -55,25 +53,56 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="moduletype-usage",
+            delivery_scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/analyzers/test_moduletype_usage.py",
+                "tests/app/test_analysis_project_cache.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
+            key="module-layout",
+            delivery_scope="single-file",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/analyzers/test_module_layout.py",
+                "tests/analyzers/suites/test_registry_catalog.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="picture-display-paths",
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="workspace-navigation",
-            cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_picture_display_paths.py", *_APP_ACCEPTANCE_TESTS),
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
+            key="string-capacity",
+            delivery_scope="workspace",
+            implementation_bucket="string-analysis",
+            acceptance_tests=("tests/analyzers/test_string_usage.py", *_APP_ACCEPTANCE_TESTS),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
+            key="string-style",
+            delivery_scope="workspace",
+            implementation_bucket="string-analysis",
+            acceptance_tests=("tests/analyzers/test_string_usage.py", *_APP_ACCEPTANCE_TESTS),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="icf",
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="icf-validation",
-            cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_icf_analyzer.py", *_APP_ACCEPTANCE_TESTS),
         ),
         AnalyzerDeliveryTemplate(
             key="sfc",
-            scope="single-file",
+            delivery_scope="single-file",
             implementation_bucket="shared-semantic-core",
-            cli_exposed=True,
             acceptance_tests=(
                 "tests/analyzers/test_sfc.py",
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
@@ -82,53 +111,34 @@ def default_delivery_templates(
         ),
         AnalyzerDeliveryTemplate(
             key="comment-code",
-            scope="single-file",
+            delivery_scope="single-file",
             implementation_bucket="comment-scan",
-            cli_exposed=True,
             acceptance_tests=("tests/analyzers/test_comment_code.py", *_APP_ACCEPTANCE_TESTS),
         ),
         AnalyzerDeliveryTemplate(
-            key="spec-compliance",
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            cli_exposed=True,
-            acceptance_tests=("tests/analyzers/test_spec_compliance.py", *_APP_ACCEPTANCE_TESTS),
-            min_fixture_set=shared_fixtures,
-        ),
-        AnalyzerDeliveryTemplate(
             key="alarm-integrity",
-            scope="cross-module",
+            delivery_scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(*_ANALYZER_SUITE_ACCEPTANCE_TESTS,),
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
             key="cyclomatic-complexity",
-            scope="single-file",
+            delivery_scope="single-file",
             implementation_bucket="engineering-rules",
             acceptance_tests=_ANALYZER_SUITE_ACCEPTANCE_TESTS,
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
             key="same-cycle",
-            scope="cross-module",
+            delivery_scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_same_cycle.py",),
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
-            key="version-drift",
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=(
-                *_ANALYZER_SUITE_ACCEPTANCE_TESTS,
-                "tests/test_analyzers_version_drift.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        AnalyzerDeliveryTemplate(
             key="dataflow",
-            scope="workspace",
+            delivery_scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(
                 *_ANALYZER_SUITE_ACCEPTANCE_TESTS,

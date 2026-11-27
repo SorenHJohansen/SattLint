@@ -12,8 +12,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from sattlint.parser_api import Simple_DataType
+from sattlint.parser_api import ScalarDatatype
 
+from ..config.string_capacities import StringCapacities
 from ._string_models import (
     _MAX_CURSOR_POSITIONS,
     _MAX_OVERFLOW_EXAMPLES,
@@ -21,17 +22,22 @@ from ._string_models import (
     StringCandidate,
     StringInferenceResult,
     StringProvenanceSegment,
+    StringSlot,
     _AbstractState,
     _IntResult,
-    _ResolvedSlot,
-    _string_capacity_for_datatype,
 )
+from .shared._string_capacity import capacity_for_datatype
 
 
-def _read_string_result(state: _AbstractState, slot: _ResolvedSlot) -> StringInferenceResult:
+def _read_string_result(
+    state: _AbstractState,
+    slot: StringSlot,
+    *,
+    capacities: StringCapacities,
+) -> StringInferenceResult:
     return state.string_values.get(
         slot.key,
-        _unknown_string_result(max_length=_string_capacity_for_datatype(slot.variable.datatype)),
+        _unknown_string_result(max_length=capacity_for_datatype(capacities, slot.variable.datatype)),
     )
 
 
@@ -180,14 +186,15 @@ def _concatenate_results(
     left: StringInferenceResult,
     right: StringInferenceResult,
     *,
+    capacities: StringCapacities,
     target_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
 ) -> StringInferenceResult:
     candidates: list[StringCandidate] = []
     cursor_positions: list[int] = []
     overflow_examples: list[str] = []
     overflowed = False
-    target_capacity = _string_capacity_for_datatype(target_datatype)
+    target_capacity = capacity_for_datatype(capacities, target_datatype)
     for left_candidate in left.candidates:
         for right_candidate in right.candidates:
             moved_left = _substring_from_cursor(left_candidate, left.cursor_positions)
@@ -244,13 +251,14 @@ def _insert_string_result(
     source: StringInferenceResult,
     length_result: _IntResult,
     *,
-    target_datatype: Simple_DataType | str | None,
+    capacities: StringCapacities,
+    target_datatype: ScalarDatatype | str | None,
     operation_name: str = "InsertString",
 ) -> StringInferenceResult:
     if not target.candidates or not source.candidates or not target.cursor_positions or not length_result.values:
         return _preserve_unchanged(
             target,
-            max_length=_string_capacity_for_datatype(target_datatype),
+            max_length=capacity_for_datatype(capacities, target_datatype),
             unknown_text=target.unknown_text or source.unknown_text or True,
             unknown_cursor=target.unknown_cursor or source.unknown_cursor or length_result.unknown or True,
         )
@@ -259,7 +267,7 @@ def _insert_string_result(
     cursor_positions: list[int] = []
     overflow_examples: list[str] = []
     overflowed = False
-    target_capacity = _string_capacity_for_datatype(target_datatype)
+    target_capacity = capacity_for_datatype(capacities, target_datatype)
     for target_candidate in target.candidates:
         for cursor_position in target.cursor_positions:
             safe_position = min(max(cursor_position, 1), (target_capacity or len(target_candidate.text) + 1) + 1)
@@ -373,12 +381,13 @@ def _put_blanks_result(
     target: StringInferenceResult,
     length_result: _IntResult,
     *,
-    target_datatype: Simple_DataType | str | None,
+    capacities: StringCapacities,
+    target_datatype: ScalarDatatype | str | None,
 ) -> StringInferenceResult:
     if not length_result.values:
         return _preserve_unchanged(
             target,
-            max_length=_string_capacity_for_datatype(target_datatype),
+            max_length=capacity_for_datatype(capacities, target_datatype),
             unknown_text=target.unknown_text or True,
             unknown_cursor=target.unknown_cursor or length_result.unknown or True,
         )
@@ -393,6 +402,7 @@ def _put_blanks_result(
         target,
         blank_source,
         length_result,
+        capacities=capacities,
         target_datatype=target_datatype,
         operation_name="PutBlanks",
     )
@@ -402,18 +412,19 @@ def _extract_string_result(
     source: StringInferenceResult,
     length_result: _IntResult,
     *,
+    capacities: StringCapacities,
     target_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
     operation_name: str = "ExtractString",
 ) -> StringInferenceResult:
     if not source.candidates or not source.cursor_positions or not length_result.values:
         return _preserve_unchanged(
             target_result,
-            max_length=_string_capacity_for_datatype(target_datatype),
+            max_length=capacity_for_datatype(capacities, target_datatype),
             unknown_text=source.unknown_text or True,
             unknown_cursor=source.unknown_cursor or length_result.unknown or True,
         )
-    target_capacity = _string_capacity_for_datatype(target_datatype)
+    target_capacity = capacity_for_datatype(capacities, target_datatype)
     candidates: list[StringCandidate] = []
     overflow_examples: list[str] = []
     overflowed = False
@@ -521,12 +532,13 @@ def _transform_string_result(
 
 def _copy_into_target(
     source_result: StringInferenceResult,
-    target_datatype: Simple_DataType | str | None,
+    target_datatype: ScalarDatatype | str | None,
     *,
+    capacities: StringCapacities,
     operation_name: str = "CopyString",
     target_result: StringInferenceResult,
 ) -> StringInferenceResult:
-    target_capacity = _string_capacity_for_datatype(target_datatype)
+    target_capacity = capacity_for_datatype(capacities, target_datatype)
     overflow_examples = [
         candidate.text
         for candidate in source_result.candidates

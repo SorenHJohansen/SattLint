@@ -9,24 +9,10 @@ from lark.exceptions import UnexpectedInput
 
 from sattlint.parser_api import build_lark_parser
 
-from ._comment_scanning import scan_comments_with_code
+from ._comment_scanning import CommentScanHit, scan_comments_with_code
 
 if TYPE_CHECKING:
     from lark import Lark
-
-
-@dataclass(frozen=True)
-class CommentCodeHit:
-    start_line: int
-    end_line: int
-    start_col: int
-    end_col: int
-    text: str
-    indicators: tuple[str, ...]
-    module_path: tuple[str, ...] = ()
-    equation_name: str | None = None
-    sequence_name: str | None = None
-    step_name: str | None = None
 
 
 # Regex patterns for fast filtering (syntax hints, not definitive)
@@ -108,29 +94,43 @@ def _is_valid_code_via_grammar(text: str) -> bool:
     return expression_is_valid
 
 
-def _has_code_syntax_hints(comment_text: str) -> bool:
-    """
-    Fast regex check for code-like syntax patterns.
-    Returns True if the comment contains hints of code syntax.
-    """
-    has_assignment = _ASSIGN_RE.search(comment_text) is not None
-    has_call = _CALL_RE.search(comment_text) is not None
-    has_control = _CONTROL_RE.search(comment_text) is not None
-    has_comparison = _COMPARE_RE.search(comment_text) is not None
-    has_semicolon = ";" in comment_text
+@dataclass(frozen=True, slots=True)
+class _SyntaxHints:
+    """Regex-level evidence that a comment may contain code."""
 
-    # Need at least one strong indicator
-    has_strong = has_assignment or has_call or has_comparison
+    assignment: bool
+    call: bool
+    control: bool
+    comparison: bool
+    semicolon: bool
 
-    if not has_strong and not has_control:
+    @property
+    def strong(self) -> bool:
+        return self.assignment or self.call or self.comparison
+
+
+def _code_syntax_hints(comment_text: str) -> _SyntaxHints:
+    """Scan a comment once for the syntax patterns both checks need."""
+    return _SyntaxHints(
+        assignment=_ASSIGN_RE.search(comment_text) is not None,
+        call=_CALL_RE.search(comment_text) is not None,
+        control=_CONTROL_RE.search(comment_text) is not None,
+        comparison=_COMPARE_RE.search(comment_text) is not None,
+        semicolon=";" in comment_text,
+    )
+
+
+def _has_code_syntax_hints(hints: _SyntaxHints) -> bool:
+    """Fast regex check for code-like syntax patterns."""
+    if not hints.strong and not hints.control:
         return False
 
-    # If we have semicolons and any indicator, it's likely code
-    if has_semicolon and (has_strong or has_control):
+    # If we have semicolons and any indicator, it's likely code.
+    if hints.semicolon and (hints.strong or hints.control):
         return True
 
-    # Without semicolons, need stronger evidence
-    return bool(has_strong)
+    # Without semicolons, need stronger evidence.
+    return hints.strong
 
 
 def _extract_code_candidates(comment_text: str) -> list[str]:
@@ -201,17 +201,12 @@ def _comment_code_indicators(comment_text: str) -> tuple[str, ...]:
         return ()
 
     # Step 1: Fast regex filter
-    if not _has_code_syntax_hints(comment_text):
+    hints = _code_syntax_hints(comment_text)
+    if not _has_code_syntax_hints(hints):
         return ()
 
     # Step 2: Try to extract and validate code candidates via grammar
     indicators: list[str] = []
-
-    # Check what syntax hints we have
-    has_assignment = _ASSIGN_RE.search(comment_text) is not None
-    has_call = _CALL_RE.search(comment_text) is not None
-    has_control = _CONTROL_RE.search(comment_text) is not None
-    has_comparison = _COMPARE_RE.search(comment_text) is not None
 
     # Extract potential code snippets
     candidates = _extract_code_candidates(comment_text)
@@ -229,13 +224,13 @@ def _comment_code_indicators(comment_text: str) -> tuple[str, ...]:
         return ()
 
     # Valid code confirmed - record what patterns matched
-    if has_assignment:
+    if hints.assignment:
         indicators.append("assignment")
-    if has_call:
+    if hints.call:
         indicators.append("call")
-    if has_control:
+    if hints.control:
         indicators.append("control")
-    if has_comparison:
+    if hints.comparison:
         indicators.append("comparison")
 
     return tuple(indicators)
@@ -275,13 +270,15 @@ def _consume_identifier(text: str, pos: int) -> tuple[str, int]:
     return text[pos:end], end
 
 
-def find_comments_with_code(text: str) -> list[CommentCodeHit]:
+def find_comments_with_code(text: str) -> list[CommentScanHit]:
     """
     Find comment blocks that appear to contain code-like content.
 
     This operates on raw source text before comments are stripped.
     Uses a hybrid approach: regex for fast filtering, grammar parsing for accuracy.
-    Only checks comments that appear inside ModuleCode sections.
+    Only checks comments that appear inside ModuleCode sections. The returned
+    record is the scanner's own hit type; report layers wrap it with the file
+    they scanned instead of maintaining a second field-for-field copy.
     """
     return scan_comments_with_code(
         text,
@@ -289,5 +286,5 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
         is_identifier_start=_is_identifier_start,
         consume_identifier=_consume_identifier,
         comment_code_indicators=_comment_code_indicators,
-        hit_factory=CommentCodeHit,
+        hit_factory=lambda scan: scan,
     )

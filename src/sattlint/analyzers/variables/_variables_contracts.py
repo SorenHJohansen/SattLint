@@ -3,13 +3,15 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sattlint.parser_api import (
     FrameModule,
+    ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
+    ScalarDatatype,
     SingleModule,
     Variable,
     VarRef,
@@ -17,6 +19,7 @@ from sattlint.parser_api import (
 from sattlint.parser_api import resolve_variable_field_datatype as _resolve_variable_field_datatype
 
 from ...reporting.variables_report import IssueKind
+from ...resolution import AmbiguousRecordError
 from ...resolution.common import resolve_moduletype_def_strict, varname_base, varname_full
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
@@ -35,21 +38,47 @@ _PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 
 
-def selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
-    return getattr(self, "_selected_issue_kinds", None)
+@dataclass(frozen=True, slots=True)
+class TypedefUsageKey:
+    """Per-library identity for a module type's usage facts.
+
+    A module type name is only unique inside its library, so the library has to
+    participate in the key. Root-owned types carry no library and share the
+    empty string.
+    """
+
+    library: str
+    name: str
 
 
-def should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
+def typedef_usage_key(moduletype: ModuleTypeDef) -> TypedefUsageKey:
+    return TypedefUsageKey(
+        library=(moduletype.origin_lib or "").casefold(),
+        name=moduletype.name.casefold(),
+    )
+
+
+class IssueKindSelection(Protocol):
+    """Suppression gate view over the analyzer's selected issue kinds."""
+
+    _selected_issue_kinds: frozenset[IssueKind] | None
+
+
+def selected_issue_kinds(self: IssueKindSelection) -> frozenset[IssueKind] | None:
+    return self._selected_issue_kinds
+
+
+def should_collect_issue_kind(self: IssueKindSelection, kind: IssueKind) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or kind in selected_kinds
 
 
-def should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+def should_collect_any_issue_kinds(self: IssueKindSelection, kinds: frozenset[IssueKind]) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is None or bool(selected_kinds & kinds)
 
 
-def explicitly_selected_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+def explicitly_selected_issue_kinds(self: IssueKindSelection, kinds: frozenset[IssueKind]) -> bool:
     selected_kinds = selected_issue_kinds(self)
     return selected_kinds is not None and bool(selected_kinds & kinds)
 
@@ -140,18 +169,43 @@ def _check_param_mappings_for_type_instance(
         )
 
 
+@dataclass(frozen=True, slots=True)
+class SourceIssueMetadata:
+    """Issue fields derived from a mapping source reference."""
+
+    variable: Variable | None
+    declaration_path: list[str] | None
+    role: str | None
+    display_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationSourceMetadata:
+    """Validation fields derived from a mapping source reference."""
+
+    variable: Variable | None
+    module_path: list[str] | None
+
+
 def _source_issue_metadata(
     self: VariablesAnalyzer,
     source_context: ScopeContext | None,
     source_ref: object,
     source_var: Variable | None,
-) -> tuple[Variable | None, list[str] | None, str | None, str | None]:
+) -> SourceIssueMetadata:
     def _issue_variable(variable: Variable, field_path: str) -> Variable:
         if not field_path:
             return variable
 
         field_segments = tuple(segment for segment in field_path.split(".") if segment)
-        datatype = _resolve_variable_field_datatype(variable, field_segments, self.type_graph)
+        try:
+            datatype = _resolve_variable_field_datatype(variable, field_segments, self.type_graph)
+        except AmbiguousRecordError as exc:
+            # The parser helper walks without a library, so an undecidable
+            # record name leaves the field datatype unresolved. Report it once
+            # per type and keep the declaration's own datatype for the issue.
+            self._warn_ambiguous_record(exc)
+            return variable
         return Variable(
             name=f"{variable.name}.{field_path}",
             datatype=datatype or variable.datatype,
@@ -162,17 +216,27 @@ def _source_issue_metadata(
             full_source_name = varname_full(source_ref)
             if isinstance(full_source_name, str) and "." in full_source_name:
                 issue_var = _issue_variable(source_var, full_source_name.split(".", 1)[1])
-                return issue_var, None, None, issue_var.name
-        return source_var, None, None, source_var.name if source_var is not None else None
+                return SourceIssueMetadata(issue_var, None, None, issue_var.name)
+        return SourceIssueMetadata(
+            source_var,
+            None,
+            None,
+            source_var.name if source_var is not None else None,
+        )
 
     full_source_name = varname_full(source_ref)
     if not full_source_name:
-        return source_var, None, None, source_var.name if source_var is not None else None
+        return SourceIssueMetadata(
+            source_var,
+            None,
+            None,
+            source_var.name if source_var is not None else None,
+        )
 
     resolved_var, field_prefix, decl_path, _decl_display_path = source_context.resolve_variable(full_source_name)
     effective_var = resolved_var or source_var
     if effective_var is None:
-        return None, None, None, None
+        return SourceIssueMetadata(None, None, None, None)
 
     declaring_context = self.contexts_by_module_path.get(tuple(decl_path))
     if declaring_context is None and decl_path == source_context.module_path:
@@ -184,7 +248,7 @@ def _source_issue_metadata(
         source_role = "moduleparameter" if source_key in declaring_context.moduleparameter_keys else "localvariable"
 
     issue_var = _issue_variable(effective_var, field_prefix)
-    return issue_var, list(decl_path), source_role, issue_var.name
+    return SourceIssueMetadata(issue_var, list(decl_path), source_role, issue_var.name)
 
 
 def _validation_source_metadata(
@@ -192,29 +256,30 @@ def _validation_source_metadata(
     source_context: ScopeContext | None,
     source_ref: object,
     source_var: Variable | None,
-) -> tuple[Variable | None, list[str] | None]:
+) -> ValidationSourceMetadata:
     root_name = getattr(getattr(getattr(self, "bp", None), "header", None), "name", None)
     root_module_path = [root_name] if isinstance(root_name, str) else None
 
     if source_var is None:
-        return None, None
+        return ValidationSourceMetadata(None, None)
 
     full_source_name = varname_full(source_ref)
     if not full_source_name:
-        return source_var, list(source_context.module_path) if source_context is not None else root_module_path
+        module_path = list(source_context.module_path) if source_context is not None else root_module_path
+        return ValidationSourceMetadata(source_var, module_path)
 
     if source_context is None:
-        return source_var, root_module_path
+        return ValidationSourceMetadata(source_var, root_module_path)
 
     base_name = varname_base(full_source_name)
     if base_name and base_name.casefold() in source_context.env:
-        return source_var, list(source_context.module_path)
+        return ValidationSourceMetadata(source_var, list(source_context.module_path))
 
     root_var = self.root_env.get(base_name) if base_name is not None else None
     if root_var is source_var:
-        return source_var, [self.bp.header.name]
+        return ValidationSourceMetadata(source_var, [self.bp.header.name])
 
-    return source_var, list(source_context.module_path)
+    return ValidationSourceMetadata(source_var, list(source_context.module_path))
 
 
 def _check_param_mapping(
@@ -236,18 +301,25 @@ def _check_param_mapping(
         return
 
     source_ref = _mapping_source_ref(pm)
+    # Keep the immediate scope's declaration when there is one: it is the actual at
+    # this seam. A frame's environment holds only its own declarations, so an actual
+    # declared in an ancestor is resolved through the scope chain; the root index is
+    # the last resort.
     src_var = self.lookup_env_var_from_varname_dict(source_ref, parent_env)
+    full_source = varname_full(source_ref)
+    if src_var is None and source_context is not None and full_source:
+        src_var, _field_path, _decl_path, _decl_display_path = source_context.resolve_variable(full_source)
     if src_var is None:
         source_base = varname_base(source_ref)
         src_var = self.root_env.get(source_base) if source_base is not None else None
 
     target_name = varname_full(getattr(pm, "target", None)) or tgt_var.name
-    target_datatype: Simple_DataType | str | None = None
+    target_datatype: ScalarDatatype | str | None = None
     target_field_path: str | None = None
     resolve_target_datatype = getattr(self.contract_validator, "resolve_target_datatype", None)
     if callable(resolve_target_datatype):
         resolved_target = cast(
-            tuple[Simple_DataType | str | None, str | None],
+            tuple[ScalarDatatype | str | None, str | None],
             resolve_target_datatype(target_name, tgt_var),
         )
         target_datatype, target_field_path = resolved_target
@@ -265,18 +337,23 @@ def _check_param_mapping(
                 path,
                 is_duration=bool(pm.is_duration),
             ):
-                issue.source_decl_module_path = list(path)
-                issue.source_role = "literal"
-                issue.target_display_name = target_name
-                self.append_param_mapping_issue(pm, issue)
+                self.append_param_mapping_issue(
+                    pm,
+                    replace(
+                        issue,
+                        source_decl_module_path=list(path),
+                        source_role="literal",
+                        target_display_name=target_name,
+                    ),
+                )
         return
 
-    current_source_datatype: Simple_DataType | str | None = None
+    current_source_datatype: ScalarDatatype | str | None = None
     current_source_name: str | None = src_var.name
     resolve_source_datatype = getattr(self.contract_validator, "resolve_source_datatype", None)
     if callable(resolve_source_datatype):
         resolved_source = cast(
-            tuple[Simple_DataType | str | None, str | None],
+            tuple[ScalarDatatype | str | None, str | None],
             resolve_source_datatype(pm, src_var),
         )
         current_source_datatype, current_source_name = resolved_source
@@ -290,15 +367,15 @@ def _check_param_mapping(
         else src_var
     )
 
-    source_issue_var, source_decl_module_path, source_role, source_display_name = _source_issue_metadata(
-        self, source_context, source_ref, src_var
-    )
-    validation_source_var, validation_source_module_path = _validation_source_metadata(
+    source_metadata = _source_issue_metadata(self, source_context, source_ref, src_var)
+    validation_metadata = _validation_source_metadata(
         self,
         source_context,
         source_ref,
         current_source_var,
     )
+    source_issue_var = source_metadata.variable
+    source_display_name = source_metadata.display_name
     preferred_source_issue_var = source_issue_var or current_source_var
     if "." in current_source_var.name and (
         source_issue_var is None
@@ -309,14 +386,19 @@ def _check_param_mapping(
         source_display_name = current_source_var.name
 
     for issue in self.string_validator.check_string_mapping(target_issue_var, current_source_var, path):
-        issue.source_variable = preferred_source_issue_var
-        issue.source_decl_module_path = source_decl_module_path
-        issue.source_role = source_role
-        issue.source_display_name = source_display_name
-        issue.target_display_name = target_name
-        issue.validation_source_variable = validation_source_var
-        issue.validation_source_module_path = validation_source_module_path
-        self.append_param_mapping_issue(pm, issue)
+        self.append_param_mapping_issue(
+            pm,
+            replace(
+                issue,
+                source_variable=preferred_source_issue_var,
+                source_decl_module_path=source_metadata.declaration_path,
+                source_role=source_metadata.role,
+                source_display_name=source_display_name,
+                target_display_name=target_name,
+                validation_source_variable=validation_metadata.variable,
+                validation_source_module_path=validation_metadata.module_path,
+            ),
+        )
     for issue in self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path):
         self.append_param_mapping_issue(pm, issue)
 

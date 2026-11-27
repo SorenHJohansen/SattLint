@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import threading
+from collections import deque
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, ClassVar
 
 from ..config.types import ConfigDict
 from ._app_textual_actions import _TextualActionsMixin
 from ._app_textual_analyze import _TextualAnalyzeMixin
-from ._app_textual_results import ResultsGroupBy, _TextualResultsMixin
+from ._app_textual_progress import _TextualProgressMixin
+from ._app_textual_results import _TextualResultsMixin
 from ._app_textual_settings import _TextualSettingsMixin
 from ._app_textual_setup import _TextualSetupMixin
 from ._app_textual_shared import (
@@ -55,12 +57,6 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
         description="Click targets to add or remove them, then adjust directories and runtime settings inline.",
         note="Changes are saved automatically to the configuration file.",
     ),
-    "help": _ShellViewState(
-        action_id="action-help",
-        title="Help",
-        description="See first-run guidance and the recommended workflow for setup and analysis.",
-        note="Open the guide to review the recommended setup and analysis workflow.",
-    ),
     "output": _ShellViewState(
         action_id="action-output",
         title="Output",
@@ -77,6 +73,7 @@ if _TEXTUAL_APP is not None:
         _TextualSetupMixin,
         _TextualActionsMixin,
         _TextualAnalyzeMixin,
+        _TextualProgressMixin,
         _TextualSettingsMixin,
         _TextualResultsMixin,
         _TEXTUAL_APP,
@@ -89,12 +86,12 @@ if _TEXTUAL_APP is not None:
 
         _VIEW_REGISTRY: ClassVar[dict[str, _ShellViewState]] = _DEFAULT_VIEW_REGISTRY
         _VIEW_ACTIONS: ClassVar[dict[str, str]] = {
-            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items() if view_name != "help"
+            state.action_id: view_name for view_name, state in _DEFAULT_VIEW_REGISTRY.items()
         }
 
         CSS = TEXTUAL_SHELL_CSS
 
-        def __init__(
+        def __init__(  # noqa: PLR0915 - the shell owns a lot of small pieces of session state
             self,
             *,
             cfg: ConfigDict,
@@ -116,18 +113,21 @@ if _TEXTUAL_APP is not None:
             self._summarize_targets_fn = summarize_targets_fn
             self._get_help_text_fn = get_help_text_fn
             self._save_config_fn = save_config_fn
+            # ``_config_path`` always names the user config file. The open
+            # project file lives in ``_project_path`` so a run started before
+            # any project is opened is not attributed to the user config.
             self._config_path = config_path
+            self._project_path: Path | None = None
             self._quit_app_error = quit_app_error
             self._busy = False
             self._dirty = False
+            self._quitting = False
+            self._active_cancellation = None
+            self._cancel_requested = False
             self._active_view = "analyze"
             self._active_job_action_id: str | None = None
             self._active_job_label: str | None = None
             self._active_job_started_at: float | None = None
-            self._active_job_cancel_event: threading.Event | None = None
-            self._active_job_cancel_requested = False
-            self._active_job_thread: threading.Thread | None = None
-            self._active_job_worker: Any | None = None
             self._project: Any | None = None
             self._ast_refresh_pending = False
             self._analyze_focused_entry_id: str | None = None
@@ -137,9 +137,12 @@ if _TEXTUAL_APP is not None:
             self._suppress_analyze_events = False
             self._selected_run_record = None
             self._results_run_summaries: list[object] = []
+            self._results_empty_state_written = False
             self._results_tree_widget = None
+            self._results_pending_run_id: str | None = None
+            self._results_findings_widget = None
+            self._selected_results_module = None
             self._results_show_empty_analyzers_flag = False
-            self._results_group_by_flag: ResultsGroupBy = "analyzer"
             self._setup_candidate_index = 0
             self._setup_filter_text = ""
             self._setup_target_names_list: list[str] = []
@@ -147,12 +150,16 @@ if _TEXTUAL_APP is not None:
             self._active_request = None
             self._active_request_callback: Any = None
             self._interaction_pane: Any = None
+            self._interaction_previous_focus: Any = None
+            self._error_modal_active = False
+            self._pending_interactions: deque[tuple[Any, Any | None]] = deque()
             self._pending_ui_tasks: set[asyncio.Task[Any]] = set()
             self._last_output_line: str | None = None
             self._session_output_lines: list[str] = []
             self._session_output_dropped_line_count = 0
             self._pending_error_target_name: str | None = None
             self._last_output_target_name: str | None = None
+            self._analysis_progress: Any | None = None
 
         def compose(self) -> _TEXTUAL_COMPOSE_RESULT:  # noqa: PLR0915
             with _TEXTUAL_VERTICAL(id="top-bar"):
@@ -178,9 +185,10 @@ if _TEXTUAL_APP is not None:
                                                 classes="raised-button toolbar-button",
                                             )
                                             yield _TEXTUAL_BUTTON(
-                                                "Cancel running",
-                                                id="analyze-cancel-running",
+                                                "Cancel run",
+                                                id="analyze-cancel-run",
                                                 classes="raised-button toolbar-button",
+                                                disabled=True,
                                             )
                                         with _TEXTUAL_HORIZONTAL(id="analyze-selection-zone"):
                                             yield _TEXTUAL_BUTTON(
@@ -291,7 +299,7 @@ if _TEXTUAL_APP is not None:
                                             yield _TEXTUAL_STATIC("Run History", classes="settings-card-title")
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Save run history",
+                                                    "Run history",
                                                     id="settings-toggle-run-history",
                                                     classes="raised-button settings-row-button",
                                                 )
@@ -300,7 +308,7 @@ if _TEXTUAL_APP is not None:
                                                 )
                                             with _TEXTUAL_VERTICAL(classes="settings-row"):
                                                 yield _TEXTUAL_BUTTON(
-                                                    "Keep last N runs",
+                                                    "Run history limit",
                                                     id="settings-edit-run-history-limit",
                                                     classes="raised-button settings-row-button",
                                                 )
@@ -359,11 +367,6 @@ if _TEXTUAL_APP is not None:
                             with _TEXTUAL_VERTICAL(id="results-detail-section"):
                                 with _TEXTUAL_HORIZONTAL(id="results-tabs"):
                                     yield _TEXTUAL_BUTTON(
-                                        "Group: Analyzer",
-                                        id="results-toggle-group",
-                                        classes="raised-button results-header-button",
-                                    )
-                                    yield _TEXTUAL_BUTTON(
                                         "Expand all",
                                         id="results-expand-all",
                                         classes="raised-button results-header-button",
@@ -373,8 +376,11 @@ if _TEXTUAL_APP is not None:
                                         id="results-collapse-all",
                                         classes="raised-button results-header-button",
                                     )
-                                with _TEXTUAL_VERTICAL(id="results-tree-host"):
-                                    pass
+                                with _TEXTUAL_HORIZONTAL(id="results-module-browser"):
+                                    with _TEXTUAL_VERTICAL(id="results-tree-host"):
+                                        yield _TEXTUAL_STATIC("Modules", classes="results-pane-title")
+                                    with _TEXTUAL_VERTICAL(id="results-findings-host"):
+                                        yield _TEXTUAL_STATIC("Findings", classes="results-pane-title")
                         with _TEXTUAL_HORIZONTAL(id="output-browser", classes="is-hidden"):  # noqa: SIM117
                             with _TEXTUAL_VERTICAL(id="output-section"):
                                 with _TEXTUAL_VERTICAL(id="output-group", classes="settings-group-box"):
@@ -395,6 +401,7 @@ if _TEXTUAL_APP is not None:
                     pass
             with _TEXTUAL_HORIZONTAL(id="status-bar"):
                 yield _TEXTUAL_STATIC("", id="status-project")
+                yield _TEXTUAL_STATIC("", id="status-progress")
                 yield _TEXTUAL_STATIC("", id="status-summary", classes="summary-strip")
             yield _TEXTUAL_FOOTER()
 

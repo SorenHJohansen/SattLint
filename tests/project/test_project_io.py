@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# pyright: reportPrivateUsage=false
 """Focused tests for .slproj project file I/O."""
 
 from __future__ import annotations
@@ -8,24 +8,56 @@ from typing import cast
 
 import pytest
 
+from sattlint.config.types import ConfigDict
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.project.io import (
     SLPROJ_FILENAME,
     SLPROJ_VERSION,
+    ProjectAmbiguousError,
     _normalize,
     _project_path_hint,
     discover_project,
+    discover_project_result,
     init_project,
     load_project,
-    project_status,
     save_project,
+    select_project_in_directory,
 )
+from sattlint.project.loading import cache_manifest_files
 from sattlint.project.models import SattLintProjectFile
 from sattlint.project.types import DEFAULT_PROJECT_DICT, ProjectDict
+
+STANDARD_STRING_CAPACITIES_TOML = (
+    "[string_capacities]\nidentstring = 15\ntagstring = 30\nstring = 40\nlinestring = 80\nmaxstring = 140\n"
+)
+
+
+def _write_project(path: Path, body: str = "") -> None:
+    """Write a valid version 2 project: top-level values, then the required table."""
+    path.write_text(f"slproj_version = {SLPROJ_VERSION}\n{body}{STANDARD_STRING_CAPACITIES_TOML}", encoding="utf-8")
+
+
+def _project_with_roots(tmp_path: Path, body: str) -> tuple[Path, Path, Path]:
+    """Create a project directory, an outside directory, and the project file."""
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    path = project_root / "proj.slproj"
+    _write_project(path, body)
+    return path, project_root, outside
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are not available on this platform: {exc}")
 
 
 def test_discover_project_walks_upwards(tmp_path: Path) -> None:
     assert discover_project(tmp_path) is None
-    (tmp_path / SLPROJ_FILENAME).write_text("slproj_version = 1\n")
+    (tmp_path / SLPROJ_FILENAME).write_text(f"slproj_version = {SLPROJ_VERSION}\n")
     assert discover_project(tmp_path) == (tmp_path / SLPROJ_FILENAME)
     nested = tmp_path / "a" / "b"
     nested.mkdir(parents=True)
@@ -34,10 +66,108 @@ def test_discover_project_walks_upwards(tmp_path: Path) -> None:
     assert found is not None and found.name == SLPROJ_FILENAME
 
 
+def test_discover_project_prefers_the_literal_file_over_named_files(tmp_path: Path) -> None:
+    (tmp_path / "alpha.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    (tmp_path / "beta.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    literal = tmp_path / SLPROJ_FILENAME
+    literal.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    result = discover_project_result(tmp_path)
+
+    assert result.selected == literal
+    assert result.candidates == (literal, tmp_path / "alpha.slproj", tmp_path / "beta.slproj")
+    assert not result.is_ambiguous
+    assert discover_project(tmp_path) == literal
+
+
+def test_discover_project_uses_the_only_named_file_in_the_nearest_directory(tmp_path: Path) -> None:
+    named = tmp_path / "app.slproj"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
+
+    assert discover_project(nested) == named
+    result = discover_project_result(nested)
+    assert result.directory == tmp_path
+    assert result.selected == named
+
+
+def test_discover_project_reports_every_candidate_when_two_named_files_exist(tmp_path: Path) -> None:
+    first = tmp_path / "first.slproj"
+    second = tmp_path / "second.slproj"
+    first.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    second.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    result = discover_project_result(tmp_path)
+
+    assert result.is_ambiguous
+    assert result.selected is None
+    assert result.directory == tmp_path
+    assert result.candidates == (first, second)
+    with pytest.raises(ProjectAmbiguousError) as raised:
+        discover_project(tmp_path)
+    message = str(raised.value)
+    assert str(first) in message
+    assert str(second) in message
+    assert "--project" in message
+
+
+def test_discover_project_stops_before_an_ambiguous_parent(tmp_path: Path) -> None:
+    (tmp_path / "one.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    (tmp_path / "two.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    child = tmp_path / "child"
+    child.mkdir()
+    child_project = child / "child.slproj"
+    child_project.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    # The walk stops at the child, so the ambiguous parent never matters.
+    assert discover_project(child) == child_project
+
+
+def test_discover_project_matches_the_suffix_case_insensitively_and_ignores_directories(tmp_path: Path) -> None:
+    (tmp_path / "not-a-project.slproj").mkdir()
+
+    assert discover_project(tmp_path) is None
+
+    named = tmp_path / "APP.SLPROJ"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+
+    assert discover_project(tmp_path) == named
+
+
+def test_discover_project_result_reports_nothing_found(tmp_path: Path) -> None:
+    result = discover_project_result(tmp_path)
+
+    assert result.selected is None
+    assert result.directory is None
+    assert result.candidates == ()
+    assert not result.is_ambiguous
+    assert discover_project(tmp_path) is None
+
+
+def test_select_project_in_directory_follows_the_discovery_rule(tmp_path: Path) -> None:
+    assert select_project_in_directory(tmp_path) is None
+
+    named = tmp_path / "app.slproj"
+    named.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    assert select_project_in_directory(tmp_path) == named
+
+    literal = tmp_path / SLPROJ_FILENAME
+    literal.write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    assert select_project_in_directory(tmp_path) == literal
+
+    literal.unlink()
+    (tmp_path / "other.slproj").write_text(f"slproj_version = {SLPROJ_VERSION}\n")
+    with pytest.raises(ProjectAmbiguousError) as raised:
+        select_project_in_directory(tmp_path)
+    assert str(named) in str(raised.value)
+    assert str(tmp_path / "other.slproj") in str(raised.value)
+
+
 def test_load_project_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "sub" / SLPROJ_FILENAME
     path.parent.mkdir()
-    path.write_text("slproj_version = 1\nmode = 'official'\n")
+    _write_project(path, "mode = 'official'\n")
     project = load_project(path)
     assert isinstance(project, SattLintProjectFile)
     assert project.data["mode"] == "official"
@@ -48,9 +178,17 @@ def test_load_project_missing_and_bad_version(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         load_project(tmp_path / "missing" / SLPROJ_FILENAME)
     path = tmp_path / SLPROJ_FILENAME
-    path.write_text("slproj_version = 2\n")
+    path.write_text("slproj_version = 1\n")
+    with pytest.raises(ValueError, match=r"Unsupported .slproj version 1.*\[string_capacities\]"):
+        load_project(path)
+    path.write_text("slproj_version = 0\n")
     with pytest.raises(ValueError, match=r"Unsupported .slproj version"):
         load_project(path)
+    path.write_text("slproj_version = false\n")
+    with pytest.raises(ValueError, match=r"slproj_version"):
+        load_project(path)
+    _write_project(path)
+    assert load_project(path).data["slproj_version"] == SLPROJ_VERSION
 
 
 def test_load_project_rejects_directory(tmp_path: Path) -> None:
@@ -58,13 +196,77 @@ def test_load_project_rejects_directory(tmp_path: Path) -> None:
         load_project(tmp_path)
 
 
+def test_load_project_fills_defaults_for_missing_keys(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+    _write_project(path)
+
+    project = load_project(path)
+
+    assert project.data["analyzed_programs_and_libraries"] == []
+    assert project.data["analyzers"] == []
+    assert project.analyzers == ()
+    assert project.data["mode"] == "official"
+    assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+    assert project.data["string_capacities"] == DEFAULT_PROJECT_DICT["string_capacities"]
+    assert project.data["allow_external_roots"] is False
+
+    cfg = project.to_config_dict()
+    assert cfg["analyzed_programs_and_libraries"] == []
+    assert cfg["other_lib_dirs"] == []
+    assert cfg["string_capacities"] == DEFAULT_PROJECT_DICT["string_capacities"]
+
+
+def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+
+    _write_project(path, "analyzed_programs_and_libraries = 'Demo'\n")
+    with pytest.raises(ValueError, match=r"analyzed_programs_and_libraries"):
+        load_project(path)
+
+    _write_project(path, "analyzers = 'variables'\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
+        load_project(path)
+
+    _write_project(path, "analyzers = [1]\n")
+    with pytest.raises(ValueError, match=r"analyzers"):
+        load_project(path)
+
+    _write_project(path, "mode = 3\n")
+    with pytest.raises(ValueError, match=r"mode"):
+        load_project(path)
+
+    _write_project(path, "analysis = 'nope'\n")
+    with pytest.raises(ValueError, match=r"analysis"):
+        load_project(path)
+
+    _write_project(path, "allow_external_roots = 'yes'\n")
+    with pytest.raises(ValueError, match=r"allow_external_roots"):
+        load_project(path)
+
+    path.write_text("slproj_version = 'one'\n")
+    with pytest.raises(ValueError, match=r"slproj_version"):
+        load_project(path)
+
+
+def test_load_project_warns_about_unknown_keys(tmp_path: Path) -> None:
+    path = tmp_path / SLPROJ_FILENAME
+    _write_project(path, "run_history = { enabled = false }\n")
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    assert "run_history" in project.warnings[0]
+    assert "run_history" not in project.data
+
+
 def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
     data = {
-        "slproj_version": 1,
+        "slproj_version": SLPROJ_VERSION,
         "mode": "official",
         "program_dir": tmp_path / "src",
         "other_lib_dirs": [tmp_path / "lib1", tmp_path / "lib2"],
+        "string_capacities": {"identstring": 11, "tagstring": 22, "string": 33, "linestring": 44, "maxstring": 55},
         "analysis": {"validate": True},
     }
     save_project(path, cast(ProjectDict, data))
@@ -72,27 +274,55 @@ def test_save_and_reload_preserves_values(tmp_path: Path) -> None:
     assert project.data["mode"] == "official"
     assert project.data["program_dir"] == str(tmp_path / "src")
     assert project.data["other_lib_dirs"] == [str(tmp_path / "lib1"), str(tmp_path / "lib2")]
+    assert project.data["string_capacities"] == {
+        "identstring": 11,
+        "tagstring": 22,
+        "string": 33,
+        "linestring": 44,
+        "maxstring": 55,
+    }
     assert project.data["analysis"] == {"validate": True}
 
 
 def test_project_analysis_survives_effective_config_merge(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
-    data = {
-        "slproj_version": 1,
+    data: dict[str, object] = {
+        "slproj_version": SLPROJ_VERSION,
         "analyzed_programs_and_libraries": [],
         "mode": "official",
         "program_dir": tmp_path / "src",
         "ABB_lib_dir": "",
         "icf_dir": "",
+        "analyzers": ["variables", "sfc"],
         "other_lib_dirs": [],
-        "analysis": {"spec_compliance": {"step_prefix": "ST_"}},
+        "string_capacities": {"identstring": 15, "tagstring": 30, "string": 20, "linestring": 80, "maxstring": 140},
+        "analysis": {"cyclomatic_module_threshold": 30},
     }
     save_project(path, cast(ProjectDict, data))
     project = load_project(path)
 
     cfg = project.to_default_merged_config_dict()
 
-    assert cfg["analysis"]["spec_compliance"]["step_prefix"] == "ST_"
+    assert cfg["analysis"]["cyclomatic_module_threshold"] == 30
+    assert cfg["string_capacities"]["string"] == 20
+    assert project.analyzers == ("variables", "sfc")
+    # Analyzer selection belongs to the project file, not the merged runtime
+    # config that every command and the UI work from.
+    assert "analyzers" not in cfg
+
+
+def test_project_analyzers_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "proj.slproj"
+    init_project(path)
+
+    data = load_project(path).data
+    data["analyzers"] = ["dataflow", "sfc"]
+    save_project(path, data)
+
+    project = load_project(path)
+
+    assert project.data["analyzers"] == ["dataflow", "sfc"]
+    assert project.analyzers == ("dataflow", "sfc")
 
 
 def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:
@@ -115,11 +345,21 @@ def test_project_merge_preserves_user_app_settings(tmp_path: Path) -> None:
 
 def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     path = tmp_path / "proj.slproj"
-    project = init_project(path, name="Demo")
+    project = init_project(path)
     assert path.exists()
+    assert SLPROJ_VERSION == 2
     assert project.data["slproj_version"] == SLPROJ_VERSION
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+    assert project.data["allow_external_roots"] is False
+    assert "allow_external_roots = false" in path.read_text(encoding="utf-8")
+    assert project.data["string_capacities"] == {
+        "identstring": 15,
+        "tagstring": 30,
+        "string": 40,
+        "linestring": 80,
+        "maxstring": 140,
+    }
     with pytest.raises(FileExistsError):
         init_project(path)
 
@@ -139,20 +379,153 @@ def test_init_project_with_dirs(tmp_path: Path) -> None:
     assert project.data["other_lib_dirs"] == ["/opt/satt/extra"]
 
 
-def test_project_status_summary(tmp_path: Path) -> None:
-    path = tmp_path / "proj.slproj"
-    init_project(path)
+def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> None:
+    project = init_project(tmp_path / "proj.slproj")
+
+    project.data["analyzed_programs_and_libraries"].append("Demo")
+    project.data["other_lib_dirs"].append("libs")
+    project.data["string_capacities"]["string"] = 7
+
+    assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
+    assert DEFAULT_PROJECT_DICT["other_lib_dirs"] == []
+    assert DEFAULT_PROJECT_DICT["string_capacities"]["string"] == 40
+
+
+def test_load_project_refuses_a_parent_relative_root_outside_the_project(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, 'program_dir = "../outside"\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert "../outside" in message
+    assert str(outside.resolve()) in message
+    assert str(project_root.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_load_project_refuses_an_absolute_root_outside_the_project(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, "")
+    _write_project(path, f'program_dir = "{outside}"\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert str(outside) in message
+    assert str(outside.resolve()) in message
+    assert str(project_root.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_load_project_allows_an_external_root_with_the_opt_in(tmp_path: Path) -> None:
+    path, _project_root, outside = _project_with_roots(
+        tmp_path,
+        'allow_external_roots = true\nprogram_dir = "../outside"\n',
+    )
+
     project = load_project(path)
-    status = project_status(project)
-    assert "proj.slproj" in status or tmp_path.name in status
-    assert "mode=official" in status
-    assert "0 targets" in status
-    project.data["analyzed_programs_and_libraries"] = ["a", "b", "c", "d"]
-    status = project_status(project)
-    assert "4 targets" in status
-    assert "a, b, c ..." in status
-    project.data["analyzed_programs_and_libraries"] = ["solo"]
-    assert "1 target" in project_status(project)
+
+    assert project.data["allow_external_roots"] is True
+    assert project.to_config_dict()["program_dir"] == outside.resolve()
+
+
+def test_load_project_accepts_a_nested_root_without_warnings(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "src/programs"\n')
+
+    project = load_project(path)
+
+    assert project.warnings == ()
+    assert project.to_config_dict()["program_dir"] == (project_root / "src" / "programs").resolve()
+
+
+def test_load_project_warns_about_a_parent_component_that_stays_inside(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "src/../programs"\n')
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    warning = project.warnings[0]
+    assert "src/../programs" in warning
+    assert str((project_root / "programs").resolve()) in warning
+
+
+def test_load_project_warns_about_an_absolute_root_inside_the_project(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    inside = project_root / "programs"
+    path = project_root / "proj.slproj"
+    _write_project(path, f'program_dir = "{inside}"\n')
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    warning = project.warnings[0]
+    assert str(inside) in warning
+    assert str(inside.resolve()) in warning
+
+
+def test_load_project_accepts_a_symlink_inside_the_project(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "link"\n')
+    real = project_root / "real"
+    real.mkdir()
+    _symlink_or_skip(project_root / "link", real)
+
+    project = load_project(path)
+
+    assert project.warnings == ()
+    assert project.to_config_dict()["program_dir"] == real.resolve()
+
+
+def test_load_project_refuses_a_symlink_to_an_outside_directory(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, 'program_dir = "link"\n')
+    _symlink_or_skip(project_root / "link", outside)
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert str(outside.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+    _write_project(path, 'allow_external_roots = true\nprogram_dir = "link"\n')
+    assert load_project(path).to_config_dict()["program_dir"] == outside.resolve()
+
+
+def test_load_project_checks_other_lib_dirs_entry_by_entry(tmp_path: Path) -> None:
+    path, _project_root, outside = _project_with_roots(tmp_path, 'other_lib_dirs = ["libs", "../outside"]\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert "'other_lib_dirs'" in message
+    assert "../outside" in message
+    assert str(outside.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_to_config_dict_enforces_containment_without_load_project(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    path = project_root / "proj.slproj"
+    data = cast(ProjectDict, {**DEFAULT_PROJECT_DICT, "program_dir": "../outside"})
+
+    with pytest.raises(ValueError) as raised:
+        SattLintProjectFile(path=path, data=data).to_config_dict()
+
+    direct_message = str(raised.value)
+    assert "../outside" in direct_message
+    assert str(outside.resolve()) in direct_message
+    assert str(project_root.resolve()) in direct_message
+    assert "allow_external_roots = true" in direct_message
+
+    _write_project(path, 'program_dir = "../outside"\n')
+    with pytest.raises(ValueError) as loaded:
+        load_project(path)
+    assert direct_message == str(loaded.value)
 
 
 def test_normalize_converters() -> None:
@@ -165,3 +538,21 @@ def test_normalize_converters() -> None:
 def test_project_path_hint(tmp_path: Path) -> None:
     assert _project_path_hint(tmp_path / SLPROJ_FILENAME) == f"{tmp_path.name}/"
     assert _project_path_hint(tmp_path / "other.slproj") == str(tmp_path / "other.slproj")
+
+
+def test_cache_manifest_tracks_the_icf_directory_for_new_files(tmp_path: Path) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    graph = ProjectGraph()
+    cfg = cast(ConfigDict, DEFAULT_PROJECT_DICT | {"icf_dir": str(icf_dir)})
+
+    files = cache_manifest_files(
+        cfg,
+        graph,
+        find_dependency_path_fn=lambda _name: None,
+        resolve_graphics_companion_path_fn=lambda *_args, **_kwargs: None,
+    )
+
+    assert icf_dir in files
+    (icf_dir / "new.icf").write_text("x", encoding="utf-8")
+    assert icf_dir in files

@@ -1,6 +1,9 @@
-# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportPrivateUsage=false
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
@@ -15,8 +18,77 @@ from sattline_parser.models.ast_model import (
 )
 
 from sattlint.analyzers import variable_usage_reporting as reporting
-from sattlint.models.usage import VariableUsage
+from sattlint.models.usage import AccessKind, VariableUsage
 from sattlint.reporting.variables_report import IssueKind
+from sattlint.resolution.common import ResolvedModulePath
+
+type AliasLink = tuple[Variable, Variable, str]
+
+
+class _FakeVariableAnalyzer:
+    """Typed stand-in for the variable analyzer facade used by the reporting helpers."""
+
+    def __init__(
+        self,
+        *,
+        any_var_index: dict[str, list[Variable]] | None = None,
+        alias_links: list[AliasLink] | None = None,
+        usage_by_id: dict[int, VariableUsage] | None = None,
+        usage: VariableUsage | None = None,
+    ) -> None:
+        self.any_var_index = any_var_index if any_var_index is not None else {}
+        self.alias_links = alias_links if alias_links is not None else []
+        self._usage_by_id = usage_by_id
+        self._usage = usage
+
+    def run(self, **_kwargs: object) -> list[object]:
+        return []
+
+    def get_usage(self, variable: Variable) -> VariableUsage | None:
+        if self._usage_by_id is not None:
+            mapped = self._usage_by_id.get(id(variable))
+            if mapped is not None:
+                return mapped
+        return self._usage
+
+
+def _returns[T](value: T) -> Callable[..., T]:
+    """Build a patch target that ignores its arguments and returns ``value``."""
+
+    def factory(*_args: object, **_kwargs: object) -> T:
+        return value
+
+    return factory
+
+
+def _patch_analyzer(monkeypatch: pytest.MonkeyPatch, analyzer: _FakeVariableAnalyzer) -> None:
+    monkeypatch.setattr(reporting, "VariablesAnalyzer", _returns(analyzer))
+
+
+def _record_debug(messages: list[str]) -> Callable[..., None]:
+    def record(message: object, *args: object) -> None:
+        text = str(message)
+        messages.append(text % args if args else text)
+
+    return record
+
+
+def _patch_resolved_module(
+    monkeypatch: pytest.MonkeyPatch,
+    resolved: ResolvedModulePath,
+) -> None:
+    monkeypatch.setattr(reporting, "resolve_module_by_strict_path", _returns(resolved))
+
+
+def _patch_dynamic_module(
+    monkeypatch: pytest.MonkeyPatch,
+    node: object,
+    *,
+    path: list[str],
+) -> None:
+    """Patch strict-path resolution with a node kind the resolver would not hand back."""
+    stub = SimpleNamespace(node=node, path=path, display_path_str=".".join(path))
+    monkeypatch.setattr(reporting, "resolve_module_by_strict_path", _returns(stub))
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -30,8 +102,8 @@ def _base_picture(*, submodules: list[SingleModule | FrameModule | ModuleTypeIns
         moduletype_defs=[],
         localvariables=[],
         submodules=submodules or [],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
 
@@ -39,20 +111,20 @@ def test_find_module_instances_walks_nested_singlemodule_branch() -> None:
     wanted = ModuleTypeInstance(header=_hdr("WantedNested"), moduletype_name="WantedType", parametermappings=[])
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[wanted],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
     parent = SingleModule(
         header=_hdr("Parent"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[],
         submodules=[child],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -64,8 +136,8 @@ def test_find_module_instances_walks_nested_singlemodule_branch() -> None:
 
 
 def test_debug_variable_usage_returns_not_found_when_name_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda: [], _any_var_index={}, _get_usage=lambda variable: None)
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
+    analyzer = _FakeVariableAnalyzer()
+    _patch_analyzer(monkeypatch, analyzer)
 
     result = reporting.debug_variable_usage(_base_picture(), "Missing")
 
@@ -76,18 +148,14 @@ def test_report_datatype_usage_reports_read_write_and_no_field_level_accesses(mo
     used_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     idle_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
 
-    used_usage = VariableUsage(usage_locations=[(["Root", "Unit"], "read")])
+    used_usage = VariableUsage(usage_locations=[(["Root", "Unit"], AccessKind.READ)])
     used_usage.field_reads["state"] = [["Root", "Unit"]]
     used_usage.field_writes["state"] = [["Root", "Unit"]]
     idle_usage = VariableUsage()
     usage_by_id = {id(used_var): used_usage, id(idle_var): idle_usage}
 
-    analyzer = SimpleNamespace(
-        run=lambda: [],
-        _any_var_index={"dv": [used_var, idle_var]},
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
+    analyzer = _FakeVariableAnalyzer(any_var_index={"dv": [used_var, idle_var]}, usage_by_id=usage_by_id)
+    _patch_analyzer(monkeypatch, analyzer)
 
     result = reporting.report_datatype_usage(_base_picture(), "Dv")
 
@@ -106,34 +174,27 @@ def test_report_module_localvar_fields_handles_prefixed_empty_field_paths_and_de
     alias_usage.field_writes[""] = [["Root", "Unit"]]
     usage_by_id = {id(local_var): VariableUsage(), id(alias_var): alias_usage}
 
-    analyzer = SimpleNamespace(
-        run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
-    monkeypatch.setattr(
-        reporting,
-        "resolve_module_by_strict_path",
-        lambda *args, **kwargs: SimpleNamespace(
+    analyzer = _FakeVariableAnalyzer(usage_by_id=usage_by_id)
+    _patch_analyzer(monkeypatch, analyzer)
+    _patch_resolved_module(
+        monkeypatch,
+        ResolvedModulePath(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
             display_path_str="Root.Unit",
         ),
     )
-    monkeypatch.setattr(reporting, "find_all_aliases", lambda *args, **kwargs: [(alias_var, "Mapped")])
+    monkeypatch.setattr(reporting, "find_all_aliases", _returns([(alias_var, "Mapped")]))
     debug_messages: list[str] = []
-    monkeypatch.setattr(
-        reporting.log, "debug", lambda message, *args: debug_messages.append(message % args if args else message)
-    )
+    monkeypatch.setattr(reporting.log, "debug", _record_debug(debug_messages))
 
     result = reporting.report_module_localvar_fields(_base_picture(), "Unit", "Dv", debug=True)
 
@@ -144,24 +205,19 @@ def test_report_module_localvar_fields_handles_prefixed_empty_field_paths_and_de
 
 
 def test_report_module_localvar_fields_rejects_invalid_module_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda **kwargs: [], _alias_links=[], _get_usage=lambda variable: VariableUsage())
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
-    monkeypatch.setattr(
-        reporting,
-        "resolve_module_by_strict_path",
-        lambda *args, **kwargs: SimpleNamespace(
-            node=ModuleTypeDef(
-                name="WrongNode",
-                moduleparameters=[],
-                localvariables=[],
-                submodules=[],
-                moduledefs=[],
-                modulecodes=[],
-                parametermappings=[],
-            ),
-            path=["Root", "WrongNode"],
-            display_path_str="Root.WrongNode",
+    analyzer = _FakeVariableAnalyzer(usage=VariableUsage())
+    _patch_analyzer(monkeypatch, analyzer)
+    _patch_dynamic_module(
+        monkeypatch,
+        ModuleTypeDef(
+            name="WrongNode",
+            moduleparameters=[],
+            localvariables=[],
+            submodules=[],
+            moduledef=None,
+            modulecode=None,
         ),
+        path=["Root", "WrongNode"],
     )
 
     with pytest.raises(ValueError, match="Selected module path does not point"):
@@ -169,19 +225,18 @@ def test_report_module_localvar_fields_rejects_invalid_module_type(monkeypatch: 
 
 
 def test_report_module_localvar_fields_rejects_missing_local_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    analyzer = SimpleNamespace(run=lambda **kwargs: [], _alias_links=[], _get_usage=lambda variable: VariableUsage())
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
-    monkeypatch.setattr(
-        reporting,
-        "resolve_module_by_strict_path",
-        lambda *args, **kwargs: SimpleNamespace(
+    analyzer = _FakeVariableAnalyzer(usage=VariableUsage())
+    _patch_analyzer(monkeypatch, analyzer)
+    _patch_resolved_module(
+        monkeypatch,
+        ResolvedModulePath(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
@@ -195,30 +250,26 @@ def test_report_module_localvar_fields_rejects_missing_local_var(monkeypatch: py
 
 def test_report_module_localvar_fields_reports_no_field_accesses(monkeypatch: pytest.MonkeyPatch) -> None:
     local_var = Variable(name="Dv", datatype="UsageRecord")
-    analyzer = SimpleNamespace(
-        run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: VariableUsage(),
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
-    monkeypatch.setattr(
-        reporting,
-        "resolve_module_by_strict_path",
-        lambda *args, **kwargs: SimpleNamespace(
+    analyzer = _FakeVariableAnalyzer(usage=VariableUsage())
+    _patch_analyzer(monkeypatch, analyzer)
+    _patch_resolved_module(
+        monkeypatch,
+        ResolvedModulePath(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
             display_path_str="Root.Unit",
         ),
     )
-    monkeypatch.setattr(reporting, "find_all_aliases", lambda *args, **kwargs: [])
+    no_aliases: list[tuple[Variable, str]] = []
+    monkeypatch.setattr(reporting, "find_all_aliases", _returns(no_aliases))
 
     result = reporting.report_module_localvar_fields(_base_picture(), "Unit", "Dv")
 
@@ -228,19 +279,19 @@ def test_report_module_localvar_fields_reports_no_field_accesses(monkeypatch: py
 def test_debug_variable_usage_reports_field_and_whole_variable_details(monkeypatch: pytest.MonkeyPatch) -> None:
     variable = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     usage = VariableUsage(
-        usage_locations=[(["Root", "Unit"], "read"), (["Root", "Unit"], "read"), (["Root", "Area"], "write")]
+        usage_locations=[
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Area"], AccessKind.WRITE),
+        ]
     )
     usage.read = True
     usage.written = True
     usage.field_reads["state"] = [["Root", "Unit"], ["Root", "Unit"], ["Root", "Area"]]
     usage.field_writes["state"] = [["Root", "Unit"], ["Root", "Unit"]]
 
-    analyzer = SimpleNamespace(
-        run=lambda: [],
-        _any_var_index={"dv": [variable]},
-        _get_usage=lambda _variable: usage,
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
+    analyzer = _FakeVariableAnalyzer(any_var_index={"dv": [variable]}, usage=usage)
+    _patch_analyzer(monkeypatch, analyzer)
 
     result = reporting.debug_variable_usage(_base_picture(), "Dv")
 
@@ -256,25 +307,21 @@ def test_debug_variable_usage_reports_field_and_whole_variable_details(monkeypat
 def test_report_datatype_usage_reports_missing_and_single_direction_accesses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    missing_analyzer = SimpleNamespace(run=lambda: [], _any_var_index={}, _get_usage=lambda variable: VariableUsage())
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: missing_analyzer)
+    missing_analyzer = _FakeVariableAnalyzer(usage=VariableUsage())
+    _patch_analyzer(monkeypatch, missing_analyzer)
 
     assert reporting.report_datatype_usage(_base_picture(), "Missing") == "Variable 'Missing' not found."
 
     read_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
     write_var = Variable(name="Dv", datatype=IssueKind.UNUSED.value)
-    read_usage = VariableUsage(usage_locations=[(["Root", "Unit"], "read")])
+    read_usage = VariableUsage(usage_locations=[(["Root", "Unit"], AccessKind.READ)])
     read_usage.field_reads["read_leaf"] = [["Root", "Unit"]]
     write_usage = VariableUsage(usage_locations=[])
     write_usage.field_writes["write_leaf"] = [["Root", "Unit"], ["Root", "Unit"]]
     usage_by_id = {id(read_var): read_usage, id(write_var): write_usage}
 
-    populated_analyzer = SimpleNamespace(
-        run=lambda: [],
-        _any_var_index={"dv": [read_var, write_var]},
-        _get_usage=lambda variable: usage_by_id[id(variable)],
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: populated_analyzer)
+    populated_analyzer = _FakeVariableAnalyzer(any_var_index={"dv": [read_var, write_var]}, usage_by_id=usage_by_id)
+    _patch_analyzer(monkeypatch, populated_analyzer)
 
     result = reporting.report_datatype_usage(_base_picture(), "Dv")
 
@@ -287,37 +334,32 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
     local_var = Variable(name="Dv", datatype="UsageRecord")
     usage = VariableUsage(
         usage_locations=[
-            (["Root", "Unit"], "read"),
-            (["Root", "Unit"], "read"),
-            (["Root", "Unit", "Child"], "write"),
-            (["Elsewhere"], "write"),
-            (["Root", "Unit"], "ignored"),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit"], AccessKind.READ),
+            (["Root", "Unit", "Child"], AccessKind.WRITE),
+            (["Elsewhere"], AccessKind.WRITE),
         ]
     )
-    analyzer = SimpleNamespace(
-        run=lambda **kwargs: [],
-        _alias_links=[],
-        _get_usage=lambda variable: usage,
-    )
-    monkeypatch.setattr(reporting, "VariablesAnalyzer", lambda *args, **kwargs: analyzer)
-    monkeypatch.setattr(
-        reporting,
-        "resolve_module_by_strict_path",
-        lambda *args, **kwargs: SimpleNamespace(
+    analyzer = _FakeVariableAnalyzer(usage=usage)
+    _patch_analyzer(monkeypatch, analyzer)
+    _patch_resolved_module(
+        monkeypatch,
+        ResolvedModulePath(
             node=SingleModule(
                 header=_hdr("Unit"),
-                moduledefs=[],
+                moduledef=None,
                 moduleparameters=[],
                 localvariables=[local_var],
                 submodules=[],
-                modulecodes=[],
+                modulecode=None,
                 parametermappings=[],
             ),
             path=["Root", "Unit"],
             display_path_str="Root.Unit",
         ),
     )
-    monkeypatch.setattr(reporting, "find_all_aliases", lambda *args, **kwargs: [])
+    no_aliases: list[tuple[Variable, str]] = []
+    monkeypatch.setattr(reporting, "find_all_aliases", _returns(no_aliases))
 
     result = reporting.report_module_localvar_fields(_base_picture(), "Unit", "Dv")
 
@@ -329,3 +371,11 @@ def test_report_module_localvar_fields_reports_whole_variable_accesses(monkeypat
     assert "Root -> Unit -> Child" in result
     assert "Whole variable reads: 2" in result
     assert "Whole variable writes: 1" in result
+
+
+def test_reporting_reads_analyzer_state_through_the_facade() -> None:
+    # The facade exposes ``any_var_index``, ``alias_links`` and ``get_usage``;
+    # a private-attribute probe would silently keep working after a rename, so
+    # the reflection helpers must not come back.
+    for helper_name in ("_analyzer_any_var_index", "_analyzer_alias_links", "_analyzer_usage"):
+        assert not hasattr(reporting, helper_name)

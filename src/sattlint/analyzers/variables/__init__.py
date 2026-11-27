@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import Any, ClassVar, Protocol
 
 from sattlint.parser_api import (
     BasePicture,
@@ -20,14 +20,25 @@ from sattlint.parser_api import (
     Variable,
 )
 
+from ...config.string_capacities import resolve_string_capacities
+from ...core.timings import PhaseTiming
 from ...models.project_graph import EMPTY_GRAPHICS_ATTACHMENTS, GraphicsAttachments
 from ...reporting.variables_report import (
+    DATATYPE_FIELD_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    FieldPathVariableIssue,
+    ImplicitLatchIssue,
     IssueKind,
+    MagicNumberIssue,
+    ReadBeforeWriteIssue,
+    RecordComponentOrderIssue,
+    StringMappingMismatchIssue,
+    UnsafeBooleanDefaultIssue,
     VariableIssue,
     VariablesReport,
+    VariableTargetIssue,
 )
-from ...resolution import CanonicalSymbolTable, TypeGraph
+from ...resolution import AmbiguousRecordError, CanonicalSymbolTable, TypeGraph
 from ...resolution.context_builder import ContextBuilder
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
@@ -41,23 +52,29 @@ from ..framework import (
 from ..shared._dedupe import get_or_register_index
 from ..shared._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from ..shared.variable_utils import VariablesConstMixin
+from ._datatype_leaf_index import LeafPathIndex
 from ._usage_tracker import UsageTracker
 from ._variable_issue_collection import VariablesIssueCollectionMixin
 from ._variable_traversal import VariablesTraversalMixin
 from ._variables_access import VariablesAccessMixin
 from ._variables_analyzer_facade import VariablesAnalyzerFacadeMixin
-from ._variables_contracts import VariablesContractsMixin
+from ._variables_contracts import TypedefUsageKey, VariablesContractsMixin
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_execution import VariablesExecutionMixin
+from ._variables_secure_candidates import SecureCandidateFacts
 from ._variables_status import ProcedureStatusBinding, VariablesStatusMixin
 from ._variables_submodules import VariablesSubmodulesMixin
 
-if TYPE_CHECKING:
-    from ...core.tracing import AnalysisTraceRecorder
-
 log = logging.getLogger("SattLint")
 
-__all__ = ["ScopeContext", "VariablesAnalyzer", "analyze_variables", "filter_variable_report"]
+
+class TraceRecorder(Protocol):
+    """The recording surface the analyzer lifecycle forwards events to."""
+
+    def event(self, phase: str, action: str, **data: object) -> None: ...
+
+
+__all__ = ["ScopeContext", "TraceRecorder", "VariablesAnalyzer", "analyze_variables", "filter_variable_report"]
 
 
 def _collect_module_vars_for_artifacts(module: object, any_var_index: dict[str, list[Variable]]) -> None:
@@ -160,9 +177,11 @@ def analyze_variables(
     analyzed_target_is_library: bool = False,
     include_dependency_moduletype_usage: bool | None = None,
     selected_issue_kinds: AbstractSet[IssueKind | str] | None = None,
-    trace_recorder: AnalysisTraceRecorder | None = None,
+    trace_recorder: TraceRecorder | None = None,
     config: dict[str, Any] | None = None,
     status_update_fn: Callable[[str], None] | None = None,
+    field_usage_only: bool = False,
+    publish_shared_artifacts: bool = True,
 ) -> VariablesReport:
     effective_include_dependency_moduletype_usage = (
         analyzed_target_is_library
@@ -170,11 +189,16 @@ def analyze_variables(
         else include_dependency_moduletype_usage
     )
     normalized_selected_issue_kinds = _normalize_selected_issue_kinds(selected_issue_kinds)
+    # The reduced mode skips access, location, and effect-flow bookkeeping, so
+    # it is only valid for the datatype-field issue kinds that do not consume
+    # that evidence.
+    if field_usage_only and (
+        normalized_selected_issue_kinds is None
+        or not normalized_selected_issue_kinds <= frozenset(DATATYPE_FIELD_ANALYSIS_KINDS)
+    ):
+        raise ValueError("field_usage_only requires only datatype-field issue kinds")
     init_started_at = time.perf_counter()
-    collector_class = VariablesAnalyzer
-    if analysis_context is not None and analysis_context.variables_collector_class is not None:
-        collector_class = cast(type[VariablesAnalyzer], analysis_context.variables_collector_class)
-    analyzer = collector_class(
+    analyzer = VariablesAnalyzer(
         base_picture,
         debug=debug,
         fail_loudly=False,
@@ -190,14 +214,20 @@ def analyze_variables(
         library_dependencies=(
             getattr(analysis_context.graph, "library_dependencies", None) if analysis_context is not None else None
         ),
+        field_usage_only=field_usage_only,
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
-    _publish_shared_artifacts(analysis_context, analyzer)
+    if publish_shared_artifacts:
+        _publish_shared_artifacts(analysis_context, analyzer)
     return VariablesReport(
         basepicture_name=base_picture.header.name,
         issues=issues,
-        accesses_by_definition_key={key: tuple(events) for key, events in analyzer.access_graph.by_path_key.items()},
+        accesses_by_definition_key=(
+            {}
+            if field_usage_only
+            else {key: tuple(events) for key, events in analyzer.access_graph.by_path_key.items()}
+        ),
         effect_flow_edges=analyzer.effect_flow_edges,
         effect_flow_display_names=analyzer.effect_flow_display_names,
         selected_issue_kinds=normalized_selected_issue_kinds,
@@ -208,7 +238,7 @@ def analyze_variables(
         ),
         include_empty_sections=True,
         phase_timings=[
-            {"phase": "analyzer-init", "duration_ms": init_duration_ms},
+            PhaseTiming(phase="analyzer-init", duration_ms=init_duration_ms),
             *analyzer.phase_timings,
         ],
     )
@@ -258,10 +288,24 @@ def _issue_uses_typedef_path(issue: VariableIssue) -> bool:
     return any(segment.startswith("TypeDef:") for segment in issue.module_path)
 
 
-def _string_mapping_issue_preference(issue: VariableIssue) -> tuple[int, int]:
+def _string_mapping_issue_preference(issue: StringMappingMismatchIssue) -> tuple[int, int]:
     source_decl_module_path = issue.source_decl_module_path or issue.module_path
     declaration_distance = max(0, len(issue.module_path) - len(source_decl_module_path))
     return declaration_distance, 1 if _issue_uses_typedef_path(issue) else 0
+
+
+def _issue_site(issue: VariableIssue) -> str | None:
+    match issue:
+        case (
+            MagicNumberIssue()
+            | UnsafeBooleanDefaultIssue()
+            | ReadBeforeWriteIssue()
+            | RecordComponentOrderIssue()
+            | ImplicitLatchIssue()
+        ):
+            return issue.site
+        case _:
+            return None
 
 
 class VariablesAnalyzer(
@@ -292,17 +336,26 @@ class VariablesAnalyzer(
             return variable_artifacts
 
         variable_artifacts = shared_artifacts.ensure_foundation(lambda: _build_variable_analysis_artifacts(self.bp))
-        if variable_artifacts is None:
-            raise RuntimeError("foundation build produced no artifacts")
         return variable_artifacts
 
     def _initialize_usage_state(self) -> None:
         self._issues: list[VariableIssue] = []
         self._param_mapping_issue_indexes: dict[tuple[IssueKind, int], int] = {}
         self._record_component_order_datatypes_seen: set[str] = set()
-        self.usage_tracker = UsageTracker()
+        self.usage_tracker = UsageTracker(
+            record_access_graph=not self._field_usage_only,
+            record_locations=not self._field_usage_only,
+        )
         self._site_stack: list[str] = []
         self._current_stmt_text: str = ""
+        selected_kinds = getattr(self, "_selected_issue_kinds", None)
+        self._secure_candidate_facts: SecureCandidateFacts | None = (
+            SecureCandidateFacts() if selected_kinds is None or IssueKind.SECURE_CANDIDATE in selected_kinds else None
+        )
+        self._secure_in_step: bool = False
+        self._secure_step_name: str | None = None
+        self._secure_in_transition: bool = False
+        self._secure_transition_name: str | None = None
 
     def _initialize_artifact_state(
         self,
@@ -311,11 +364,11 @@ class VariablesAnalyzer(
         self.typedef_index = {key: list(values) for key, values in variable_artifacts.typedef_index.items()}
         self._used_dependency_libraries: set[str] = set()
         self._dependency_library_display_names = dict(variable_artifacts.dependency_library_display_names)
-        self.used_params_by_typedef: dict[str, set[str]] = {}
-        self.param_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_ui_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_non_ui_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_writes_by_typedef: dict[str, set[str]] = {}
+        self.used_params_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_ui_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_non_ui_reads_by_typedef: dict[TypedefUsageKey, set[str]] = {}
+        self.param_writes_by_typedef: dict[TypedefUsageKey, set[str]] = {}
         self._alias_links: list[tuple[Variable, Variable, str]] = []
         self._effect_flow_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
         self._effect_flow_display_names: dict[tuple[str, ...], str] = {}
@@ -323,6 +376,7 @@ class VariablesAnalyzer(
         self._effective_output_keys: set[tuple[str, ...]] = set()
         self._procedure_status_bindings: dict[int, list[ProcedureStatusBinding]] = defaultdict(list)
         self._ignorable_output_variable_ids: set[int] = set()
+        self._out_of_origin_consumer_variable_ids: set[int] = set()
         self._effect_flow_tracker = EffectFlowTracker(
             effect_flow_edges=self._effect_flow_edges,
             effect_flow_display_names=self._effect_flow_display_names,
@@ -332,15 +386,17 @@ class VariablesAnalyzer(
             get_usage_fn=self._get_usage,
             canonical_path_fn=self._canonical_path,
             record_access_fn=self._record_access,
+            enabled=not self._field_usage_only,
         )
         self._contexts_by_module_path: dict[tuple[str, ...], ScopeContext] = {}
         self._root_env = dict(variable_artifacts.root_env)
         self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
-        self._analyzing_typedefs: set[str] = set()
+        self._analyzing_typedefs: set[TypedefUsageKey] = set()
+        self.datatype_leaf_index_cache: dict[tuple[str, str], tuple[object, LeafPathIndex]] = {}
 
         self._contract_validator = ContractMappingValidator(self.type_graph)
         self._min_max_validator = MinMaxValidator()
-        self._string_validator = StringMappingValidator()
+        self._string_validator = StringMappingValidator(resolve_string_capacities(self._config))
 
     def __init__(
         self,
@@ -351,14 +407,16 @@ class VariablesAnalyzer(
         analyzed_target_is_library: bool = False,
         include_dependency_moduletype_usage: bool = False,
         selected_issue_kinds: AbstractSet[IssueKind | str] | None = None,
-        trace_recorder: AnalysisTraceRecorder | None = None,
+        trace_recorder: TraceRecorder | None = None,
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
         shared_artifacts: AnalysisSharedArtifacts | None = None,
         graphics_attachments: GraphicsAttachments | None = None,
         library_dependencies: Mapping[str, Iterable[str]] | None = None,
+        field_usage_only: bool = False,
     ):
         self.bp = base_picture
+        self._field_usage_only = field_usage_only
         self.graphics_attachments = graphics_attachments or EMPTY_GRAPHICS_ATTACHMENTS
         self.library_dependencies = library_dependencies
         self.debug = debug
@@ -377,6 +435,7 @@ class VariablesAnalyzer(
         self._shared_artifacts = shared_artifacts
         self._config = config
         self._suppress_param_mapping_validation_depth = 0
+        self._warned_ambiguous_types: set[str] = set()
         self._limit_to_module_path: list[str] | None = None
         self._unresolved_variable_lookup_total = 0
         self._unresolved_variable_lookup_counts: dict[str, int] = defaultdict(int)
@@ -388,7 +447,9 @@ class VariablesAnalyzer(
         variable_artifacts = self._resolve_variable_artifacts(shared_artifacts)
 
         self.type_graph = variable_artifacts.type_graph
-        self.symbol_table = CanonicalSymbolTable()
+        # Analyzer resolution goes through ScopeContext env/mappings; the
+        # symbol table is consumed by semantic snapshots, not by analyzers.
+        self.symbol_table = CanonicalSymbolTable(collect=False)
         self.context_builder = ContextBuilder(
             base_picture=self.bp,
             symbol_table=self.symbol_table,
@@ -408,6 +469,19 @@ class VariablesAnalyzer(
 
     def warn(self, message: str) -> None:
         self._warn(message)
+
+    def _warn_ambiguous_record(self, error: AmbiguousRecordError) -> None:
+        """Report an undecidable record name once per type.
+
+        More than one library declares the type and nothing selects a layout,
+        so the reference is treated as a leaf. Deduplicating by type keeps one
+        shared name from producing a warning per variable that uses it.
+        """
+        key = error.type_name.casefold()
+        if key in self._warned_ambiguous_types:
+            return
+        self._warned_ambiguous_types.add(key)
+        self._warn(str(error))
 
     @contextmanager
     def divert_issue_collection(self) -> Generator[None]:
@@ -433,10 +507,10 @@ class VariablesAnalyzer(
             "issue",
             kind=issue.kind.value,
             module_path=issue.module_path,
-            variable=(issue.variable.name if issue.variable is not None else None),
+            variable=(issue.variable.name if isinstance(issue, VariableTargetIssue) else None),
             role=issue.role,
-            field_path=issue.field_path,
-            site=issue.site,
+            field_path=(issue.field_path if isinstance(issue, FieldPathVariableIssue) else None),
+            site=_issue_site(issue),
         )
 
     def _append_param_mapping_issue(self, mapping: ParameterMapping, issue: VariableIssue) -> None:
@@ -451,15 +525,17 @@ class VariablesAnalyzer(
             return
 
         existing_issue = self._issues[existing_index]
-        if issue.kind is IssueKind.STRING_MAPPING_MISMATCH:
-            if _string_mapping_issue_preference(issue) > _string_mapping_issue_preference(existing_issue):
+        if isinstance(issue, StringMappingMismatchIssue):
+            if not isinstance(existing_issue, StringMappingMismatchIssue) or _string_mapping_issue_preference(
+                issue
+            ) > _string_mapping_issue_preference(existing_issue):
                 self._issues[existing_index] = issue
                 self._trace(
                     "issue-deduped",
                     kind=issue.kind.value,
                     module_path=issue.module_path,
                     replaced_module_path=existing_issue.module_path,
-                    variable=(issue.variable.name if issue.variable is not None else None),
+                    variable=issue.variable.name,
                 )
             return
         if _issue_uses_typedef_path(issue) and not _issue_uses_typedef_path(existing_issue):
@@ -469,5 +545,5 @@ class VariablesAnalyzer(
                 kind=issue.kind.value,
                 module_path=issue.module_path,
                 replaced_module_path=existing_issue.module_path,
-                variable=(issue.variable.name if issue.variable is not None else None),
+                variable=(issue.variable.name if isinstance(issue, VariableTargetIssue) else None),
             )

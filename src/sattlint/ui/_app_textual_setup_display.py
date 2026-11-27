@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import time
-from pathlib import Path
 from typing import Any, cast
 
 try:
@@ -81,28 +80,6 @@ def _selected_setup_candidate(self: Any) -> _SetupTargetCandidate | None:
     return candidates[self._setup_candidate_index]
 
 
-def _setup_candidate_status(self: Any, candidate: _SetupTargetCandidate) -> str:
-    if not candidate.available:
-        return "not valid for current mode"
-    if self._is_target_configured(candidate.name):
-        return "already configured"
-    return "available"
-
-
-def _setup_candidate_display_paths(candidate: _SetupTargetCandidate) -> tuple[Path, ...]:
-    display_paths: list[Path] = []
-    seen: set[tuple[str, str]] = set()
-    for path in candidate.files:
-        resolved = path.resolve()
-        display_path = resolved.parent / candidate.name
-        key = (resolved.parent.as_posix().casefold(), candidate.name.casefold())
-        if key in seen:
-            continue
-        seen.add(key)
-        display_paths.append(display_path)
-    return tuple(sorted(display_paths, key=lambda path: path.as_posix().casefold()))
-
-
 def _configured_target_names(self: Any) -> tuple[str, ...]:
     return _stringify_list_values(self._cfg.get("analyzed_programs_and_libraries", []))
 
@@ -138,9 +115,6 @@ def _status_text(self: Any) -> str:
             parts.append(f"{target_count} targets configured")
     if bool(getattr(self, "_dirty", False)):
         parts.append("Unsaved changes")
-    active_job_text = self._active_job_text()
-    if active_job_text is not None:
-        parts.append(f"Running: {active_job_text}")
     return "   ·   ".join(parts)
 
 
@@ -188,11 +162,14 @@ def _analyze_note_text(self: Any) -> str:
         else " Press / to filter the analyzers."
     )
     if self._busy and self._active_job_action_id == "action-analyze":
-        if self._active_job_cancel_requested:
-            return "Stopping selected analyses now. Live output remains in Session output below."
+        if bool(getattr(self, "_cancel_requested", False)):
+            return (
+                "Cancelling the run. The analyzer workers are being stopped and the app stays responsive; "
+                "Quit is also available."
+            )
         return (
             "Selected analyses are running. Live output is shown in Session output below. "
-            "Use Cancel running or Ctrl+G to stop."
+            "Choose Cancel run (Esc) to stop it, or Quit to stop it and leave."
         )
     if not self._setup_has_targets():
         return f"No analysis targets are configured yet. Add one in Setup first.{filter_suffix}"

@@ -1,8 +1,56 @@
-from sattline_parser.models.expressions import Assignment, IfStmt, NotOp
+# These tests deliberately exercise private analyzer seams.
+# pyright: reportPrivateUsage=false
 
-from tests.helpers.analyzers_state_support import *
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    Equation,
+    ModuleCode,
+    ScalarDatatype,
+    Sequence,
+    SFCAlternative,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    SingleModule,
+    Variable,
+)
+from sattline_parser.models.expressions import Assignment, BoolOp, IfStmt, NotOp
 
-reset_contamination_helpers = cast(Any, reset_contamination_module)
+from sattlint.analyzers.reset_contamination import ResetContaminationAnalyzer
+from sattlint.analyzers.reset_contamination._reset_latching import (
+    BooleanPathState,
+    record_boolean_assignment,
+    record_boolean_function_call,
+)
+from sattlint.analyzers.reset_contamination._reset_path_condition import (
+    ResetConditionFlags,
+    classify_reset_condition,
+    clone_with_reset_state,
+    infer_alternative_states,
+    take_condition_branch,
+)
+from sattlint.analyzers.reset_contamination._reset_path_state import (
+    PathState,
+    merge_parallel_branch_results,
+)
+from sattlint.analyzers.reset_contamination._reset_path_writes import (
+    path_covers_write,
+    record_mode_function_call_writes,
+    record_mode_write,
+)
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_reset_contamination_detected_for_missing_reset_write():
@@ -41,16 +89,16 @@ def test_reset_contamination_detected_for_missing_reset_write():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="Other", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Other", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OprSeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
         parametermappings=[],
     )
 
@@ -60,8 +108,8 @@ def test_reset_contamination_detected_for_missing_reset_write():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -107,15 +155,15 @@ def test_reset_contamination_cleared_when_reset_writes_present():
 
     mod = SingleModule(
         header=_hdr("Unit"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
         localvariables=[
-            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
-            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="OprSeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Counter", datatype=ScalarDatatype.INTEGER),
+            Variable(name="ResetValue", datatype=ScalarDatatype.INTEGER),
+            Variable(name="OprSeqResetOld", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
         parametermappings=[],
     )
 
@@ -125,8 +173,8 @@ def test_reset_contamination_cleared_when_reset_writes_present():
         moduletype_defs=[],
         localvariables=[],
         submodules=[mod],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
@@ -187,8 +235,8 @@ def test_reset_contamination_helpers_collect_refs_and_reset_old_vars_from_nested
         ],
     )
 
-    refs = reset_contamination_helpers._collect_var_refs(modulecode)
-    reset_old_vars = reset_contamination_helpers._collect_reset_old_vars(modulecode, "opseq.reset")
+    refs = ResetContaminationAnalyzer._collect_var_refs(modulecode)
+    reset_old_vars = ResetContaminationAnalyzer._collect_reset_old_vars(modulecode, "opseq.reset")
 
     assert "opseq.reset" in refs
     assert reset_old_vars == {
@@ -205,41 +253,41 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     reset_ref_cf = "opseq.reset"
     reset_old_vars_cf = {"opseqresetold"}
 
-    run_flags = reset_contamination_helpers._classify_reset_condition(
+    run_flags = classify_reset_condition(
         NotOp(operand=_varref("OpSeq.Reset")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
-    reset_flags = reset_contamination_helpers._classify_reset_condition(
+    reset_flags = classify_reset_condition(
         NotOp(operand=_varref("OpSeqResetOld")),
         reset_ref_cf,
         reset_old_vars_cf,
     )
 
-    assert run_flags == {
-        "run": True,
-        "reset": False,
-        "exact_run": True,
-        "exact_reset": False,
-    }
-    assert reset_flags == {
-        "run": False,
-        "reset": True,
-        "exact_run": False,
-        "exact_reset": True,
-    }
+    assert run_flags == ResetConditionFlags(
+        run=True,
+        reset=False,
+        exact_run=True,
+        exact_reset=False,
+    )
+    assert reset_flags == ResetConditionFlags(
+        run=False,
+        reset=True,
+        exact_run=False,
+        exact_reset=True,
+    )
 
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._take_condition_branch(
-            reset_contamination_helpers._PathState(),
+        for state in take_condition_branch(
+            PathState(),
             run_flags,
         )
     ] == ["run"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=False,
             saw_exact_run=True,
@@ -248,8 +296,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     ] == ["reset"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=False,
             saw_reset=True,
             saw_exact_run=False,
@@ -258,8 +306,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
     ] == ["run"]
     assert [
         state.reset_state
-        for state in reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        for state in infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=False,
             saw_exact_run=False,
@@ -267,8 +315,8 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         )
     ] == ["run", "reset"]
     assert (
-        reset_contamination_helpers._infer_alternative_states(
-            reset_contamination_helpers._PathState(),
+        infer_alternative_states(
+            PathState(),
             saw_run=True,
             saw_reset=True,
             saw_exact_run=True,
@@ -277,20 +325,47 @@ def test_reset_contamination_helpers_classify_conditions_and_infer_alternatives(
         == []
     )
     assert (
-        reset_contamination_helpers._clone_with_reset_state(
-            reset_contamination_helpers._PathState(reset_state="run"),
+        clone_with_reset_state(
+            PathState(reset_state="run"),
             "reset",
         )
         == []
     )
 
 
+def test_reset_contamination_helpers_classify_compound_guards_conservatively():
+    reset_ref_cf = "opseq.reset"
+    reset_old_vars_cf: set[str] = set()
+
+    and_flags = classify_reset_condition(
+        BoolOp(op="AND", operands=(_varref("OpSeq.Reset"), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+    or_flags = classify_reset_condition(
+        BoolOp(op="OR", operands=(_varref("OpSeq.Reset"), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+    run_and_flags = classify_reset_condition(
+        BoolOp(op="AND", operands=(NotOp(operand=_varref("OpSeq.Reset")), _varref("Guard"))),
+        reset_ref_cf,
+        reset_old_vars_cf,
+    )
+
+    # Every operand of an AND holds, so a reset operand guarantees the reset
+    # state. An OR branch may be taken in either state.
+    assert and_flags == ResetConditionFlags(run=False, reset=True, exact_run=False, exact_reset=False)
+    assert or_flags == ResetConditionFlags(run=False, reset=False, exact_run=False, exact_reset=False)
+    assert run_and_flags == ResetConditionFlags(run=True, reset=False, exact_run=False, exact_reset=False)
+
+
 def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
-    counter = Variable(name="Counter", datatype=Simple_DataType.INTEGER)
-    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
-    destination = Variable(name="Destination", datatype=Simple_DataType.INTEGER)
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
-    flag = Variable(name="Flag", datatype=Simple_DataType.BOOLEAN)
+    counter = Variable(name="Counter", datatype=ScalarDatatype.INTEGER)
+    source = Variable(name="Source", datatype=ScalarDatatype.INTEGER)
+    destination = Variable(name="Destination", datatype=ScalarDatatype.INTEGER)
+    status = Variable(name="Status", datatype=ScalarDatatype.INTEGER)
+    flag = Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN)
     env = {
         "counter": counter,
         "source": source,
@@ -299,19 +374,19 @@ def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
         "flag": flag,
     }
 
-    run_state = reset_contamination_helpers._PathState(reset_state="run")
-    reset_state = reset_contamination_helpers._PathState(reset_state="reset")
-    unknown_state = reset_contamination_helpers._PathState(reset_state="unknown")
-    reset_contamination_helpers._record_mode_write(_varref("Counter.Member"), env, run_state)
-    reset_contamination_helpers._record_mode_write(_varref("Counter"), env, reset_state)
-    reset_contamination_helpers._record_mode_function_call_writes(
+    run_state = PathState(reset_state="run")
+    reset_state = PathState(reset_state="reset")
+    unknown_state = PathState(reset_state="unknown")
+    record_mode_write(_varref("Counter.Member"), env, run_state)
+    record_mode_write(_varref("Counter"), env, reset_state)
+    record_mode_function_call_writes(
         "CopyVariable",
         [_varref("Source"), _varref("Destination"), _varref("Status")],
         env,
         unknown_state,
     )
 
-    merged = reset_contamination_helpers._merge_parallel_branch_results([[run_state], [unknown_state]])
+    merged = merge_parallel_branch_results([[run_state], [unknown_state]])
 
     assert len(merged) == 1
     assert merged[0].reset_state == "run"
@@ -320,23 +395,23 @@ def test_reset_contamination_helpers_merge_parallel_paths_and_record_writes():
         ("destination", ""),
         ("status", ""),
     }
-    assert reset_contamination_helpers._merge_parallel_branch_results([[run_state], [reset_state]]) == []
-    assert reset_contamination_helpers._path_covers_write(reset_state.reset_writes, ("counter", "member")) is True
+    assert merge_parallel_branch_results([[run_state], [reset_state]]) == []
+    assert path_covers_write(reset_state.reset_writes, ("counter", "member")) is True
 
-    boolean_state = reset_contamination_helpers._BooleanPathState()
-    reset_contamination_helpers._record_boolean_assignment(_varref("Flag"), True, env, boolean_state)
-    reset_contamination_helpers._record_boolean_function_call(
+    boolean_state = BooleanPathState()
+    record_boolean_assignment(_varref("Flag"), True, env, boolean_state)
+    record_boolean_function_call(
         "SetBooleanValue",
         [_varref("Flag"), False],
         env,
         boolean_state,
     )
-    reset_contamination_helpers._record_boolean_function_call(
+    record_boolean_function_call(
         "SetBooleanValue",
         [_varref("Flag.Member"), True],
         env,
         boolean_state,
     )
 
-    assert set(boolean_state.true_writes) == {("flag", "")}
+    assert set(boolean_state.true_writes) == {("flag", "member")}
     assert set(boolean_state.false_writes) == {("flag", "")}

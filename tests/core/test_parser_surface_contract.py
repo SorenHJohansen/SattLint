@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 import sattline_parser
+from sattline_parser import ast as parser_ast
 from sattline_parser import parse_source_text
 from sattline_parser.ast import (
     AssignClause,
@@ -32,13 +33,29 @@ from sattline_parser.ast import (
     ModuleInViewClause,
     PickButton,
     ProcedureCall,
+    ScalarDatatype,
     VarRef,
     VarTail,
     walk,
 )
 
+from sattlint import parser_api
+
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "parser_surface" / "ParserSurfaceShapes.s"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: AST payloads the parser used to emit between phases. They are transformer
+#: internals in the target parser and must never reach SattLint again.
+RETIRED_PAYLOAD_NAMES = (
+    "ClipValue",
+    "CommonProperties",
+    "CoordinateClipping",
+    "Grid",
+    "ModuleOptions",
+    "SeqLayers",
+    "TwoLayers",
+    "Zoomable",
+)
 
 
 @pytest.fixture(scope="module")
@@ -159,6 +176,29 @@ def test_walk_reaches_references_and_bound_tails(picture: BasePicture) -> None:
         ("in", "ClipVar"),
         ("out", "OutVal"),
     }
+
+
+def test_module_layout_blocks_are_singular(picture: BasePicture) -> None:
+    assert isinstance(picture.moduledef, ModuleDef)
+    assert picture.modulecode is not None
+    assert not hasattr(picture, "moduledefs")
+    assert not hasattr(picture, "modulecodes")
+
+
+def test_variable_datatype_is_a_scalar_datatype(picture: BasePicture) -> None:
+    text_var = next(variable for variable in picture.localvariables if variable.name == "TextVar")
+
+    assert text_var.datatype is ScalarDatatype.STRING
+
+
+def test_retired_payloads_are_gone_from_the_parser_ast() -> None:
+    for name in RETIRED_PAYLOAD_NAMES:
+        assert not hasattr(parser_ast, name), f"{name} is back in sattline_parser.ast"
+
+
+def test_surface_module_does_not_re_export_retired_payloads() -> None:
+    for name in RETIRED_PAYLOAD_NAMES:
+        assert not hasattr(parser_api, name), f"{name} is back in sattlint.parser_api"
 
 
 def _declared_parser_requirement() -> str:

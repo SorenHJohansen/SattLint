@@ -2,64 +2,104 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
 
-from sattlint.parser_api import NotOp, VarRef
+from sattlint.parser_api import BoolOp, NotOp, VarRef
 
 from ._reset_path_state import PathState as _PathState
 
 
-def _varref_casefold(obj: Any) -> str | None:
-    if isinstance(obj, VarRef) and obj.name:
-        return obj.name.casefold()
+@dataclass(frozen=True, slots=True)
+class ResetConditionFlags:
+    """What one guard guarantees about the reset state of its branch.
+
+    ``run`` and ``reset`` are guarantees, not hints: a flag is set only when
+    every way the guard can be true puts the branch in that state. A compound
+    guard such as ``Seq.Reset AND Guard`` therefore guarantees the reset state,
+    while ``Seq.Reset OR Guard`` guarantees neither.
+    """
+
+    run: bool = False
+    reset: bool = False
+    exact_run: bool = False
+    exact_reset: bool = False
+
+
+def _varref_casefold(node: object) -> str | None:
+    if isinstance(node, VarRef) and node.name:
+        return node.name.casefold()
     return None
 
 
-def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
+def _is_exact_run_condition(cond: object, reset_ref_cf: str) -> bool:
     if isinstance(cond, NotOp):
         return _varref_casefold(cond.operand) == reset_ref_cf
     return False
 
 
-def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
+def _is_exact_reset_condition(cond: object, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
     if isinstance(cond, NotOp):
         return _varref_casefold(cond.operand) in reset_old_vars_cf
     return _varref_casefold(cond) == reset_ref_cf
 
 
-def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> dict[str, bool]:
-    positives: set[str] = set()
-    negatives: set[str] = set()
-
-    def visit(obj: object, negated: bool) -> None:
-        if obj is None:
-            return
-        if isinstance(obj, VarRef):
-            if obj.name:
-                name_cf = obj.name.casefold()
-                if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
-                    if negated:
-                        negatives.add(name_cf)
-                    else:
-                        positives.add(name_cf)
-            return
-        if isinstance(obj, NotOp):
-            visit(obj.operand, not negated)
-
-    visit(cond, False)
-
-    return {
-        "run": reset_ref_cf in negatives,
-        "reset": reset_ref_cf in positives or bool(negatives & reset_old_vars_cf),
-        "exact_run": _is_exact_run_condition(cond, reset_ref_cf),
-        "exact_reset": _is_exact_reset_condition(cond, reset_ref_cf, reset_old_vars_cf),
-    }
+def _atomic_guarantees(
+    node: VarRef, negated: bool, reset_ref_cf: str, reset_old_vars_cf: set[str]
+) -> tuple[bool, bool]:
+    """Return ``(run, reset)`` for one reference, honouring the negation."""
+    name_cf = _varref_casefold(node)
+    if name_cf == reset_ref_cf:
+        return (True, False) if negated else (False, True)
+    if name_cf in reset_old_vars_cf:
+        return (False, True) if negated else (False, False)
+    return (False, False)
 
 
-def _take_condition_branch(state: _PathState, cond_flags: dict[str, bool]) -> list[_PathState]:
-    if cond_flags["run"] and not cond_flags["reset"]:
+def _condition_guarantees(
+    cond: object,
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+    *,
+    negated: bool = False,
+) -> tuple[bool, bool]:
+    if isinstance(cond, VarRef):
+        return _atomic_guarantees(cond, negated, reset_ref_cf, reset_old_vars_cf)
+    if isinstance(cond, NotOp):
+        operand = cond.operand
+        if isinstance(operand, VarRef | NotOp):
+            return _condition_guarantees(operand, reset_ref_cf, reset_old_vars_cf, negated=not negated)
+        # Negating a compound guard (``NOT (A AND B)``) guarantees nothing:
+        # the guard is true whenever any operand is false.
+        return (False, False)
+    if isinstance(cond, BoolOp):
+        results = [
+            _condition_guarantees(operand, reset_ref_cf, reset_old_vars_cf, negated=negated)
+            for operand in cond.operands
+        ]
+        if cond.op == "AND":
+            return (any(run for run, _reset in results), any(reset for _run, reset in results))
+        return (all(run for run, _reset in results), all(reset for _run, reset in results))
+    return (False, False)
+
+
+def _classify_reset_condition(
+    cond: object,
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+) -> ResetConditionFlags:
+    run, reset = _condition_guarantees(cond, reset_ref_cf, reset_old_vars_cf)
+    return ResetConditionFlags(
+        run=run,
+        reset=reset,
+        exact_run=_is_exact_run_condition(cond, reset_ref_cf),
+        exact_reset=_is_exact_reset_condition(cond, reset_ref_cf, reset_old_vars_cf),
+    )
+
+
+def _take_condition_branch(state: _PathState, flags: ResetConditionFlags) -> list[_PathState]:
+    if flags.run and not flags.reset:
         return _clone_with_reset_state(state, "run")
-    if cond_flags["reset"] and not cond_flags["run"]:
+    if flags.reset and not flags.run:
         return _clone_with_reset_state(state, "reset")
     return [state.clone()]
 

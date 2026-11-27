@@ -64,6 +64,7 @@ _ALARM_SOURCE_MODULETYPE_NAMES: frozenset[str] = frozenset(
 _AlarmBooleanWriteSummary = _alarm_path_traversal_module.AlarmBooleanWriteSummary
 _as_bool_literal = _alarm_path_traversal_module.as_bool_literal
 _collect_alarm_boolean_writes = _alarm_path_traversal_module.collect_alarm_boolean_writes
+_collect_boolean_literal_writes = _alarm_path_traversal_module.collect_boolean_literal_writes
 _collect_boolean_writes = _alarm_path_traversal_module.collect_boolean_writes
 _iter_modulecode_statements = _alarm_path_traversal_module.iter_modulecode_statements
 _iter_sequence_node_statements = _alarm_path_traversal_module.iter_sequence_node_statements
@@ -146,6 +147,7 @@ class AlarmIntegrityAnalyzer:
         self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._candidates: list[_AlarmCandidate] = []
+        self._module_writes: list[tuple[list[str], dict[str, Variable], dict[str, _AlarmBooleanWriteSummary]]] = []
 
     @property
     def issues(self) -> list[Issue]:
@@ -155,7 +157,13 @@ class AlarmIntegrityAnalyzer:
         root_path = [self.bp.header.name]
         base_env = self._merge_env({}, self.bp.localvariables)
 
-        self._check_module_code(self.bp.modulecode, root_path, base_env)
+        self._check_module_code(
+            self.bp.modulecode,
+            root_path,
+            base_env,
+            self.bp.submodules or [],
+            self.bp.origin_lib,
+        )
         self._walk_modules(
             self.bp.submodules or [],
             parent_path=root_path,
@@ -173,6 +181,7 @@ class AlarmIntegrityAnalyzer:
 
         self._emit_duplicate_tag_issues()
         self._emit_duplicate_condition_issues()
+        self._emit_never_cleared_issues()
         return self._issues
 
     def _is_from_root_origin(self, origin_file: str | None, origin_lib: str | None = None) -> bool:
@@ -200,7 +209,13 @@ class AlarmIntegrityAnalyzer:
         path = [*root_path, f"TypeDef:{moduletype.name}"]
         env = self._merge_env(base_env, moduletype.moduleparameters)
         env = self._merge_env(env, moduletype.localvariables)
-        self._check_module_code(moduletype.modulecode, path, env)
+        self._check_module_code(
+            moduletype.modulecode,
+            path,
+            env,
+            moduletype.submodules or [],
+            moduletype.origin_lib or self.bp.origin_lib,
+        )
         self._walk_modules(
             moduletype.submodules or [],
             parent_path=path,
@@ -229,14 +244,26 @@ class AlarmIntegrityAnalyzer:
             child_path: list[str],
             state: tuple[dict[str, Variable], str | None],
         ) -> None:
-            self._check_module_code(child.modulecode, child_path, state[0])
+            self._check_module_code(
+                child.modulecode,
+                child_path,
+                state[0],
+                child.submodules or [],
+                state[1],
+            )
 
         def _visit_frame(
             child: FrameModule,
             child_path: list[str],
             state: tuple[dict[str, Variable], str | None],
         ) -> None:
-            self._check_module_code(child.modulecode, child_path, state[0])
+            self._check_module_code(
+                child.modulecode,
+                child_path,
+                state[0],
+                child.submodules or [],
+                state[1],
+            )
 
         def _visit_instance(
             child: ModuleTypeInstance,
@@ -545,29 +572,123 @@ class AlarmIntegrityAnalyzer:
         modulecode: ModuleCode | None,
         module_path: list[str],
         env: dict[str, Variable],
+        submodules: list[SingleModule | FrameModule | ModuleTypeInstance] | None = None,
+        current_library: str | None = None,
     ) -> None:
         if modulecode is None:
             return
 
-        writes = _collect_alarm_boolean_writes(modulecode, env)
-        for entry in writes.values():
+        writes = _collect_boolean_literal_writes(modulecode, env)
+        self._record_submodule_clears(writes, submodules or [], env, current_library)
+        self._module_writes.append((module_path.copy(), env, writes))
+
+    def _emit_never_cleared_issues(self) -> None:
+        """Report boolean alarm conditions that are only ever set to True.
+
+        A variable is an alarm condition when an alarm source maps it as a
+        condition parameter. The name-based fallback was both too broad (a
+        command flag named ``AlarmReset``) and too narrow (``TempHigh`` mapped
+        to an alarm source), so membership is structural now. Root globals are
+        merged across modules so a clear in a sibling module counts.
+        """
+        condition_names: set[str] = set()
+        for candidate in self._candidates:
+            if candidate.condition_key:
+                condition_names.add(candidate.condition_key.casefold())
+            if candidate.condition_display:
+                condition_names.add(candidate.condition_display.casefold())
+        if not condition_names:
+            return
+
+        root_names = {variable.name.casefold() for variable in self.bp.localvariables or []}
+        root_values: dict[str, set[bool]] = {}
+        root_first: dict[str, tuple[list[str], _AlarmBooleanWriteSummary]] = {}
+        local_candidates: list[tuple[list[str], _AlarmBooleanWriteSummary]] = []
+        for module_path, env, writes in self._module_writes:
+            env_names = {name.casefold() for name in env}
+            for entry in writes.values():
+                display_key = entry.display.casefold()
+                base_key = display_key.split(".", 1)[0]
+                is_root_global = base_key in root_names and base_key not in env_names
+                if is_root_global:
+                    root_values.setdefault(display_key, set()).update(entry.values)
+                    root_first.setdefault(display_key, (module_path, entry))
+                elif display_key in condition_names or base_key in condition_names:
+                    local_candidates.append((module_path, entry))
+
+        for display_key, values in sorted(root_values.items()):
+            if True not in values or False in values:
+                continue
+            module_path, entry = root_first[display_key]
+            self._append_never_cleared(module_path, entry)
+
+        for module_path, entry in local_candidates:
             values = entry.values
             if True not in values or False in values:
                 continue
-            self._issues.append(
-                Issue(
-                    kind="alarm.never_cleared",
-                    message=(
-                        f"Alarm variable {entry.display!r} is only written with True and is never explicitly cleared to False in this scope."
-                    ),
-                    module_path=module_path.copy(),
-                    data={
-                        "variable": entry.display,
-                        "site": ".".join(module_path),
-                        "context": f"{entry.display} = TRUE",
-                    },
-                )
+            self._append_never_cleared(module_path, entry)
+
+    def _append_never_cleared(self, module_path: list[str], entry: _AlarmBooleanWriteSummary) -> None:
+        self._issues.append(
+            Issue(
+                kind="alarm.never_cleared",
+                message=(
+                    f"Alarm condition {entry.display!r} is only written with True and is never "
+                    "explicitly cleared to False in this scope."
+                ),
+                module_path=module_path.copy(),
+                data={
+                    "variable": entry.display,
+                    "site": ".".join(module_path),
+                    "context": f"{entry.display} = TRUE",
+                },
             )
+        )
+
+    def _record_submodule_clears(
+        self,
+        writes: dict[str, _AlarmBooleanWriteSummary],
+        submodules: list[SingleModule | FrameModule | ModuleTypeInstance],
+        env: dict[str, Variable],
+        current_library: str | None,
+    ) -> None:
+        """Count a boundary variable as cleared when a child writes its parameter to False."""
+        for child in submodules:
+            if not isinstance(child, ModuleTypeInstance):
+                continue
+            mt_def = self._resolve_moduletype(child, current_library)
+            if mt_def is None:
+                continue
+            false_parameters = self._parameters_written_false(mt_def)
+            if not false_parameters:
+                continue
+            for mapping in child.parametermappings or []:
+                target_name = varname_base(mapping.target)
+                if target_name is None or target_name not in false_parameters:
+                    continue
+                if mapping.source_type == MappingSource.VALUE or mapping.is_source_global:
+                    continue
+                source_ref = varname_full(mapping.source)
+                if not source_ref or not _looks_like_alarm_reference(source_ref, env):
+                    continue
+                entry = writes.setdefault(
+                    source_ref.casefold(),
+                    _AlarmBooleanWriteSummary(display=source_ref),
+                )
+                entry.values.add(False)
+
+    def _parameters_written_false(self, mt_def: ModuleTypeDef) -> set[str]:
+        boolean_parameters = {
+            casefold_key(variable.name)
+            for variable in mt_def.moduleparameters or []
+            if casefold_key(variable.datatype_text) == "boolean"
+        }
+        if not boolean_parameters:
+            return set()
+        mt_env = self._merge_env({}, mt_def.moduleparameters)
+        mt_env = self._merge_env(mt_env, mt_def.localvariables)
+        false_writes = _collect_boolean_literal_writes(mt_def.modulecode, mt_env)
+        return {name for name in boolean_parameters if name in false_writes and False in false_writes[name].values}
 
     def _location_list(self, candidates: list[_AlarmCandidate]) -> list[str]:
         return sorted({".".join(candidate.module_path) for candidate in candidates})

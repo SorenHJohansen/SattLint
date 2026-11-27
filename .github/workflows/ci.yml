@@ -36,7 +36,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Ruff lint
         run: uv run --frozen ruff check .
@@ -46,6 +46,35 @@ jobs:
 
       - name: Pyright on production code and tests
         run: uv run --frozen pyright src/sattlint tests
+
+      # The changelog and the package version must name the same release. This
+      # runs on its own so a mismatch fails with a named check instead of inside
+      # the full suite.
+      - name: Release state check
+        run: uv run --frozen python -m pytest tests/test_release_state.py -q
+
+      # Only a tagged build compares against a tag, so ordinary branch and pull
+      # request runs need no git metadata. The tag is the version with its
+      # leading "v" removed.
+      - name: Check tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          actual="$(uv run --frozen python -c 'from sattlint import __version__; print(__version__)')"
+          if [[ "$expected" != "$actual" ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match package version '${actual}'"
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package version ${actual}"
+
+      # Ruff, Pyright, and the docs check run above or in their own job; the
+      # remaining hooks keep whitespace, end-of-file, YAML/TOML,
+      # merge-conflict, line-ending and large-file checks on CI instead of only
+      # on developer machines.
+      - name: Pre-commit hygiene hooks
+        env:
+          SKIP: ruff,ruff-format,pyright,docs-check
+        run: uv run --frozen pre-commit run --all-files --show-diff-on-failure
 
       - name: Full pytest with coverage
         run: >-
@@ -81,7 +110,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Ruff lint
         run: uv run --frozen ruff check .
@@ -124,8 +153,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      # atheris publishes manylinux x86_64 wheels only. Fail with a clear
+      # message if the job ever moves to another architecture or OS rather than
+      # letting dependency resolution fail with an unrelated error.
+      - name: Require a Linux x86_64 runner
+        run: |
+          if [ "$(uname -s)/$(uname -m)" != "Linux/x86_64" ]; then
+            echo "::error::the fuzz extra requires a Linux x86_64 runner (atheris wheels)"
+            exit 1
+          fi
+
       - name: Install the locked fuzz environment
-        run: uv sync --frozen --extra fuzz
+        run: uv sync --locked --extra fuzz
 
       - name: ICF reader fuzz smoke
         run: uv run --frozen python scripts/fuzz/icf_fuzzer.py -runs=200000 -max_len=4096 -timeout=5
@@ -153,7 +192,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install the locked dev environment
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Audit the locked dependency set
         run: uv run --frozen pip-audit
@@ -168,11 +207,6 @@ jobs:
 
       - name: Markdown style
         uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
-        with:
-          globs: |
-            *.md
-            docs/**/*.md
-            .github/**/*.md
 
       - name: Set up Python 3.13
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

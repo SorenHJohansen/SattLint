@@ -37,11 +37,19 @@ def _field_is_ignored(field: Field[object]) -> bool:
 
 def normalize_ast_value(value: object) -> object:
     """Return a canonical, hashable fingerprint with spans/layout stripped."""
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
+    if value is None:
+        # Tagged so every normalized value is a tuple: dict keys and values are
+        # sorted by their normalized form, and ``None`` would not compare.
+        return ("none",)
 
+    # Enum members of ``StrEnum`` and ``IntEnum`` are instances of ``str`` and
+    # ``int``, so the kind tag has to be decided before the primitive check.
+    # Primitive leaves are tagged by kind so ``True`` and ``1`` stay distinct.
     if isinstance(value, Enum):
         return ("enum", type(value).__name__, value.name)
+
+    if isinstance(value, (bool, int, float, str)):
+        return ("prim", type(value).__name__, value)
 
     if isinstance(value, tuple):
         typed_items = cast(tuple[object, ...], value)
@@ -50,6 +58,12 @@ def normalize_ast_value(value: object) -> object:
     if isinstance(value, list):
         typed_items = cast(list[object], value)
         return ("list", tuple(normalize_ast_value(item) for item in typed_items))
+
+    if isinstance(value, (set, frozenset)):
+        # Set iteration order is arbitrary, so sort the normalized members.
+        typed_items = cast(set[object], value)
+        normalized_set = tuple(normalize_ast_value(item) for item in typed_items)
+        return ("set", tuple(sorted(normalized_set, key=repr)))
 
     if isinstance(value, dict):
         typed_items = cast(dict[object, object], value)

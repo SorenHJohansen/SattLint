@@ -10,6 +10,7 @@ from sattlint.parser_api import Variable, VarRef
 from ...core.call_signatures import CallParameter, resolve_call_signature
 from ...models.usage import VariableUsage
 from ...resolution.scope import ScopeContext
+from ._variables_mapping_refs import ordered_alias_links
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
@@ -110,7 +111,7 @@ def _record_ignorable_output_bindings(
     for index, parameter in enumerate(signature.parameters):
         if index >= len(args):
             continue
-        if parameter.direction not in {"out", "inout"}:
+        if not parameter.is_output:
             continue
         if parameter.name.casefold() not in ignorable_parameters:
             continue
@@ -124,7 +125,7 @@ def _record_ignorable_output_bindings(
 
 
 def _propagate_procedure_status_bindings(self: VariablesAnalyzer) -> None:
-    for source_var, target_var, mapping_name in self.alias_links:
+    for source_var, target_var, mapping_name in ordered_alias_links(self.alias_links):
         propagated: list[_ProcedureStatusBinding] = []
         for binding in self.procedure_status_bindings.get(id(target_var), []):
             field_path = binding.field_path
@@ -150,6 +151,10 @@ def _propagate_procedure_status_bindings(self: VariablesAnalyzer) -> None:
                 source_bindings.append(binding)
 
 
+def _binding_source_label(binding: _ProcedureStatusBinding) -> str:
+    return f"{binding.call_name!r} parameter {binding.parameter_name!r}"
+
+
 def _procedure_status_issue(
     self: VariablesAnalyzer,
     variable: Variable,
@@ -161,18 +166,21 @@ def _procedure_status_issue(
     if usage.non_ui_read:
         return None
 
-    binding = bindings[0]
     channel_label = (
-        "procedure status output" if binding.channel_kind == "status" else "procedure async-operation handle"
+        "procedure status output"
+        if any(binding.channel_kind == "status" for binding in bindings)
+        else "procedure async-operation handle"
     )
+    sources = ", ".join(_binding_source_label(binding) for binding in bindings)
+    field_path = next((binding.field_path for binding in bindings if binding.field_path), None)
     if usage.ui_read:
         return (
-            f"{channel_label} from {binding.call_name!r} parameter {binding.parameter_name!r} is only surfaced through UI wiring and is not checked in control logic.",
-            binding.field_path,
+            f"{channel_label} from {sources} is only surfaced through UI wiring and is not checked in control logic.",
+            field_path,
         )
     return (
-        f"{channel_label} from {binding.call_name!r} parameter {binding.parameter_name!r} is ignored after the procedure writes it.",
-        binding.field_path,
+        f"{channel_label} from {sources} is ignored after the procedure writes it.",
+        field_path,
     )
 
 
@@ -182,6 +190,17 @@ def _has_procedure_status_binding(self: VariablesAnalyzer, variable: Variable) -
 
 def _has_ignorable_output_binding(self: VariablesAnalyzer, variable: Variable) -> bool:
     return id(variable) in self.ignorable_output_variable_ids
+
+
+def _has_out_of_origin_consumer(self: VariablesAnalyzer, variable: Variable) -> bool:
+    """Whether a child outside the analyzed origin consumes this variable's value.
+
+    A mapping actual is proof of use even when the child's parameters never appear
+    in its body: the contract is real but its definition is not the analyzed origin,
+    so the analyzer cannot see the read.
+    """
+    variable_ids = getattr(self, "out_of_origin_consumer_variable_ids", None)
+    return variable_ids is not None and id(variable) in variable_ids
 
 
 class VariablesStatusMixin:
@@ -235,11 +254,15 @@ class VariablesStatusMixin:
     def _has_ignorable_output_binding(self: Any, variable: Variable) -> bool:
         return _has_ignorable_output_binding(self, variable)
 
+    def _has_out_of_origin_consumer(self: Any, variable: Variable) -> bool:
+        return _has_out_of_origin_consumer(self, variable)
+
 
 ProcedureStatusBinding = _ProcedureStatusBinding
 bind_ignorable_output = _bind_ignorable_output
 bind_procedure_status = _bind_procedure_status
 has_ignorable_output_binding = _has_ignorable_output_binding
+has_out_of_origin_consumer = _has_out_of_origin_consumer
 has_procedure_status_binding = _has_procedure_status_binding
 procedure_status_issue = _procedure_status_issue
 propagate_procedure_status_bindings = _propagate_procedure_status_bindings
@@ -252,6 +275,7 @@ __all__ = [
     "bind_ignorable_output",
     "bind_procedure_status",
     "has_ignorable_output_binding",
+    "has_out_of_origin_consumer",
     "has_procedure_status_binding",
     "procedure_status_issue",
     "propagate_procedure_status_bindings",

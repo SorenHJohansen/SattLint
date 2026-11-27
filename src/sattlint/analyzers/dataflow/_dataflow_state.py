@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any, cast
 
 from sattlint.parser_api import Variable, VarRef, walk
@@ -46,27 +47,41 @@ class _DataflowStateMixin:
         if resolved.state_access == "old":
             return state
 
+        self._mutated_symbols.add(resolved.symbol_key)
+        self._mutated_symbols.add(resolved.symbol_root_key)
+
         next_state = state.copy()
         whole_symbol_write = treat_as_root_overwrite or resolved.symbol_key == resolved.symbol_root_key
 
         if whole_symbol_write:
             overwritten = self._pop_pending_writes_for_root(next_state, resolved.symbol_root_key)
             for pending in overwritten:
-                self._report_dead_overwrite(pending, resolved, module_path)
+                if not self._same_pending_value(pending, resolved, value, state):
+                    self._report_dead_overwrite(pending, resolved, module_path)
         else:
             next_state.pop(self._pending_state_key(resolved.symbol_root_key), None)
             pending_key = self._pending_state_key(resolved.symbol_key)
             pending_write = next_state.pop(pending_key, None)
-            if isinstance(pending_write, PendingWrite):
+            if isinstance(pending_write, PendingWrite) and not self._same_pending_value(
+                pending_write, resolved, value, state
+            ):
                 self._report_dead_overwrite(pending_write, resolved, module_path)
 
-        next_state = self._invalidate_symbol(next_state, resolved.symbol_root_key)
+        invalidated_key = resolved.symbol_root_key if treat_as_root_overwrite else resolved.symbol_key
+        next_state = self._invalidate_symbol(next_state, invalidated_key)
         next_state[resolved.symbol_key] = INITIALIZED if value is UNKNOWN else value
         next_state[self._pending_state_key(resolved.symbol_key)] = PendingWrite(
             key=resolved.symbol_key,
             root_key=resolved.symbol_root_key,
             display_name=resolved.base_display_name,
             sites=(self._site_str(),),
+            is_enter_reset=(
+                isinstance(value, int | float | bool)
+                and value == 0
+                and bool(self._site_stack)
+                and self._site_stack[-1].startswith("STEP:")
+                and self._site_stack[-1].endswith(":ENTER")
+            ),
         )
         if is_scalar_value(value):
             self._invalidate_constant_traces(next_state, resolved.symbol_key, preserve_exact=True)
@@ -74,6 +89,22 @@ class _DataflowStateMixin:
         else:
             self._invalidate_constant_traces(next_state, resolved.symbol_key)
         return next_state
+
+    def _same_pending_value(
+        self: Any,
+        pending: PendingWrite,
+        resolved: ResolvedRef,
+        value: ScalarValue | object,
+        state: StateMap,
+    ) -> bool:
+        previous = state.get(pending.key, UNKNOWN)
+        return (
+            pending.key == resolved.symbol_key
+            and is_scalar_value(previous)
+            and is_scalar_value(value)
+            and type(previous) is type(value)
+            and previous == value
+        )
 
     def _constant_trace_key(self: Any, symbol_key: tuple[str, ...]) -> tuple[str, ...]:
         return CONSTANT_TRACE_PREFIX + symbol_key
@@ -109,8 +140,9 @@ class _DataflowStateMixin:
         SFC steps run in different scans. Carrying pending writes or constant
         traces across ENTER/ACTIVE/EXIT boundaries turns intentional
         enable/disable sequences into false dead-overwrite or conflicting-
-        constant findings. Values remain in the state so transition conditions
-        still see the latest assigned value.
+        constant findings. Values remain in the state so a step's outgoing
+        transition still sees what its enter and active code assigned; exit
+        code runs after that guard fires.
         """
         next_state = state.copy()
         for key in tuple(next_state):
@@ -194,6 +226,15 @@ class _DataflowStateMixin:
     ) -> StateMap:
         next_state = state.copy()
         for variable in variables:
+            # An OpSave value is restored from the saved state on every start
+            # after the first one, so its declaration initializer is not the
+            # value the code observes.
+            if variable.opsave and not variable.const:
+                continue
+            # A library's unmapped module parameter is part of its public
+            # interface; the program that connects it decides the value.
+            if id(variable) in self._unmapped_interface_parameter_ids:
+                continue
             current_key = self._state_key(module_path, variable.name, "")
             old_key = self._old_state_key(current_key)
             value = self._static_literal(variable.init_value)
@@ -212,11 +253,60 @@ class _DataflowStateMixin:
         state: StateMap,
         key: tuple[str, ...],
     ) -> StateMap:
+        """Drop ``key`` and every field below it, sharing ``state`` when nothing matches.
+
+        A write invalidates whatever this state knew about the target symbol. Most
+        writes target a symbol this state never recorded, so the map is returned
+        unchanged instead of copied: the traversal moves a state of hundreds of
+        symbols through every write, and an unconditional copy dominated the run.
+
+        A caller that goes on to mutate the result must own it; call
+        :meth:`_invalidate_symbol_for_write` for that.
+        """
+        return self._invalidate_symbols(state, (key,))
+
+    def _invalidate_symbols(
+        self: Any,
+        state: StateMap,
+        keys: Collection[tuple[str, ...]],
+    ) -> StateMap:
+        """Drop every ``keys`` entry and its fields in one pass over the state.
+
+        A step boundary invalidates every module parameter in scope, and testing
+        each of those against every tracked symbol made invalidation the largest
+        cost of the analyzer. Grouping the keys by their containing path lets one
+        pass answer all of them: a tracked key matches a key ``(*path, name)`` when
+        it starts with ``path`` and continues with ``name``.
+        """
+        groups: dict[tuple[str, ...], set[str]] = {}
+        for key in keys:
+            if key:
+                groups.setdefault(key[:-1], set()).add(key[-1])
+        if not groups:
+            return state
+        scopes = [(len(path), path, names) for path, names in groups.items()]
+        stale: list[tuple[str, ...]] = []
+        for existing in state:
+            existing_length = len(existing)
+            for path_length, path, names in scopes:
+                if existing_length > path_length and existing[path_length] in names and existing[:path_length] == path:
+                    stale.append(existing)
+                    break
+        if not stale:
+            return state
         next_state = state.copy()
-        prefixes = [existing for existing in next_state if existing[: len(key)] == key]
-        for existing in prefixes:
-            next_state.pop(existing, None)
+        for existing in stale:
+            del next_state[existing]
         return next_state
+
+    def _invalidate_symbol_for_write(
+        self: Any,
+        state: StateMap,
+        key: tuple[str, ...],
+    ) -> StateMap:
+        """Invalidate ``key`` and return a map the caller may freely mutate."""
+        next_state = self._invalidate_symbol(state, key)
+        return state.copy() if next_state is state else next_state
 
     def _merge_states(self: Any, states: list[StateMap]) -> StateMap:
         if not states:
@@ -269,6 +359,7 @@ class _DataflowStateMixin:
                 key=first_pending.key,
                 root_key=first_pending.root_key,
                 display_name=first_pending.display_name,
+                is_enter_reset=all(value.is_enter_reset for value in pending_values if isinstance(value, PendingWrite)),
                 sites=tuple(
                     sorted(
                         {site for value in pending_values if isinstance(value, PendingWrite) for site in value.sites}

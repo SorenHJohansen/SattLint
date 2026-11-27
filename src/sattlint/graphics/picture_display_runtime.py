@@ -3,25 +3,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, cast
 
 from sattlint.parser_api import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule
 from sattlint.parser_api import constants as const
 
 from ..resolution.common import select_moduletype_def_strict
+from ..utils.casefolding import unit_key
 from .picture_display_runtime_helpers import (
     CompositeRecordOccurrence,
     RuntimeModuleNode,
     RuntimeTree,
-    _candidate_moduletype_defs,
     _candidate_moduletype_index,
-    _common_suffix_length,
     _CompositePlaceholder,
     _index_runtime_tree,
     _is_local_moduletype_def,
     _local_moduletype_defs,
-    _same_origin_file_stem,
     consume_name,
     find_best_suffix_node,
     find_nearest_descendant,
@@ -35,14 +33,6 @@ __all__ = [
     "CompositeRecordOccurrence",
     "RuntimeModuleNode",
     "RuntimeTree",
-    "_candidate_moduletype_defs",
-    "_candidate_moduletype_index",
-    "_common_suffix_length",
-    "_file_stem_casefold",
-    "_index_runtime_tree",
-    "_is_local_moduletype_def",
-    "_local_moduletype_defs",
-    "_same_origin_file_stem",
     "build_runtime_tree",
     "collect_concrete_composite_placeholders",
     "consume_name",
@@ -58,15 +48,6 @@ if TYPE_CHECKING:
     from ..models.project_graph import ProjectGraph
 
 
-def _file_stem_casefold(file_name: str | None) -> str | None:
-    if not file_name:
-        return None
-    try:
-        return Path(file_name).stem.casefold()
-    except (TypeError, ValueError):
-        return file_name.rsplit(".", 1)[0].casefold()
-
-
 def _resolve_runtime_moduletype(
     base_picture: BasePicture,
     child: ModuleTypeInstance,
@@ -76,7 +57,7 @@ def _resolve_runtime_moduletype(
     graph: ProjectGraph | None,
     candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
 ) -> ModuleTypeDef | None:
-    matches = list(candidate_moduletype_index.get(child.moduletype_name.casefold(), ()))
+    matches = list(candidate_moduletype_index.get(unit_key(child.moduletype_name), ()))
     try:
         return select_moduletype_def_strict(
             base_picture,
@@ -85,6 +66,8 @@ def _resolve_runtime_moduletype(
             current_library=current_library,
             current_file=current_file,
             unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
+            library_dependencies=(graph.library_dependencies if graph is not None else None),
+            source_dependencies=(graph.source_dependencies if graph is not None else None),
         )
     except ValueError:
         return None
@@ -136,9 +119,9 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
     ) -> None:
         nonlocal record_index
         graph_objects = getattr(moduledef, "graph_objects", None)
-        if not isinstance(graph_objects, list):
+        if not isinstance(graph_objects, Sequence) or isinstance(graph_objects, (str, bytes)):
             return
-        typed_graph_objects = cast(list[object], graph_objects)
+        typed_graph_objects = cast(Sequence[object], graph_objects)
         for graph_object in typed_graph_objects:
             object_type = getattr(graph_object, "type", None)
             if (
@@ -160,7 +143,7 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             )
 
     def _local_instance_key(moduletype_name: str, relative_path: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
-        return (moduletype_name.casefold(), tuple(segment.casefold() for segment in relative_path))
+        return (unit_key(moduletype_name), tuple(unit_key(segment) for segment in relative_path))
 
     def register_local_instance_path(
         moduletype_name: str,
@@ -181,9 +164,9 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             moduledef: object, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
         ) -> None:
             graph_objects = getattr(moduledef, "graph_objects", None)
-            if not isinstance(graph_objects, list):
+            if not isinstance(graph_objects, Sequence) or isinstance(graph_objects, (str, bytes)):
                 return
-            for graph_object in cast(list[object], graph_objects):
+            for graph_object in cast(Sequence[object], graph_objects):
                 graph_object_type = getattr(graph_object, "type", None)
                 if not isinstance(graph_object_type, str):
                     continue
@@ -259,12 +242,12 @@ def collect_concrete_composite_placeholders(  # noqa: PLR0915
             return
 
         moduletype_key = (
-            (resolved_moduletype.origin_lib or current_library or "").casefold(),
-            resolved_moduletype.name.casefold(),
-            (resolved_moduletype.origin_file or current_file or "").casefold(),
+            unit_key(resolved_moduletype.origin_lib or current_library or ""),
+            unit_key(resolved_moduletype.name),
+            unit_key(resolved_moduletype.origin_file or current_file or ""),
         )
-        if moduletype_key in active_moduletype_keys:  # pragma: no cover
-            return  # pragma: no cover
+        if moduletype_key in active_moduletype_keys:
+            return
 
         nested_keys = set(active_moduletype_keys)
         nested_keys.add(moduletype_key)
@@ -477,9 +460,9 @@ def _build_runtime_child(
         )
 
     moduletype_key = (
-        (resolved_moduletype.origin_lib or current_library or "").casefold(),
-        resolved_moduletype.name.casefold(),
-        (resolved_moduletype.origin_file or current_file or "").casefold(),
+        unit_key(resolved_moduletype.origin_lib or current_library or ""),
+        unit_key(resolved_moduletype.name),
+        unit_key(resolved_moduletype.origin_file or current_file or ""),
     )
     if moduletype_key in active_moduletype_keys:
         return RuntimeModuleNode(

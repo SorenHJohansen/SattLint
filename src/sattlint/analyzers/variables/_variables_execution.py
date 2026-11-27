@@ -18,13 +18,31 @@ from sattlint.parser_api import (
     Variable,
 )
 
-from ...reporting.variables_report import IssueKind, VariableIssue
+from ...core.timings import PhaseTiming
+from ...models._variable_issues import (
+    DECLARATION_ROLE_LOCAL_VARIABLE,
+    DECLARATION_ROLE_MODULE_PARAMETER,
+)
+from ...reporting.variables_report import (
+    IssueKind,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadOnlyNonConstIssue,
+    UnusedIssue,
+    VariableIssue,
+    WriteWithoutEffectIssue,
+)
 from ...resolution.scope import ScopeContext
 from ...utils.casefolding import casefold_key
 from ..reset_contamination import detect_implicit_latching, detect_reset_contamination
 from ..shared.variable_utils import mapping_target_name
 from ._usage_tracker import UsageTracker
 from ._variable_traversal_support import _IGNORED_GRAPHICS_TAIL_BASENAMES
+from ._variables_contracts import (
+    IssueKindSelection,
+    TypedefUsageKey,
+    typedef_usage_key,
+)
 from ._variables_contracts import (
     explicitly_selected_issue_kinds as _explicitly_selected_issue_kinds,
 )
@@ -37,13 +55,16 @@ from ._variables_contracts import (
 from ._variables_contracts import (
     should_collect_issue_kind as _should_collect_issue_kind,
 )
+from ._variables_mapping_refs import ordered_alias_links
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
 from ._variables_read_before_write import collect_read_before_write_issues as _collect_read_before_write_issues
+from ._variables_secure_candidates import SecureCandidateFacts
 from ._variables_shadowing import collect_shadowing_issues as _collect_shadowing_issues
+from ._variables_status import has_out_of_origin_consumer as _has_out_of_origin_consumer
 from ._variables_unsafe_defaults import collect_unsafe_default_issues as _collect_unsafe_default_issues
 
 if TYPE_CHECKING:
@@ -60,7 +81,6 @@ def count_process_root_traversals() -> int:
 
 log = logging.getLogger("SattLint")
 
-_PhaseTimingEntry = dict[str, str | float]
 _UnresolvedLookupCounts = dict[str, int]
 _UnresolvedLookupExamples = dict[str, tuple[int, str]]
 
@@ -104,6 +124,7 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.DATATYPE_DUPLICATION,
         IssueKind.RESET_CONTAMINATION,
         IssueKind.IMPLICIT_LATCH,
+        IssueKind.SECURE_CANDIDATE,
         IssueKind.STRING_MAPPING_MISMATCH,
         IssueKind.WRITE_WITHOUT_EFFECT,
         IssueKind.SHADOWING,
@@ -113,6 +134,7 @@ _POST_TRAVERSAL_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
 )
 _DATATYPE_FIELD_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
     {
+        IssueKind.UNUSED_DATATYPE,
         IssueKind.UNUSED_DATATYPE_FIELD,
         IssueKind.FIELD_READ_ONLY,
         IssueKind.FIELD_NEVER_READ,
@@ -125,12 +147,6 @@ _FINAL_SYNTHESIS_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
         IssueKind.HIGH_FAN_IN_OUT,
     }
 )
-_PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.STRING_MAPPING_MISMATCH,
-        IssueKind.MIN_MAX_MAPPING_MISMATCH,
-    }
-)
 
 
 def _maybe_update_status(self: object, detail: str) -> None:
@@ -139,7 +155,7 @@ def _maybe_update_status(self: object, detail: str) -> None:
         update_status(detail)
 
 
-def _format_selected_issue_kinds(self: object) -> str:
+def _format_selected_issue_kinds(self: IssueKindSelection) -> str:
     selected_kinds = _selected_issue_kinds(self)
     if not selected_kinds:
         return "all default issue kinds"
@@ -147,20 +163,15 @@ def _format_selected_issue_kinds(self: object) -> str:
 
 
 def _format_phase_timing_summary(self: object) -> str | None:
-    phase_timings = cast(list[_PhaseTimingEntry] | None, getattr(self, "_phase_timings", None))
+    phase_timings = cast(list[PhaseTiming] | None, getattr(self, "_phase_timings", None))
     if phase_timings is None or not phase_timings:
         return None
 
-    parts: list[str] = []
-    for entry in phase_timings:
-        phase = entry.get("phase")
-        duration_ms = entry.get("duration_ms")
-        if isinstance(phase, str) and isinstance(duration_ms, int | float):
-            parts.append(f"{phase}={float(duration_ms):.3f}")
+    parts = [f"{entry.phase}={entry.duration_ms:.3f}" for entry in phase_timings]
     return ", ".join(parts) if parts else None
 
 
-def _log_debug_analysis_summary(self: object, issue_counts: dict[str, int]) -> None:
+def _log_debug_analysis_summary(self: IssueKindSelection, issue_counts: dict[str, int]) -> None:
     log.debug("Variables analysis complete. Issues=%d", len(getattr(self, "_issues", [])))
     log.debug("Variables selected issue kinds: %s", _format_selected_issue_kinds(self))
     if issue_counts:
@@ -253,12 +264,25 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     if context_builder is not None:
         context_builder.issues = self._issues
     _clear_or_set("_analysis_warnings", [])
+    _clear_or_set("_warned_ambiguous_types", set[str]())
     self._last_status_message = None
     self._limit_to_module_path = None
     _clear_or_set("_phase_timings", [])
     _clear_or_set("_record_component_order_datatypes_seen", set[str]())
-    self.usage_tracker = UsageTracker()
+    previous_tracker = getattr(self, "usage_tracker", None)
+    self.usage_tracker = UsageTracker(
+        record_access_graph=getattr(previous_tracker, "record_access_graph", True),
+        record_locations=getattr(previous_tracker, "record_locations", True),
+    )
     _clear_or_set("_site_stack", [])
+    selected_kinds = getattr(self, "_selected_issue_kinds", None)
+    self._secure_candidate_facts = (
+        SecureCandidateFacts() if selected_kinds is None or IssueKind.SECURE_CANDIDATE in selected_kinds else None
+    )
+    self._secure_in_step = False
+    self._secure_step_name = None
+    self._secure_in_transition = False
+    self._secure_transition_name = None
     _clear_or_set("_used_dependency_libraries", set[str]())
     _clear_or_set("used_params_by_typedef", {})
     _clear_or_set("param_reads_by_typedef", {})
@@ -272,8 +296,10 @@ def _reset_analysis_state(self: VariablesAnalyzer) -> None:
     _clear_or_set("_effective_output_keys", set[tuple[str, ...]]())
     _clear_or_set("_procedure_status_bindings", {})
     _clear_or_set("_ignorable_output_variable_ids", set[int]())
+    _clear_or_set("_out_of_origin_consumer_variable_ids", set[int]())
     _clear_or_set("_contexts_by_module_path", {})
-    _clear_or_set("_analyzing_typedefs", set[str]())
+    _clear_or_set("_analyzing_typedefs", set[TypedefUsageKey]())
+    _clear_or_set("datatype_leaf_index_cache", {})
     self._root_variable_access_summary_cache_token = None
     self._root_variable_access_summary_cache = {}
 
@@ -306,6 +332,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             debug=self.debug,
             trace_fn=self._trace,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "reset-contamination-scan",
@@ -319,10 +346,26 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             self._issues,
             self._limit_to_module_path,
             shared_artifacts=getattr(self, "_shared_artifacts", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
         )
         self._trace(
             "implicit-latch-scan",
             added_issue_count=len(self._issues) - issue_count_before_latch,
+        )
+
+    if _should_collect_issue_kind(self, IssueKind.SECURE_CANDIDATE):
+        issue_count_before_secure = len(self._issues)
+        facts = self._secure_candidate_facts
+        if facts is not None:
+            self._issues.extend(
+                facts.build_issues(
+                    self.contexts_by_module_path,
+                    root_library=getattr(self.bp, "origin_lib", None),
+                )
+            )
+        self._trace(
+            "secure-candidate-scan",
+            added_issue_count=len(self._issues) - issue_count_before_secure,
         )
 
     if _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT):
@@ -353,6 +396,128 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
         )
 
 
+def _declared_datatype_names(node: object) -> set[str]:
+    names: set[str] = set()
+    for variable in [
+        *cast(list[Variable], getattr(node, "moduleparameters", None) or []),
+        *cast(list[Variable], getattr(node, "localvariables", None) or []),
+    ]:
+        datatype = variable.datatype
+        if isinstance(datatype, str) and datatype:
+            names.add(datatype.casefold())
+    return names
+
+
+def _instantiated_moduletype_names(node: object) -> set[str]:
+    return {
+        child.moduletype_name.casefold()
+        for child in cast(list[object], getattr(node, "submodules", None) or [])
+        if isinstance(child, ModuleTypeInstance)
+    }
+
+
+def _has_sequences(self: VariablesAnalyzer, node: object, seen: set[str] | None = None) -> bool:
+    """Whether *node* or anything it instantiates carries SFC sequences."""
+    visited: set[str] = set() if seen is None else set(seen)
+    code = getattr(node, "modulecode", None)
+    if getattr(code, "sequences", None):
+        return True
+    index = cast(dict[str, tuple[ModuleTypeDef, ...]], getattr(self, "typedef_index", None) or {})
+    for child in cast(list[object], getattr(node, "submodules", None) or []):
+        if isinstance(child, ModuleTypeInstance):
+            key = child.moduletype_name.casefold()
+            if key in visited:
+                continue
+            visited.add(key)
+            for resolved in index.get(key, ()):
+                if _has_sequences(self, resolved, visited):
+                    return True
+            continue
+        if _has_sequences(self, child, visited):
+            return True
+    return False
+
+
+def _consumer_moduletype_names(self: VariablesAnalyzer) -> set[str] | None:
+    """The dependency module types that can reach the analyzed library's data.
+
+    The sweep after the root traversal exists to find out-of-origin consumers,
+    but the merged view also carries every library that merely sits beside the
+    analyzed one. Walking all of those records usage nothing can consume and
+    costs most of the analysis. A consumer is found instead by what it can
+    reach: a declaration of the analyzed origin, a record type whose fields do,
+    or another consumer it instantiates. ``None`` means the view declares
+    nothing to reach, so the sweep keeps its exhaustive behaviour.
+    """
+    datatype_defs = cast(list[object], getattr(self.bp, "datatype_defs", None) or [])
+    moduletype_defs = self.bp.moduletype_defs or []
+    root_datatypes = {
+        str(getattr(datatype, "name", "")).casefold()
+        for datatype in datatype_defs
+        if self._is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+    }
+    root_moduletypes = {
+        moduletype.name.casefold()
+        for moduletype in moduletype_defs
+        if self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        )
+    }
+    if not root_datatypes and not root_moduletypes:
+        return None
+
+    reaching_datatypes = set(root_datatypes)
+    dependency_datatypes = [
+        datatype
+        for datatype in datatype_defs
+        if not self._is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        )
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for datatype in dependency_datatypes:
+            name = str(getattr(datatype, "name", "")).casefold()
+            if name in reaching_datatypes:
+                continue
+            if _declared_datatype_names(datatype) & reaching_datatypes:
+                reaching_datatypes.add(name)
+                changed = True
+
+    dependency_types = [
+        moduletype
+        for moduletype in moduletype_defs
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        )
+    ]
+    instantiated: dict[str, set[str]] = {}
+    consumers: set[str] = set()
+    for moduletype in dependency_types:
+        name = moduletype.name.casefold()
+        children = _instantiated_moduletype_names(moduletype)
+        instantiated[name] = children
+        if (_declared_datatype_names(moduletype) & reaching_datatypes) or (children & root_moduletypes):
+            consumers.add(name)
+    changed = True
+    while changed:
+        changed = False
+        for name, children in instantiated.items():
+            if name in consumers:
+                continue
+            if children & consumers:
+                consumers.add(name)
+                changed = True
+    return consumers
+
+
 def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     if self._limit_to_module_path is not None:
         return
@@ -367,11 +532,21 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
     self._issues = temp_issues
     self._param_mapping_issue_indexes = {}
     self.context_builder.issues = temp_issues
+    consumers = _consumer_moduletype_names(self)
+    collect_secure_candidates = _should_collect_issue_kind(self, IssueKind.SECURE_CANDIDATE)
     try:
         for moduletype in self.bp.moduletype_defs or []:
             if self._is_from_root_origin(
                 getattr(moduletype, "origin_file", None),
                 getattr(moduletype, "origin_lib", None),
+            ):
+                continue
+            # Secure-candidate facts are recorded from step and transition code,
+            # so an SFC type is walked even when nothing reaches it.
+            if (
+                consumers is not None
+                and moduletype.name.casefold() not in consumers
+                and not (collect_secure_candidates and _has_sequences(self, moduletype))
             ):
                 continue
             _maybe_update_status(self, f"scanning dependency typedef {moduletype.name}")
@@ -391,15 +566,28 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
     collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
 
     for variable in self.bp.localvariables or []:
-        role = "localvariable"
+        role = DECLARATION_ROLE_LOCAL_VARIABLE
         usage = self._get_usage(variable)
-        if collect_unused and usage.is_unused:
-            self._add_issue(IssueKind.UNUSED, bp_path, variable, role=role)
+        # A contract outside the analyzed origin proves the variable is consumed even
+        # though the read is invisible, so absence of use is not evidence of dead code.
+        consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+        if collect_unused and usage.is_unused and not consumed_out_of_origin:
+            self._append_issue(
+                UnusedIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
             continue
         procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
         if collect_procedure_status and procedure_status is not None:
             status_role, field_path = procedure_status
-            self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, variable, role=status_role, field_path=field_path)
+            self._append_issue(
+                ProcedureStatusIssue(
+                    module_path=bp_path.copy(),
+                    variable=variable,
+                    role=status_role,
+                    field_path=field_path,
+                    declaration_role=role,
+                )
+            )
             continue
         if (
             collect_read_only_non_const
@@ -407,18 +595,28 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             and not bool(variable.const)
             and self._is_const_candidate(variable)
         ):
-            self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, variable, role=role)
+            self._append_issue(
+                ReadOnlyNonConstIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
         elif (
-            collect_never_read and usage.written and not usage.read and not self._has_ignorable_output_binding(variable)
+            collect_never_read
+            and usage.written
+            and not usage.read
+            and not consumed_out_of_origin
+            and not self._has_ignorable_output_binding(variable)
         ):
-            self._add_issue(IssueKind.NEVER_READ, bp_path, variable, role=role)
+            self._append_issue(
+                NeverReadIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
         elif collect_write_without_effect and (
             usage.read
             and usage.written
             and not self._has_output_effect(variable, bp_path)
             and not self._has_procedure_status_binding(variable)
         ):
-            self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, variable, role=role)
+            self._append_issue(
+                WriteWithoutEffectIssue(module_path=bp_path.copy(), variable=variable, role=role, declaration_role=role)
+            )
 
     if (
         collect_unused
@@ -477,29 +675,59 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             continue
 
         for variable in moduletype.moduleparameters or []:
-            role = "moduleparameter"
+            role = DECLARATION_ROLE_MODULE_PARAMETER
             usage = self._get_usage(variable)
-            if collect_unused and usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, td_path, variable, role=role)
+            # A library's module type is its public interface; a program outside
+            # the analyzed target connects these parameters even when the
+            # library's own code does not touch them.
+            is_external_interface = getattr(self, "analyzed_target_is_library", False)
+            if (
+                collect_unused
+                and usage.is_unused
+                and not _has_out_of_origin_consumer(self, variable)
+                and not is_external_interface
+            ):
+                self._append_issue(
+                    UnusedIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
+                self._append_issue(
+                    ProcedureStatusIssue(
+                        module_path=td_path.copy(),
+                        variable=variable,
+                        role=status_role,
+                        field_path=field_path,
+                        declaration_role=role,
+                    )
+                )
                 continue
         for module in moduletype.submodules or []:
             self._collect_issues_from_module(module, path=td_path, current_library=current_library)
 
         for variable in moduletype.localvariables or []:
-            role = "localvariable"
+            role = DECLARATION_ROLE_LOCAL_VARIABLE
             usage = self._get_usage(variable)
-            if collect_unused and usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, td_path, variable, role=role)
+            consumed_out_of_origin = _has_out_of_origin_consumer(self, variable)
+            if collect_unused and usage.is_unused and not consumed_out_of_origin:
+                self._append_issue(
+                    UnusedIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
                 continue
             procedure_status = self._procedure_status_issue(variable, usage) if collect_procedure_status else None
             if collect_procedure_status and procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, variable, role=status_role, field_path=field_path)
+                self._append_issue(
+                    ProcedureStatusIssue(
+                        module_path=td_path.copy(),
+                        variable=variable,
+                        role=status_role,
+                        field_path=field_path,
+                        declaration_role=role,
+                    )
+                )
                 continue
             if (
                 collect_read_only_non_const
@@ -507,21 +735,32 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 and not bool(variable.const)
                 and self._is_const_candidate(variable)
             ):
-                self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, variable, role=role)
+                self._append_issue(
+                    ReadOnlyNonConstIssue(
+                        module_path=td_path.copy(), variable=variable, role=role, declaration_role=role
+                    )
+                )
             elif (
                 collect_never_read
                 and usage.written
                 and not usage.read
+                and not consumed_out_of_origin
                 and not self._has_ignorable_output_binding(variable)
             ):
-                self._add_issue(IssueKind.NEVER_READ, td_path, variable, role=role)
+                self._append_issue(
+                    NeverReadIssue(module_path=td_path.copy(), variable=variable, role=role, declaration_role=role)
+                )
             elif collect_write_without_effect and (
                 usage.read
                 and usage.written
                 and not self._has_output_effect(variable, td_path)
                 and not self._has_procedure_status_binding(variable)
             ):
-                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, td_path, variable, role=role)
+                self._append_issue(
+                    WriteWithoutEffectIssue(
+                        module_path=td_path.copy(), variable=variable, role=role, declaration_role=role
+                    )
+                )
 
 
 def run(  # noqa: PLR0915
@@ -645,9 +884,13 @@ def run(  # noqa: PLR0915
     if should_collect_datatype_field_issues:
 
         def _collect_datatype_field_issues() -> None:
-            self._add_unused_datatype_field_issues()
+            # Both passes need the same variable inventory. Build it once; the
+            # inventory is the expensive part when the dependency closure is
+            # large, and each pass only reads it.
+            variables = self.iter_variables_for_datatype_field_analysis()
+            self._add_unused_datatype_field_issues(variables)
             if hasattr(self, "_add_field_usage_asymmetry_issues"):
-                self._add_field_usage_asymmetry_issues()
+                self._add_field_usage_asymmetry_issues(variables)
 
         _run_timed_phase(self, "datatype-field-scan", _collect_datatype_field_issues)
     if not should_finalize_issues:
@@ -674,7 +917,7 @@ def _is_external_typename(self: VariablesAnalyzer, typename: str) -> bool:
 
 
 def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -710,23 +953,18 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         }
 
         used_params = used_reads | used_writes
-        self.used_params_by_typedef[casefold_key(mt.name)] = used_params
-        self.param_reads_by_typedef[casefold_key(mt.name)] = used_reads
-        self.param_ui_reads_by_typedef[casefold_key(mt.name)] = used_ui_reads
-        self.param_non_ui_reads_by_typedef[casefold_key(mt.name)] = used_non_ui_reads
-        self.param_writes_by_typedef[casefold_key(mt.name)] = used_writes
+        self.used_params_by_typedef[mt_key] = used_params
+        self.param_reads_by_typedef[mt_key] = used_reads
+        self.param_ui_reads_by_typedef[mt_key] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[mt_key] = used_non_ui_reads
+        self.param_writes_by_typedef[mt_key] = used_writes
 
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, env, context, path)
     finally:
         self._analyzing_typedefs.discard(mt_key)
 
 
 def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
-    for parent_var, child_var, field_prefix in self._alias_links:
+    for parent_var, child_var, field_prefix in ordered_alias_links(self._alias_links):
         parent_usage = self._get_usage(parent_var)
         child_usage = self._get_usage(child_var)
         ui_read_locations = {tuple(location) for location in child_usage.ui_usage_locations}
@@ -807,7 +1045,7 @@ def _analyze_typedef_with_context(
     context: ScopeContext,
     path: list[str],
 ) -> None:
-    mt_key = casefold_key(mt.name)
+    mt_key = typedef_usage_key(mt)
     if mt_key in self._analyzing_typedefs:
         return
 
@@ -818,12 +1056,6 @@ def _analyze_typedef_with_context(
         self._walk_module_code(mt.modulecode, context, path)
         self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
         self._walk_typedef_groupconn(mt, context, path)
-
-        if _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
-            for mapping in mt.parametermappings or []:
-                target_name = mapping_target_name(mapping)
-                target_var = context.env.get(target_name) if target_name else None
-                self._check_param_mapping(mapping, target_var, context.env, context, path)
 
         used_reads = {
             casefold_key(variable.name) for variable in (mt.moduleparameters or []) if self._get_usage(variable).read

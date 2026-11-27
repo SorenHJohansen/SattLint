@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import Any, Protocol, cast
 
-from sattlint.parser_api import BasePicture, ParameterMapping, Variable, get_function_signature
+from sattlint.parser_api import BasePicture, ParameterMapping, Variable
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
-from sattlint.resolution.scope import ScopeContext
+from sattlint.resolution.scope import ScopeContext, find_nearest_declaration
 
+from ...core.call_signatures import resolve_call_signature
 from ..shared._array_builtins import get_dynamic_array_builtin_spec
 from ._variables_effect_sources import (
     collect_expression_effect_sources as _collect_expression_effect_sources,
@@ -58,8 +60,10 @@ class EffectFlowTracker:
         get_usage_fn: GetUsageCallback,
         canonical_path_fn: CanonicalPathFn,
         record_access_fn: RecordAccessFn,
+        enabled: bool = True,
     ):
         """Initialize with references to analyzer's data structures and methods."""
+        self.enabled = enabled
         self._effect_flow_edges = effect_flow_edges
         self._effect_flow_display_names = effect_flow_display_names
         self._external_effect_sinks = external_effect_sinks
@@ -71,6 +75,7 @@ class EffectFlowTracker:
         )
         self._canonical_path: CanonicalPathFn = canonical_path_fn
         self._record_access: RecordAccessFn = record_access_fn
+        self._control_sources: list[set[EffectKey]] = []
 
     def effect_key_for_variable(
         self,
@@ -80,7 +85,8 @@ class EffectFlowTracker:
         """Get the canonical effect key for a variable declaration."""
         display_segments = (*decl_module_path, variable.name)
         key = tuple(segment.casefold() for segment in display_segments)
-        self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
+        if self.enabled:
+            self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
         return key
 
     def resolve_effect_key(
@@ -93,11 +99,18 @@ class EffectFlowTracker:
         if base_name:
             local_var = context.env.get(base_name.casefold())
             if local_var is not None:
-                return self.effect_key_for_variable(local_var, context.module_path)
+                return self._declaration_effect_key(local_var, context)
         variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
         if variable is None:
             return None
         return self.effect_key_for_variable(variable, decl_module_path)
+
+    def _declaration_effect_key(self, variable: Variable, context: ScopeContext) -> EffectKey:
+        owner = context
+        name = variable.name.casefold()
+        while owner.parent_context is not None and owner.parent_context.env.get(name) is variable:
+            owner = owner.parent_context
+        return self.effect_key_for_variable(variable, owner.module_path)
 
     def mapping_source_effect_key(
         self,
@@ -146,7 +159,19 @@ class EffectFlowTracker:
         variable = context.env.get(base)
         if variable is None:
             return None
-        return self.effect_key_for_variable(variable, context.module_path)
+        return self._declaration_effect_key(variable, context)
+
+    def record_external_mapping_input(
+        self,
+        mapping: ParameterMapping,
+        parent_env: dict[str, Variable],
+        parent_context: ScopeContext,
+    ) -> None:
+        if not self.enabled:
+            return
+        key = self.mapping_source_effect_key(mapping, parent_env=parent_env, parent_context=parent_context)
+        if key is not None:
+            self._external_effect_sinks.add(key)
 
     def resolve_mapped_effect_source_key(
         self,
@@ -167,9 +192,28 @@ class EffectFlowTracker:
         target_key: tuple[str, ...] | None,
     ) -> None:
         """Record a flow edge from source to target key."""
-        if source_key is None or target_key is None:
+        if not self.enabled or source_key is None or target_key is None:
             return
         self._effect_flow_edges[source_key].add(target_key)
+
+    @contextmanager
+    def conditional_effects(self, conditions: object, context: ScopeContext) -> Generator[None]:
+        if not self.enabled:
+            yield
+            return
+        self._control_sources.append(self.collect_expression_effect_sources(conditions, context))
+        try:
+            yield
+        finally:
+            self._control_sources.pop()
+
+    def record_controlled_write(self, full_ref: str, context: ScopeContext) -> None:
+        if not self.enabled:
+            return
+        target = self.resolve_effect_key(full_ref, context)
+        for sources in self._control_sources:
+            for source in sources:
+                self.record_effect_flow(source, target)
 
     def collect_function_input_effect_keys(
         self,
@@ -178,6 +222,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Collect effect keys for function inputs based on signature."""
+        if not self.enabled:
+            return set()
         return _collect_function_input_effect_keys(
             fn_name,
             args,
@@ -191,6 +237,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Recursively collect effect keys from an expression."""
+        if not self.enabled:
+            return set()
         return _collect_expression_effect_sources(
             obj,
             context,
@@ -204,6 +252,8 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> None:
         """Record effect flow from an expression to an assignment target."""
+        if not self.enabled:
+            return
         target_key = self.resolve_effect_key(target_ref, context)
         for source_key in self.collect_expression_effect_sources(expr, context):
             self.record_effect_flow(source_key, target_key)
@@ -215,7 +265,7 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> None:
         """Record effect flows for a function call based on parameter directions."""
-        if not fn_name:
+        if not self.enabled or not fn_name:
             return
 
         fn_key = fn_name.casefold()
@@ -260,21 +310,19 @@ class EffectFlowTracker:
             self.record_effect_flow(source_key, target_key)
             return
 
-        sig = get_function_signature(fn_name)
-        if sig is None:
+        signature = resolve_call_signature(fn_name)
+        if signature is None:
             return
 
         input_keys: set[tuple[str, ...]] = set()
         output_keys: set[tuple[str, ...]] = set()
         for idx, arg in enumerate(args):
-            direction = "in"
-            if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction
+            parameter = signature.parameters[idx] if idx < len(signature.parameters) else None
 
-            if direction in {"in", "in var", "inout"}:
+            if parameter is None or parameter.is_input:
                 input_keys.update(self.collect_expression_effect_sources(arg, context))
 
-            if direction in {"out", "inout"}:
+            if parameter is not None and parameter.is_output:
                 arg_ref = _var_ref_text(cast(object, arg))
                 key = self.resolve_effect_key(arg_ref, context) if arg_ref is not None else None
                 if key is not None:
@@ -291,6 +339,8 @@ class EffectFlowTracker:
         is_from_root_origin_fn: Callable[[str | None], bool],
     ) -> set[tuple[str, ...]]:
         """Collect all variables that should be treated as effect sinks."""
+        if not self.enabled:
+            return set()
         sink_keys = set(self._external_effect_sinks)
 
         if not analyzed_target_is_library:
@@ -309,7 +359,7 @@ class EffectFlowTracker:
 
     def compute_effective_output_keys(self, sink_keys: set[tuple[str, ...]]) -> set[tuple[str, ...]]:
         """Compute all variables that have effect flows reaching the sinks."""
-        if not sink_keys:
+        if not self.enabled or not sink_keys:
             return set()
 
         incoming_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
@@ -327,6 +377,98 @@ class EffectFlowTracker:
                 effective_keys.add(source_key)
                 pending.append(source_key)
         return effective_keys
+
+    def _mark_nearest_declaration_usage(
+        self,
+        *,
+        parent_context: ScopeContext | None,
+        source_base: str,
+        field_path: str,
+        resolved_var: Variable,
+        target_name: str | None,
+        child_ui_reads: set[str] | None,
+        child_non_ui_reads: set[str] | None,
+        child_used_writes: set[str] | None,
+        external_typename: str | None,
+    ) -> None:
+        """Credit the nearest declaration a mapping passes through.
+
+        A frame's environment holds only its own declarations, so resolving a
+        mapping source through the scope chain lands on the aliased root
+        variable and skips every parameter the value is forwarded through.
+        Those parameters consume the mapping as well; without this credit a
+        forwarded parameter looks like it is never used.
+        """
+        if parent_context is None or target_name is None:
+            return
+        declaration = _nearest_declaration(parent_context, source_base)
+        if declaration is None or declaration[0] is resolved_var:
+            return
+        variable, decl_path, _display_path = declaration
+        usage = self._get_usage(variable)
+        if external_typename is not None:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path)
+                usage.mark_field_written(field_path, decl_path)
+            else:
+                usage.mark_read(decl_path)
+                usage.mark_written(decl_path)
+            return
+        if child_ui_reads is not None and target_name in child_ui_reads:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path, ui=True)
+            else:
+                usage.mark_ui_read(decl_path)
+        if child_non_ui_reads is not None and target_name in child_non_ui_reads:
+            if field_path:
+                usage.mark_field_read(field_path, decl_path)
+            else:
+                usage.mark_read(decl_path)
+        if child_used_writes is not None and target_name in child_used_writes:
+            if field_path:
+                usage.mark_field_written(field_path, decl_path)
+            else:
+                usage.mark_written(decl_path)
+
+    def _propagate_external_mapping_usage(
+        self,
+        *,
+        src_var: Variable,
+        full_source: str,
+        source_field_path: str,
+        decl_path: list[str],
+        parent_context: ScopeContext | None,
+        parent_env: dict[str, Variable],
+    ) -> None:
+        """Conservatively treat an external mapping source as read and written."""
+        if parent_context is not None:
+            source_key = self.resolve_effect_key(full_source, parent_context)
+            if source_key is not None:
+                self._external_effect_sinks.add(source_key)
+
+        display_path: list[str] = []
+        if decl_path:
+            display_path.append(decorate_segment(decl_path[0], "BP"))
+            display_path.extend(decl_path[1:])
+        use_context = ScopeContext(
+            env=parent_env,
+            param_mappings={},
+            module_path=decl_path.copy(),
+            display_module_path=display_path,
+            parent_context=None,
+        )
+
+        usage = self._get_usage(src_var)
+        if source_field_path:
+            usage.mark_field_read(source_field_path, decl_path)
+            usage.mark_field_written(source_field_path, decl_path)
+            canonical_path = self._canonical_path(decl_path, src_var, source_field_path)
+        else:
+            usage.mark_read(decl_path)
+            usage.mark_written(decl_path)
+            canonical_path = self._canonical_path(decl_path, src_var, "")
+        self._record_access(AccessKind.READ, canonical_path, use_context, full_source)
+        self._record_access(AccessKind.WRITE, canonical_path, use_context, full_source)
 
     def propagate_mapping_to_parent(  # noqa: PLR0915
         self,
@@ -381,36 +523,14 @@ class EffectFlowTracker:
 
             # External types: conservatively treat mapping as read+written
             if external_typename is not None:
-                if parent_context is not None:
-                    source_key = self.resolve_effect_key(full_source, parent_context)
-                    if source_key is not None:
-                        self._external_effect_sinks.add(source_key)
-                external_display_path: list[str] = []
-                if parent_path:
-                    external_display_path.append(decorate_segment(parent_path[0], "BP"))
-                    external_display_path.extend(parent_path[1:])
-                use_context = ScopeContext(
-                    env=parent_env,
-                    param_mappings={},
-                    module_path=parent_path.copy(),
-                    display_module_path=external_display_path,
-                    parent_context=None,
+                self._propagate_external_mapping_usage(
+                    src_var=src_var,
+                    full_source=full_source,
+                    source_field_path=source_field_path,
+                    decl_path=parent_path,
+                    parent_context=parent_context,
+                    parent_env=parent_env,
                 )
-
-                if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, source_field_path)
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-                else:
-                    self._get_usage(src_var).mark_read(parent_path)
-                    self._get_usage(src_var).mark_written(parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, "")
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
                 return
 
             if target_name is not None:
@@ -443,65 +563,77 @@ class EffectFlowTracker:
         source_base = source_parts[0].casefold()
         source_field_path = source_parts[1] if len(source_parts) > 1 else ""
 
-        # Resolve the actual source variable
-        src_var = parent_env.get(source_base)
+        # Resolve the actual. The immediate parent environment holds the scope's
+        # declarations, so it keeps the seam semantics when the actual is local.
+        # A frame's environment holds only its own declarations, so fall back to the
+        # scope chain, which finds an actual declared in an ancestor; the global index
+        # is the last resort for a reference the scope chain cannot resolve.
+        written_field_path = source_field_path
+        src_var: Variable | None = parent_env.get(source_base)
+        decl_path = parent_path
+        if src_var is None and parent_context is not None:
+            src_var, resolved_field_path, resolved_decl_path, _resolved_display_path = parent_context.resolve_variable(
+                full_source
+            )
+            if src_var is not None:
+                source_field_path = resolved_field_path
+                decl_path = resolved_decl_path
+
         if src_var is None:
             src_var = self._lookup_global_variable(source_base)
 
         if src_var is None:
             return
 
+        self._mark_nearest_declaration_usage(
+            parent_context=parent_context,
+            source_base=source_base,
+            field_path=written_field_path,
+            resolved_var=src_var,
+            target_name=target_name,
+            child_ui_reads=child_ui_reads,
+            child_non_ui_reads=child_non_ui_reads,
+            child_used_writes=child_used_writes,
+            external_typename=external_typename,
+        )
+
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
-            if parent_context is not None:
-                source_key = self.resolve_effect_key(full_source, parent_context)
-                if source_key is not None:
-                    self._external_effect_sinks.add(source_key)
-            external_mapping_display_path: list[str] = []
-            if parent_path:
-                external_mapping_display_path.append(decorate_segment(parent_path[0], "BP"))
-                external_mapping_display_path.extend(parent_path[1:])
-            use_context = ScopeContext(
-                env=parent_env,
-                param_mappings={},
-                module_path=parent_path.copy(),
-                display_module_path=external_mapping_display_path,
-                parent_context=None,
+            self._propagate_external_mapping_usage(
+                src_var=src_var,
+                full_source=full_source,
+                source_field_path=source_field_path,
+                decl_path=decl_path,
+                parent_context=parent_context,
+                parent_env=parent_env,
             )
-
-            if source_field_path:
-                self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, source_field_path)
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-            else:
-                self._get_usage(src_var).mark_read(parent_path)
-                self._get_usage(src_var).mark_written(parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, "")
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
             return
 
         # Internal types with field-aware propagation
         if target_name is not None:
             if child_ui_reads is not None and target_name in child_ui_reads:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path, ui=True)
+                    self._get_usage(src_var).mark_field_read(source_field_path, decl_path, ui=True)
                 else:
-                    self._get_usage(src_var).mark_ui_read(parent_path)
+                    self._get_usage(src_var).mark_ui_read(decl_path)
 
             if child_non_ui_reads is not None and target_name in child_non_ui_reads:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
+                    self._get_usage(src_var).mark_field_read(source_field_path, decl_path)
                 else:
-                    self._get_usage(src_var).mark_read(parent_path)
+                    self._get_usage(src_var).mark_read(decl_path)
 
             # If the child used the parameter for writing
             if child_used_writes is not None and target_name in child_used_writes:
                 if source_field_path:
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
+                    self._get_usage(src_var).mark_field_written(source_field_path, decl_path)
                 else:
-                    self._get_usage(src_var).mark_written(parent_path)
+                    self._get_usage(src_var).mark_written(decl_path)
+
+
+def _nearest_declaration(
+    parent_context: ScopeContext,
+    base_name: str,
+) -> tuple[Variable, list[str], list[str]] | None:
+    """Return the closest scope declaration of a name, ignoring aliases."""
+    return find_nearest_declaration(parent_context, base_name)

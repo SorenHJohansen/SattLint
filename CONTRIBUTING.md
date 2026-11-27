@@ -37,14 +37,16 @@ For public support boundaries, see [SUPPORT.md](SUPPORT.md). All contributors ar
    ```bash
    python -m ruff check .
    python -m ruff format --check .
-   python -m pyright src/sattlint
+   python -m pyright src/sattlint tests
    python -m pytest -q --tb=short
    ```
 
 5. Open a pull request against `main`. Fill in the PR template with commands run and remaining risks.
 6. A maintainer will review your changes. Expect questions or requests for narrower scope.
 
-For a human-readable CLI reference, see [FEATURE_GUIDE.md](FEATURE_GUIDE.md).
+For the full documentation set, start at [docs/README.md](docs/README.md).
+For a compact headless command reference, see
+[FEATURE_GUIDE.md](FEATURE_GUIDE.md).
 
 ### Getting Help
 
@@ -132,7 +134,7 @@ ruff format src/ tests/
 ruff check src/ tests/
 
 # Type check production code
-pyright src/sattlint
+pyright src/sattlint tests
 
 # Run tests
 pytest -q --tb=short
@@ -147,11 +149,17 @@ Run the fast local hygiene gate before pushing:
 python -m pre_commit run --all-files
 ```
 
-The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint`, and
-the standard pre-commit-hooks checks. The `docs` CI job runs the Markdown
-style check and `scripts/check_docs.py`. When you change dependencies in
-`pyproject.toml`, regenerate the lockfile with `uv lock` and commit it with the
-change.
+The pre-commit gate runs Ruff fix and format, Pyright on `src/sattlint` and
+`tests`, the documentation checks when Markdown changes, and the standard
+pre-commit-hooks checks. The `docs` CI job runs the Markdown style check and
+`scripts/check_docs.py`; the checker verifies relative links, heading anchors,
+and that every page under `docs/` is linked from `docs/README.md`. When you
+change dependencies in `pyproject.toml`, regenerate the lockfile with
+`uv lock` and commit it with the change.
+
+Documentation rules live in
+[docs/documentation.md](docs/documentation.md). Every behavior change updates
+the page that owns that behavior in the same pull request.
 
 ### Running Tests
 
@@ -218,7 +226,7 @@ Run every item and confirm before tagging:
       `python -m pre_commit run --all-files`,
       `python -m ruff check .`,
       `python -m ruff format --check .`,
-      `python -m pyright src/sattlint`,
+      `python -m pyright src/sattlint tests`,
       `python -m pytest -q --tb=short`.
 - [ ] `CHANGELOG.md` has a dated `## [YYYY.M.number]` entry for the release and
       the `[Unreleased]` block is empty.
@@ -263,7 +271,8 @@ The workflow then:
 1. Runs the CI gate on the tagged commit.
 2. Checks that the package version matches the tag.
 3. Builds sdist + wheel and runs `twine check`.
-4. Runs a clean-venv smoke (`--version`, `--help`, one headless command).
+4. Installs the wheel into a clean venv and runs the import smoke
+   (`sattlint`, `sattlint.ui`, `sattlint.cli.startup`) plus `sattlint --version`.
 5. Publishes to PyPI via trusted publishing.
 
 `publish.yml` also accepts a manual dispatch with an optional expected version.

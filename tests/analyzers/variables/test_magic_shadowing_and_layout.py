@@ -1,7 +1,35 @@
 # pyright: reportPrivateUsage=false
+from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    Equation,
+    FloatLiteral,
+    IntLiteral,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ScalarDatatype,
+    Sequence,
+    SFCTransition,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 from sattline_parser.models.expressions import BoolOp, Compare, UnaryOp
 
-from tests.helpers.analyzers_variables_support import *
+from sattlint.analyzers.variables import (
+    IssueKind,
+    VariablesAnalyzer,
+    analyze_variables,
+)
+from sattlint.reporting.variables_report import MagicNumberIssue
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_magic_number_detection_in_equations_and_sfc():
@@ -48,18 +76,18 @@ def test_magic_number_detection_in_equations_and_sfc():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[ModuleCode(sequences=[seq], equationblocks=[eq])],
-        moduledefs=[],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(sequences=[seq], equationblocks=[eq]),
+        moduledef=None,
     )
 
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    magic = [i for i in analyzer.issues if i.kind is IssueKind.MAGIC_NUMBER]
+    magic = [i for i in analyzer.issues if isinstance(i, MagicNumberIssue)]
     assert len(magic) == 2
 
-    values = sorted(i.literal_value for i in magic if i.literal_value is not None)
+    values = sorted(i.literal_value for i in magic)
     assert values == [2.5, 42]
 
     spans = {(i.literal_span.line, i.literal_span.column) for i in magic if i.literal_span is not None}
@@ -73,11 +101,11 @@ def test_magic_number_detection_in_equations_and_sfc():
 def test_shadowing_detected_for_nested_locals():
     child = SingleModule(
         header=_hdr("Child"),
-        moduledefs=[],
+        moduledef=None,
         moduleparameters=[],
-        localvariables=[Variable(name="value", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="value", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        modulecodes=[],
+        modulecode=None,
         parametermappings=[],
     )
 
@@ -85,10 +113,10 @@ def test_shadowing_detected_for_nested_locals():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
-        localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Value", datatype=ScalarDatatype.INTEGER)],
         submodules=[child],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
@@ -100,11 +128,10 @@ def test_shadowing_detected_for_moduletype_instance_locals():
     mt = ModuleTypeDef(
         name="TypeA",
         moduleparameters=[],
-        localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Setting", datatype=ScalarDatatype.INTEGER)],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
 
     instance = ModuleTypeInstance(
@@ -117,10 +144,10 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[mt],
-        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="setting", datatype=ScalarDatatype.INTEGER)],
         submodules=[instance],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
 
     report = analyze_variables(bp, selected_issue_kinds=frozenset({IssueKind.SHADOWING}))
@@ -235,3 +262,104 @@ ENDDEF (*BasePicture*);
     assert not any(
         issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is window_displayed for issue in analyzer.issues
     )
+
+
+def test_shadowing_reports_a_local_that_captures_a_module_parameter() -> None:
+    code = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Shadow"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+MODULEPARAMETERS
+   Setting: integer := 0;
+SUBMODULES
+   Worker Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MODULEDEFINITION DateCode_ 2
+   LOCALVARIABLES
+      Setting: integer := 1;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*Worker*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    report = analyze_variables(
+        parser_core_parse_source_text(code), selected_issue_kinds=frozenset({IssueKind.SHADOWING})
+    )
+
+    shadowing = [issue for issue in report.issues if issue.kind is IssueKind.SHADOWING]
+    assert len(shadowing) == 1
+    assert shadowing[0].variable is not None
+    assert shadowing[0].variable.name == "Setting"
+    assert shadowing[0].role == "shadows 'Setting' from BasePicture"
+
+
+def test_shadowing_ignores_a_module_parameter_that_repeats_an_outer_name() -> None:
+    """A parameter forwards the caller's variable; it does not hide a name."""
+    code = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Shadow"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+MODULEPARAMETERS
+   Setting: integer := 0;
+SUBMODULES
+   Worker Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MODULEDEFINITION DateCode_ 2
+   MODULEPARAMETERS
+      Setting: integer := 1;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*Worker*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    report = analyze_variables(
+        parser_core_parse_source_text(code), selected_issue_kinds=frozenset({IssueKind.SHADOWING})
+    )
+
+    assert not [issue for issue in report.issues if issue.kind is IssueKind.SHADOWING]
+
+
+def test_shadowing_still_reports_a_local_that_repeats_a_module_parameter() -> None:
+    code = """
+"Syntax version 2.23, date: 2026-06-19-12:00:00.000 N"
+"Original file date: ---"
+"Program date: 2026-06-19-12:00:00.000, name: Shadow"
+
+BasePicture Invocation
+   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
+    ) : MODULEDEFINITION DateCode_ 1
+MODULEPARAMETERS
+   Setting: integer := 0;
+SUBMODULES
+   Worker Invocation
+      ( 0.0 , 0.0 , 0.0 , 0.4 , 0.4
+       ) : MODULEDEFINITION DateCode_ 2
+   LOCALVARIABLES
+      Setting: integer := 1;
+   ModuleDef
+   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+   ENDDEF (*Worker*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    report = analyze_variables(
+        parser_core_parse_source_text(code), selected_issue_kinds=frozenset({IssueKind.SHADOWING})
+    )
+
+    shadowing = [issue for issue in report.issues if issue.kind is IssueKind.SHADOWING]
+    assert len(shadowing) == 1
+    assert shadowing[0].variable is not None
+    assert shadowing[0].variable.name == "Setting"

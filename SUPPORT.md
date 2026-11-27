@@ -6,8 +6,9 @@ agreement, and no private email channel.
 
 ## Stable surface
 
-The stable surface is the behavior documented in `README.md` and
-`FEATURE_GUIDE.md`. Changes to it are recorded in `CHANGELOG.md`.
+The stable surface is the behavior documented in `README.md`,
+`FEATURE_GUIDE.md`, and the documentation set indexed at `docs/README.md`.
+Changes to it are recorded in `CHANGELOG.md`.
 
 - Installation from PyPI on Windows and Linux with Python 3.13 or newer.
 - The interactive shell started by running `sattlint` with no arguments,

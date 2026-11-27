@@ -1,29 +1,33 @@
 # pyright: reportPrivateUsage=false
-"""Focused unit tests for the Phase 5 parser-backed project loader adapter.
+"""Focused unit tests for the parser-backed project loader adapter.
 
 Covers ``sattlint.project.parser_adapter``: graph conversion from a loaded
-``SattLineProject``, missing-dependency recording, cycle detection, reverse-
-consumer dedup, library naming, AST-only graph conversion, and the hermetic
+``SattLineProject``, missing-root recording, cycle translation, reverse-consumer
+dedup, library naming, AST-only graph conversion, and the hermetic
 ``load_parser_project`` I/O path. Programs are built schema-only via
-``SattLineProject._from_programs`` (no filesystem) except for the I/O
+``SattLineProject.from_programs`` (no filesystem) except for the I/O
 round-trip test, which writes real ``.s`` / ``.l`` fixtures into ``tmp_path``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
-from sattline_parser import parse_source_text
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser import Diagnostic, DiagnosticCode, parse_source_text
+from sattline_parser.models.ast_model import BasePicture, DataType
 from sattline_parser.project import (
+    CacheDisabledReason,
+    DependencyCycleError,
     ProjectLoadError,
     SattLineProgram,
     SattLineProject,
 )
 
 from sattlint.core.syntax import CodeMode
-from sattlint.models.project_graph import ProjectGraph
+from sattlint.models.project_graph import ProjectGraph, RootOrigin
+from sattlint.parser_api import LoadValidation
 from sattlint.project import parser_adapter as parser_adapter_module
 from sattlint.project.parser_adapter import (
     CircularDependencyError,
@@ -32,6 +36,7 @@ from sattlint.project.parser_adapter import (
     find_code_path,
     find_dependency_path,
     load_parser_project,
+    load_parser_projects,
     read_dependency_names,
 )
 
@@ -79,50 +84,114 @@ def test_convert_populates_graph_from_registry() -> None:
     lib = tmp / "lib"
     a = _program("A", source_path=lib / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": a, "B": b})
+    project = SattLineProject.from_programs({"A": a, "B": b})
     graph = ProjectGraph()
     convert_project_into_graph(
         project, graph, binding=_binding(prg, other_lib_dirs=(lib,)), root_name="B", strict=False
     )
 
     assert set(graph.ast_by_name) == {"A", "B"}
-    assert graph.ast_by_name["A"] is a.code
-    assert graph.ast_by_name["B"] is b.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
+    assert graph.ast_by_name["B"] is project.programs()["b"].code
     assert graph.source_files == {lib / "A.s", prg / "B.s"}
-    assert graph.library_dependencies["prg"] == {"lib"}
+    assert graph.library_dependencies["PRG"] == {"LIB"}
+    assert graph.source_dependencies == {"A": set(), "B": {"A"}}
     assert graph.missing == []
-
-
-def test_convert_records_dangling_dependency_as_missing() -> None:
-    tmp = Path("/tmp/base")
-    prg = tmp / "prg"
-    owner = _program("B", dependencies=("MISSING",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"B": owner})
-    graph = ProjectGraph()
-    convert_project_into_graph(project, graph, binding=_binding(prg), root_name="B", strict=False)
-
-    assert "missing" in graph.unavailable_libraries
-    assert any("MISSING" in entry and "B" in entry for entry in graph.missing)
 
 
 def test_convert_flags_root_not_loaded_as_missing() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="R", strict=False)
 
     assert set(graph.ast_by_name) == {"A"}
-    assert "r" in graph.unavailable_libraries
+    assert "R" in graph.unavailable_libraries
     assert any("'R'" in entry and "B" not in entry for entry in graph.missing)
     assert len(graph.missing) == 1
+
+
+def test_convert_failed_root_is_not_also_reported_as_missing() -> None:
+    prg = Path("/tmp/base/prg")
+    a = SattLineProgram(
+        name="A",
+        code=_code(),
+        source_path=prg / "A.s",
+        diagnostics=(Diagnostic(DiagnosticCode.DUPLICATE_VARIABLE_NAME, "duplicate variable"),),
+    )
+    project = SattLineProject.from_programs({"A": a})
+    graph = ProjectGraph()
+    convert_project_into_graph(project, graph, binding=_binding(prg), root_name="A", strict=False)
+
+    assert graph.ast_by_name == {}
+    assert set(graph.failures) == {"A"}
+    assert "A" not in graph.unavailable_libraries
+    assert not any("Missing code file" in entry for entry in graph.missing)
+    assert graph.missing == [graph.failures["A"].message]
+
+
+def test_index_failure_retracts_a_partially_committed_program(monkeypatch: pytest.MonkeyPatch) -> None:
+    prg = Path("/tmp/base/prg")
+    binding = _binding(prg)
+    a = _program("A", source_path=prg / "A.s")
+
+    def fail_attach(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("graphics exploded")
+
+    monkeypatch.setattr(parser_adapter_module, "attach_graphics_companion", fail_attach)
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        SattLineProject.from_programs({"A": a}), graph, binding=binding, root_name="A", strict=False
+    )
+
+    assert graph.ast_by_name == {}
+    assert "A" not in binding._indexed_names
+    assert graph.graphics_attachments == {}
+    assert set(graph.failures) == {"A"}
+    assert graph.missing == [graph.failures["A"].message]
+
+
+def test_index_failure_retracts_every_committed_definition(monkeypatch: pytest.MonkeyPatch) -> None:
+    prg = Path("/tmp/base/prg")
+    binding = _binding(prg)
+    a = _program("A", source_path=prg / "A.s")
+
+    def partial_index(
+        self: ProjectGraph,
+        _bp: BasePicture,
+        source_path: Path | None = None,
+        library_name: str | None = None,
+        *,
+        program_name: str | None = None,
+    ) -> None:
+        del library_name, program_name
+        self.source_files.add(source_path if source_path is not None else Path("/tmp/leak.s"))
+        self.root_origins["a"] = RootOrigin(source_path=source_path, library_name="prg")
+        self.datatype_defs[("", "leak", "")] = DataType(name="Leak", description=None, datecode=None)
+        raise RuntimeError("index exploded")
+
+    monkeypatch.setattr(ProjectGraph, "index_from_basepic", partial_index)
+    graph = ProjectGraph()
+    convert_project_into_graph(
+        SattLineProject.from_programs({"A": a}), graph, binding=binding, root_name="A", strict=False
+    )
+
+    assert graph.ast_by_name == {}
+    assert graph.root_origins == {}
+    assert graph.datatype_defs == {}
+    assert graph.moduletype_defs == {}
+    assert graph.source_files == set()
+    assert graph.source_dependencies == {}
+    assert graph.library_dependencies == {}
+    assert set(graph.failures) == {"A"}
 
 
 def test_convert_raises_on_cycle_always() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", dependencies=("B",), source_path=prg / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": a, "B": b})
+    project = SattLineProject.from_programs({"A": a, "B": b})
     graph = ProjectGraph()
     with pytest.raises(CircularDependencyError) as excinfo:
         convert_project_into_graph(project, graph, binding=_binding(prg), root_name="A", strict=False)
@@ -133,15 +202,15 @@ def test_convert_skips_already_present_programs() -> None:
     prg = Path("/tmp/base/prg")
     lib = _program("A", source_path=prg / "A.s")
     owner = _program("B", dependencies=("A",), source_path=prg / "B.s")
-    project = SattLineProject._from_programs({"A": lib, "B": owner})
+    project = SattLineProject.from_programs({"A": lib, "B": owner})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_binding(prg), root_name="B", strict=False)
     indexed_before = len(graph.moduletype_defs)
 
-    other = SattLineProject._from_programs({"A": lib, "C": _program("C", dependencies=("A",), source_path=prg / "C.s")})
+    other = SattLineProject.from_programs({"A": lib, "C": _program("C", dependencies=("A",), source_path=prg / "C.s")})
     convert_project_into_graph(other, graph, binding=_binding(prg), root_name="C", strict=False)
 
-    assert graph.ast_by_name["A"] is lib.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
     assert len(graph.moduletype_defs) == indexed_before
     assert set(graph.ast_by_name) == {"A", "B", "C"}
 
@@ -150,7 +219,7 @@ def test_convert_ast_only_skips_graphics_and_indexing() -> None:
     prg = Path("/tmp/base/prg")
     binding = _binding(prg)
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,
@@ -175,7 +244,7 @@ def test_load_parser_project_round_trip_hermetic(tmp_path: Path) -> None:
     (program_dir / "Main.l").write_text("Dep\n", encoding="utf-8")
 
     binding = _binding(program_dir)
-    project = load_parser_project(binding, ["Main"], strict=False)
+    project = load_parser_project(binding, ["Main"])
     assert "Dep" in project
     assert "Main" in project
     assert project.dependencies_of("Main") == ("Dep",)
@@ -186,13 +255,31 @@ def test_load_parser_project_round_trip_hermetic(tmp_path: Path) -> None:
     assert set(graph.ast_by_name) == {"Main", "Dep"}
 
 
-def test_load_parser_project_strict_raises_on_missing_target(tmp_path: Path) -> None:
+def test_load_parser_project_raises_on_missing_target(tmp_path: Path) -> None:
     program_dir = tmp_path / "prg"
     program_dir.mkdir()
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
     binding = _binding(program_dir)
     with pytest.raises(ProjectLoadError, match="missing code file"):
-        load_parser_project(binding, ["Nope"], strict=True)
+        load_parser_project(binding, ["Nope"])
+
+
+def test_load_parser_project_translates_parser_cycle(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "A.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "B.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "A.l").write_text("B\n", encoding="utf-8")
+    (program_dir / "B.l").write_text("A\n", encoding="utf-8")
+
+    binding = _binding(program_dir)
+    with pytest.raises(CircularDependencyError) as excinfo:
+        load_parser_project(binding, ["A"])
+
+    # A load-time cycle is rejected before any project exists, so the path
+    # carries the loader's canonical identities.
+    assert excinfo.value.library == "a"
+    assert excinfo.value.cycle_path == ["a", "b"]
 
 
 def test_find_code_and_dependency_paths_and_names(tmp_path: Path) -> None:
@@ -203,10 +290,10 @@ def test_find_code_and_dependency_paths_and_names(tmp_path: Path) -> None:
     (program_dir / "Main.l").write_text("Dep\n", encoding="utf-8")
 
     binding = _binding(program_dir)
-    assert find_code_path(binding, "Main", requester_dir=program_dir) == (program_dir / "Main.s").resolve()
-    assert find_dependency_path(binding, "Main", requester_dir=program_dir) == (program_dir / "Main.l").resolve()
+    assert find_code_path(binding, "Main") == (program_dir / "Main.s").resolve()
+    assert find_dependency_path(binding, "Main") == (program_dir / "Main.l").resolve()
     assert read_dependency_names(program_dir / "Main.l") == ("Dep",)
-    assert find_code_path(binding, "Nope", requester_dir=program_dir) is None
+    assert find_code_path(binding, "Nope") is None
 
 
 def test_library_name_falls_through_to_program_root() -> None:
@@ -222,11 +309,80 @@ def test_library_name_falls_through_to_program_root() -> None:
     b = _program("B", source_path=lib_b / "B.s")
     c = _program("C", source_path=abb / "C.s")
     root = _program("Root", dependencies=("A", "B", "C"), source_path=prg / "Root.s")
-    project = SattLineProject._from_programs({p.name: p for p in (a, b, c, root)})
+    project = SattLineProject.from_programs({p.name: p for p in (a, b, c, root)})
     graph = ProjectGraph()
     convert_project_into_graph(project, graph, binding=_bound(prg), root_name="Root", strict=False)
 
-    assert graph.library_dependencies["prg"] == {"abb", "liba", "libb"}
+    assert graph.library_dependencies["PRG"] == {"ABB", "LIBA", "LIBB"}
+
+
+def test_load_parser_projects_keeps_the_targets_that_load(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Good.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Good.l").write_text("Shared\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["Good", "Missing"])
+
+    good = results["Good"]
+    assert good.ok
+    assert good.error is None
+    assert good.project is not None
+    assert good.project.get("Good") is not None
+    assert good.project.get("Shared") is not None
+
+    missing = results["Missing"]
+    assert not missing.ok
+    assert missing.project is None
+    assert isinstance(missing.error, ProjectLoadError)
+
+
+def test_load_parser_projects_shares_a_dependency_across_targets(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    for name in ("First", "Second"):
+        (program_dir / f"{name}.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+        (program_dir / f"{name}.l").write_text("Shared\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["First", "Second"])
+
+    first = results["First"].project
+    second = results["Second"].project
+    assert first is not None
+    assert second is not None
+    assert first.get("First") is not None
+    assert first.get("Shared") is not None
+    assert second.get("Second") is not None
+    assert second.get("Shared") is not None
+
+
+def test_load_parser_projects_translates_a_real_parser_cycle(tmp_path: Path) -> None:
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    for name in ("A", "B", "Healthy"):
+        (program_dir / f"{name}.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "A.l").write_text("B\n", encoding="utf-8")
+    (program_dir / "B.l").write_text("A\n", encoding="utf-8")
+
+    results = load_parser_projects(_binding(program_dir), ["A", "B", "Healthy"])
+
+    assert results["Healthy"].ok
+    for name in ("A", "B"):
+        result = results[name]
+        assert not result.ok
+        assert result.project is None
+        assert result.error is not None
+        assert "Circular dependency detected" in str(result.error)
+
+
+def test_cycle_error_for_translates_parser_cycles() -> None:
+    cycle = parser_adapter_module._cycle_error_for(DependencyCycleError(("A", "B", "A")))
+
+    assert isinstance(cycle, CircularDependencyError)
+    assert cycle.cycle_path == ["A", "B"]
+    assert parser_adapter_module._cycle_error_for(ProjectLoadError("A", "missing code file")) is None
 
 
 def test_load_parser_project_memoizes_single_target(tmp_path: Path) -> None:
@@ -235,20 +391,20 @@ def test_load_parser_project_memoizes_single_target(tmp_path: Path) -> None:
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
 
     binding = _binding(program_dir)
-    first = load_parser_project(binding, ["Main"], strict=False)
-    second = load_parser_project(binding, ["Main"], strict=False)
+    first = load_parser_project(binding, ["Main"])
+    second = load_parser_project(binding, ["Main"])
     assert second is first
 
 
-def test_load_parser_project_memo_ignores_strict_variants(tmp_path: Path) -> None:
+def test_load_parser_project_memo_partitions_by_validation_scope(tmp_path: Path) -> None:
     program_dir = tmp_path / "prg"
     program_dir.mkdir()
     (program_dir / "Main.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
 
     binding = _binding(program_dir)
-    non_strict = load_parser_project(binding, ["Main"], strict=False)
-    strict = load_parser_project(binding, ["Main"], strict=True)
-    assert strict is not non_strict
+    invoked = load_parser_project(binding, ["Main"])
+    parse_only = load_parser_project(binding, ["Main"], validate=LoadValidation.NONE)
+    assert parse_only is not invoked
 
 
 def test_convert_reuses_indexed_names_within_one_binding() -> None:
@@ -257,8 +413,9 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
     a = _program("A", source_path=prg / "A.s")
     b = _program("B", dependencies=("A",), source_path=prg / "B.s")
     graph = ProjectGraph()
+    project = SattLineProject.from_programs({"A": a, "B": b})
     convert_project_into_graph(
-        SattLineProject._from_programs({"A": a, "B": b}),
+        project,
         graph,
         binding=binding,
         root_name="B",
@@ -268,14 +425,14 @@ def test_convert_reuses_indexed_names_within_one_binding() -> None:
 
     c = _program("C", dependencies=("A",), source_path=prg / "C.s")
     convert_project_into_graph(
-        SattLineProject._from_programs({"A": a, "C": c}),
+        SattLineProject.from_programs({"A": a, "C": c}),
         graph,
         binding=binding,
         root_name="C",
         strict=False,
     )
 
-    assert graph.ast_by_name["A"] is a.code
+    assert graph.ast_by_name["A"] is project.programs()["a"].code
     assert len(graph.moduletype_defs) == indexed_before
     assert set(graph.ast_by_name) == {"A", "B", "C"}
 
@@ -305,7 +462,7 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
     a = _program("A", source_path=prg / "A.s")
     r1 = _program("R1", dependencies=("A",), source_path=prg / "R1.s")
     r2 = _program("R2", dependencies=("A",), source_path=prg / "R2.s")
-    project = SattLineProject._from_programs({p.name: p for p in (a, r1, r2)})
+    project = SattLineProject.from_programs({p.name: p for p in (a, r1, r2)})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,
@@ -317,15 +474,15 @@ def test_convert_batched_extra_roots_indexes_each_once() -> None:
     )
 
     assert set(graph.ast_by_name) == {"A", "R1", "R2"}
-    assert graph.ast_by_name["R1"] is r1.code
-    assert graph.ast_by_name["R2"] is r2.code
-    assert graph.library_dependencies["prg"] == {"prg"}
+    assert graph.ast_by_name["R1"] is project.programs()["r1"].code
+    assert graph.ast_by_name["R2"] is project.programs()["r2"].code
+    assert graph.library_dependencies["PRG"] == {"PRG"}
 
 
 def test_convert_extra_roots_records_each_missing_root() -> None:
     prg = Path("/tmp/base/prg")
     a = _program("A", source_path=prg / "A.s")
-    project = SattLineProject._from_programs({"A": a})
+    project = SattLineProject.from_programs({"A": a})
     graph = ProjectGraph()
     convert_project_into_graph(
         project,
@@ -339,3 +496,78 @@ def test_convert_extra_roots_records_each_missing_root() -> None:
     assert set(graph.ast_by_name) == {"A"}
     assert any("'R1'" in entry for entry in graph.missing)
     assert any("'R2'" in entry for entry in graph.missing)
+
+
+def _recording_binding(program_dir: Path, cache_dir: Path | None) -> ParserProjectBinding:
+    return ParserProjectBinding(
+        program_dir=program_dir,
+        other_lib_dirs=(),
+        abb_lib_dir=None,
+        mode=CodeMode.DRAFT,
+        parser_cache_dir=cache_dir,
+    )
+
+
+class _RecordingProject:
+    """Stands in for the parser project so the loader's call can be inspected."""
+
+    captured: ClassVar[dict[str, object]] = {}
+
+    @staticmethod
+    def load(**kwargs: object) -> str:
+        _RecordingProject.captured.update(kwargs)
+        return "project"
+
+
+def _record_parser_load(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    _RecordingProject.captured = {}
+    monkeypatch.setattr(parser_adapter_module, "SattLineProject", _RecordingProject)
+    return _RecordingProject.captured
+
+
+def test_a_binding_without_a_cache_dir_loads_hermetically(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _record_parser_load(monkeypatch)
+
+    load_parser_project(_recording_binding(Path("/p"), None), ["Main"])
+
+    assert captured["cache_dir"] is None
+
+
+def test_a_binding_with_a_cache_dir_passes_it_to_the_parser(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured = _record_parser_load(monkeypatch)
+    cache_dir = tmp_path / "cache"
+
+    load_parser_project(_recording_binding(Path("/p"), cache_dir), ["Main"])
+
+    assert captured["cache_dir"] == cache_dir
+
+
+def test_two_targets_share_one_parser_cache(tmp_path: Path) -> None:
+    """A cached binding lets the second target build on the first target's parses."""
+    program_dir = tmp_path / "prg"
+    program_dir.mkdir()
+    (program_dir / "Shared.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "First.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "Second.s").write_text(_SMALL_PROGRAM, encoding="utf-8")
+    (program_dir / "First.l").write_text("Shared\n", encoding="utf-8")
+    (program_dir / "Second.l").write_text("Shared\n", encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(mode=0o700)
+
+    first = load_parser_project(_recording_binding(program_dir, cache_dir), ["First"])
+    second = load_parser_project(_recording_binding(program_dir, cache_dir), ["Second"])
+
+    assert "Shared" in first
+    assert "Shared" in second
+    assert second.dependencies_of("Second") == ("Shared",)
+
+    # The parser owns the cache layout and disables the cache when it cannot
+    # prove the directory private to the user (for example under a shared temp
+    # directory on Windows). Its public status is the contract, not the files
+    # it writes.
+    info = first.cache_info
+    if info.enabled:
+        assert second.cache_info.enabled
+        assert second.cache_info.ast_hits > 0
+    else:
+        assert info.disabled_reason is CacheDisabledReason.PRIVACY

@@ -2,11 +2,28 @@
 "Original file date: ---"
 "Program date: 2026-06-25-12:00:00.000, name: VarStructCover"
 (* Covers HIDDEN_GLOBAL_COUPLING, HIGH_FAN_IN_OUT,
-   DATATYPE_DUPLICATION. *)
+   EXTRACTABLE_NESTED_RECORD. *)
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0
     ) : MODULEDEFINITION DateCode_ 1
+
+TYPEDEFINITIONS
+   SignalA = RECORD DateCode_ 1
+      Raw: real  := 0.0;
+      Min: real  := 0.0;
+      Max: real  := 0.0;
+      Scale: real  := 1.0;
+   ENDDEF
+    (*SignalA*);
+
+   SignalB = RECORD DateCode_ 1
+      Raw: real  := 0.0;
+      Min: real  := 0.0;
+      Max: real  := 0.0;
+      Offset: real  := 0.0;
+   ENDDEF
+    (*SignalB*);
 
 TYPEDEFINITIONS
    WorkerType = MODULEDEFINITION DateCode_ 1

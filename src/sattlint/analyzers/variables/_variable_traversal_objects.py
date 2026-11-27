@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sattlint.parser_api import (
+    AssignClause,
     GraphObject,
     InteractObject,
     ModuleDef,
@@ -23,6 +24,15 @@ from ...resolution.scope import ScopeContext
 
 if TYPE_CHECKING:
     from . import VariablesAnalyzer
+
+
+#: Interactors that display the state they write. Each one reads its bound value
+#: back to render the widget, so the binding is a read as well as a write.
+#: A momentary button without a toggle action still shows its state.
+_STATE_BINDING_INTERACT_TYPES = frozenset({"textbox_", "checkbox_", "optbut_", "combut_"})
+
+#: The interactor property that binds a widget's state variable.
+_STATE_BINDING_PROPERTY = "variable"
 
 
 def _walk_header_enable(self: VariablesAnalyzer, header: ModuleHeader, context: ScopeContext, path: list[str]) -> None:
@@ -120,13 +130,39 @@ def _mark_reference_read(
 def _walk_graph_object(self: VariablesAnalyzer, go: GraphObject, context: ScopeContext, path: list[str]) -> None:
     properties = go.properties
     for text_var in properties.get("text_vars", []) or []:
-        base = text_var.name.split(".", 1)[0] if text_var.name else None
-        self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
+        _mark_reference_read(self, text_var.name, context, path, is_ui_read=True)
     for tail in properties.get("tails", []) or []:
         self._walk_tail(tail, context, path, is_ui_read=True)
 
 
+def _state_binding_tail(interact_object: InteractObject) -> VarTail | None:
+    """The output tail bound to a value widget's state variable.
+
+    Only the ``Variable`` property carries the state a value widget displays;
+    event flags such as ``Value_Changed`` and procedure arguments stay
+    write-only. Widgets that do not display their state are left alone.
+    """
+    if interact_object.type.casefold() not in _STATE_BINDING_INTERACT_TYPES:
+        return None
+    properties = interact_object.properties
+    body = properties.get("body") or ()
+    assigns = properties.get("assigns") or ()
+    for clause in (*body, *assigns):
+        if not isinstance(clause, AssignClause):
+            continue
+        if clause.name.casefold() != _STATE_BINDING_PROPERTY:
+            continue
+        tail = clause.tail
+        if isinstance(tail, VarTail) and tail.direction == "out":
+            return tail
+    return None
+
+
 def _walk_interact_object(self: VariablesAnalyzer, io: InteractObject, context: ScopeContext, path: list[str]) -> None:
+    state_tail = _state_binding_tail(io)
+    if state_tail is not None:
+        _mark_reference_read(self, state_tail.bound_name, context, path, is_ui_read=True)
+
     for event in walk(io, prune=lambda node: isinstance(node, ProcedureCall)):
         node = event.node
         if isinstance(node, VarRef):

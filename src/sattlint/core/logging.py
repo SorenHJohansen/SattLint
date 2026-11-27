@@ -1,7 +1,6 @@
 """Logging configuration for SattLint.
 
-Owns the module-wide logger, default log levels, and debug-mode toggling,
-elevated from the old flat ``app_base`` module as part of Phase 2.
+Owns the module-wide logger, default log levels, and debug-mode toggling.
 """
 
 from __future__ import annotations
@@ -21,6 +20,8 @@ def configure_logging() -> None:
 
 
 def apply_debug(cfg: ConfigDict) -> None:
-    level = logging.DEBUG if cfg.get("debug") else logging.INFO
+    # Config validation enforces a boolean, so an explicit identity check keeps
+    # a mistyped value from silently enabling debug logging.
+    level = logging.DEBUG if cfg.get("debug") is True else logging.INFO
     logging.getLogger().setLevel(level)
     log.setLevel(level)

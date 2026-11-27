@@ -13,9 +13,10 @@ from sattlint.parser_api import (
     Variable,
     VarRef,
     format_expr,
-    get_function_signature,
 )
 
+from ...core.call_signatures import resolve_call_signature
+from ...resolution import resolve_record
 from ...resolution.scope import ScopeContext
 from ...resolution.type_graph import TypeGraph
 from ..framework import AnalysisSharedArtifacts, AnalyzerLifecycleMixin, Issue, SimpleReport
@@ -27,6 +28,7 @@ from ._dataflow_common import (
     PENDING_PREFIX,
     UNKNOWN,
     ConstantTrace,
+    PendingWrite,
     ResolvedRef,
     ScalarValue,
     StateMap,
@@ -70,9 +72,12 @@ class DataflowAnalyzer(
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
         self._reported_dead_overwrite: set[tuple[tuple[str, ...], str, str]] = set()
+        self._conditional_entry_writes: list[set[PendingWrite]] = []
         self._reported_conflicting_constants: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
+        self._mutated_symbols: set[tuple[str, ...]] = set()
+        self._unmapped_interface_parameter_ids: set[int] = set()
 
     @property
     def issues(self) -> list[Issue]:
@@ -152,7 +157,7 @@ class DataflowAnalyzer(
         if not function_name:
             return state
 
-        signature = get_function_signature(function_name)
+        signature = resolve_call_signature(function_name)
         if signature is None:
             return state
 
@@ -170,10 +175,7 @@ class DataflowAnalyzer(
                 )
 
         for index, argument in enumerate(args):
-            direction = "in"
-            if index < len(signature.parameters):
-                direction = signature.parameters[index].direction
-            if direction not in {"out", "inout"}:
+            if index >= len(signature.parameters) or not signature.parameters[index].is_output:
                 continue
             resolved = self._resolve_ref(argument, context)
             if resolved is None:
@@ -215,6 +217,8 @@ class DataflowAnalyzer(
         if resolved.state_access != "old":
             self._consume_pending_reads(state, resolved)
             self._mark_constant_trace_read(state, resolved.symbol_key)
+        if resolved.state_access == "old":
+            return self._read_old_value(resolved, state)
         value = state.get(resolved.key, UNKNOWN)
         if value is UNKNOWN and resolved.key != resolved.root_key:
             value = state.get(resolved.root_key, UNKNOWN)
@@ -225,6 +229,27 @@ class DataflowAnalyzer(
         if value is INITIALIZED:
             return UNKNOWN
 
+        return value
+
+    def _read_old_value(
+        self,
+        resolved: ResolvedRef,
+        state: StateMap,
+    ) -> ScalarValue | object:
+        """Return a ``:Old`` value only when the symbol is provably untouched.
+
+        ``:Old`` is the value at the start of the scan. Once the analyzed code
+        has written the symbol, or its current value has been invalidated as
+        externally writable, the next scan's ``:Old`` is not the declaration
+        default and must stay unknown.
+        """
+        if resolved.symbol_key in self._mutated_symbols or resolved.symbol_root_key in self._mutated_symbols:
+            return UNKNOWN
+        value = state.get(resolved.key, UNKNOWN)
+        if value is UNKNOWN and resolved.key != resolved.root_key:
+            value = state.get(resolved.root_key, UNKNOWN)
+        if value is UNKNOWN or value is INITIALIZED:
+            return UNKNOWN
         return value
 
     def _resolve_ref(self, expr: Any, context: ScopeContext) -> ResolvedRef | None:
@@ -240,7 +265,11 @@ class DataflowAnalyzer(
         variable, field_path, decl_path, _decl_display_path = context.resolve_variable(full_name)
         if variable is None:
             return None
-        resolved_state = self._resolve_state_flag(variable, field_path)
+        resolved_state = self._resolve_state_flag(
+            variable,
+            field_path,
+            library=context.current_library,
+        )
         display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
         state_access = requested_state_access
         if requested_state_access and resolved_state is not None and not resolved_state:
@@ -267,16 +296,27 @@ class DataflowAnalyzer(
         self,
         variable: Any,
         field_path: str,
+        *,
+        library: str | None = None,
     ) -> bool | None:
+        """Resolve a field's STATE flag.
+
+        ``library`` is the library whose code references the variable; it keeps
+        same-named records from different libraries on their own layouts. This
+        analyzer has no warning channel, so an undecidable record name leaves
+        the flag unresolved instead of guessing a layout.
+        """
         resolved_state = getattr(variable, "state", None)
         current_datatype = getattr(variable, "datatype", None)
         for field_name in (segment for segment in field_path.split(".") if segment):
             if current_datatype is None or not isinstance(current_datatype, str):
                 return None
-            field = self._type_graph.field(current_datatype, field_name)
-            if field is None:
+            record = resolve_record(self._type_graph, current_datatype, library=library)
+            field = record.fields_by_key.get(field_name.casefold()) if record is not None else None
+            if record is None or field is None:
                 return None
             current_datatype = field.datatype
+            library = record.library
             resolved_state = field.state
         return resolved_state
 

@@ -1,4 +1,3 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportPrivateUsage=false
 """End-to-end crash-sweep tests for the full analysis pipeline.
 
 These tests load real SattLine fixtures through the project loader and run the
@@ -14,29 +13,20 @@ import pytest
 
 from sattlint.analyzers.dispatch import get_cli_dispatch_analyzers, run_registry_analyzer
 from sattlint.analyzers.framework import build_analysis_context
-from sattlint.analyzers.registry import get_enabled_analyzers
-from sattlint.engine import CodeMode, load_project_graph, merge_project_basepicture
+from sattlint.analyzers.registry import get_selectable_analyzer_keys, get_selectable_analyzers
+from tests.helpers.project_loading import load_target_project
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "sample_sattline_files"
 
 # Add a fixture here whenever a real file surfaces a new analyzer crash shape.
-# The file must load through load_project_graph without a strict-validation
-# failure so the sweep reaches the analyzers.
+# The file must load through the production project loader without a strict
+# validation failure so the sweep reaches the analyzers.
 ANALYZER_CRASH_FIXTURES = ("EnableExpr",)
 
 
 def _load_base_picture(stem: str):
     fixture = FIXTURE_DIR / f"{stem}.s"
-    cfg: dict[str, object] = {
-        "program_dir": fixture.parent,
-        "other_lib_dirs": [],
-        "ABB_lib_dir": fixture.parent,
-        "mode": CodeMode.DRAFT,
-        "debug": False,
-    }
-    _, root_bp, graph = load_project_graph(cfg, fixture.stem, strict=False)
-    assert root_bp is not None
-    base_picture = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    base_picture, graph = load_target_project(fixture)
     return base_picture, graph
 
 
@@ -44,8 +34,11 @@ def _load_base_picture(stem: str):
 def test_full_analysis_pipeline_does_not_crash_on_real_fixture(stem: str) -> None:
     base_picture, graph = _load_base_picture(stem)
     context = build_analysis_context(base_picture, graph=graph, debug=False, create_shared_artifacts=True)
-    analyzers = get_cli_dispatch_analyzers(selected_keys=None, get_enabled_analyzers_fn=get_enabled_analyzers)
-    assert analyzers, "expected at least one enabled analyzer"
+    analyzers = get_cli_dispatch_analyzers(
+        selected_keys=get_selectable_analyzer_keys(),
+        get_enabled_analyzers_fn=get_selectable_analyzers,
+    )
+    assert analyzers, "expected at least one selectable analyzer"
     assert context.shared_artifacts is not None, "shared artifacts should be created"
 
     for spec in analyzers:

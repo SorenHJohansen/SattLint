@@ -1,9 +1,45 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 
 from ..analyzers.framework.issue import Findings
-from ..models._variable_issues import IssueKind, VariableIssue
+from ..core.timings import PhaseTiming
+from ..models._variable_issues import (
+    DatatypeDuplicationIssue,
+    DatatypeIssue,
+    DuplicateLocation,
+    FieldNeverReadIssue,
+    FieldPathVariableIssue,
+    FieldReadOnlyIssue,
+    GlobalScopeMinimizationIssue,
+    HiddenGlobalCouplingIssue,
+    HighFanInOutIssue,
+    ImplicitLatchIssue,
+    IssueKind,
+    MagicNumberIssue,
+    MinMaxMappingMismatchIssue,
+    NestedRecordCandidateIssue,
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    ReadBeforeWriteIssue,
+    ReadOnlyNonConstIssue,
+    RecordComponentOrderIssue,
+    RelatedVariableIssue,
+    ResetContaminationIssue,
+    SecureCandidateIssue,
+    ShadowingIssue,
+    StringMappingMismatchIssue,
+    UnknownParameterTargetIssue,
+    UnsafeBooleanDefaultIssue,
+    UnusedDatatypeFieldIssue,
+    UnusedDatatypeIssue,
+    UnusedIssue,
+    VariableIssue,
+    VariableIssueBase,
+    VariableTargetIssue,
+    WriteWithoutEffectIssue,
+)
 from ..resolution.access_graph import AccessEvent
 from ..resolution.paths import CanonicalPathKey
 from ._variables_report_rendering import (
@@ -13,29 +49,82 @@ from ._variables_report_rendering import (
     append_record_component_order_dependence,
     append_string_mapping_mismatch,
     append_unused_datatype_fields,
-    append_unused_variable_issue_list,
+    append_unused_datatypes,
     append_variable_issue_list,
     count_string_mapping_mismatch_rows,
 )
+
+__all__ = [
+    "ALL_VARIABLE_ANALYSIS_KINDS",
+    "DATATYPE_FIELD_ANALYSIS_KINDS",
+    "DEFAULT_VARIABLE_ANALYSIS_KINDS",
+    "LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS",
+    "SECTION_TITLES",
+    "SUMMARY_SECTION_ORDER",
+    "DatatypeDuplicationIssue",
+    "DatatypeIssue",
+    "DuplicateLocation",
+    "FieldNeverReadIssue",
+    "FieldPathVariableIssue",
+    "FieldReadOnlyIssue",
+    "GlobalScopeMinimizationIssue",
+    "HiddenGlobalCouplingIssue",
+    "HighFanInOutIssue",
+    "ImplicitLatchIssue",
+    "IssueKind",
+    "MagicNumberIssue",
+    "MinMaxMappingMismatchIssue",
+    "NestedRecordCandidateIssue",
+    "NeverReadIssue",
+    "ProcedureStatusIssue",
+    "ReadBeforeWriteIssue",
+    "ReadOnlyNonConstIssue",
+    "RecordComponentOrderIssue",
+    "RelatedVariableIssue",
+    "ResetContaminationIssue",
+    "SecureCandidateIssue",
+    "ShadowingIssue",
+    "StringMappingMismatchIssue",
+    "UnknownParameterTargetIssue",
+    "UnsafeBooleanDefaultIssue",
+    "UnusedDatatypeFieldIssue",
+    "UnusedDatatypeIssue",
+    "UnusedIssue",
+    "VariableIssue",
+    "VariableIssueBase",
+    "VariableSectionRenderer",
+    "VariableTargetIssue",
+    "VariablesReport",
+    "WriteWithoutEffectIssue",
+]
 
 DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED,
     IssueKind.READ_ONLY_NON_CONST,
     IssueKind.NEVER_READ,
     IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
-    IssueKind.UNKNOWN_PARAMETER_TARGET,
     IssueKind.STRING_MAPPING_MISMATCH,
     IssueKind.DATATYPE_DUPLICATION,
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
     IssueKind.MAGIC_NUMBER,
     IssueKind.RESET_CONTAMINATION,
+    IssueKind.SECURE_CANDIDATE,
     IssueKind.SHADOWING,
     IssueKind.UNSAFE_BOOLEAN_DEFAULT,
     IssueKind.READ_BEFORE_WRITE,
 )
 
+# Field verdicts are global: a field is reported only when no loaded unit
+# reads or writes it. Per-instance read-only and never-read verdicts are not
+# part of this analyzer.
 DATATYPE_FIELD_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.UNUSED_DATATYPE,
     IssueKind.UNUSED_DATATYPE_FIELD,
+)
+
+# Retired per-instance field verdicts. They are no longer produced, but the
+# kinds and their report sections stay known so a stored run still renders.
+RETIRED_PER_INSTANCE_FIELD_KINDS: tuple[IssueKind, ...] = (
     IssueKind.FIELD_READ_ONLY,
     IssueKind.FIELD_NEVER_READ,
 )
@@ -52,6 +141,7 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
 ALL_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     *DEFAULT_VARIABLE_ANALYSIS_KINDS,
     *DATATYPE_FIELD_ANALYSIS_KINDS,
+    *RETIRED_PER_INSTANCE_FIELD_KINDS,
     *LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS,
 )
 
@@ -74,12 +164,13 @@ def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
     return {}
 
 
-def _phase_timings_factory() -> list[dict[str, str | float]]:
+def _phase_timings_factory() -> list[PhaseTiming]:
     return []
 
 
 SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UNUSED: "Unused variables",
+    IssueKind.UNUSED_DATATYPE: "Unused datatypes",
     IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
     IssueKind.FIELD_READ_ONLY: "Read-only fields",
     IssueKind.READ_ONLY_NON_CONST: "Read-only but not Const variables",
@@ -93,7 +184,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.HIGH_FAN_IN_OUT: "High fan-in or fan-out variables",
     IssueKind.UNKNOWN_PARAMETER_TARGET: "Unknown parameter mapping targets",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
-    IssueKind.DATATYPE_DUPLICATION: "Duplicated complex datatypes (should be RECORD)",
+    IssueKind.DATATYPE_DUPLICATION: "Extractable nested record candidates",
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
     IssueKind.MAGIC_NUMBER: "Magic numbers in code",
     IssueKind.SHADOWING: "Variable shadowing",
@@ -101,33 +192,40 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.READ_BEFORE_WRITE: "Read before write",
     IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
+    IssueKind.SECURE_CANDIDATE: "Secure candidates (values used by transitions)",
 }
 
-_UNUSED_VARIABLE_SECTION_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.UNUSED,
-        IssueKind.FIELD_NEVER_READ,
-        IssueKind.NEVER_READ,
-    }
-)
+VariableSectionRenderer = Callable[[list[str], str, list[VariableIssue]], None]
 
-_VARIABLE_ISSUE_LIST_SECTION_KINDS: frozenset[IssueKind] = frozenset(
-    {
-        IssueKind.FIELD_READ_ONLY,
-        IssueKind.READ_ONLY_NON_CONST,
-        IssueKind.PROCEDURE_STATUS,
-        IssueKind.WRITE_WITHOUT_EFFECT,
-        IssueKind.GLOBAL_SCOPE_MINIMIZATION,
-        IssueKind.HIDDEN_GLOBAL_COUPLING,
-        IssueKind.HIGH_FAN_IN_OUT,
-        IssueKind.UNKNOWN_PARAMETER_TARGET,
-        IssueKind.SHADOWING,
-        IssueKind.UNSAFE_BOOLEAN_DEFAULT,
-        IssueKind.READ_BEFORE_WRITE,
-        IssueKind.RESET_CONTAMINATION,
-        IssueKind.IMPLICIT_LATCH,
-    }
-)
+# Every issue kind has exactly one section renderer. A kind missing here is a
+# report defect, so ``_append_section`` indexes this table directly instead of
+# falling through to a silently empty section.
+_SECTION_RENDERERS: dict[IssueKind, VariableSectionRenderer] = {
+    IssueKind.UNUSED: append_variable_issue_list,
+    IssueKind.UNUSED_DATATYPE: append_unused_datatypes,
+    IssueKind.UNUSED_DATATYPE_FIELD: append_unused_datatype_fields,
+    IssueKind.FIELD_READ_ONLY: append_variable_issue_list,
+    IssueKind.READ_ONLY_NON_CONST: append_variable_issue_list,
+    IssueKind.PROCEDURE_STATUS: append_variable_issue_list,
+    IssueKind.FIELD_NEVER_READ: append_variable_issue_list,
+    IssueKind.NEVER_READ: append_variable_issue_list,
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: append_record_component_order_dependence,
+    IssueKind.WRITE_WITHOUT_EFFECT: append_variable_issue_list,
+    IssueKind.GLOBAL_SCOPE_MINIMIZATION: append_variable_issue_list,
+    IssueKind.HIDDEN_GLOBAL_COUPLING: append_variable_issue_list,
+    IssueKind.HIGH_FAN_IN_OUT: append_variable_issue_list,
+    IssueKind.UNKNOWN_PARAMETER_TARGET: append_variable_issue_list,
+    IssueKind.STRING_MAPPING_MISMATCH: append_string_mapping_mismatch,
+    IssueKind.DATATYPE_DUPLICATION: append_datatype_duplication,
+    IssueKind.MIN_MAX_MAPPING_MISMATCH: append_min_max_mapping_mismatch,
+    IssueKind.MAGIC_NUMBER: append_magic_numbers,
+    IssueKind.SHADOWING: append_variable_issue_list,
+    IssueKind.UNSAFE_BOOLEAN_DEFAULT: append_variable_issue_list,
+    IssueKind.READ_BEFORE_WRITE: append_variable_issue_list,
+    IssueKind.RESET_CONTAMINATION: append_variable_issue_list,
+    IssueKind.IMPLICIT_LATCH: append_variable_issue_list,
+    IssueKind.SECURE_CANDIDATE: append_variable_issue_list,
+}
 
 
 @dataclass
@@ -142,13 +240,31 @@ class VariablesReport:
     include_empty_sections: bool = False
     analyzed_version: str | None = None
     last_changed: str | None = None
-    phase_timings: list[dict[str, str | float]] = field(default_factory=_phase_timings_factory)
+    phase_timings: list[PhaseTiming] = field(default_factory=_phase_timings_factory)
 
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):
             self.visible_kinds = frozenset(self.visible_kinds)
         if self.selected_issue_kinds is not None and not isinstance(self.selected_issue_kinds, frozenset):
             self.selected_issue_kinds = frozenset(self.selected_issue_kinds)
+
+    def cache_payload(self) -> VariablesReport:
+        """The durable form of this report: its findings, not its access evidence.
+
+        ``accesses_by_definition_key`` and the effect-flow maps are derived from the
+        parsed ASTs of the run that produced them. They are two orders of magnitude
+        larger than the findings, they are regenerated by the analyzers that consume
+        them, and no reader restores them from a cache entry. Persisting them made a
+        cache hit cost seconds of unpickling for data nothing asked for.
+        """
+        if not (self.accesses_by_definition_key or self.effect_flow_edges or self.effect_flow_display_names):
+            return self
+        return replace(
+            self,
+            accesses_by_definition_key=_accesses_by_definition_key_factory(),
+            effect_flow_edges=_effect_flow_edges_factory(),
+            effect_flow_display_names=_effect_flow_display_names_factory(),
+        )
 
     @property
     def name(self) -> str:
@@ -157,6 +273,10 @@ class VariablesReport:
     @property
     def unused(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.UNUSED]
+
+    @property
+    def unused_datatypes(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.UNUSED_DATATYPE]
 
     @property
     def unused_datatype_fields(self) -> list[VariableIssue]:
@@ -256,20 +376,22 @@ class VariablesReport:
         selected_kinds = self._ordered_selected_issue_kinds()
         if not selected_kinds:
             return None
-        return f"Selected issue kinds: {', '.join(kind.value for kind in selected_kinds)}"
+        return f"Selected issue kinds: {', '.join(SECTION_TITLES[kind] for kind in selected_kinds)}"
 
     def _selected_no_issues_message(self) -> str:
         selected_kinds = self._ordered_selected_issue_kinds()
         if len(selected_kinds) == 1:
             return f"No {SECTION_TITLES[selected_kinds[0]].lower()} found."
         if selected_kinds:
-            joined = ", ".join(kind.value for kind in selected_kinds)
+            joined = ", ".join(SECTION_TITLES[kind] for kind in selected_kinds)
             return f"No issues found for selected issue kinds: {joined}."
         return "No issues found."
 
     def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
         if kind is IssueKind.UNUSED:
             return self.unused
+        if kind is IssueKind.UNUSED_DATATYPE:
+            return self.unused_datatypes
         if kind is IssueKind.UNUSED_DATATYPE_FIELD:
             return self.unused_datatype_fields
         if kind is IssueKind.FIELD_READ_ONLY:
@@ -315,32 +437,10 @@ class VariablesReport:
         return []
 
     def _append_section(self, lines: list[str], kind: IssueKind) -> None:
-        title = SECTION_TITLES[kind]
-        issues = self._issues_for_kind(kind)
-        if kind in _UNUSED_VARIABLE_SECTION_KINDS:
-            append_unused_variable_issue_list(lines, title, issues)
-            return
-        if kind is IssueKind.UNUSED_DATATYPE_FIELD:
-            append_unused_datatype_fields(lines, title, issues)
-            return
-        if kind in _VARIABLE_ISSUE_LIST_SECTION_KINDS:
-            append_variable_issue_list(lines, title, issues)
-            return
-        if kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE:
-            append_record_component_order_dependence(lines, title, issues)
-            return
-        if kind is IssueKind.STRING_MAPPING_MISMATCH:
-            append_string_mapping_mismatch(lines, title, issues)
-            return
-        if kind is IssueKind.DATATYPE_DUPLICATION:
-            append_datatype_duplication(lines, title, issues)
-            return
-        if kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
-            append_min_max_mapping_mismatch(lines, title, issues)
-            return
-        if kind is IssueKind.MAGIC_NUMBER:
-            append_magic_numbers(lines, title, issues)
-            return
+        # Direct indexing is deliberate: a new issue kind without a renderer is
+        # a report defect, not a section that silently disappears.
+        renderer = _SECTION_RENDERERS[kind]
+        renderer(lines, SECTION_TITLES[kind], self._issues_for_kind(kind))
 
     def _display_issue_count(self, kind: IssueKind) -> int:
         issues = self._issues_for_kind(kind)
@@ -377,7 +477,7 @@ class VariablesReport:
             )
             return "\n".join(lines)
 
-        status = "issues" if self.issues else "ok"
+        status = "issues" if self._display_total_issue_count(summary_kinds) else "ok"
         lines = [
             "Report: Variable issues",
             f"Target: {self.basepicture_name}",
@@ -397,7 +497,4 @@ class VariablesReport:
         for kind in summary_kinds:
             lines.append("")
             self._append_section(lines, kind)
-        if not self.issues and self.selected_issue_kinds is not None:
-            lines.append("")
-            lines.append(self._selected_no_issues_message())
         return "\n".join(lines)

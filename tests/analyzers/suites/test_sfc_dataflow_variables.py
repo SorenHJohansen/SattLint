@@ -1,7 +1,45 @@
 from sattline_parser.ast import MappingSource
-from sattline_parser.models.expressions import Assignment, FuncCall, FuncCallStmt, VarRef
+from sattline_parser.models.ast_model import (
+    Assignment,
+    BasePicture,
+    Equation,
+    GraphObject,
+    ModuleCode,
+    ModuleDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    ScalarDatatype,
+    Sequence,
+    SFCCodeBlocks,
+    SFCParallel,
+    SFCStep,
+    Variable,
+)
+from sattline_parser.models.expressions import FuncCall, FuncCallStmt, VarRef
 
-from tests.helpers.analyzers_suites_support import *
+from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.same_cycle import analyze_same_cycle
+from sattlint.analyzers.variables import (
+    VariablesAnalyzer,
+)
+from sattlint.models._variable_issues import DECLARATION_ROLE_LOCAL_VARIABLE
+from sattlint.reporting.variables_report import (
+    NeverReadIssue,
+    ProcedureStatusIssue,
+    WriteWithoutEffectIssue,
+)
+from tests.helpers.variable_test_support import (
+    hdr as _hdr,
+)
+from tests.helpers.variable_test_support import (
+    state_ref as _state_ref,
+)
+from tests.helpers.variable_test_support import (
+    status_bridge_typedef as _status_bridge_typedef,
+)
+from tests.helpers.variable_test_support import (
+    varref as _varref,
+)
 
 
 def test_sfc_parallel_write_race_detected_for_same_variable():
@@ -33,8 +71,8 @@ def test_sfc_parallel_write_race_detected_for_same_variable():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        localvariables=[Variable(name="Output", datatype=ScalarDatatype.INTEGER)],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_same_cycle(bp)
@@ -67,10 +105,10 @@ def test_dataflow_flags_implicit_same_scan_state_read_in_sequence_step():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Flag", datatype=Simple_DataType.BOOLEAN, state=True),
-            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Flag", datatype=ScalarDatatype.BOOLEAN, state=True),
+            Variable(name="Output", datatype=ScalarDatatype.BOOLEAN),
         ],
-        modulecodes=[ModuleCode(sequences=[sequence], equationblocks=[])],
+        modulecode=ModuleCode(sequences=[sequence], equationblocks=[]),
     )
 
     report = analyze_dataflow(bp)
@@ -87,42 +125,38 @@ def test_variables_analyzer_flags_ignored_procedure_status_output():
     bp = BasePicture(
         header=_hdr("Root"),
         localvariables=[
-            Variable(name="Source", datatype=Simple_DataType.INTEGER),
-            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
-            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Destination", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Status", datatype=ScalarDatatype.INTEGER),
         ],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[
-                            FuncCallStmt(
-                                call=FuncCall(
-                                    name="CopyVariable",
-                                    args=(_varref("Source"), _varref("Destination"), _varref("Status")),
-                                )
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        FuncCallStmt(
+                            call=FuncCall(
+                                name="CopyVariable",
+                                args=(_varref("Source"), _varref("Destination"), _varref("Status")),
                             )
-                        ],
-                    )
-                ]
-            )
-        ],
+                        )
+                    ],
+                )
+            ]
+        ),
     )
 
     issues = VariablesAnalyzer(bp).run()
 
-    status_issues = [issue for issue in issues if issue.kind is IssueKind.PROCEDURE_STATUS]
+    status_issues = [issue for issue in issues if isinstance(issue, ProcedureStatusIssue)]
     assert len(status_issues) == 1
-    assert status_issues[0].variable is not None
     assert status_issues[0].variable.name == "Status"
+    assert status_issues[0].declaration_role == DECLARATION_ROLE_LOCAL_VARIABLE
     assert "ignored" in (status_issues[0].role or "")
     assert not any(
-        issue.kind in {IssueKind.NEVER_READ, IssueKind.WRITE_WITHOUT_EFFECT}
-        and issue.variable is not None
-        and issue.variable.name == "Status"
+        isinstance(issue, NeverReadIssue | WriteWithoutEffectIssue) and issue.variable.name == "Status"
         for issue in issues
     )
 
@@ -144,23 +178,17 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
     bp = BasePicture(
         header=_hdr("Root"),
         moduletype_defs=[_status_bridge_typedef()],
-        localvariables=[Variable(name="StatusSink", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="StatusSink", datatype=ScalarDatatype.INTEGER)],
         submodules=[bridge],
-        moduledefs=[
-            ModuleDef(
-                graph_objects=[GraphObject(type="TextObject", properties={"text_vars": [VarRef(name="StatusSink")]})]
-            )
-        ],
+        moduledef=ModuleDef(
+            graph_objects=[GraphObject(type="TextObject", properties={"text_vars": [VarRef(name="StatusSink")]})]
+        ),
     )
 
     issues = VariablesAnalyzer(bp).run()
 
     status_issues = [
-        issue
-        for issue in issues
-        if issue.kind is IssueKind.PROCEDURE_STATUS
-        and issue.variable is not None
-        and issue.variable.name == "StatusSink"
+        issue for issue in issues if isinstance(issue, ProcedureStatusIssue) and issue.variable.name == "StatusSink"
     ]
     assert len(status_issues) == 1
     assert "UI" in (status_issues[0].role or "")
@@ -184,29 +212,26 @@ def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read
         header=_hdr("Root"),
         moduletype_defs=[_status_bridge_typedef()],
         localvariables=[
-            Variable(name="StatusSink", datatype=Simple_DataType.INTEGER),
-            Variable(name="Handled", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="StatusSink", datatype=ScalarDatatype.INTEGER),
+            Variable(name="Handled", datatype=ScalarDatatype.BOOLEAN),
         ],
         submodules=[bridge],
-        modulecodes=[
-            ModuleCode(
-                equationblocks=[
-                    Equation(
-                        name="Main",
-                        position=(0.0, 0.0),
-                        size=(1.0, 1.0),
-                        code=[Assignment(target=_varref("Handled"), value=_varref("StatusSink"))],
-                    )
-                ]
-            )
-        ],
+        modulecode=ModuleCode(
+            equationblocks=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[Assignment(target=_varref("Handled"), value=_varref("StatusSink"))],
+                )
+            ]
+        ),
     )
 
     issues = VariablesAnalyzer(bp).run()
 
     assert not any(
-        issue.variable is not None
+        isinstance(issue, ProcedureStatusIssue | WriteWithoutEffectIssue | NeverReadIssue)
         and issue.variable.name == "StatusSink"
-        and issue.kind in {IssueKind.PROCEDURE_STATUS, IssueKind.WRITE_WITHOUT_EFFECT, IssueKind.NEVER_READ}
         for issue in issues
     )

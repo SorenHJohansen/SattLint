@@ -9,11 +9,13 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Simple_DataType, SingleModule, Variable
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ScalarDatatype, SingleModule, Variable
 
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind
 from sattlint.analyzers.variables import _variables_execution as variables_execution_module
+from sattlint.core.timings import PhaseTiming
+from sattlint.reporting.variables_report import FieldPathVariableIssue, VariableIssue, VariableTargetIssue
 from tests.helpers.variable_test_support import UsageStub as _UsageStub
 from tests.helpers.variable_test_support import hdr as _hdr
 from tests.helpers.variable_test_support import ns as _ns
@@ -47,19 +49,20 @@ def _raise_should_not_run(*_args: object, **_kwargs: object) -> None:
     raise AssertionError("should not run")
 
 
-def _append_issue(
-    issues: list[_IssueTuple],
-    kind: IssueKind,
-    path: list[str],
-    variable: Variable,
-    role: str,
-    field_path: str | None = None,
-) -> None:
-    issues.append((kind, tuple(path), variable.name, role, field_path))
+def _capture_issue(issues: list[_IssueTuple], issue: VariableIssue) -> None:
+    issues.append(
+        (
+            issue.kind,
+            tuple(issue.module_path),
+            issue.variable.name if isinstance(issue, VariableTargetIssue) else "",
+            issue.role or "",
+            issue.field_path if isinstance(issue, FieldPathVariableIssue) else None,
+        )
+    )
 
 
 def _append_phase_timing(
-    phase_timings: list[dict[str, str | float]],
+    phase_timings: list[PhaseTiming],
     phase: str,
     _started_at: float,
     ended_at: float | None = None,
@@ -67,7 +70,7 @@ def _append_phase_timing(
     duration_ms: float,
 ) -> None:
     del ended_at
-    phase_timings.append({"phase": phase, "duration_ms": duration_ms})
+    phase_timings.append(PhaseTiming(phase=phase, duration_ms=duration_ms))
 
 
 def _run_phase(helper: Any, phase: str, callback: Callable[[], object]) -> None:
@@ -75,15 +78,15 @@ def _run_phase(helper: Any, phase: str, callback: Callable[[], object]) -> None:
 
 
 def test_variables_execution_collect_basepicture_issues_covers_procedure_status_branch() -> None:
-    procedure_var = Variable(name="ProcedureVar", datatype=Simple_DataType.INTEGER)
+    procedure_var = Variable(name="ProcedureVar", datatype=ScalarDatatype.INTEGER)
     bp = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[procedure_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -98,20 +101,15 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
             return ("procedure-status", "Status")
         return None
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
+        _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_procedure_status_issue,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,
@@ -124,35 +122,30 @@ def test_variables_execution_collect_basepicture_issues_covers_procedure_status_
 
 
 def test_variables_execution_collect_basepicture_issues_covers_write_without_effect_branch() -> None:
-    effect_var = Variable(name="EffectVar", datatype=Simple_DataType.INTEGER)
+    effect_var = Variable(name="EffectVar", datatype=ScalarDatatype.INTEGER)
     bp = BasePicture(
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[],
         localvariables=[effect_var],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
     def _get_usage(variable: Variable) -> _UsageStub:
         return _UsageStub(read=True, written=True) if variable is effect_var else _UsageStub()
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
+        _selected_issue_kinds=None,
         _get_usage=_get_usage,
         _procedure_status_issue=_noop,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,
@@ -165,15 +158,14 @@ def test_variables_execution_collect_basepicture_issues_covers_write_without_eff
 
 
 def test_variables_execution_collect_typedef_issues_covers_moduleparameter_procedure_status_branch() -> None:
-    procedure_param = Variable(name="ProcedureParam", datatype=Simple_DataType.INTEGER)
+    procedure_param = Variable(name="ProcedureParam", datatype=ScalarDatatype.INTEGER)
     moduletype = ModuleTypeDef(
         name="WorkerType",
         moduleparameters=[procedure_param],
         localvariables=[],
         submodules=[],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     bp = BasePicture(
         header=_hdr("Root"),
@@ -181,8 +173,8 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         moduletype_defs=[moduletype],
         localvariables=[],
         submodules=[],
-        modulecodes=[],
-        moduledefs=[],
+        modulecode=None,
+        moduledef=None,
     )
     issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
 
@@ -197,25 +189,20 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
             return ("procedure-status", "Status")
         return None
 
-    def _add_issue(
-        kind: IssueKind,
-        path: list[str],
-        variable: Variable,
-        role: str,
-        field_path: str | None = None,
-    ) -> None:
-        _append_issue(issues, kind, path, variable, role, field_path)
+    def _append_issue(issue: VariableIssue) -> None:
+        _capture_issue(issues, issue)
 
     helper: Any = _ns(
         bp=bp,
         _limit_to_module_path=None,
+        _selected_issue_kinds=None,
         _update_status=_noop,
         _analyze_typedef=_noop,
         _compute_effective_output_keys=_empty_effective_output_keys,
         _is_from_root_origin=_always_root_origin,
         _get_usage=_get_usage,
         _procedure_status_issue=_procedure_status_issue,
-        _add_issue=_add_issue,
+        _append_issue=_append_issue,
         _has_output_effect=_returns_false,
         _has_procedure_status_binding=_returns_false,
         _is_const_candidate=_returns_true,
@@ -267,12 +254,11 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
 
     moduletype = ModuleTypeDef(
         name="WorkerType",
-        moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+        moduleparameters=[Variable(name="Param", datatype=ScalarDatatype.INTEGER)],
         localvariables=[],
         submodules=[SingleModule.__new__(SingleModule)],
-        moduledefs=[],
-        modulecodes=[],
-        parametermappings=[],
+        moduledef=None,
+        modulecode=None,
     )
     analyze_calls: list[str] = []
     collected_modules: list[object] = []
@@ -292,8 +278,8 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
             moduletype_defs=[moduletype],
             localvariables=[],
             submodules=[],
-            modulecodes=[],
-            moduledefs=[],
+            modulecode=None,
+            moduledef=None,
         ),
         _update_status=_noop,
         _analyze_typedef=_analyze_typedef,
@@ -308,7 +294,7 @@ def test_variables_execution_dependency_and_typedef_early_returns_cover_remainin
 
 
 def test_variables_execution_run_records_phase_timings() -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],
@@ -324,6 +310,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
         _phase_timings=phase_timings,
         _alias_links=[],
         _analysis_warnings=[],
+        _selected_issue_kinds=None,
         bp=_ns(header=_ns(name="Root"), localvariables=[], submodules=[], moduletype_defs=[]),
         debug=False,
         _trace=_noop,
@@ -352,7 +339,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
 
     variables_execution_module.run(helper)
 
-    assert [phase["phase"] for phase in helper._phase_timings] == [
+    assert [phase.phase for phase in helper._phase_timings] == [
         "root-traversal",
         "display-binding-scan",
         "dependency-typedef-usage",
@@ -365,7 +352,7 @@ def test_variables_execution_run_records_phase_timings() -> None:
 
 
 def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],
@@ -412,7 +399,7 @@ def test_variables_execution_run_skips_irrelevant_phases_for_unused_only() -> No
 
     variables_execution_module.run(helper)
 
-    assert [phase["phase"] for phase in helper._phase_timings] == [
+    assert [phase.phase for phase in helper._phase_timings] == [
         "root-traversal",
         "display-binding-scan",
         "alias-propagation",
@@ -425,7 +412,7 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
     class _FakeAnalyzer:
         def __init__(self, *args: object, **kwargs: object) -> None:
             self.selected_issue_kinds = kwargs.get("selected_issue_kinds")
-            self.phase_timings = [{"phase": "root-traversal", "duration_ms": 12.5}]
+            self.phase_timings = [PhaseTiming(phase="root-traversal", duration_ms=12.5)]
             self.access_graph = SimpleNamespace(by_path_key={})
             self.effect_flow_edges = {}
             self.effect_flow_display_names = {}
@@ -444,8 +431,8 @@ def test_analyze_variables_includes_phase_timings_from_analyzer(monkeypatch: pyt
     )
 
     assert report.phase_timings == [
-        {"phase": "analyzer-init", "duration_ms": 25.0},
-        {"phase": "root-traversal", "duration_ms": 12.5},
+        PhaseTiming(phase="analyzer-init", duration_ms=25.0),
+        PhaseTiming(phase="root-traversal", duration_ms=12.5),
     ]
     assert report.selected_issue_kinds == frozenset({IssueKind.UNUSED})
     assert report.visible_kinds == frozenset({IssueKind.UNUSED})
@@ -481,7 +468,7 @@ def test_analyze_variables_includes_access_and_effect_artifacts_from_analyzer(
 def test_variables_execution_run_debug_logs_phase_counts_and_aggregated_unresolved_lookups(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    phase_timings: list[dict[str, str | float]] = []
+    phase_timings: list[PhaseTiming] = []
 
     helper: Any = _ns(
         _issues=[],
