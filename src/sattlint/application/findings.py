@@ -345,36 +345,20 @@ def _data_int(data: Mapping[str, object], *keys: str) -> int | None:
     return None
 
 
-def _attribute_text(item: object, *names: str) -> str | None:
-    for name in names:
-        text = optional_text(getattr(item, name, None))
-        if text is not None:
-            return text
-    return None
-
-
-def _attribute_int(item: object, name: str) -> int | None:
-    return _positive_int(getattr(item, name, None))
-
-
-def _span_int(item: object, name: str) -> int | None:
-    for span_name in ("literal_span", "span"):
-        span = getattr(item, span_name, None)
-        if span is None:
-            continue
-        value = _positive_int(getattr(span, name, None))
-        if value is not None:
-            return value
-    return None
+def _literal_span_int(item: object, name: str) -> int | None:
+    span = getattr(item, "literal_span", None)
+    if span is None:
+        return None
+    return _positive_int(getattr(span, name, None))
 
 
 def _issue_location(item: object) -> _IssueLocation:
     """Read the source location an issue carries, without inventing positions.
 
     Sources are the issue's ``data`` mapping (``file``/``path``,
-    ``line``/``start_line``, ``column``/``start_col``, ``end_line``), the issue's
-    own attributes, and a ``SourceSpan``-like ``literal_span`` or ``span``. A
-    value the issue does not report stays ``None``.
+    ``line``/``start_line``, ``column``/``start_col``, ``end_line``) and the
+    ``literal_span`` a magic-number issue carries. A value the issue does not
+    report stays ``None``.
     """
     data = _raw_issue_data(item) or {}
     file = _data_text(data, "file")
@@ -382,21 +366,13 @@ def _issue_location(item: object) -> _IssueLocation:
         path_text = _data_text(data, "path")
         if path_text is not None and _looks_like_source_path(path_text):
             file = path_text
-    if file is None:
-        file = _attribute_text(item, "file", "file_path")
     line = _data_int(data, "line", "start_line")
     if line is None:
-        line = _attribute_int(item, "line")
-    if line is None:
-        line = _span_int(item, "line")
+        line = _literal_span_int(item, "line")
     column = _data_int(data, "column", "start_col")
     if column is None:
-        column = _attribute_int(item, "column")
-    if column is None:
-        column = _span_int(item, "column")
+        column = _literal_span_int(item, "column")
     end_line = _data_int(data, "end_line")
-    if end_line is None:
-        end_line = _attribute_int(item, "end_line")
     return _IssueLocation(file=file, line=line, column=column, end_line=end_line)
 
 

@@ -13,7 +13,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - Findings can carry a source location. JSON output gains optional `file`,
   `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
   view show the location when an analyzer records one. Missing locations stay
-  `null` instead of being invented.
+  `null` instead of being invented. The headless CLI JSON contract moves from
+  `schema_version` 1 to 2 to carry the added finding fields.
 - Findings carry a severity of `error`, `warning`, or `info`, assigned per
   finding kind so correctness defects and style advice stay apart. `analyze`
   and `findings` add a `by_severity` count to their summaries, text lines gain a
@@ -28,6 +29,8 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   entries, and `baseline diff` reports the comparison without writing. Finding
   identities now use an unambiguous encoding, so delimiter-like text in a
   finding cannot collide with another finding.
+- The checked-in `.sattlint-baseline.json` has its own `schema_version: 1`,
+  separate from the CLI JSON schema.
 
 ## [2026.11.6] - 2026-11-26
 

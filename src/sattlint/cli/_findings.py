@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 from ..analyzers.catalog import canonicalize_analyzer_keys, get_default_analyzer_catalog
-from ..application.findings import AnalysisFinding, Severity, finding_data_key
+from ..application.findings import AnalysisFinding, Severity, finding_data_key, finding_severity
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
@@ -28,8 +28,13 @@ def analyzer_default_severity(analyzer_key: str) -> Severity:
 
 
 def effective_finding_severity(finding: AnalysisFinding, analyzer_key: str) -> Severity:
-    """The finding's own severity, else its analyzer's delivery default."""
-    return finding.severity or analyzer_default_severity(analyzer_key)
+    """The finding's saved severity, its kind severity, or its analyzer default.
+
+    Runs stored before severity was recorded carry ``None``. Resolving the kind
+    first keeps those historical findings consistent with a fresh run instead
+    of widening them to the analyzer's broader default.
+    """
+    return finding.severity or finding_severity(finding.kind) or analyzer_default_severity(analyzer_key)
 
 
 @dataclass(frozen=True, slots=True)

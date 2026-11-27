@@ -142,6 +142,10 @@ baseline first, and the exit code depends only on the added and changed entries:
 Stale, moved, and unchanged entries never fail. A severity decrease is not a
 change. Without `--baseline`, the previous table applies unchanged.
 
+A relative `--baseline` path is resolved against the project root, so
+`--project sub/app.slproj --baseline .sattlint-baseline.json` reads the file next
+to the project. An absolute path is used as given.
+
 `--baseline` is the CI gate. Review new findings, accept the known ones with
 `sattlint baseline update`, and commit the baseline file. The `findings` command
 is a query only and never applies the baseline.
@@ -229,9 +233,11 @@ Rules:
   Repeated identical findings collapse into one entry with an occurrence count.
 - `--limit` applies after filtering and before grouping.
 - Each finding line starts with its severity tag, for example `[warning]`, then
-  its source location when the analyzer knows one, for example
-  `[warning] programs/Demo.s:12:4`. A finding with only a line, or no location,
-  stays readable without placeholders.
+  the source location the analyzer recorded when it knows one, for example
+  `[warning] /work/app/programs/Demo.s:12:4`. The CLI does not rewrite that path
+  to a repository-relative form; it shows what the analyzer recorded. The
+  baseline file stores a project-relative file instead. A finding with only a
+  line, or no location, stays readable without placeholders.
 - `latest` resolves within the project: discovery from the current directory,
   or an explicit `--project`. A run recorded for another project is never
   returned.
@@ -328,16 +334,18 @@ sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-
 - Unchanged: same identity, same severity, same file, and same line.
 - Moved: same identity with a different file or line, or an identity that
   disappeared while exactly one unmatched baseline entry shares its analyzer,
-  kind, module path, and message. A moved entry is reported, never fatal.
+  kind, module path, and message. The secondary match ignores a leading source
+  position such as `Program.icf:12: ` or `Demo.s:12-14 `, so a line shift is
+  still recognized as the same site. A moved entry is reported, never fatal.
 - Changed: same identity with a higher severity. This is the only change that
   can fail a run.
 - Added: a current finding with no identity match and no unique secondary
   match.
 - Stale: a baseline entry with no current match. Stale entries are advisory and
   are pruned by `baseline update`.
-- If several baseline entries share the secondary fields, the current finding
-  is reported as added and the baseline entries as stale. The tool never
-  guesses.
+- If several baseline entries or several current findings share the secondary
+  fields, the current findings are reported as added and the baseline entries as
+  stale. The tool never guesses.
 
 A severity decrease is not a change. It is reported as moved when the site also
 moved, otherwise as unchanged.

@@ -19,6 +19,8 @@ code.
 | `sattlint analyze` | Run analyzers and report findings |
 | `sattlint findings` | Query findings from a stored run |
 | `sattlint show` | Show one finding by its stable ID |
+| `sattlint baseline update` | Accept the current findings as the checked-in baseline |
+| `sattlint baseline diff` | Compare a stored run with the baseline without writing it |
 
 `sattlint --version` prints the package version.
 
@@ -72,7 +74,8 @@ Runs the selected analyzers against the project targets and reports findings.
 | `--analyzer KEY` | Run only this analyzer; repeatable, overrides the project's `analyzers` list |
 | `--target NAME` | Analyze only this target; repeatable |
 | `--module PREFIX` | Report only findings at or below this module path; repeatable |
-| `--fail-on {any,none}` | Exit 1 when findings exist, or always exit 0; default `any` |
+| `--fail-on {error,warning,any,none}` | Exit 1 at or above this severity, or always exit 0; default `any` |
+| `--baseline PATH` | Compare with a checked-in baseline and fail only on new or more severe findings |
 | `--no-cache` | Skip the analysis cache for this run |
 | `--no-save` | Do not store the run in run history |
 | `--format {json,ndjson,text}` | Output format; default `text` |
@@ -83,11 +86,20 @@ Runs the selected analyzers against the project targets and reports findings.
 sattlint analyze --project app.slproj
 sattlint analyze --project app.slproj --analyzer variables --format ndjson
 sattlint analyze --project app.slproj --module Root.A --fail-on none --format json
+sattlint analyze --project app.slproj --fail-on warning
 sattlint analyze --project app.slproj --no-cache --no-save
 ```
 
+Every finding carries a severity of `error`, `warning`, or `info`. A proven
+defect is `error`, a risky pattern or uncertain heuristic is `warning`, and
+naming, comment, complexity, or design advice is `info`. The recommended CI
+setting is `--fail-on warning`, which fails on `warning` and `error` findings
+while leaving `info` findings visible. Use `--fail-on error` for a strict
+correctness gate, or `--fail-on none` to report without failing.
+
 By default the run is stored in run history and its ID is part of the JSON
-payload, so later `findings` and `show` calls can refer to it.
+payload, so later `findings` and `show` calls can refer to it. Findings can also
+carry a source file and line, shown in text, Markdown, and JSON output.
 
 ### Module attribution
 
@@ -152,6 +164,9 @@ sattlint show 7d3f9c1a --format markdown
   `jq`.
 - Text and Markdown output use human-readable finding labels. Machine IDs stay
   in JSON and NDJSON.
+- Finding payloads carry `severity` and optional `file`, `line`, `column`, and
+  `end_line` fields. Text finding lines start with a severity tag such as
+  `[warning]`, and `show` reports the severity and location.
 - Finding IDs are stable across runs for the same finding.
 - Data goes to stdout. Diagnostics and progress go to stderr, and `--quiet`
   suppresses the progress portion.
@@ -161,15 +176,22 @@ sattlint show 7d3f9c1a --format markdown
 
 | Code | Meaning |
 |---|---|
-| `0` | Success, or no blocking findings |
-| `1` | Findings were reported and `--fail-on any` is in effect |
+| `0` | Success, or no finding at or above the `--fail-on` threshold |
+| `1` | At least one filtered finding is at or above the `--fail-on` threshold |
 | `2` | Usage, configuration, project, or target-loading error |
 | `3` | Internal error |
 | `130` | Interrupted |
 
-A CI job that treats findings as failures can rely on the default `--fail-on
-any` and skip parsing the output. A job that reports findings but does not fail
-on them should pass `--fail-on none` and inspect the JSON payload.
+A CI job that treats every finding as a failure can rely on the default
+`--fail-on any` and skip parsing the output. The recommended CI gate is
+`--fail-on warning`. A job that reports findings but does not fail on them
+should pass `--fail-on none` and inspect the JSON payload.
+
+`analyze --baseline` is the stricter gate for an existing project: only findings
+that are new or more severe than the checked-in baseline can fail the run.
+Review new findings, accept the known ones with `sattlint baseline update`, and
+commit the baseline file. The `findings` command is a query only and never
+applies the baseline.
 
 ## End-to-end example
 
@@ -177,8 +199,8 @@ on them should pass `--fail-on none` and inspect the JSON payload.
 # 1. Confirm the project resolves as expected.
 sattlint project show --project app.slproj --format json
 
-# 2. Run every analyzer and fail the job when findings exist.
-sattlint analyze --project app.slproj --format json --output findings.json
+# 2. Run every analyzer and fail the job at the recommended threshold.
+sattlint analyze --project app.slproj --fail-on warning --format json --output findings.json
 
 # 3. Keep the run for later queries, then inspect one module.
 sattlint findings --run latest --module Root.A --group-by module --format json

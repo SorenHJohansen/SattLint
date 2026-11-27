@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -18,7 +19,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal, cast
 from uuid import uuid4
 
-from ..application.findings import Severity
+from ..models.severity import SEVERITIES, Severity
 
 BASELINE_SCHEMA_VERSION = 1
 BASELINE_FILENAME = ".sattlint-baseline.json"
@@ -27,11 +28,15 @@ type BaselineStatus = Literal["unchanged", "moved", "changed", "added", "stale"]
 
 type BaselineFailOn = Literal["error", "warning", "any", "none"]
 
-_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
-
 _SEVERITY_RANK: dict[Severity, int] = {"info": 0, "warning": 1, "error": 2}
 
 _SECONDARY_KEY = tuple[str, str, tuple[str, ...], str]
+
+# Analyzer messages for located findings often lead with the source position,
+# for example ``Program.icf:12: detail`` or ``Demo.s:12-14 detail``. A line
+# shift changes that prefix, so the secondary match key ignores only the
+# leading position, never the detail text.
+_LOCATION_PREFIX_RE = re.compile(r"^.+?:\d+(?:-\d+)?(?::\s*|\s+)(?P<rest>.*)$")
 
 
 class BaselineError(Exception):
@@ -99,7 +104,7 @@ def _optional_positive_int(payload: Mapping[str, object], key: str) -> int | Non
 
 def _severity_field(payload: Mapping[str, object]) -> Severity:
     value = payload.get("severity")
-    if not isinstance(value, str) or value not in _SEVERITIES:
+    if not isinstance(value, str) or value not in SEVERITIES:
         raise ValueError("'severity' must be 'error', 'warning', or 'info'")
     return cast(Severity, value)
 
@@ -126,6 +131,9 @@ class BaselineEntry:
     file: str | None
     line: int | None
     message: str
+
+    def __post_init__(self) -> None:
+        _validate_entry(self)
 
     @property
     def module(self) -> str:
@@ -163,6 +171,24 @@ def _reject_duplicate_identities(entries: Sequence[BaselineEntry]) -> None:
         if entry.identity in seen:
             raise ValueError(f"duplicate identity {entry.identity!r}")
         seen.add(entry.identity)
+
+
+def _validate_entry(entry: BaselineEntry) -> None:
+    """Reject an entry that cannot be written to a baseline document."""
+    identity = cast(object, entry.identity)
+    severity = cast(object, entry.severity)
+    line = cast(object, entry.line)
+    file = cast(object, entry.file)
+    if not isinstance(identity, str) or not identity:
+        raise ValueError("'identity' must be a non-empty string")
+    if not isinstance(severity, str) or severity not in SEVERITIES:
+        raise ValueError("'severity' must be 'error', 'warning', or 'info'")
+    if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 1):
+        raise ValueError("'line' must be a positive integer or null")
+    if file is not None and not isinstance(file, str):
+        raise ValueError("'file' must be a string or null")
+    if isinstance(file, str) and _is_absolute_path_text(file):
+        raise ValueError("'file' must be relative to the project root")
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,8 +297,13 @@ def _diff_entry(
     )
 
 
+def _secondary_message(message: str) -> str:
+    match = _LOCATION_PREFIX_RE.match(message)
+    return match.group("rest") if match is not None else message
+
+
 def _secondary_key(entry: BaselineEntry) -> _SECONDARY_KEY:
-    return (entry.analyzer, entry.kind, entry.module_path, entry.message)
+    return (entry.analyzer, entry.kind, entry.module_path, _secondary_message(entry.message))
 
 
 def _sorted_diff(entries: Iterable[BaselineDiffEntry]) -> tuple[BaselineDiffEntry, ...]:
@@ -284,8 +315,8 @@ def diff_baseline(baseline: Baseline, current: Sequence[BaselineEntry]) -> Basel
 
     Identity wins. An unmatched current entry is recognized as moved only when
     exactly one unmatched baseline entry shares its analyzer, kind, module path,
-    and message. An ambiguous secondary match is reported as added and stale,
-    never guessed.
+    and message after any leading source position is removed. An ambiguous
+    secondary match is reported as added and stale, never guessed.
     """
     baseline_by_id = {entry.identity: entry for entry in baseline.entries}
     current_by_id = {entry.identity: entry for entry in current}
@@ -321,21 +352,20 @@ def diff_baseline(baseline: Baseline, current: Sequence[BaselineEntry]) -> Basel
         if entry.identity not in matched_baseline:
             secondary.setdefault(_secondary_key(entry), []).append(entry)
 
-    added: list[BaselineDiffEntry] = []
+    unmatched_current: dict[_SECONDARY_KEY, list[BaselineEntry]] = {}
     for identity, current_entry in current_by_id.items():
-        if identity in matched_current:
-            continue
-        candidates = [
-            entry
-            for entry in secondary.get(_secondary_key(current_entry), ())
-            if entry.identity not in matched_baseline
-        ]
-        if len(candidates) == 1:
+        if identity not in matched_current:
+            unmatched_current.setdefault(_secondary_key(current_entry), []).append(current_entry)
+
+    added: list[BaselineDiffEntry] = []
+    for key, current_group in unmatched_current.items():
+        candidates = [entry for entry in secondary.get(key, ()) if entry.identity not in matched_baseline]
+        if len(current_group) == 1 and len(candidates) == 1:
             previous = candidates[0]
             matched_baseline.add(previous.identity)
-            moved.append(_diff_entry(current_entry, "moved", previous=previous))
+            moved.append(_diff_entry(current_group[0], "moved", previous=previous))
         else:
-            added.append(_diff_entry(current_entry, "added"))
+            added.extend(_diff_entry(entry, "added") for entry in current_group)
 
     stale = [_diff_entry(entry, "stale") for entry in baseline.entries if entry.identity not in matched_baseline]
 
@@ -410,6 +440,8 @@ def load_baseline(path: str | Path) -> Baseline:
             payload = json.load(handle)
     except OSError as exc:
         raise BaselineInvalidError(f"Baseline {resolved} could not be read: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise BaselineInvalidError(f"Baseline {resolved} is not valid UTF-8: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise BaselineInvalidError(f"Baseline {resolved} is not valid JSON: {exc}") from exc
     if not isinstance(payload, Mapping):
@@ -420,7 +452,7 @@ def load_baseline(path: str | Path) -> Baseline:
     if isinstance(version, bool) or not isinstance(version, int) or version != BASELINE_SCHEMA_VERSION:
         raise BaselineInvalidError(
             f"Baseline {resolved} uses schema version {version!r}, but this version of SattLint supports "
-            f"{BASELINE_SCHEMA_VERSION}. Run 'sattlint baseline update' to regenerate it."
+            f"{BASELINE_SCHEMA_VERSION}. Remove or replace the file with a baseline written by this version."
         )
     generated_by = _document_text(document, "generated_by", path=resolved)
     created = _document_text(document, "created", path=resolved)
@@ -481,6 +513,8 @@ def save_baseline(baseline: Baseline, path: str | Path) -> Path:
     ordered = tuple(sorted(baseline.entries, key=lambda entry: entry.identity))
     try:
         _reject_duplicate_identities(ordered)
+        for entry in ordered:
+            _validate_entry(entry)
     except ValueError as exc:
         raise BaselineWriteError(str(exc)) from exc
     document = replace(baseline, entries=ordered).to_dict()

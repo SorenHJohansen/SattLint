@@ -146,6 +146,34 @@ def test_module_findings_keep_sites_duplicates_and_details() -> None:
     assert first.suggestion not in report
 
 
+def test_module_findings_report_shows_the_source_location() -> None:
+    finding = AnalysisFinding(
+        kind="unused",
+        message="declaration",
+        module_path=("Root",),
+        file="programs/Demo.s",
+        line=12,
+        column=4,
+        data={"context": "Param", "site": "EQ:Control"},
+    )
+    target = RunTargetRecord(
+        target_name="Root",
+        analyzers=(
+            RunAnalyzerRecord(key="variables", name="Variable issues", status="completed", findings=(finding,)),
+        ),
+    )
+    selection = results_module._ModuleSelection(target, ("Root",), {})
+
+    report = results_module._module_findings_report(selection, show_empty_analyzers=False).plain
+
+    assert "  Param\n  programs/Demo.s:12:4\n  Equation Control" in report
+
+    expanded = results_module._module_findings_report(
+        selection, show_empty_analyzers=False, expanded_details=frozenset({0})
+    ).plain
+    assert "Location: programs/Demo.s:12:4" in expanded
+
+
 def test_module_navigation_prunes_empty_subtrees_before_merging_paths() -> None:
     root_module = RunModuleRecord(
         name="Root",

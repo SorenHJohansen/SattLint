@@ -9,7 +9,12 @@ from typing import cast
 
 import pytest
 
-from sattlint.application.checks import ChecksAnalyzerResult, ChecksRunResult, ChecksTargetResult
+from sattlint.application.checks import (
+    ChecksAnalyzerResult,
+    ChecksRunResult,
+    ChecksTargetResult,
+    TargetLoadFailure,
+)
 from sattlint.application.findings import AnalysisFinding, Severity
 from sattlint.cli.entry import run_cli
 from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
@@ -29,14 +34,15 @@ def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setattr("sattlint.cli._project.config_path_location", lambda: tmp_path / "config.toml")
 
 
-def _write_project(tmp_path: Path) -> Path:
+def _write_project(tmp_path: Path, *, targets: list[str] | None = None) -> Path:
     (tmp_path / "programs").mkdir(exist_ok=True)
     project = tmp_path / "demo.slproj"
+    resolved_targets = ["Demo"] if targets is None else targets
     project.write_text(
         "\n".join(
             [
                 "slproj_version = 2",
-                'analyzed_programs_and_libraries = ["Demo"]',
+                f"analyzed_programs_and_libraries = {json.dumps(resolved_targets)}",
                 'analyzers = ["variables"]',
                 'mode = "official"',
                 'program_dir = "programs"',
@@ -198,6 +204,57 @@ def test_analyze_baseline_passes_when_every_finding_is_unchanged(
     assert block["entries"] == []
 
 
+def test_analyze_baseline_resolves_a_relative_path_against_the_project(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "sub"
+    project_dir.mkdir()
+    project = _write_project(project_dir)
+    finding = _finding(severity="warning", file=str(project_dir / "programs" / "Demo.s"), line=12)
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(_checks_result(finding)))
+
+    assert _analyze(project, "--fail-on", "none") == 0
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    _save_baseline(project_dir / ".sattlint-baseline.json", *_baseline_entries(payload, project_dir))
+    # A different baseline in the working directory must not be read.
+    _save_baseline(tmp_path / ".sattlint-baseline.json")
+
+    code = _analyze(project, "--baseline", ".sattlint-baseline.json")
+
+    assert code == 0
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    block = cast(dict[str, object], payload["baseline"])
+    assert block["path"] == str(project_dir / ".sattlint-baseline.json")
+    assert block["unchanged"] == 1
+    assert block["added"] == 0
+
+
+def test_analyze_baseline_partial_target_failure_exits_two_before_the_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_project(tmp_path, targets=["Demo", "Other"])
+    baseline_path = tmp_path / "baseline.json"
+    _save_baseline(baseline_path)
+    finding = _finding(severity="warning", message="new finding")
+    partial = replace(
+        _checks_result(finding),
+        failures=(TargetLoadFailure(target_name="Other", message="root failed"),),
+    )
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(partial))
+
+    code = _analyze(project, "--baseline", str(baseline_path))
+
+    assert code == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["failed_targets"] == 1
+    block = cast(dict[str, object], payload["baseline"])
+    assert block["added"] == 1
+
+
 def test_analyze_baseline_fails_on_a_new_finding_by_default(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -319,6 +376,22 @@ def test_analyze_baseline_malformed_file_is_a_baseline_error(
     assert json.loads(capsys.readouterr().err)["error"]["code"] == "baseline_invalid"
 
 
+def test_analyze_baseline_non_utf8_file_is_a_baseline_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_project(tmp_path)
+    monkeypatch.setattr("sattlint.cli.commands.collect_checks_result", _fake_collect(_checks_result()))
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(b"\xff\xfe{\x00")
+
+    code = run_cli(["analyze", "--project", str(project), "--baseline", str(baseline_path), "--format", "json"])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().err)["error"]["code"] == "baseline_invalid"
+
+
 def test_baseline_update_writes_next_to_the_project_and_prunes_stale_entries(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -355,6 +428,37 @@ def test_baseline_update_writes_next_to_the_project_and_prunes_stale_entries(
     assert "Added: 0" in output
     assert "Pruned: 1" in output
     assert [entry.line for entry in load_baseline(baseline_path).entries] == [12]
+
+
+def test_baseline_update_writes_the_documented_header(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_project(tmp_path)
+    first = _finding(severity="warning", file=str(tmp_path / "programs" / "Demo.s"), line=12)
+    second = _finding(
+        severity="warning",
+        message="second finding",
+        module_path=("Demo", "B"),
+        file=str(tmp_path / "programs" / "Demo.s"),
+        line=20,
+    )
+    _install_runs(monkeypatch, [_run_record(project, first, second)])
+
+    assert run_cli(["baseline", "update", "--project", str(project), "--format", "json"]) == 0
+    capsys.readouterr()
+    payload = json.loads((project.parent / ".sattlint-baseline.json").read_text(encoding="utf-8"))
+
+    assert list(payload) == ["schema_version", "generated_by", "created", "entries"]
+    assert payload["schema_version"] == 1
+    assert isinstance(payload["generated_by"], str)
+    assert payload["generated_by"].startswith("sattlint ")
+    assert isinstance(payload["created"], str)
+    assert payload["created"].endswith("Z")
+    identities = [entry["identity"] for entry in payload["entries"]]
+    assert len(identities) == 2
+    assert identities == sorted(identities)
 
 
 def test_baseline_update_counts_a_moved_line_as_neither_added_nor_pruned(

@@ -550,11 +550,26 @@ def _resolve_baseline_run(args: argparse.Namespace) -> tuple[RunRecord, str | No
     return record, project_path, effective_root, path
 
 
+def _resolve_analyze_baseline(path: Path | None, project_root: Path) -> Path | None:
+    """Resolve a relative analyze baseline against the project, not the CWD."""
+    if path is None:
+        return None
+    expanded = path.expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return (project_root / expanded).resolve()
+
+
+def _load_analyze_baseline(path: Path | None, project_root: Path) -> tuple[Path | None, Baseline | None]:
+    resolved = _resolve_analyze_baseline(path, project_root)
+    return resolved, None if resolved is None else _load_baseline_for_cli(resolved)
+
+
 def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = _resolve_project(options.project)
     _drain_quiet_warnings(options.output)
-    baseline = None if options.baseline is None else _load_baseline_for_cli(options.baseline)
+    baseline_path, baseline = _load_analyze_baseline(options.baseline, project.root)
     cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
     keys = _resolve_analyzer_keys(options.analyzers or project.analyzers)
     _require_configured_targets(cfg)
@@ -642,7 +657,7 @@ def command_analyze(args: argparse.Namespace) -> int:
     if partial_failures:
         payload["failures"] = _bounded_failures(partial_failures)
         payload["failed_targets"] = len(partial_failures)
-    _attach_baseline(payload, options.baseline, baseline_diff)
+    _attach_baseline(payload, baseline_path, baseline_diff)
     _emit_findings(options.output, payload=payload, findings=findings, text_lines=_analyze_text(payload))
     return _analyze_exit_code(
         findings=findings,

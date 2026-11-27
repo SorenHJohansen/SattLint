@@ -49,7 +49,7 @@ one analyzer can report both defects and advice.
 | `warning` | A risky pattern or a heuristic whose classification needs judgment. | `--fail-on warning` and `--fail-on any` |
 | `info` | Naming, comment, complexity, or design advice. | `--fail-on any` only |
 
-A finding whose kind has no entry below uses its analyzer's default. An
+A finding whose kind has no specific severity uses its analyzer's default. An
 analyzer outside the catalog falls back to `warning`.
 
 | Analyzer | Default severity |
@@ -69,13 +69,10 @@ analyzer outside the catalog falls back to `warning`.
 | `same-cycle` | `warning` |
 | `dataflow` | `warning` |
 
-The per-kind entries are authoritative when a kind is listed.
-
-| Severity | Kinds |
-| --- | --- |
-| `error` | `dataflow.dead_overwrite`, `dataflow.conflicting_constants`, `sfc_parallel_write_race`, `sfc_unreachable_transition`, `sfc_duplicate_transition_guard`, `sfc_missing_initial_step`, `sfc_self_fork`, `sfc_cross_sequence_fork`, `string_capacity.literal_overflow`, `string_capacity.assignment_overflow`, `string_capacity.procedure_overflow`, `reset_contamination`, `icf.unresolved_path`, `icf.invalid_field_path` |
-| `warning` | `unused`, `field_read_only`, `read_only_non_const`, `procedure_status`, `field_never_read`, `never_read`, `record_component_order_dependence`, `write_without_effect`, `unknown_parameter_target`, `string_mapping_mismatch`, `min_max_mapping_mismatch`, `shadowing`, `unsafe_boolean_default`, `read_before_write`, `implicit_latch`, `secure_candidate`, `alarm.duplicate_tag`, `alarm.duplicate_condition`, `alarm.never_cleared`, `module_layout.invalid_clipping`, `module_layout.origo_not_centered_or_corner`, `module_layout.size_off_grid`, `module_layout.position_off_grid`, `module_layout.object_outside_clipping`, `picture_display_paths.unresolved`, `picture_display_paths.above_base`, `module.version_drift`, `module.unused_type`, `same_cycle_parallel_read_write_hazard`, `dataflow.condition_always_true`, `dataflow.condition_always_false`, `dataflow.unreachable_branch`, `dataflow.self_compare_condition`, `dataflow.scan_cycle_stale_read`, `dataflow.scan_cycle_implicit_new`, `dataflow.non_state_multi_site`, `sfc_unreachable_sequence_node`, `icf.program_mismatch`, `icf.reference_case_mismatch`, `icf.unit_tag_mismatch`, `icf.group_tag_mismatch`, `icf.missing_journal_field`, `icf.unit_structure_drift`, `icf.value_prefix_inconsistency`, `icf.program_load_failed`, `icf.issue` |
-| `info` | `magic_number`, `comment_code`, `module.cyclomatic_complexity`, `step.cyclomatic_complexity`, `equation.cyclomatic_complexity`, `spec.sequence_step_prefix`, `spec.transition_name_missing`, `spec.transition_prefix`, `spec.sequence_name_prefix`, `spec.equation_block_prefix`, `string_style.narrower_datatype`, `string_style.generic_copy`, `unused_datatype`, `unused_datatype_field`, `datatype_duplication`, `global_scope_minimization`, `hidden_global_coupling`, `high_fan_in_out` |
+A proven defect, such as a read of an overwritten value or a broken SFC
+contract, is `error`. An unused declaration or an uncertain heuristic is
+`warning`. A magic number, commented-out code, or a complexity finding is
+`info`. The exact severity is visible in the finding output.
 
 The default threshold is `--fail-on any`, so existing pipelines keep their
 behavior. A pipeline that wants correctness defects to fail while style advice

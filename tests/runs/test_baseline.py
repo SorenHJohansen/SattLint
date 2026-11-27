@@ -128,7 +128,20 @@ def test_unknown_schema_version_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "baseline.json"
     _write_document(path, version=2)
 
-    with pytest.raises(BaselineInvalidError, match="schema version"):
+    with pytest.raises(BaselineInvalidError) as info:
+        load_baseline(path)
+
+    message = str(info.value)
+    assert "schema version" in message
+    assert "Remove or replace" in message
+    assert "baseline update" not in message
+
+
+def test_a_non_utf8_baseline_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "baseline.json"
+    path.write_bytes(b"\xff\xfe{\x00")
+
+    with pytest.raises(BaselineInvalidError, match="UTF-8"):
         load_baseline(path)
 
 
@@ -174,6 +187,26 @@ def test_duplicate_identities_are_rejected_on_load(tmp_path: Path) -> None:
 
     with pytest.raises(BaselineInvalidError, match="duplicate identity"):
         load_baseline(path)
+
+
+def test_constructing_an_entry_with_an_absolute_file_raises() -> None:
+    with pytest.raises(ValueError, match="relative to the project root"):
+        _entry(file="/etc/passwd")
+    with pytest.raises(ValueError, match="relative to the project root"):
+        _entry(file=r"C:\work\Demo.s")
+
+
+def test_save_rejects_an_entry_that_bypasses_construction(tmp_path: Path) -> None:
+    entry = _entry("f_a")
+    object.__setattr__(entry, "file", "/etc/passwd")
+    baseline = Baseline(
+        generated_by="sattlint 2026.11.6",
+        created="2026-11-27T10:00:00.000Z",
+        entries=(entry,),
+    )
+
+    with pytest.raises(BaselineWriteError, match="relative to the project root"):
+        save_baseline(baseline, tmp_path / "baseline.json")
 
 
 def test_duplicate_identities_are_rejected_on_save(tmp_path: Path) -> None:
@@ -241,6 +274,98 @@ def test_a_secondary_match_reports_a_moved_site() -> None:
     assert diff.moved[0].previous_line == 12
     assert diff.added == ()
     assert diff.stale == ()
+
+
+def test_a_located_icf_message_shift_is_moved_not_added_and_stale() -> None:
+    baseline = _baseline(
+        _entry(
+            "f_icf_old",
+            analyzer="icf",
+            kind="icf.unresolved_path",
+            line=12,
+            message="Program.icf:12: unresolved path: X1 = Program:Path.Var",
+        )
+    )
+    current = [
+        _entry(
+            "f_icf_new",
+            analyzer="icf",
+            kind="icf.unresolved_path",
+            line=13,
+            message="Program.icf:13: unresolved path: X1 = Program:Path.Var",
+        )
+    ]
+
+    diff = diff_baseline(baseline, current)
+
+    assert [entry.identity for entry in diff.moved] == ["f_icf_new"]
+    assert diff.added == ()
+    assert diff.stale == ()
+
+
+def test_a_located_comment_code_message_shift_is_moved_not_added_and_stale() -> None:
+    baseline = _baseline(
+        _entry(
+            "f_comment_old",
+            analyzer="comments",
+            kind="comment_code",
+            line=12,
+            message="Demo.s:12-14 code",
+        )
+    )
+    current = [
+        _entry(
+            "f_comment_new",
+            analyzer="comments",
+            kind="comment_code",
+            line=20,
+            message="Demo.s:20-22 code",
+        )
+    ]
+
+    diff = diff_baseline(baseline, current)
+
+    assert [entry.identity for entry in diff.moved] == ["f_comment_new"]
+    assert diff.added == ()
+    assert diff.stale == ()
+
+
+def test_a_changed_detail_after_a_location_prefix_is_not_moved() -> None:
+    baseline = _baseline(
+        _entry(
+            "f_comment_old",
+            analyzer="comments",
+            kind="comment_code",
+            line=12,
+            message="Demo.s:12-14 code",
+        )
+    )
+    current = [
+        _entry(
+            "f_comment_new",
+            analyzer="comments",
+            kind="comment_code",
+            line=20,
+            message="Demo.s:20-22 changed detail",
+        )
+    ]
+
+    diff = diff_baseline(baseline, current)
+
+    assert diff.moved == ()
+    assert [entry.identity for entry in diff.added] == ["f_comment_new"]
+    assert [entry.identity for entry in diff.stale] == ["f_comment_old"]
+
+
+def test_several_current_entries_with_one_secondary_key_are_all_added() -> None:
+    baseline = _baseline(_entry("f_a", line=12))
+    current = [_entry("f_x", line=20), _entry("f_y", line=30)]
+
+    diff = diff_baseline(baseline, current)
+
+    assert diff.moved == ()
+    assert [entry.identity for entry in diff.added] == ["f_x", "f_y"]
+    assert [entry.identity for entry in diff.stale] == ["f_a"]
 
 
 def test_a_severity_increase_is_changed_with_both_severities() -> None:

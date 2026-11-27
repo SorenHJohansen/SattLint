@@ -186,31 +186,15 @@ def test_extract_report_findings_reads_magic_number_literal_span() -> None:
     assert findings[0].end_line is None
 
 
-def test_extract_report_findings_reads_location_attributes_without_inventing_missing_fields() -> None:
-    report = SimpleNamespace(
-        issues=[
-            SimpleNamespace(
-                kind="comment_code",
-                module_path=["Root"],
-                file=Path("programs/Demo.s"),
-                line=5,
-                column=2,
-                end_line=7,
-            ),
-            Issue(kind="unused", message="declared but never read", module_path=["Root"]),
-        ]
-    )
+def test_extract_report_findings_leaves_every_location_field_none_without_a_source() -> None:
+    report = SimpleNamespace(issues=[Issue(kind="unused", message="declared but never read", module_path=["Root"])])
 
     findings = extract_report_findings(report, default_name="Root")
 
-    assert findings[0].file == "programs/Demo.s"
-    assert findings[0].line == 5
-    assert findings[0].column == 2
-    assert findings[0].end_line == 7
-    assert findings[1].file is None
-    assert findings[1].line is None
-    assert findings[1].column is None
-    assert findings[1].end_line is None
+    assert findings[0].file is None
+    assert findings[0].line is None
+    assert findings[0].column is None
+    assert findings[0].end_line is None
 
 
 def test_extract_report_findings_ignores_a_picture_path_as_a_source_file() -> None:
@@ -956,6 +940,29 @@ def test_unknown_kind_stays_unknown_and_the_payload_uses_the_analyzer_default() 
     assert analyzer_default_severity("not-in-the-catalog") == "warning"
 
     record = _run_with_findings("unknown", extracted[0], analyzer_key="cyclomatic-complexity")
+    payload = finding_payload(flat_findings(record)[0])
+
+    assert payload["severity"] == "info"
+
+
+def test_stored_finding_without_a_saved_severity_uses_the_kind_severity() -> None:
+    record = _run_with_findings(
+        "legacy-kind",
+        AnalysisFinding(kind="magic_number", message="literal 7", module_path=("Demo", "A"), severity=None),
+    )
+
+    payload = finding_payload(flat_findings(record)[0])
+
+    assert payload["severity"] == "info"
+
+
+def test_stored_unknown_kind_without_a_saved_severity_uses_the_analyzer_default() -> None:
+    record = _run_with_findings(
+        "legacy-unknown",
+        AnalysisFinding(kind="custom.unknown_kind", message="custom check", module_path=("Demo", "A"), severity=None),
+        analyzer_key="cyclomatic-complexity",
+    )
+
     payload = finding_payload(flat_findings(record)[0])
 
     assert payload["severity"] == "info"

@@ -205,18 +205,19 @@ paths and no source snippets.
 Matching uses the stable finding identity first. An entry with the same identity
 keeps its place unless the severity increased (changed) or the file or line
 moved (moved). An identity that disappears is recognized as moved only when
-exactly one unmatched baseline entry shares its analyzer, kind, module path, and
-message. When several candidates match, the current finding is reported as
-added and the baseline entries as stale instead of guessed.
+exactly one unmatched current finding and exactly one unmatched baseline entry
+share its analyzer, kind, module path, and message after any leading source
+position is removed. Otherwise the current findings are reported as added and
+the baseline entries as stale instead of guessed.
 
 Stale entries describe findings that no longer occur. They are advisory: they
 never fail a run, and `baseline update` prunes them. A missing baseline is an
 error for `analyze --baseline`, so CI cannot pass by accident when the file is
 absent.
 
-The per-run acknowledged state described above stays a Results view
-convenience. The baseline is the durable, reviewable record of accepted
-findings.
+The per-run acknowledged state described above stays in place until the cleanup
+package replaces or removes it. The baseline is the durable, reviewable record
+of accepted findings.
 
 ## Profiling output
 
