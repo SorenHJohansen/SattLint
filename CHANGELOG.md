@@ -17,6 +17,20 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   picks a code fence longer than any backtick run in the source, so a snippet
   cannot close its block and inject a heading. JSON and NDJSON output keep the
   original values.
+- The cache directory is no longer a trust boundary. A project graph manifest now
+  carries its own magic and HMAC-SHA256 signature under the same key as the
+  payload, so a writer who can reach the cache directory cannot pair a signed old
+  payload with a fresh-looking file snapshot. The signing key is read only from a
+  regular file of the expected size that the current user owns and that group and
+  other cannot read or write; a symlink, a foreign owner, or a wider mode makes the
+  entry a miss instead of being followed. Cached pickles are decoded by a
+  restricted unpickler that resolves only the SattLint and parser model modules and
+  a small allow list of standard library modules, so a crafted payload cannot call
+  a process launch or another arbitrary global. Cache keys now include the cached
+  model version and the key schema moved to 3, so entries written before this
+  release are not reused and an older unsigned manifest is discarded. The AST
+  cache also applies its payload budget after each save instead of only at
+  startup.
 - A project file cannot silently point the tool at an unrelated directory.
   `program_dir`, `ABB_lib_dir`, `icf_dir`, and every `other_lib_dirs` entry must
   resolve under the directory that contains the `.slproj` file. An external
@@ -24,6 +38,17 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   path, the project root, and the `allow_external_roots = true` opt in. Loading
   warns about absolute roots and raw values with a `..` component, including
   ones that still resolve inside the project.
+- Generated artifacts and diagnostics are owner-only and bounded. Change Review
+  creates its dedicated output directory with mode `0700`, narrows an existing
+  broader directory, and writes both artifacts atomically with mode `0600`. The
+  profile log lives in a `0700` directory, is created with mode `0600`, and is
+  capped at 8 MiB: before an append would exceed the cap it rotates to
+  `profile.jsonl.1`. A stored run keeps at most 2,000 output lines and 512 KiB
+  of output text, caps each analyzer summary at 4,000 characters, and caps the
+  serialized record at 8 MiB, dropping session output when that is what pushes
+  it over. A shortened record carries `truncated: true` and a
+  `truncation_note` naming what was cut, so an oversized diagnostic is never
+  stored silently.
 
 ### Added
 

@@ -9,6 +9,7 @@ the profiling log under the cache directory.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from collections.abc import Mapping, Sequence
@@ -22,8 +23,11 @@ from .timings import NamedTimings, PhaseTiming, TimingBottleneck
 
 APP_PROFILE_KIND = "sattlint.app.profile"
 APP_PROFILE_SCHEMA_VERSION = 1
+PROFILE_LOG_MAX_BYTES = 8 * 1024 * 1024
 _SESSION_ID = uuid4().hex
 
+_PROFILE_DIRECTORY_MODE = 0o700
+_PROFILE_LOG_MODE = 0o600
 _PROFILE_ENV_NAMES = ("SATTLINT_PROFILE", "SATTLINT_PROFILE_ANALYZERS")
 _PROFILE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
@@ -37,6 +41,15 @@ def profiling_log_path() -> Path | None:
     """The JSONL diagnostics log path, or ``None`` when the cache is unusable."""
     cache_dir = cache_module.get_cache_dir_or_none()
     return None if cache_dir is None else cache_dir / "profile" / "profile.jsonl"
+
+
+def _ensure_owner_only_mode(path: Path, mode: int) -> None:
+    """Narrow an existing path to *mode*; a missing path is left to its creator."""
+    try:
+        if path.stat().st_mode & 0o777 & ~mode:
+            path.chmod(mode)
+    except OSError:
+        return
 
 
 def _coerce_duration_ms(value: object, *, scale: float = 1.0) -> float | None:
@@ -161,12 +174,50 @@ class ProfileRecorder:
             event["payload"] = dict(payload)
 
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, ensure_ascii=True, sort_keys=True, default=str))
-                handle.write("\n")
-        except (OSError, TypeError, ValueError):
+            line = json.dumps(event, ensure_ascii=True, sort_keys=True, default=str)
+        except (TypeError, ValueError):
             return
+        self._append_event(f"{line}\n".encode())
+
+    def _append_event(self, payload: bytes) -> None:
+        """Append one encoded event, rotating or truncating a log at the cap.
+
+        Profiling is diagnostic output, so every filesystem step here is
+        best-effort: a failed rotation or append never reaches the run.
+        """
+        path = self._path
+        if path is None or len(payload) > PROFILE_LOG_MAX_BYTES:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=_PROFILE_DIRECTORY_MODE)
+            _ensure_owner_only_mode(path.parent, _PROFILE_DIRECTORY_MODE)
+            _ensure_owner_only_mode(path, _PROFILE_LOG_MODE)
+            try:
+                current_size = path.stat().st_size
+            except OSError:
+                current_size = 0
+            if current_size and current_size + len(payload) > PROFILE_LOG_MAX_BYTES:
+                self._rotate_log()
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _PROFILE_LOG_MODE)
+            try:
+                os.write(fd, payload)
+            finally:
+                os.close(fd)
+        except OSError:
+            return
+
+    def _rotate_log(self) -> None:
+        path = self._path
+        if path is None:
+            return
+        rotated = path.with_name(f"{path.name}.1")
+        try:
+            os.replace(path, rotated)
+        except OSError:
+            with contextlib.suppress(OSError):
+                os.truncate(path, 0)
+            return
+        _ensure_owner_only_mode(rotated, _PROFILE_LOG_MODE)
 
 
 def create_profiler() -> ProfileRecorder:
@@ -179,6 +230,7 @@ def create_profiler() -> ProfileRecorder:
 __all__ = [
     "APP_PROFILE_KIND",
     "APP_PROFILE_SCHEMA_VERSION",
+    "PROFILE_LOG_MAX_BYTES",
     "NamedTimings",
     "PhaseTiming",
     "ProfileRecorder",

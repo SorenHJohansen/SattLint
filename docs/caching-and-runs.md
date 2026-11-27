@@ -39,9 +39,11 @@ The AST cache stores a validated loaded project graph for one target.
   depend on which other targets were selected, so filtering a run with
   `--target` reuses the same entries.
 - The payload is a signed pickle containing the root picture and project graph.
-- The manifest is a JSON snapshot of every file that contributed to the load:
-  source files, graphics companions, distribution companions, dependency
-  sidecars, and the ICF directory and files.
+- The manifest is a signed JSON snapshot of every file that contributed to the
+  load: source files, graphics companions, distribution companions, dependency
+  sidecars, and the ICF directory and files. It carries its own magic and
+  HMAC-SHA256 signature, so a manifest rewritten without the key is a miss even
+  when the payload beside it is genuine.
 - A cached entry is reused only when its manifest still matches the files on
   disk.
 
@@ -87,6 +89,16 @@ re-resolves and re-indexes the project without re-parsing unchanged files.
 - The signing key lives one level above the cache root, so copying or clearing
   the cache tree does not copy the key along with the data.
 - A missing key means a payload cannot be verified and is treated as a miss.
+- Manifests are signed with the same key as payloads, so replacing the manifest
+  alone cannot pair a signed old payload with a new file snapshot.
+- The signing key is trusted only when it is a regular file of the expected size,
+  owned by the current user, and inaccessible to group and other. A symlink, a
+  foreign owner, or a wider mode makes the entry a miss rather than following the
+  file.
+- Pickle payloads are decoded by a restricted unpickler that resolves only the
+  SattLint and parser model modules plus a small allow list of standard library
+  modules. A crafted payload therefore cannot reach a process launch or another
+  arbitrary callable, even when it carries a valid signature.
 - A failed write is logged and the run continues.
 - An unusable cache directory degrades to an uncached run.
 
@@ -96,6 +108,7 @@ An entry is invalid when any of these changes:
 
 - the parser version;
 - the cache schema or payload version;
+- the cached project and AST model version;
 - the analysis target;
 - the project roots, targets, or mode;
 - the string capacity table;
@@ -117,6 +130,10 @@ The cache manager can:
 A startup prune removes entries that are structurally invalid or belong to
 another generation. It does not delete a valid entry just because it is old;
 freshness is decided by the manifest.
+
+The AST cache also enforces a payload budget after every save. Once the payload
+family exceeds 4 GiB, the least recently used entries are removed, and entries
+used within the last seven days are never evicted.
 
 The interactive shell exposes cache maintenance through its application flows.
 The headless CLI exposes two separate switches on `analyze`, one per decision:
@@ -168,6 +185,22 @@ A run record contains:
 
 The record has its own schema version, independent of the analysis pipeline. A
 record from another schema version is ignored instead of being misread.
+
+### Record bounds
+
+Run history holds diagnostics that can become large, so a record is bounded
+before it is written:
+
+- session output keeps at most 2,000 lines and at most 512 KiB of text;
+- each analyzer summary is capped at 4,000 characters, with a visible
+  `[truncated]` marker;
+- the serialized record is capped at 8 MiB. If session output still pushes the
+  record past that cap, the output lines are dropped and the record says so.
+
+A shortened record has `truncated: true` and a `truncation_note` that names what
+was cut. A record that fits keeps `truncated: false` and `truncation_note: null`.
+Records written before these fields existed load with those defaults, and the
+schema version is unchanged.
 
 ### Retention
 
@@ -229,6 +262,12 @@ When profiling is enabled, JSONL events are written to:
 
 The log records load stages, analyzer durations, phase timings, and bottleneck
 information. It is diagnostic output, not part of analysis results.
+
+The profile directory is created with mode `0700` and the log with mode `0600`.
+The log is capped at 8 MiB. Before an append would exceed the cap, the current
+log is renamed to `profile.jsonl.1`, replacing any previous rotated file, and a
+new log starts. A rotation or append failure is ignored so profiling never
+interrupts the run.
 
 ## Related pages
 

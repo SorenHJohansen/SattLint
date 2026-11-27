@@ -252,6 +252,8 @@ class RunRecord:
     targets: tuple[RunTargetRecord, ...] = ()
     project_analyzers: tuple[RunAnalyzerRecord, ...] = ()
     output_lines: tuple[str, ...] = ()
+    truncated: bool = False
+    truncation_note: str | None = None
 
     @property
     def target_count(self) -> int:
@@ -280,6 +282,8 @@ class RunRecord:
             "targets": [target.to_dict() for target in self.targets],
             "project_analyzers": [analyzer.to_dict() for analyzer in self.project_analyzers],
             "output_lines": list(self.output_lines),
+            "truncated": self.truncated,
+            "truncation_note": self.truncation_note,
         }
 
     @classmethod
@@ -315,6 +319,9 @@ class RunRecord:
             targets=targets,
             project_analyzers=project_analyzers,
             output_lines=_tuple_str(payload.get("output_lines")),
+            # Records written before record bounds existed carry neither field.
+            truncated=_bool_field(payload, "truncated"),
+            truncation_note=optional_text(payload.get("truncation_note")),
         )
 
 

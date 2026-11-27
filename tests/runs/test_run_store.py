@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from sattlint.application.findings import AnalysisFinding
 from sattlint.cli._findings import flat_findings
 from sattlint.core.timings import NamedTimings, PhaseTiming
@@ -24,6 +26,7 @@ from sattlint.runs import (
     save_run,
     save_run_acknowledgements,
 )
+from sattlint.runs import io as runs_io
 
 
 def _sample_record() -> RunRecord:
@@ -612,3 +615,132 @@ def test_finding_identity_does_not_collide_on_delimiter_text() -> None:
 
     assert "\x1f".join(first_parts) == "\x1f".join(second_parts)
     assert flat_findings(first)[0].id != flat_findings(second)[0].id
+
+
+def _record_with_output_lines(output_lines: tuple[str, ...]) -> RunRecord:
+    return RunRecord(
+        run_id="",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="RootProgram",
+        output_lines=output_lines,
+    )
+
+
+def test_save_run_truncates_a_huge_output_lines_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runs_io, "RUN_OUTPUT_LINE_LIMIT", 10)
+    monkeypatch.setattr(runs_io, "RUN_OUTPUT_CHAR_LIMIT", 120)
+    record = _record_with_output_lines(tuple(f"output line {index} " + "x" * 40 for index in range(50)))
+
+    stored = save_run(record, runs_dir=tmp_path)
+
+    assert stored.truncated is True
+    assert stored.truncation_note is not None
+    assert "truncated" in stored.truncation_note
+    assert len(stored.output_lines) <= 10
+    assert sum(len(line) for line in stored.output_lines) <= 120
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert loaded.output_lines == stored.output_lines
+    assert loaded.truncated is True
+    summary_payload = json.loads((tmp_path / f"{stored.run_id}.summary").read_text(encoding="utf-8"))
+    assert summary_payload["run_id"] == stored.run_id
+
+
+def test_save_run_truncates_a_long_analyzer_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runs_io, "RUN_ANALYZER_SUMMARY_CHAR_LIMIT", 40)
+    record = RunRecord(
+        run_id="",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="RootProgram",
+        project_analyzers=(
+            RunAnalyzerRecord(
+                key="variables",
+                name="Variable issues",
+                status="completed",
+                summary="s" * 500,
+            ),
+        ),
+    )
+
+    stored = save_run(record, runs_dir=tmp_path)
+
+    bounded_summary = stored.project_analyzers[0].summary
+    assert bounded_summary is not None
+    assert len(bounded_summary) == 40
+    assert bounded_summary.endswith("[truncated]")
+    assert stored.truncated is True
+    assert stored.truncation_note is not None
+    assert "truncated" in stored.truncation_note
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert loaded.project_analyzers[0].summary == bounded_summary
+
+
+def test_save_run_leaves_a_normal_record_untruncated(tmp_path: Path) -> None:
+    stored = save_run(_sample_record(), runs_dir=tmp_path)
+
+    assert stored.truncated is False
+    assert stored.truncation_note is None
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert loaded.truncated is False
+    assert loaded.truncation_note is None
+
+
+def test_save_run_drops_output_when_the_record_exceeds_the_byte_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runs_io, "RUN_RECORD_MAX_BYTES", 2200)
+    record = _record_with_output_lines(("y" * 6000,))
+
+    stored = save_run(record, runs_dir=tmp_path)
+
+    assert stored.output_lines == ()
+    assert stored.truncated is True
+    assert stored.truncation_note is not None
+    assert "exceeded" in stored.truncation_note
+    record_path = tmp_path / f"{stored.run_id}.json"
+    assert record_path.stat().st_size <= runs_io.RUN_RECORD_MAX_BYTES
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert loaded.output_lines == ()
+    assert loaded.truncated is True
+
+
+def test_legacy_run_records_default_truncation_fields() -> None:
+    payload = _sample_record().to_dict()
+    payload.pop("truncated")
+    payload.pop("truncation_note")
+
+    restored = RunRecord.from_dict(payload)
+
+    assert restored.truncated is False
+    assert restored.truncation_note is None
+
+
+def test_legacy_run_record_without_truncation_fields_still_loads(tmp_path: Path) -> None:
+    run_id = "20260906T100000000000Z"
+    payload = _sample_record().to_dict()
+    payload["run_id"] = run_id
+    payload.pop("truncated")
+    payload.pop("truncation_note")
+    (tmp_path / f"{run_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_run(run_id, runs_dir=tmp_path)
+
+    assert loaded is not None
+    assert loaded.truncated is False
+    assert loaded.truncation_note is None

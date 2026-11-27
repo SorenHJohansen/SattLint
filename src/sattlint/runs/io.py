@@ -13,10 +13,16 @@ from typing import cast
 from uuid import uuid4
 
 from .. import cache as cache_module
-from .types import RUN_RECORD_SCHEMA_VERSION, RunRecord, RunSummary
+from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunRecord, RunSummary
 
 DEFAULT_RUN_HISTORY_LIMIT = 50
 
+RUN_RECORD_MAX_BYTES = 8 * 1024 * 1024
+RUN_OUTPUT_LINE_LIMIT = 2000
+RUN_OUTPUT_CHAR_LIMIT = 512 * 1024
+RUN_ANALYZER_SUMMARY_CHAR_LIMIT = 4000
+
+_TRUNCATION_MARKER = " [truncated]"
 _RUN_JSON_SUFFIX = ".json"
 _SUMMARY_SUFFIX = ".summary"
 _ACKNOWLEDGED_SUFFIX = ".acknowledged"
@@ -65,6 +71,111 @@ def _generate_run_id() -> str:
     return f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex[:6]}"
 
 
+def _truncate_text(text: str, limit: int) -> str:
+    """Cut *text* to *limit* characters, keeping a visible truncation marker."""
+    if len(text) <= limit:
+        return text
+    if limit <= 0:
+        return ""
+    if limit <= len(_TRUNCATION_MARKER):
+        return _TRUNCATION_MARKER[:limit]
+    return f"{text[: limit - len(_TRUNCATION_MARKER)]}{_TRUNCATION_MARKER}"
+
+
+def _bound_output_lines(lines: tuple[str, ...]) -> tuple[tuple[str, ...], list[str]]:
+    notes: list[str] = []
+    if len(lines) > RUN_OUTPUT_LINE_LIMIT:
+        notes.append(f"Session output truncated: kept the first {RUN_OUTPUT_LINE_LIMIT} of {len(lines)} lines.")
+
+    kept: list[str] = []
+    used_characters = 0
+    reached_character_limit = False
+    for line in lines[:RUN_OUTPUT_LINE_LIMIT]:
+        remaining = RUN_OUTPUT_CHAR_LIMIT - used_characters
+        if remaining <= 0:
+            reached_character_limit = True
+            break
+        if len(line) > remaining:
+            kept.append(line[:remaining])
+            reached_character_limit = True
+            break
+        kept.append(line)
+        used_characters += len(line)
+
+    if reached_character_limit:
+        notes.append(f"Session output truncated at the {RUN_OUTPUT_CHAR_LIMIT} character limit.")
+    return tuple(kept), notes
+
+
+def _bound_analyzers(
+    analyzers: tuple[RunAnalyzerRecord, ...],
+    notes: list[str],
+) -> tuple[RunAnalyzerRecord, ...]:
+    bounded: list[RunAnalyzerRecord] = []
+    truncated_any = False
+    for analyzer in analyzers:
+        summary = analyzer.summary
+        if summary is not None and len(summary) > RUN_ANALYZER_SUMMARY_CHAR_LIMIT:
+            analyzer = replace(analyzer, summary=_truncate_text(summary, RUN_ANALYZER_SUMMARY_CHAR_LIMIT))
+            truncated_any = True
+        bounded.append(analyzer)
+    if truncated_any:
+        note = f"Analyzer summaries truncated to {RUN_ANALYZER_SUMMARY_CHAR_LIMIT} characters."
+        if note not in notes:
+            notes.append(note)
+    return tuple(bounded)
+
+
+def _join_truncation_notes(existing: str | None, notes: list[str]) -> str | None:
+    parts = [existing] if existing else []
+    parts.extend(notes)
+    return "; ".join(parts) if parts else None
+
+
+def _serialized_size(record: RunRecord) -> int:
+    """The exact size of the JSON record as it is written to disk."""
+    return len(json.dumps(record.to_dict(), ensure_ascii=True, indent=2, sort_keys=True))
+
+
+def _bound_run_record(record: RunRecord) -> RunRecord:
+    """Bound session output, analyzer summaries, and the serialized record.
+
+    A shortened record always says so through ``truncated`` and
+    ``truncation_note``; an oversized record is never stored silently.
+    """
+    notes: list[str] = []
+    output_lines, output_notes = _bound_output_lines(record.output_lines)
+    notes.extend(output_notes)
+    targets = tuple(replace(target, analyzers=_bound_analyzers(target.analyzers, notes)) for target in record.targets)
+    project_analyzers = _bound_analyzers(record.project_analyzers, notes)
+
+    bounded = replace(
+        record,
+        targets=targets,
+        project_analyzers=project_analyzers,
+        output_lines=output_lines,
+        truncated=record.truncated or bool(notes),
+        truncation_note=_join_truncation_notes(record.truncation_note, notes),
+    )
+    if _serialized_size(bounded) <= RUN_RECORD_MAX_BYTES:
+        return bounded
+
+    drop_note = f"Session output truncated to empty because the run record exceeded {RUN_RECORD_MAX_BYTES} bytes."
+    bounded = replace(
+        bounded,
+        output_lines=(),
+        truncated=True,
+        truncation_note=_join_truncation_notes(bounded.truncation_note, [drop_note]),
+    )
+    if _serialized_size(bounded) > RUN_RECORD_MAX_BYTES:
+        oversize_note = f"The run record still exceeds {RUN_RECORD_MAX_BYTES} bytes after session output was truncated."
+        bounded = replace(
+            bounded,
+            truncation_note=_join_truncation_notes(bounded.truncation_note, [oversize_note]),
+        )
+    return bounded
+
+
 def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
     """Persist a run record and return the stored record (with generated id)."""
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
@@ -80,6 +191,7 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
             run_id = _generate_run_id()
         stored_record = replace(record, run_id=run_id)
 
+    stored_record = _bound_run_record(stored_record)
     payload = stored_record.to_dict()
     _atomic_write_json(_run_path(resolved_runs_dir, stored_record.run_id), payload)
 
@@ -315,6 +427,10 @@ def _load_run_file(path: Path) -> RunRecord | None:
 
 __all__ = [
     "DEFAULT_RUN_HISTORY_LIMIT",
+    "RUN_ANALYZER_SUMMARY_CHAR_LIMIT",
+    "RUN_OUTPUT_CHAR_LIMIT",
+    "RUN_OUTPUT_LINE_LIMIT",
+    "RUN_RECORD_MAX_BYTES",
     "delete_run",
     "get_runs_dir",
     "get_runs_dir_or_none",

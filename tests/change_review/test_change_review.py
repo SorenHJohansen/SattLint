@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -549,6 +550,30 @@ def test_artifact_names_use_the_review_utc_timestamp(tmp_path: Path):
     later_json, _markdown = write_review_artifacts(same_second, tmp_path)
 
     assert later_json.name != json_path.name
+
+
+def test_review_artifacts_are_owner_only(tmp_path: Path):
+    review = _review_with_timestamp("2026-11-19T10:20:30Z")
+    output_dir = tmp_path / "change-review"
+
+    json_path, markdown_path = write_review_artifacts(review, output_dir)
+
+    assert stat.S_IMODE(output_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(json_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(markdown_path.stat().st_mode) == 0o600
+
+
+def test_review_directory_is_narrowed_when_it_exists_broader(tmp_path: Path):
+    review = _review_with_timestamp("2026-11-19T10:20:30Z")
+    output_dir = tmp_path / "change-review"
+    output_dir.mkdir()
+    output_dir.chmod(0o755)
+
+    json_path, markdown_path = write_review_artifacts(review, output_dir)
+
+    assert stat.S_IMODE(output_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(json_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(markdown_path.stat().st_mode) == 0o600
 
 
 def test_block_header_search_is_case_insensitive_and_prefers_the_nearest_match():

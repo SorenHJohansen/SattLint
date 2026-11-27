@@ -123,6 +123,11 @@ The timestamp is UTC and comes from the review metadata, so the file name and
 the content agree. The artifact base name sanitizes characters that are not safe
 in a file name.
 
+The review directory is dedicated to these artifacts. It is created owner-only
+with mode `0700`, and an existing broader mode is narrowed to `0700`. Both
+artifacts are written atomically with mode `0600`, so a source excerpt is not
+readable by other local users.
+
 The JSON artifact is the structured contract. The Markdown artifact is the
 human-readable review. Both are generated from the same review object.
 
