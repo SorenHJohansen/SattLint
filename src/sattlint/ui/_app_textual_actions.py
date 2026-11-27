@@ -1072,18 +1072,26 @@ def _persist_project(self: Any) -> bool:
     except ValueError as exc:
         self._report_error("Failed to save configuration", f"Failed to save configuration: {exc}")
         return False
+    program_dir = _make_project_relative(str(cfg_raw.get("program_dir", "")), root)
+    abb_lib_dir = _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root)
+    icf_dir = _make_project_relative(str(cfg_raw.get("icf_dir", "")), root)
+    other_lib_dirs = [
+        _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
+    ]
+    saved_roots = (program_dir, abb_lib_dir, icf_dir, *other_lib_dirs)
+    external_root = any(path and Path(path).is_absolute() for path in saved_roots)
+    allow_external_roots = external_root or bool(project.data.get("allow_external_roots", False))
     project_data: ProjectDict = {
         "slproj_version": _SLPROJ_VERSION,
         "analyzed_programs_and_libraries": list(cast(list[str], cfg_raw.get("analyzed_programs_and_libraries") or [])),
         "analyzers": list(getattr(project, "analyzers", ())),
         "string_capacities": capacities,
         "mode": str(cfg_raw.get("mode", "official")),
-        "program_dir": _make_project_relative(str(cfg_raw.get("program_dir", "")), root),
-        "ABB_lib_dir": _make_project_relative(str(cfg_raw.get("ABB_lib_dir", "")), root),
-        "icf_dir": _make_project_relative(str(cfg_raw.get("icf_dir", "")), root),
-        "other_lib_dirs": [
-            _make_project_relative(str(p), root) for p in cast(list[str], cfg_raw.get("other_lib_dirs") or [])
-        ],
+        "program_dir": program_dir,
+        "ABB_lib_dir": abb_lib_dir,
+        "icf_dir": icf_dir,
+        "other_lib_dirs": other_lib_dirs,
+        "allow_external_roots": allow_external_roots,
         "analysis": dict(cast(dict[str, object], cfg_raw.get("analysis") or {})),
     }
     try:

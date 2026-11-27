@@ -72,6 +72,9 @@ def _project_data_from_config(cfg: ConfigDict, selected_keys: Sequence[str]) -> 
     data["ABB_lib_dir"] = _absolute_path(cfg.get("ABB_lib_dir"))
     data["icf_dir"] = _absolute_path(cfg.get("icf_dir"))
     data["other_lib_dirs"] = [_absolute_path(value) for value in _string_list(cfg.get("other_lib_dirs"))]
+    # The temporary project exists only to pass the caller's already resolved
+    # roots to the child, so external roots are intentional here.
+    data["allow_external_roots"] = True
     capacities = cast(Mapping[str, object], cfg.get("string_capacities"))
     overrides: dict[str, int] = {
         name: value

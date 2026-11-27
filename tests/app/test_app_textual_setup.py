@@ -470,6 +470,7 @@ def test_textual_setup_change_autosaves_to_slproj(monkeypatch: pytest.MonkeyPatc
     assert app_instance._dirty is False
     saved = load_project(project_path)
     assert saved.data["program_dir"] == "/some/program/dir"
+    assert saved.data["allow_external_roots"] is True
     assert saved.data["slproj_version"] == 2
     assert saved.data["string_capacities"] == {
         "identstring": 15,
