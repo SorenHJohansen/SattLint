@@ -23,10 +23,26 @@ from ..semantic_diff import ChangeChange
 _RELEVANT_DEFINITION_ROLES = {"read", "produced", "dependency"}
 
 
+def _longest_backtick_run(source: str) -> int:
+    """Length of the longest run of backticks anywhere in ``source``."""
+    longest = 0
+    current = 0
+    for char in source:
+        if char == "`":
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
 def _code_block(source: str | None) -> str:
     if source is None:
         return "_(no source selected)_"
-    return "\n```\n" + source.rstrip("\n") + "\n```\n"
+    # A fence longer than any run in the source cannot be closed by the source
+    # itself, so a ``# heading`` line stays inside the block.
+    fence = "`" * max(3, _longest_backtick_run(source) + 1)
+    return f"\n{fence}\n" + source.rstrip("\n") + f"\n{fence}\n"
 
 
 def _kind_label(kind: str) -> str:

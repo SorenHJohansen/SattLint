@@ -29,6 +29,7 @@ from ..runs import (
     load_run_acknowledgements,
     save_run_acknowledgements,
 )
+from ..utils.terminal_text import sanitize_terminal_label
 from ._app_textual_shared import (
     _TEXTUAL_LIST_ITEM,
     _TEXTUAL_LIST_VIEW,
@@ -191,10 +192,17 @@ def _finding_group_label(kind: str, role: str | None) -> str:
     return f"{kind_human_label(kind)} — {role_label}"
 
 
-def _module_node_label(label: str, *, has_findings: bool, fully_acknowledged: bool = False) -> str | Text:
+def _module_node_label(label: str, *, has_findings: bool, fully_acknowledged: bool = False) -> Text:
+    """A markup-free tree label for a target or module.
+
+    The content is sanitized so a control character in a module name cannot
+    reach the terminal, and ``Text`` keeps it literal instead of parsing
+    bracketed text as Rich markup.
+    """
+    content = sanitize_terminal_label(label)
     if fully_acknowledged:
-        return Text(label, style="bold #1b7f3a")
-    return Text(label, style="bold #674600") if has_findings else label
+        return Text(content, style="bold #1b7f3a")
+    return Text(content, style="bold #674600") if has_findings else Text(content)
 
 
 def _finding_label(finding: AnalysisFinding, *, occurrence_count: int = 1) -> str:
@@ -682,7 +690,7 @@ def _build_module_findings_report(
             continue
         if lines:
             lines.append(Text(""))
-        lines.append(Text(_analyzer_label(analyzer), style="bold #001ba3"))
+        lines.append(Text(sanitize_terminal_label(_analyzer_label(analyzer)), style="bold #001ba3"))
         if not matching:
             lines.append(Text("  No findings", style="dim"))
             continue
@@ -691,7 +699,9 @@ def _build_module_findings_report(
         ):
             lines.append(
                 Text(
-                    f"{_finding_group_label(kind, declaration_role)} ({sum(count for _, count in items)})",
+                    sanitize_terminal_label(
+                        f"{_finding_group_label(kind, declaration_role)} ({sum(count for _, count in items)})"
+                    ),
                     style="bold #674600",
                 )
             )
@@ -710,16 +720,18 @@ def _build_module_findings_report(
                 label_style = "dim bold" if is_acknowledged else "bold"
                 lines.append(
                     Text(
-                        f"  {marker}{_finding_label(finding, occurrence_count=occurrence_count)}",
+                        sanitize_terminal_label(
+                            f"  {marker}{_finding_label(finding, occurrence_count=occurrence_count)}"
+                        ),
                         style=label_style,
                     )
                 )
                 location = _finding_location(finding)
                 if location:
-                    lines.append(Text(f"  {location}", style="#38545a"))
+                    lines.append(Text(sanitize_terminal_label(f"  {location}"), style="#38545a"))
                 site = _site_label(finding)
                 if site:
-                    lines.append(Text(f"  {_readable_site(site)}", style="#38545a"))
+                    lines.append(Text(sanitize_terminal_label(f"  {_readable_site(site)}"), style="#38545a"))
                 controls = Text("  ")
                 acknowledge_control = Text(
                     "Unacknowledge" if is_acknowledged else "Acknowledge",
@@ -739,7 +751,7 @@ def _build_module_findings_report(
                     controls.append_text(details_control)
                 lines.append(controls)
                 if details and detail_index in expanded_details:
-                    lines.extend(Text(f"  {detail}") for detail in details)
+                    lines.extend(Text(sanitize_terminal_label(f"  {detail}")) for detail in details)
                 detail_index += 1
     report = Text("\n").join(lines) if lines else Text("No findings for this module", style="dim")
     return report, tuple(acknowledgement_keys)

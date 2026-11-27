@@ -47,6 +47,7 @@ from ..runs import (
     save_baseline,
     utc_now_iso,
 )
+from ..utils.terminal_text import sanitize_terminal_text
 from ._findings import (
     FindingFilters,
     FlatFinding,
@@ -705,10 +706,15 @@ def _findings_reach_threshold(findings: Iterable[FlatFinding], fail_on: FailOn) 
 
 
 def _write_diagnostics(result: ChecksRunResult, options: _AnalyzeOptions) -> None:
+    """Write human diagnostics through the shared sanitized stderr sink.
+
+    The lines can carry target and file names from the project, so they are
+    sanitized per line and cannot inject extra lines.
+    """
     if not result.output_lines or options.output.quiet:
         return
-    sys.stderr.write("\n".join(result.output_lines) + "\n")
-    sys.stderr.flush()
+    lines = (sanitize_terminal_text(line, keep_tabs=True) for line in result.output_lines)
+    write_stream(sys.stderr, "\n".join(lines) + "\n")
 
 
 def _analyze_text(payload: AnalyzePayload) -> list[str]:

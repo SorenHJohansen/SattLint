@@ -8,6 +8,16 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Security
+
+- Human-facing output treats project text as untrusted. Terminal and Results
+  view labels replace C0, DEL, C1, and Unicode format characters with a visible
+  `?`, so an escape sequence or bidirectional override in a target, module, or
+  finding name cannot change the terminal or hide text. Change Review Markdown
+  picks a code fence longer than any backtick run in the source, so a snippet
+  cannot close its block and inject a heading. JSON and NDJSON output keep the
+  original values.
+
 ### Added
 
 - Analysis input size limits. `[analysis].source_byte_limit` (default 8 MiB)

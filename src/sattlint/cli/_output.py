@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ..utils.terminal_text import sanitize_terminal_text
 from ._payloads import ErrorPayload
 
 SCHEMA_VERSION = 2
@@ -126,7 +127,13 @@ def emit_ndjson(records: Iterable[Mapping[str, object]], *, output: Path | None 
 
 
 def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
-    text = "\n".join(lines)
+    """Write human text, neutralizing control characters in every line.
+
+    Lines are sanitized before they are joined, so a finding or target name
+    cannot inject a second output line. Tabs are kept for column alignment;
+    newlines are refused because the sink owns the line structure.
+    """
+    text = "\n".join(sanitize_terminal_text(line, keep_tabs=True) for line in lines)
     if text:
         text += "\n"
     _write_text(text, output)
@@ -136,9 +143,11 @@ def emit_error(error: CliError, *, output_format: str) -> None:
     if output_format in {"json", "ndjson"}:
         write_stream(sys.stderr, encode_json_document(error_payload(error)))
         return
-    write_stream(sys.stderr, f"sattlint: {error.message}\n")
+    write_stream(sys.stderr, f"sattlint: {sanitize_terminal_text(error.message, keep_tabs=True)}\n")
     for key, value in error.details.items():
-        write_stream(sys.stderr, f"  {key}: {value}\n")
+        label = sanitize_terminal_text(str(key), keep_tabs=True)
+        detail = sanitize_terminal_text(str(value), keep_tabs=True)
+        write_stream(sys.stderr, f"  {label}: {detail}\n")
 
 
 def output_path(value: str | None) -> Path | None:

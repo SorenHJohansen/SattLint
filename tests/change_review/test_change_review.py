@@ -28,12 +28,14 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.models.expressions import Assignment, VarRef
 
 from sattlint.change_review import (
+    ChangeChange,
     ChangeKind,
     ChangeReviewResult,
     build_change_review,
     compute_relevance,
     compute_semantic_diff,
     generate_change_review,
+    review_to_markdown,
 )
 from sattlint.change_review._code_model import BlockModel, _iter_code_statements, build_code_model
 from sattlint.change_review.artifacts import write_review_artifacts
@@ -112,6 +114,47 @@ def test_markdown_shows_block_source(tmp_path: Path):
     assert "## Relevant Blocks / Sequences" in markdown
     assert "ValveOpen = Flow > 5" in markdown
     assert "#### Official" in markdown and "#### Draft" in markdown
+
+
+def test_markdown_source_fence_cannot_inject_a_heading():
+    source = "Value = 1;\n   ```\n# Not a review heading\n   ```\nNext = 2;"
+    review = ChangeReview(
+        metadata=ReviewMetadata(
+            project="Demo",
+            official_revision="official",
+            draft_revision="draft",
+            generated_at="2026-11-19T10:20:30Z",
+        ),
+        changes=(
+            ChangeChange(
+                symbol="Value",
+                module_path=("Demo",),
+                kind=ChangeKind.ADDED,
+                detail="added",
+                draft=source,
+            ),
+        ),
+        context=(),
+        variable_definitions=(),
+        size_stats=ReviewSizeStats(
+            total_project_source_size=0,
+            selected_source_size=0,
+            metadata_size=0,
+            artifact_size=0,
+            source_reduction_percent=0.0,
+            semantic_change_count=1,
+            relevant_block_count=0,
+            relevant_variable_count=0,
+            contextual_block_count=0,
+        ),
+    )
+
+    lines = review_to_markdown(review).splitlines()
+
+    fences = [index for index, line in enumerate(lines) if line == "````"]
+    heading = lines.index("# Not a review heading")
+    assert len(fences) == 2
+    assert fences[0] < heading < fences[1]
 
 
 def test_markdown_contains_semantic_context_and_scope(tmp_path: Path):
