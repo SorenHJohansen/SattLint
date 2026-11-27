@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from sattline_parser.models.ast_model import BasePicture, ModuleHeader
 
 from sattlint import cache as cache_module
 from sattlint.cache.classes import AnalysisReportCache, ASTCache
 from sattlint.models import _variable_issues as variable_issues_module
+from sattlint.models.project_graph import ProjectGraph
 
 
 def test_analyzer_version_bump_only_invalidates_that_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,6 +68,43 @@ def test_variable_issue_layout_change_invalidates_cached_variable_reports() -> N
     # scope). A stale report would replay the old, out-of-scope findings.
     assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-capacity"] == "2026-11-26-language-identity"
     assert cache_module._ANALYSIS_REPORT_ANALYZER_VERSIONS["string-style"] == "2026-11-26-language-identity"
+
+
+def test_the_cached_model_version_changes_both_cache_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model shape change must not replay an entry built by the old shape."""
+    project_key = cache_module.compute_cache_key({})
+    report_key = cache_module.compute_analysis_report_cache_key(project_key, "variables")
+
+    monkeypatch.setattr(cache_module, "CACHE_MODEL_VERSION", cache_module.CACHE_MODEL_VERSION + 1)
+
+    assert cache_module.compute_cache_key({}) != project_key
+    assert cache_module.compute_analysis_report_cache_key(project_key, "variables") != report_key
+
+
+def _header(name: str) -> ModuleHeader:
+    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0))
+
+
+def test_a_real_cached_graph_round_trips_through_the_restricted_unpickler(tmp_path: Path) -> None:
+    source = tmp_path / "Demo.s"
+    source.write_text("x := 1;", encoding="utf-8")
+    picture = BasePicture(header=_header("Demo"), modulecode=None, moduledef=None)
+    graph = ProjectGraph(
+        ast_by_name={"Demo": picture},
+        source_files={source},
+        analysis_manifest_files=frozenset({source}),
+    )
+    cache = ASTCache(tmp_path / "caches")
+
+    cache.save("key", project=({"Demo": picture}, graph), files=[source])
+
+    payload = cast("dict[str, object] | None", cache.load_validated("key"))
+    assert payload is not None
+    restored_project = cast("tuple[dict[str, BasePicture], ProjectGraph]", payload["project"])
+    restored_asts, restored_graph = restored_project
+    assert isinstance(restored_asts["Demo"], BasePicture)
+    assert isinstance(restored_graph, ProjectGraph)
+    assert restored_graph.analysis_manifest_files == frozenset({source})
 
 
 def test_ast_cache_save_load_and_validate(tmp_path: Path) -> None:

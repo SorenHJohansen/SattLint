@@ -74,6 +74,20 @@ class ASTCache:
         # paired with the previous payload instead of blessing a stale one.
         cache_module._save_pickle_payload(self._path(key), payload)
         cache_module._save_manifest_payload(self._manifest_path(key), manifest)
+        self._prune_after_save()
+
+    def _prune_after_save(self) -> None:
+        """Enforce the payload budget after a write, best effort.
+
+        The budget was otherwise applied only at startup and by an explicit
+        prune, so one long run could write every target's graph without ever
+        looking at the limit. The entry is already durable, so a prune failure
+        must not fail the save.
+        """
+        try:
+            self.prune_over_budget_entries()
+        except OSError:
+            return
 
     def load_validated(self, key: str) -> object | None:
         manifest = self.load_manifest(key)

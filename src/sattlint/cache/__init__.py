@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import os
 import pickle
 import secrets
+import stat
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ from .manager import (
 __all__ = [
     "ANALYSIS_REPORT_CACHE_VERSION",
     "CACHE_KEY_SCHEMA_VERSION",
+    "CACHE_MODEL_VERSION",
     "CACHE_VERSION",
     "ASTCache",
     "AnalysisReportCache",
@@ -67,8 +70,63 @@ CACHE_PAYLOAD_BUDGET_BYTES = 4 * 1024**3
 #: is currently in use cannot lose its cache to a single oversized sibling.
 CACHE_EVICTION_MIN_AGE_SECONDS = 7 * 24 * 60 * 60
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
+_MANIFEST_CACHE_MAGIC = b"SATTLINT-MANIFEST-V1\n"
+_SIGNATURE_HEX_LENGTH = hashlib.sha256().digest_size * 2
 _PICKLE_HMAC_KEY_NAME = ".sattlint-cache-key"
 _PICKLE_HMAC_SIZE = 32
+#: Windows reports a symlink or another reparse point through
+#: ``st_file_attributes``, where ``lstat`` alone cannot see a junction.
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+#: Module prefixes whose classes a cached project graph and report can hold.
+#: SattLint rewrites every cacheable model, so its own package is allowed.
+_ALLOWED_PICKLE_MODULE_PREFIXES = ("sattlint", "sattline_parser")
+#: Stdlib modules the parser and report models use in their pickle state.
+#: Submodules are covered by the prefix rule below.
+_ALLOWED_PICKLE_MODULES = frozenset(
+    {
+        "builtins",
+        "collections",
+        "copyreg",
+        "dataclasses",
+        "datetime",
+        "decimal",
+        "enum",
+        "functools",
+        "ntpath",
+        "pathlib",
+        "posixpath",
+        "re",
+        "types",
+        "uuid",
+    }
+)
+#: Builtins a legitimate payload needs. ``find_class`` hands the pickler a
+#: callable, so the set is explicit rather than every builtin.
+_ALLOWED_PICKLE_BUILTINS = frozenset(
+    {
+        "bool",
+        "bytearray",
+        "bytes",
+        "classmethod",
+        "complex",
+        "dict",
+        "float",
+        "frozenset",
+        "getattr",
+        "int",
+        "list",
+        "object",
+        "property",
+        "range",
+        "set",
+        "slice",
+        "staticmethod",
+        "str",
+        "tuple",
+        "type",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -210,10 +268,34 @@ def _snapshot_manifest(files: Iterable[Path]) -> CacheManifest | None:
 
 
 def _load_manifest_payload(path: Path) -> CacheManifest | None:
+    """Read a signed manifest, or ``None`` when it is missing or untrusted.
+
+    The payload is signed, so the manifest beside it is signed too: otherwise
+    a writer who can reach the cache directory could pair a signed old payload
+    with a fresh-looking file snapshot. A missing or untrusted key, a bad
+    magic, a wrong signature length, and a signature mismatch are all a cache
+    miss, never an error.
+    """
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        raw_bytes = path.read_bytes()
+    except OSError:
+        return None
+
+    signature, body = _read_signed_envelope(raw_bytes, _MANIFEST_CACHE_MAGIC)
+    if signature is None:
+        return None
+
+    key = _read_pickle_hmac_key(_pickle_hmac_key_path())
+    if key is None:
+        return None
+
+    expected_signature = hmac.new(key, body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        return None
+
+    try:
+        loaded = json.loads(body)
+    except ValueError:
         return None
 
     if not isinstance(loaded, dict):
@@ -254,6 +336,31 @@ def _validate_manifest(files: object) -> bool:
     return True
 
 
+def _pickle_global_is_allowed(module: str, name: str) -> bool:
+    """Whether a cached payload may reference ``module.name``."""
+    if module == "builtins":
+        return name in _ALLOWED_PICKLE_BUILTINS
+    if any(module == prefix or module.startswith(f"{prefix}.") for prefix in _ALLOWED_PICKLE_MODULE_PREFIXES):
+        return True
+    return any(module == allowed or module.startswith(f"{allowed}.") for allowed in _ALLOWED_PICKLE_MODULES)
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """An unpickler that resolves only the globals a cache payload uses.
+
+    A pickle is executable code, and the signature only proves the file came
+    from whoever holds the key. Restricting ``find_class`` keeps a crafted
+    payload from reaching an arbitrary callable such as a process launch, even
+    if it carries a valid signature. A disallowed global raises
+    :class:`pickle.UnpicklingError`, which the caller treats as a cache miss.
+    """
+
+    def find_class(self, module: str, name: str) -> object:
+        if not _pickle_global_is_allowed(module, name):
+            raise pickle.UnpicklingError(f"cache payload references a disallowed global: {module}.{name}")
+        return super().find_class(module, name)
+
+
 def _load_pickle_payload(path: Path) -> object | None:
     try:
         payload_bytes = path.read_bytes()
@@ -275,8 +382,8 @@ def _load_pickle_payload(path: Path) -> object | None:
         return None
 
     try:
-        return pickle.loads(pickled_payload)
-    except (pickle.UnpicklingError, TypeError, AttributeError, EOFError, ModuleNotFoundError, ValueError):
+        return _RestrictedUnpickler(io.BytesIO(pickled_payload)).load()
+    except (pickle.UnpicklingError, TypeError, AttributeError, EOFError, ImportError, ValueError):
         return None
 
 
@@ -296,12 +403,15 @@ def _load_or_create_pickle_hmac_key() -> bytes | None:
     existing_key = _read_pickle_hmac_key(key_path)
     if existing_key is not None:
         return existing_key
-    if key_path.exists() and not _remove_file(key_path):
+    # A key that exists but cannot be trusted is replaced at its own path, so a
+    # planted link or a loosened mode cannot keep the cache unusable. ``unlink``
+    # removes the directory entry itself and never the link target.
+    if _directory_entry_exists(key_path) and not _remove_file(key_path):
         return None
 
     key_path.parent.mkdir(parents=True, exist_ok=True)
     key = secrets.token_bytes(_PICKLE_HMAC_SIZE)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
     try:
         fd = os.open(key_path, flags, 0o600)
     except FileExistsError:
@@ -321,29 +431,105 @@ def _load_or_create_pickle_hmac_key() -> bytes | None:
     return key
 
 
-def _read_pickle_hmac_key(path: Path) -> bytes | None:
+def _directory_entry_exists(path: Path) -> bool:
+    """Whether *path* names a directory entry, without following a link."""
     try:
-        key = path.read_bytes()
+        path.lstat()
+    except OSError:
+        return False
+    return True
+
+
+def _is_symlink_or_reparse_point(info: os.stat_result) -> bool:
+    """Whether a directory entry redirects to another path.
+
+    ``lstat`` reports a POSIX symlink through the mode. On Windows a junction
+    or other reparse point is reported through ``st_file_attributes`` instead.
+    """
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    return bool(getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _key_file_is_trusted(info: os.stat_result) -> bool:
+    """Whether *info* describes a key file only this user can have written.
+
+    POSIX ownership and permission bits are enforced where the platform
+    reports them: the key must be regular, the expected size, owned by the
+    current user, and inaccessible to group and other. Windows reports neither
+    a useful ``st_uid`` nor a POSIX owner mode, so only the checks that exist
+    there apply: a regular file that is not a reparse point.
+    """
+    if not stat.S_ISREG(info.st_mode) or _is_symlink_or_reparse_point(info):
+        return False
+    if info.st_size != _PICKLE_HMAC_SIZE:
+        return False
+    current_uid = getattr(os, "getuid", None)
+    if current_uid is None:
+        return True
+    if info.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        return False
+    return getattr(info, "st_uid", -1) == current_uid()
+
+
+def _read_pickle_hmac_key(path: Path) -> bytes | None:
+    """Read the signing key, or ``None`` when the file cannot be trusted.
+
+    The key decides what the cache trusts, so its location is checked before
+    its bytes: a symlink, a foreign owner, or a group or world readable mode
+    lets another user supply a payload and a matching signature. ``lstat``
+    rejects a link up front, the descriptor is opened with ``O_NOFOLLOW``, and
+    the opened descriptor is rechecked with ``fstat``, so a link swapped in
+    between the two calls is still refused.
+    """
+    try:
+        link_info = path.lstat()
     except OSError:
         return None
+    if _is_symlink_or_reparse_point(link_info):
+        return None
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        if not _key_file_is_trusted(os.fstat(fd)):
+            return None
+        key = os.read(fd, _PICKLE_HMAC_SIZE + 1)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
     if len(key) != _PICKLE_HMAC_SIZE:
         return None
     return key
 
 
-def _read_signed_pickle_envelope(payload_bytes: bytes) -> tuple[str | None, bytes]:
-    if not payload_bytes.startswith(_PICKLE_CACHE_MAGIC):
+def _read_signed_envelope(payload_bytes: bytes, magic: bytes) -> tuple[str | None, bytes]:
+    """Split one signed envelope into its hex signature and body.
+
+    A body that does not start with *magic*, a missing separator, or a
+    signature of the wrong length is not an envelope this module wrote.
+    """
+    if not payload_bytes.startswith(magic):
         return None, b""
 
-    remainder = payload_bytes[len(_PICKLE_CACHE_MAGIC) :]
-    signature, separator, pickled_payload = remainder.partition(b"\n")
-    if separator != b"\n" or len(signature) != hashlib.sha256().digest_size * 2:
+    remainder = payload_bytes[len(magic) :]
+    signature, separator, body = remainder.partition(b"\n")
+    if separator != b"\n" or len(signature) != _SIGNATURE_HEX_LENGTH:
         return None, b""
 
     try:
-        return signature.decode("ascii"), pickled_payload
+        return signature.decode("ascii"), body
     except UnicodeDecodeError:
         return None, b""
+
+
+def _read_signed_pickle_envelope(payload_bytes: bytes) -> tuple[str | None, bytes]:
+    return _read_signed_envelope(payload_bytes, _PICKLE_CACHE_MAGIC)
 
 
 def _save_pickle_payload(path: Path, payload: object) -> None:
@@ -379,12 +565,27 @@ def _remove_file(path: Path) -> bool:
 
 
 def _save_manifest_payload(path: Path, manifest: CacheManifest) -> None:
-    """Write a manifest atomically, owner-only, like the payload it describes."""
+    """Write a manifest atomically, owner-only, under the cache HMAC key.
+
+    The payload is signed; an unsigned manifest beside it is the weak link,
+    because a writer who can replace the manifest can pair a signed old payload
+    with a fresh-looking file snapshot. The signature covers the JSON body, so
+    the body keeps the shape every reader already parses.
+    """
+    key = _load_or_create_pickle_hmac_key()
+    if key is None:
+        raise OSError(f"Could not create the cache signing key for {path}")
+
+    body = json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+    signature = hmac.new(key, body, hashlib.sha256).hexdigest().encode("ascii")
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
         fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(_MANIFEST_CACHE_MAGIC)
+            handle.write(signature)
+            handle.write(b"\n")
+            handle.write(body)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, path)
@@ -435,7 +636,13 @@ def _normalize_cache_dir(cache_dir: Path) -> Path:
 # parser rather than embedded by hand, so a parser upgrade invalidates the key on its
 # own; bump this tag only when the key's inputs or their encoding change.
 # Version 2 adds the project's [string_capacities] table to the key.
-CACHE_KEY_SCHEMA_VERSION = 2
+# Version 3 adds the cached model version and the signed manifest.
+CACHE_KEY_SCHEMA_VERSION = 3
+#: The shape of the project and AST model a cache entry holds. A pickle is decoded
+#: against the classes loaded now, so an entry written by a build with a different
+#: model shape must miss even when the key schema is unchanged. Bump this when a
+#: cached model class gains, loses, or reorders a field.
+CACHE_MODEL_VERSION = 1
 _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "comment-code": "2026-11-25-file-line-ownership",
     "cyclomatic-complexity": "2026-11-26-language-identity",
@@ -445,7 +652,7 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "moduletype-usage": "2026-11-26-language-identity",
     "module-layout": "2026-11-26-language-identity",
     "picture-display-paths": "2026-11-25-stable-string-pass",
-    "icf": "2026-11-25-partial-project",
+    "icf": "2026-11-27-input-limits",
     "dataflow": "2026-11-26-language-identity",
     "same-cycle": "2026-11-26-language-identity",
     "alarm-integrity": "2026-11-26-language-identity",
@@ -521,6 +728,7 @@ def compute_cache_key(cfg: Mapping[str, object], *, analysis_target: str | None 
     """
     payload: dict[str, object] = {
         "schema": CACHE_KEY_SCHEMA_VERSION,
+        "model": CACHE_MODEL_VERSION,
         "parser": parser_api.PARSER_VERSION,
         "target": str(analysis_target).strip() if analysis_target is not None else None,
     }
@@ -553,6 +761,7 @@ def compute_analysis_report_cache_key(
     """
     payload: dict[str, object] = {
         "schema": CACHE_KEY_SCHEMA_VERSION,
+        "model": CACHE_MODEL_VERSION,
         "parser": parser_api.PARSER_VERSION,
         "project": project_cache_key,
         "analyzer": analyzer_key,
