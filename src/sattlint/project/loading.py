@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import contextlib
+import os
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, cast
 
 from sattlint.parser_api import (
@@ -17,6 +20,7 @@ from sattlint.parser_api import (
 )
 
 from .. import cache as cache_module
+from ..config.analysis import project_byte_limit, source_byte_limit
 from ..config.types import ConfigDict
 from ..core.debug import debug_enabled, log_load_failure
 from ..core.memory import release_unused_memory
@@ -48,6 +52,142 @@ from .support import LoadFailureDetail, configured_icf_files, describe_load_fail
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
+#: Source suffixes the parser treats as code bodies. The preflight counts the
+#: same files so a load limit matches what the parser can read.
+_SOURCE_SUFFIXES = frozenset({".s", ".x", ".sattline"})
+
+
+@dataclass(frozen=True, slots=True)
+class _OversizedSourceFile:
+    """One source file above the per-file limit."""
+
+    path: Path
+    size: int
+    unit_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceSizeSnapshot:
+    """Sizes of the source files under one root set."""
+
+    file_count: int
+    total_bytes: int
+    oversized_files: tuple[_OversizedSourceFile, ...]
+
+
+def _configured_source_roots(cfg: ConfigDict) -> tuple[Path, ...]:
+    """Configured source roots in a stable order, without duplicates."""
+    other_dirs = cfg.get("other_lib_dirs") or ()
+    raw_roots: list[object] = [cfg.get("program_dir"), *other_dirs, cfg.get("ABB_lib_dir")]
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for raw_root in raw_roots:
+        text = str(raw_root or "").strip()
+        if not text:
+            continue
+        root = Path(text).expanduser()
+        marker = str(root.absolute())
+        if marker in seen:
+            continue
+        seen.add(marker)
+        roots.append(root)
+    return tuple(roots)
+
+
+def _iter_source_files(root: Path) -> Iterator[tuple[Path, int]]:
+    """Stat every regular source file under ``root`` without reading it."""
+    for directory, subdirectories, filenames in os.walk(root, followlinks=False):
+        subdirectories.sort()
+        for filename in sorted(filenames):
+            path = Path(directory) / filename
+            if path.suffix.lower() not in _SOURCE_SUFFIXES:
+                continue
+            try:
+                file_stat = path.stat()
+            except OSError:
+                # The parser reports an unreadable file with its own read
+                # error; the size preflight only needs the files it can see.
+                continue
+            if not S_ISREG(file_stat.st_mode):
+                continue
+            yield path, file_stat.st_size
+
+
+@lru_cache(maxsize=16)
+def _source_size_snapshot(
+    roots: tuple[Path, ...],
+    source_limit: int,
+    project_limit: int,
+) -> _SourceSizeSnapshot:
+    """One stat pass over the configured roots, cached for the load session.
+
+    The root tuple and both limits form the cache key, so a configuration
+    change rescans. The snapshot never opens a file: it only records sizes.
+    """
+    del project_limit  # Part of the cache key, not of the scan itself.
+    file_count = 0
+    total_bytes = 0
+    oversized_files: list[_OversizedSourceFile] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path, size in _iter_source_files(root):
+            file_count += 1
+            total_bytes += size
+            if size > source_limit:
+                oversized_files.append(_OversizedSourceFile(path=path, size=size, unit_key=unit_key(path.stem)))
+    return _SourceSizeSnapshot(
+        file_count=file_count,
+        total_bytes=total_bytes,
+        oversized_files=tuple(oversized_files),
+    )
+
+
+def _enforce_input_limits(
+    cfg: ConfigDict,
+    *,
+    target_name: str,
+    target_names: Sequence[str],
+) -> None:
+    """Refuse a load before the parser reads any source byte.
+
+    The stat pass covers every configured root, not only the selected target.
+    An oversized file that belongs to another configured target fails only
+    that target, so one bad program does not erase the rest of the run. An
+    oversized file that belongs to no configured target could be a dependency,
+    so it fails every target. ``load_project`` calls this before the cache
+    lookup and before the parser binding is built.
+    """
+    roots = _configured_source_roots(cfg)
+    if not roots:
+        return
+    source_limit = source_byte_limit(cfg)
+    project_limit = project_byte_limit(cfg)
+    snapshot = _source_size_snapshot(roots, source_limit, project_limit)
+    target_keys = {unit_key(name) for name in target_names}
+    selected_key = unit_key(target_name)
+    for oversized in snapshot.oversized_files:
+        if oversized.unit_key != selected_key and oversized.unit_key in target_keys:
+            continue
+        raise ValueError(
+            f"Source file {oversized.path} is {oversized.size} bytes, above "
+            f"[analysis].source_byte_limit of {source_limit} bytes. Raise the limit or exclude the file."
+        )
+    if snapshot.total_bytes > project_limit:
+        raise ValueError(
+            f"Project source total is {snapshot.total_bytes} bytes across {snapshot.file_count} files, above "
+            f"[analysis].project_byte_limit of {project_limit} bytes. Raise the limit or exclude source files."
+        )
+
+
+def _reset_source_size_snapshot() -> None:
+    """Start a load session with fresh file sizes.
+
+    The snapshot is shared by every target of one run, but an interactive
+    session can run several times, and a file added between runs must be seen.
+    """
+    _source_size_snapshot.cache_clear()
+
 
 def iter_loaded_projects(
     cfg: ConfigDict,
@@ -59,6 +199,7 @@ def iter_loaded_projects(
     failure_sink: Callable[[str, LoadFailureDetail], None] | None = None,
     progress_fn: ProgressCallback | None = None,
 ) -> Iterator[LoadedProject]:
+    _reset_source_size_snapshot()
     target_names = require_analyzed_targets_fn(cfg)
     target_total = len(target_names)
     for target_index, target_name in enumerate(target_names, start=1):
@@ -326,6 +467,7 @@ def load_project(  # noqa: PLR0915
     validate_loader_config(cfg)
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
+    _enforce_input_limits(cfg, target_name=selected_target, target_names=targets)
     ast_only = str(refresh_mode).strip().lower() == "ast-only"
     cache_dir = get_cache_dir_fn()
     cache = None if cache_dir is None else cache_module.build_ast_cache(cache_dir, ast_cache_cls)
@@ -676,6 +818,7 @@ def ensure_ast_cache(
     get_cache_dir_fn: Callable[[], Path | None],
     emit_output_fn: Callable[..., None],
 ) -> bool:
+    _reset_source_size_snapshot()
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return True

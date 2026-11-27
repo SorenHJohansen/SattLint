@@ -10,6 +10,14 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Added
 
+- Analysis input size limits. `[analysis].source_byte_limit` (default 8 MiB)
+  refuses a target before the parser reads a source file that is too large,
+  `[analysis].icf_byte_limit` (default 16 MiB) bounds the ICF read, and
+  `[analysis].project_byte_limit` (default 512 MiB) bounds the combined source
+  size over every configured root. A refused load names the file or total and
+  the setting to raise, and the run continues instead of aborting. ICF
+  reference parsing is now a linear scan instead of a backtracking regular
+  expression, so a long colon-free line cannot stall the analyzer.
 - Findings can carry a source location. JSON output gains optional `file`,
   `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
   view show the location when an analyzer records one. Missing locations stay

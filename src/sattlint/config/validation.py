@@ -35,6 +35,9 @@ VALID_ANALYSIS_KEYS: frozenset[str] = frozenset(
         "fan_in_out_threshold",
         "module_grid",
         "module_grid_tolerance",
+        "source_byte_limit",
+        "icf_byte_limit",
+        "project_byte_limit",
     }
 )
 VALID_RUN_HISTORY_KEYS = frozenset({"enabled", "limit"})
@@ -441,6 +444,9 @@ def _analysis_validation_errors(analysis: ConfigObjectMap) -> list[ConfigValidat
         "cyclomatic_step_threshold",
         "cyclomatic_equation_block_threshold",
         "fan_in_out_threshold",
+        "source_byte_limit",
+        "icf_byte_limit",
+        "project_byte_limit",
     ):
         threshold = analysis.get(threshold_key)
         if threshold is None:

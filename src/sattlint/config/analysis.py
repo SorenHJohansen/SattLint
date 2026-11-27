@@ -7,6 +7,7 @@ loose dict lookups.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import isfinite
 from typing import Any, cast
 
@@ -18,6 +19,14 @@ DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD = 10
 
 DEFAULT_FAN_IN_OUT_THRESHOLD = 3
 
+#: Largest source file the loader parses. A hostile or accidental giant file
+#: is refused before the parser reads any of its bytes.
+DEFAULT_SOURCE_BYTE_LIMIT = 8 * 1024 * 1024
+#: Largest ICF file the ICF analyzer reads.
+DEFAULT_ICF_BYTE_LIMIT = 16 * 1024 * 1024
+#: Largest total of source bytes over every configured root.
+DEFAULT_PROJECT_BYTE_LIMIT = 512 * 1024 * 1024
+
 #: The drawing grid a module uses when it writes no ``Grid`` clause.
 DEFAULT_MODULE_GRID = 0.02
 #: Distance below which a value counts as sitting exactly on the grid.
@@ -26,7 +35,7 @@ DEFAULT_MODULE_GRID = 0.02
 DEFAULT_MODULE_GRID_TOLERANCE = 1e-5
 
 
-def _analysis_section(config: dict[str, Any] | None) -> dict[str, Any]:
+def _analysis_section(config: Mapping[str, Any] | None) -> dict[str, Any]:
     if not config:
         return {}
     analysis = config.get("analysis")
@@ -101,19 +110,49 @@ def module_grid_tolerance(config: dict[str, Any] | None) -> float:
     )
 
 
+def source_byte_limit(config: Mapping[str, Any] | None) -> int:
+    """Largest source file the loader parses, in bytes."""
+    return _positive_int(
+        _analysis_section(config).get("source_byte_limit"),
+        DEFAULT_SOURCE_BYTE_LIMIT,
+    )
+
+
+def icf_byte_limit(config: Mapping[str, Any] | None) -> int:
+    """Largest ICF file the ICF analyzer reads, in bytes."""
+    return _positive_int(
+        _analysis_section(config).get("icf_byte_limit"),
+        DEFAULT_ICF_BYTE_LIMIT,
+    )
+
+
+def project_byte_limit(config: Mapping[str, Any] | None) -> int:
+    """Largest total of source bytes over every configured root, in bytes."""
+    return _positive_int(
+        _analysis_section(config).get("project_byte_limit"),
+        DEFAULT_PROJECT_BYTE_LIMIT,
+    )
+
+
 __all__ = [
     "DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD",
     "DEFAULT_CYCLOMATIC_MODULE_THRESHOLD",
     "DEFAULT_CYCLOMATIC_STEP_THRESHOLD",
     "DEFAULT_FAN_IN_OUT_THRESHOLD",
+    "DEFAULT_ICF_BYTE_LIMIT",
     "DEFAULT_MODULE_GRID",
     "DEFAULT_MODULE_GRID_TOLERANCE",
+    "DEFAULT_PROJECT_BYTE_LIMIT",
+    "DEFAULT_SOURCE_BYTE_LIMIT",
     "DEFAULT_UNSAFE_DEFAULT_TOKENS",
     "cyclomatic_equation_block_threshold",
     "cyclomatic_module_threshold",
     "cyclomatic_step_threshold",
     "fan_in_out_threshold",
+    "icf_byte_limit",
     "module_grid",
     "module_grid_tolerance",
+    "project_byte_limit",
+    "source_byte_limit",
     "unsafe_default_tokens",
 ]

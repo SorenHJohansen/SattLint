@@ -27,13 +27,14 @@ from typing import Any, cast
 
 from sattlint.parser_api import BasePicture, ModuleTypeDef, ProjectLoadError
 
+from ...config.analysis import icf_byte_limit
 from ...config.types import ConfigDict
 from ...models.project_graph import ProjectGraph, merge_project_basepicture, program_identity
 from ...project.support import configured_icf_files
 from ...reporting.icf_report import ICFEntry, ICFValidationIssue
 from ..framework import Issue, ProgramAstBatchLoader, ProgramAstLoader, SimpleReport
 from . import parse_icf_file, validate_icf_entries_against_program
-from ._icf_file_io import extract_icf_sattline_ref, is_placeholder_icf_value
+from ._icf_file_io import IcfFileTooLargeError, extract_icf_sattline_ref, is_placeholder_icf_value
 
 _REASON_TO_KIND: dict[str, str] = {
     "program mismatch": "icf.program_mismatch",
@@ -48,6 +49,7 @@ _REASON_TO_KIND: dict[str, str] = {
 }
 
 _KIND_FOR_LOAD_FAILURE = "icf.program_load_failed"
+_KIND_FOR_OVERSIZED_FILE = "icf.file_too_large"
 
 
 def _kind_for_reason(reason: str) -> str:
@@ -286,10 +288,38 @@ def analyze_icf_configuration(
     if not icf_files:
         return SimpleReport(name="ICF configuration", issues=[])
 
+    limit = icf_byte_limit(config)
+    file_entries: list[tuple[Path, list[ICFEntry]]] = []
+    issues: list[Issue] = []
+    for icf_file in icf_files:
+        try:
+            entries = parse_icf_file(icf_file, max_bytes=limit)
+        except IcfFileTooLargeError as exc:
+            # One oversized file must not hide the findings in the other
+            # configured files.
+            issues.append(
+                Issue(
+                    kind=_KIND_FOR_OVERSIZED_FILE,
+                    message=str(exc),
+                    module_path=[icf_file.name],
+                    data={
+                        "file": str(icf_file),
+                        "observed_bytes": exc.observed_bytes,
+                        "limit": exc.limit,
+                        "site": str(icf_file),
+                        "context": f"{icf_file.name} exceeds the configured ICF byte limit",
+                    },
+                )
+            )
+            continue
+        file_entries.append((icf_file, entries))
+
+    if not file_entries:
+        return SimpleReport(name="ICF configuration", issues=issues)
+
     if program_ast_loader is None and program_ast_batch_loader is None:
         raise RuntimeError("ICF analysis needs a program loader to load the programs an .icf file references.")
 
-    file_entries = [(icf_file, parse_icf_file(icf_file)) for icf_file in icf_files]
     program_cache: dict[str, _LoadedProgram] = {}
     _preload_referenced_programs(
         _referenced_program_names(file_entries),
@@ -299,7 +329,6 @@ def analyze_icf_configuration(
         program_cache=program_cache,
     )
 
-    issues: list[Issue] = []
     for icf_file, entries in file_entries:
         if not entries:
             continue

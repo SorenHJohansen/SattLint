@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import codecs
 from pathlib import Path
+from time import monotonic
 from types import SimpleNamespace
 from typing import cast
 
@@ -22,6 +23,7 @@ from sattline_parser.models.ast_model import (
 
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
+from sattlint.analyzers.icf._icf_file_io import IcfFileTooLargeError
 from sattlint.reporting.icf_report import ICFEntry, summarize_icf_unit_drift
 from sattlint.resolution.common import ResolvedModulePath
 
@@ -90,6 +92,74 @@ def test_icf_helper_parse_and_extract_edge_cases(tmp_path: Path):
     assert icf_module._extract_icf_sattline_ref("NoColon") == (None, None)
     assert icf_module._is_placeholder_icf_value("H::.") is True
     assert icf_module._is_placeholder_icf_value("Program:Unit.Value") is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Program:Path", ("Program", "Path")),
+        ("F::Program:Path", ("Program", "Path")),
+        ("prefix text F::Program:Path", ("Program", "Path")),
+        ("   Program:Path   ", ("Program", "Path")),
+        ("Program:Path.With.Colons", ("Program", "Path.With.Colons")),
+        ("Program:Path:More", ("Program", "Path:More")),
+        ("Program:", (None, None)),
+        (":Path", (None, None)),
+        ("NoColon", (None, None)),
+        ("   ", (None, None)),
+    ],
+)
+def test_extract_icf_sattline_ref_preserves_the_accepted_forms(
+    value: str,
+    expected: tuple[str | None, str | None],
+) -> None:
+    assert icf_module._extract_icf_sattline_ref(value) == expected
+
+
+def test_extract_icf_sattline_ref_handles_a_long_colon_free_line_quickly() -> None:
+    line = "x" * (1024 * 1024)
+
+    started = monotonic()
+    result = icf_module._extract_icf_sattline_ref(line)
+    elapsed = monotonic() - started
+
+    assert result == (None, None)
+    assert elapsed < 2.0
+
+
+def test_icf_file_over_the_limit_is_rejected_with_the_file_and_limit(tmp_path: Path) -> None:
+    icf_file = tmp_path / "Big.icf"
+    icf_file.write_bytes(b"x" * 4096)
+
+    with pytest.raises(IcfFileTooLargeError) as excinfo:
+        icf_module.parse_icf_file(icf_file, max_bytes=1024)
+
+    message = str(excinfo.value)
+    assert str(icf_file) in message
+    assert "4096" in message
+    assert "1024" in message
+    assert "[analysis].icf_byte_limit" in message
+    assert excinfo.value.limit == 1024
+    assert excinfo.value.observed_bytes == 4096
+
+
+def test_icf_file_that_grows_after_the_stat_is_still_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_file = tmp_path / "Grow.icf"
+    icf_file.write_bytes(b"x" * 4096)
+
+    def _stale_stat(_path: Path, *_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(st_size=0)
+
+    monkeypatch.setattr(Path, "stat", _stale_stat)
+
+    with pytest.raises(IcfFileTooLargeError) as excinfo:
+        icf_module.parse_icf_file(icf_file, max_bytes=1024)
+
+    assert excinfo.value.limit == 1024
+    assert excinfo.value.observed_bytes == 1025
 
 
 def test_icf_helper_resolve_unit_type_and_signature_diff(monkeypatch: pytest.MonkeyPatch):

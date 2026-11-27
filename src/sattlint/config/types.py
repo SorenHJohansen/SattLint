@@ -47,6 +47,9 @@ class AnalysisConfig(TypedDict):
     fan_in_out_threshold: int
     module_grid: float
     module_grid_tolerance: float
+    source_byte_limit: int
+    icf_byte_limit: int
+    project_byte_limit: int
 
 
 class AnalysisConfigOverride(TypedDict, total=False):
@@ -57,6 +60,9 @@ class AnalysisConfigOverride(TypedDict, total=False):
     fan_in_out_threshold: int
     module_grid: float
     module_grid_tolerance: float
+    source_byte_limit: int
+    icf_byte_limit: int
+    project_byte_limit: int
 
 
 class ConfigDict(TypedDict):

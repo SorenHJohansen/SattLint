@@ -87,7 +87,8 @@ def _patch_icf_inputs(
     def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
         return icf_dir, list(programs_by_file)
 
-    def _parsed(path: Path) -> list[ICFEntry]:
+    def _parsed(path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+        del max_bytes
         return [
             _entry(line=line, value=f"{program}:Module.Var{line}")
             for line, program in enumerate(programs_by_file[path], start=1)
@@ -252,7 +253,8 @@ def test_placeholder_only_entries_are_not_a_program_reference(monkeypatch: pytes
     def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
         return icf_dir, [unbound]
 
-    def _parsed(_path: Path) -> list[ICFEntry]:
+    def _parsed(_path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+        del max_bytes
         return [_entry(value="H::."), _entry(line=4, value="free text without a reference")]
 
     monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
@@ -349,6 +351,62 @@ def test_parser_load_error_emits_program_load_failed(monkeypatch: pytest.MonkeyP
     assert len(report.issues) == 1
     assert report.issues[0].kind == "icf.program_load_failed"
     assert report.issues[0].module_path == ["ProgramA"]
+
+
+def test_oversized_icf_file_reports_a_finding_and_validates_the_others(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    oversized = icf_dir / "Big.icf"
+    oversized.write_bytes(b"x" * 4096)
+    valid = icf_dir / "Small.icf"
+    valid.write_text("Key=F::Program:Module.Var\n", encoding="utf-8")
+
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, [oversized, valid]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+    _patch_merge(monkeypatch)
+    seen: list[tuple[str, list[str]]] = []
+    _patch_validation(monkeypatch, _report(), seen=seen)
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir), analysis={"icf_byte_limit": 1024}),
+        program_ast_loader=_loader,
+    )
+
+    assert [issue.kind for issue in report.issues] == ["icf.file_too_large"]
+    message = report.issues[0].message
+    assert str(oversized) in message
+    assert "4096" in message
+    assert "1024" in message
+    # The readable file still validates even though its neighbor was refused.
+    assert seen == [("Program", ["F::Program:Module.Var"])]
+
+
+def test_oversized_only_icf_inputs_need_no_program_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    oversized = icf_dir / "Big.icf"
+    oversized.write_bytes(b"x" * 4096)
+
+    def _configured(_config: ConfigDict) -> tuple[Path | None, list[Path]]:
+        return icf_dir, [oversized]
+
+    monkeypatch.setattr(analyzer_module, "configured_icf_files", _configured)
+
+    report = analyzer_module.analyze_icf_configuration(
+        None,
+        config=_config(icf_dir=str(icf_dir), analysis={"icf_byte_limit": 1024}),
+    )
+
+    assert [issue.kind for issue in report.issues] == ["icf.file_too_large"]
 
 
 def test_one_load_failure_does_not_hide_the_other_referenced_programs(monkeypatch: pytest.MonkeyPatch) -> None:

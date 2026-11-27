@@ -122,11 +122,16 @@ configuration and in a project file. Project values win.
 | `fan_in_out_threshold` | `3` | Variable analysis: high fan-in or fan-out of a root-level variable. |
 | `module_grid` | `0.02` | Module layout: drawing grid used when a module writes no `Grid` clause. |
 | `module_grid_tolerance` | `0.00001` | Module layout: distance below which a value counts as exactly on the grid. The same distance decides when an object is fully outside a clipping rectangle. |
+| `source_byte_limit` | `8388608` | Largest single source file, in bytes, that the loader parses. |
+| `icf_byte_limit` | `16777216` | Largest single ICF file, in bytes, that the ICF analyzer reads. |
+| `project_byte_limit` | `536870912` | Largest total source size, in bytes, over every configured root. |
 
 Rules:
 
 - An empty list for `unsafe_default_tokens` is treated as the default list.
 - A threshold must be a positive integer; an invalid value falls back to the
+  default when read, and configuration validation reports it as an error.
+- A byte limit must be a positive integer; an invalid value falls back to the
   default when read, and configuration validation reports it as an error.
 - A module-layout distance must be a finite positive number; an invalid value
   falls back to the default when read, and configuration validation reports it
@@ -134,6 +139,39 @@ Rules:
 - The analyzer settings are part of the analysis report cache key. Changing one
   invalidates cached analyzer reports even though the parsed project is
   unchanged.
+- The three byte limits are not part of the project cache key. They decide
+  whether a load is refused, not what a parsed graph contains.
+
+### Input size limits
+
+The loader refuses a target before the parser reads any source byte when a
+configured source root is too large. The preflight walks `program_dir`,
+`other_lib_dirs`, and `ABB_lib_dir`, stats every regular file with a `.s`,
+`.x`, or `.sattline` suffix (case-insensitive), and never opens the file.
+
+- When one source file is above `source_byte_limit`, the target load fails
+  with a message naming the file, its byte size, and the limit to raise.
+- When the combined size of every source file is above `project_byte_limit`,
+  the target load fails with a message naming the total, the file count, and
+  the limit to raise.
+- Files with any other suffix are ignored.
+
+The ICF analyzer reads each configured file through the same kind of bounded
+read. A file above `icf_byte_limit` is reported as one "ICF file too large"
+finding that names the file and the limit, and the analyzer keeps validating
+the remaining ICF files.
+
+A refused target is one target's load failure. The run continues instead of
+aborting, other targets still load, and the summary marks the failed target.
+An oversized file that names a configured target fails that target only. A
+file that names no configured target could be a shared dependency, so it fails
+every target. A project whose total size is over the limit fails every target
+because the size is a project-wide property; the single message names the
+total and the limit.
+
+The defaults fit a large real project: 8 MiB per source file, 16 MiB per ICF
+file, and 512 MiB of source in total. Raise a limit in `[analysis]` when a
+legitimate file is larger.
 
 ## Load and merge order
 
@@ -164,6 +202,7 @@ Configuration validation has two levels.
 - `review.output_dir` must be a path string;
 - every string capacity must be a positive integer;
 - every analyzer threshold must be a positive integer;
+- every input byte limit must be a positive integer;
 - a module-layout distance must be a finite positive number.
 
 **Filesystem validation** checks configured paths and targets:

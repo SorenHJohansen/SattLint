@@ -8,10 +8,26 @@ from pathlib import Path
 
 from ...reporting.icf_report import ICFEntry
 
-_ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
 _ICF_HEADER_RE = re.compile(r"^\[(?P<tag>[^\]\s]+)(?:\s+(?P<label>.+?))?\]$")
 _ICF_PLACEHOLDER_RE = re.compile(r"^[A-Za-z]::\.$")
 _ICF_VALUE_PREFIX_RE = re.compile(r"^(?P<prefix>[A-Za-z])::")
+
+#: Read size for a bounded ICF read. A rejected file stops at the limit, so
+#: this only decides how many bytes are held before the rejection is raised.
+_ICF_READ_CHUNK_BYTES = 1024 * 1024
+
+
+class IcfFileTooLargeError(ValueError):
+    """An ICF file is larger than the configured byte limit."""
+
+    def __init__(self, file_path: Path, *, observed_bytes: int, limit: int) -> None:
+        self.file_path = file_path
+        self.observed_bytes = observed_bytes
+        self.limit = limit
+        super().__init__(
+            f"ICF file {file_path} is at least {observed_bytes} bytes, above [analysis].icf_byte_limit "
+            f"of {limit} bytes. Raise the limit or exclude the file."
+        )
 
 
 def _cf(value: str) -> str:
@@ -34,8 +50,42 @@ def decode_icf_text(raw_bytes: bytes) -> tuple[str, str, bool]:
     return raw_bytes.decode("latin-1", errors="replace"), "latin-1", False
 
 
-def parse_icf_file(file_path: Path) -> list[ICFEntry]:
-    """Parse a .icf file into key/value entries with section and line number info."""
+def _read_icf_bytes(file_path: Path, max_bytes: int | None) -> bytes:
+    """Read an ICF file without ever holding more than ``max_bytes`` bytes.
+
+    The stat check rejects a file that is already known to be too large, and
+    the chunk loop covers a file that grows between the stat and the read.
+    """
+    if max_bytes is None:
+        return file_path.read_bytes()
+
+    observed_bytes = file_path.stat().st_size
+    if observed_bytes > max_bytes:
+        raise IcfFileTooLargeError(file_path, observed_bytes=observed_bytes, limit=max_bytes)
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    with file_path.open("rb") as file_handle:
+        while True:
+            # Read at most one byte past the limit, so a file that grew after
+            # the stat is rejected without ever being held whole.
+            chunk = file_handle.read(min(_ICF_READ_CHUNK_BYTES, max_bytes - total_bytes + 1))
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise IcfFileTooLargeError(file_path, observed_bytes=total_bytes, limit=max_bytes)
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def parse_icf_file(file_path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+    """Parse a .icf file into key/value entries with section and line number info.
+
+    ``max_bytes`` caps the bytes read from the file. The default ``None`` keeps
+    the historical unlimited read for direct callers; the analyzer always
+    passes the configured limit.
+    """
     entries: list[ICFEntry] = []
     section: str | None = None
     unit: str | None = None
@@ -43,7 +93,7 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
     journal: str | None = None
     group: str | None = None
 
-    raw_bytes = file_path.read_bytes()
+    raw_bytes = _read_icf_bytes(file_path, max_bytes)
     text, _encoding, _has_utf8_bom = decode_icf_text(raw_bytes)
 
     for idx, raw_line in enumerate(text.splitlines(), start=1):
@@ -98,13 +148,32 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
     return entries
 
 
+def _without_value_prefix(value: str) -> str:
+    """Remove one leading single-letter value prefix such as ``F::``.
+
+    The scan is linear: it walks the ``::`` occurrences once and stops at the
+    first one whose preceding character is an ASCII letter. Text before the
+    prefix is discarded, which keeps values such as ``note F::Program:Path``
+    working without a backtracking regular expression.
+    """
+    start = value.find("::")
+    while start != -1:
+        if start > 0:
+            preceding = value[start - 1]
+            if ("A" <= preceding <= "Z") or ("a" <= preceding <= "z"):
+                return value[start + 2 :]
+        start = value.find("::", start + 1)
+    return value
+
+
 def extract_icf_sattline_ref(value: str) -> tuple[str | None, str | None]:
     """Extract (program, path) from an ICF value string."""
-    match = _ICF_REF_RE.match(value.strip())
-    if not match:
+    text = _without_value_prefix(value.strip())
+    program, separator, path = text.partition(":")
+    if not separator:
         return None, None
-    program = match.group("program").strip()
-    path = match.group("path").strip()
+    program = program.strip()
+    path = path.strip()
     if not program or not path:
         return None, None
     return program, path
@@ -124,6 +193,7 @@ def is_placeholder_icf_value(value: str) -> bool:
 
 
 __all__ = [
+    "IcfFileTooLargeError",
     "decode_icf_text",
     "extract_icf_sattline_ref",
     "extract_icf_value_prefix",
