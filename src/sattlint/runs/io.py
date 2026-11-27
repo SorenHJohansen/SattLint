@@ -13,7 +13,7 @@ from typing import cast
 from uuid import uuid4
 
 from .. import cache as cache_module
-from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunRecord, RunSummary
+from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
 
 DEFAULT_RUN_HISTORY_LIMIT = 50
 
@@ -137,8 +137,78 @@ def _serialized_size(record: RunRecord) -> int:
     return len(json.dumps(record.to_dict(), ensure_ascii=True, indent=2, sort_keys=True))
 
 
+def _count_findings(record: RunRecord) -> int:
+    return sum(len(analyzer.findings) for target in record.targets for analyzer in target.analyzers) + sum(
+        len(analyzer.findings) for analyzer in record.project_analyzers
+    )
+
+
+def _drop_findings(record: RunRecord, dropped: int) -> RunRecord:
+    """Drop *dropped* findings, target analyzers first and then project analyzers.
+
+    Each analyzer loses findings from the end of its own tuple, so the first
+    findings of the first analyzers survive longest. The analyzer's
+    ``issue_count`` is left untouched: it records how many the analyzer
+    reported, not how many fit in the stored record.
+    """
+    remaining = dropped
+    targets: list[RunTargetRecord] = []
+    for target in record.targets:
+        analyzers: list[RunAnalyzerRecord] = []
+        for analyzer in target.analyzers:
+            if remaining > 0 and analyzer.findings:
+                cut = min(len(analyzer.findings), remaining)
+                remaining -= cut
+                analyzer = replace(analyzer, findings=analyzer.findings[: len(analyzer.findings) - cut])
+            analyzers.append(analyzer)
+        targets.append(replace(target, analyzers=tuple(analyzers)))
+
+    project_analyzers: list[RunAnalyzerRecord] = []
+    for analyzer in record.project_analyzers:
+        if remaining > 0 and analyzer.findings:
+            cut = min(len(analyzer.findings), remaining)
+            remaining -= cut
+            analyzer = replace(analyzer, findings=analyzer.findings[: len(analyzer.findings) - cut])
+        project_analyzers.append(analyzer)
+
+    return replace(record, targets=tuple(targets), project_analyzers=tuple(project_analyzers))
+
+
+def _with_stored_findings(record: RunRecord, dropped: int, reported: int) -> RunRecord:
+    """A record with *dropped* findings removed and a note naming the counts."""
+    if dropped <= 0:
+        return record
+    note = (
+        f"Findings truncated: stored {reported - dropped} of {reported} findings "
+        f"to keep the run record under {RUN_RECORD_MAX_BYTES} bytes."
+    )
+    return replace(
+        _drop_findings(record, dropped),
+        truncated=True,
+        truncation_note=_join_truncation_notes(record.truncation_note, [note]),
+    )
+
+
+def _fewest_dropped_findings_that_fit(record: RunRecord, reported: int) -> int | None:
+    """The smallest drop count that fits the cap, or ``None`` when even zero do not.
+
+    Dropping more findings only shrinks the record, so a binary search over the
+    drop count avoids re-serializing once per finding.
+    """
+    if _serialized_size(_with_stored_findings(record, reported, reported)) > RUN_RECORD_MAX_BYTES:
+        return None
+    low, high = 1, reported
+    while low < high:
+        middle = (low + high) // 2
+        if _serialized_size(_with_stored_findings(record, middle, reported)) <= RUN_RECORD_MAX_BYTES:
+            high = middle
+        else:
+            low = middle + 1
+    return low
+
+
 def _bound_run_record(record: RunRecord) -> RunRecord:
-    """Bound session output, analyzer summaries, and the serialized record.
+    """Bound session output, analyzer summaries, findings, and module trees.
 
     A shortened record always says so through ``truncated`` and
     ``truncation_note``; an oversized record is never stored silently.
@@ -160,20 +230,46 @@ def _bound_run_record(record: RunRecord) -> RunRecord:
     if _serialized_size(bounded) <= RUN_RECORD_MAX_BYTES:
         return bounded
 
-    drop_note = f"Session output truncated to empty because the run record exceeded {RUN_RECORD_MAX_BYTES} bytes."
-    bounded = replace(
-        bounded,
-        output_lines=(),
-        truncated=True,
-        truncation_note=_join_truncation_notes(bounded.truncation_note, [drop_note]),
-    )
-    if _serialized_size(bounded) > RUN_RECORD_MAX_BYTES:
-        oversize_note = f"The run record still exceeds {RUN_RECORD_MAX_BYTES} bytes after session output was truncated."
+    if bounded.output_lines:
+        drop_output_note = (
+            f"Session output truncated to empty because the run record exceeded {RUN_RECORD_MAX_BYTES} bytes."
+        )
         bounded = replace(
             bounded,
-            truncation_note=_join_truncation_notes(bounded.truncation_note, [oversize_note]),
+            output_lines=(),
+            truncated=True,
+            truncation_note=_join_truncation_notes(bounded.truncation_note, [drop_output_note]),
         )
-    return bounded
+        if _serialized_size(bounded) <= RUN_RECORD_MAX_BYTES:
+            return bounded
+
+    reported_findings = _count_findings(bounded)
+    if reported_findings:
+        dropped = _fewest_dropped_findings_that_fit(bounded, reported_findings)
+        bounded = _with_stored_findings(bounded, reported_findings if dropped is None else dropped, reported_findings)
+        if _serialized_size(bounded) <= RUN_RECORD_MAX_BYTES:
+            return bounded
+
+    if any(target.module is not None for target in bounded.targets):
+        drop_modules_note = f"Module trees dropped because the run record exceeded {RUN_RECORD_MAX_BYTES} bytes."
+        bounded = replace(
+            bounded,
+            targets=tuple(replace(target, module=None) for target in bounded.targets),
+            truncated=True,
+            truncation_note=_join_truncation_notes(bounded.truncation_note, [drop_modules_note]),
+        )
+        if _serialized_size(bounded) <= RUN_RECORD_MAX_BYTES:
+            return bounded
+
+    oversize_note = (
+        f"The run record still exceeds {RUN_RECORD_MAX_BYTES} bytes after session output, stored findings, "
+        "and module trees were truncated."
+    )
+    return replace(
+        bounded,
+        truncated=True,
+        truncation_note=_join_truncation_notes(bounded.truncation_note, [oversize_note]),
+    )
 
 
 def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:

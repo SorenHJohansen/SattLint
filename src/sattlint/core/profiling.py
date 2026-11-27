@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import stat
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,6 +31,10 @@ _PROFILE_DIRECTORY_MODE = 0o700
 _PROFILE_LOG_MODE = 0o600
 _PROFILE_ENV_NAMES = ("SATTLINT_PROFILE", "SATTLINT_PROFILE_ANALYZERS")
 _PROFILE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+# A symlinked or otherwise replaced log path must never be followed. The flag
+# is absent on platforms that do not support it; the regular-file check after
+# the open still rejects a directory or device there.
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 def is_profiling_enabled() -> bool:
@@ -50,6 +55,29 @@ def _ensure_owner_only_mode(path: Path, mode: int) -> None:
             path.chmod(mode)
     except OSError:
         return
+
+
+def _open_profile_log(path: Path) -> int | None:
+    """Open a regular profile log without following a symlink.
+
+    Returns ``None`` when the path is a symlink, a directory, a device, or
+    otherwise cannot be opened. The descriptor is owner-only so a write never
+    widens the file mode a replaced path might have brought in.
+    """
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | _O_NOFOLLOW, _PROFILE_LOG_MODE)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None
+        with contextlib.suppress(OSError):
+            os.fchmod(fd, _PROFILE_LOG_MODE)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
 
 
 def _coerce_duration_ms(value: object, *, scale: float = 1.0) -> float | None:
@@ -183,7 +211,9 @@ class ProfileRecorder:
         """Append one encoded event, rotating or truncating a log at the cap.
 
         Profiling is diagnostic output, so every filesystem step here is
-        best-effort: a failed rotation or append never reaches the run.
+        best-effort: a failed rotation or append never reaches the run. The log
+        is opened without following a symlink and must be a regular file, so a
+        replaced path cannot redirect the write elsewhere.
         """
         path = self._path
         if path is None or len(payload) > PROFILE_LOG_MAX_BYTES:
@@ -191,14 +221,18 @@ class ProfileRecorder:
         try:
             path.parent.mkdir(parents=True, exist_ok=True, mode=_PROFILE_DIRECTORY_MODE)
             _ensure_owner_only_mode(path.parent, _PROFILE_DIRECTORY_MODE)
-            _ensure_owner_only_mode(path, _PROFILE_LOG_MODE)
+            fd = _open_profile_log(path)
+            if fd is None:
+                return
             try:
-                current_size = path.stat().st_size
-            except OSError:
-                current_size = 0
+                current_size = os.fstat(fd).st_size
+            finally:
+                os.close(fd)
             if current_size and current_size + len(payload) > PROFILE_LOG_MAX_BYTES:
                 self._rotate_log()
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _PROFILE_LOG_MODE)
+            fd = _open_profile_log(path)
+            if fd is None:
+                return
             try:
                 os.write(fd, payload)
             finally:

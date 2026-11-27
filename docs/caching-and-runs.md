@@ -57,6 +57,11 @@ The analysis report cache stores one analyzer report per target and analyzer.
 
 - The key combines the project cache key, the analyzer key, the analyzer's
   version marker, and the effective analyzer settings.
+- The whole `[analysis]` mapping is fingerprinted as analyzer settings. The
+  three byte limits (`source_byte_limit`, `icf_byte_limit`, and
+  `project_byte_limit`) are therefore part of the analysis-report key even
+  though they are not part of the project cache key: they bound input size,
+  not the parsed project graph.
 - The analyzer version marker changes when that analyzer's behavior changes, so
   an upgrade does not replay an old report. A test pins a digest of each
   analyzer's implementation, so editing one without bumping its marker fails
@@ -196,6 +201,14 @@ before it is written:
   `[truncated]` marker;
 - the serialized record is capped at 8 MiB. If session output still pushes the
   record past that cap, the output lines are dropped and the record says so.
+- findings are then dropped progressively, target analyzers first and project
+  analyzers after, from the end of each analyzer's finding tuple, until the
+  record fits or no findings remain. Each analyzer keeps its reported
+  `issue_count`, and the truncation note states how many findings were stored
+  versus reported.
+- if findings alone do not bring the record under the cap, the module trees are
+  dropped. Only a record whose metadata alone exceeds the cap carries an
+  oversize note.
 
 A shortened record has `truncated: true` and a `truncation_note` that names what
 was cut. A record that fits keeps `truncated: false` and `truncation_note: null`.
@@ -268,6 +281,10 @@ The log is capped at 8 MiB. Before an append would exceed the cap, the current
 log is renamed to `profile.jsonl.1`, replacing any previous rotated file, and a
 new log starts. A rotation or append failure is ignored so profiling never
 interrupts the run.
+
+The log is opened without following a symlink and is written only when the
+opened descriptor is a regular file, so a replaced path cannot redirect the
+diagnostic write elsewhere.
 
 ## Related pages
 

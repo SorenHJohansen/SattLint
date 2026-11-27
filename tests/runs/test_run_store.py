@@ -720,6 +720,56 @@ def test_save_run_drops_output_when_the_record_exceeds_the_byte_cap(
     assert loaded.truncated is True
 
 
+def test_save_run_drops_findings_to_fit_the_record_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cap = 32 * 1024
+    monkeypatch.setattr(runs_io, "RUN_RECORD_MAX_BYTES", cap)
+    findings = tuple(
+        AnalysisFinding(kind="unused", message=f"finding {index} " + "x" * 2000, module_path=("Demo",))
+        for index in range(200)
+    )
+    record = RunRecord(
+        run_id="",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="Demo",
+        targets=(
+            RunTargetRecord(
+                target_name="Demo",
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        issue_count=len(findings),
+                        findings=findings,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    stored = save_run(record, runs_dir=tmp_path)
+
+    record_path = tmp_path / f"{stored.run_id}.json"
+    assert record_path.stat().st_size <= cap
+    assert stored.truncated is True
+    assert stored.truncation_note is not None
+    analyzer = stored.targets[0].analyzers[0]
+    stored_count = len(analyzer.findings)
+    assert 0 < stored_count < len(findings)
+    assert analyzer.issue_count == len(findings)
+    assert f"stored {stored_count} of {len(findings)} findings" in stored.truncation_note
+
+    loaded = load_run(stored.run_id, runs_dir=tmp_path)
+    assert loaded is not None
+    assert len(loaded.targets[0].analyzers[0].findings) == stored_count
+    assert loaded.targets[0].analyzers[0].issue_count == len(findings)
+    assert loaded.truncated is True
+
+
 def test_legacy_run_records_default_truncation_fields() -> None:
     payload = _sample_record().to_dict()
     payload.pop("truncated")

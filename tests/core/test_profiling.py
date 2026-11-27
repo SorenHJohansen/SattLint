@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -90,3 +91,20 @@ def test_profile_events_larger_than_the_cap_are_dropped(tmp_path: Path, monkeypa
     _emit_events(recorder, 1)
 
     assert not log_path.exists()
+
+
+def test_profile_log_does_not_follow_a_symlink(tmp_path: Path) -> None:
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW is not available on this platform")
+    target = tmp_path / "outside.jsonl"
+    target.write_text("untouched\n", encoding="utf-8")
+    log_path = tmp_path / "profile" / "profile.jsonl"
+    log_path.parent.mkdir()
+    log_path.symlink_to(target)
+    recorder = profiling.ProfileRecorder(log_path)
+
+    _emit_events(recorder, 1)
+
+    assert log_path.is_symlink()
+    assert target.read_text(encoding="utf-8") == "untouched\n"
+    assert not log_path.with_name("profile.jsonl.1").exists()

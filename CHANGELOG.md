@@ -43,12 +43,15 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   broader directory, and writes both artifacts atomically with mode `0600`. The
   profile log lives in a `0700` directory, is created with mode `0600`, and is
   capped at 8 MiB: before an append would exceed the cap it rotates to
-  `profile.jsonl.1`. A stored run keeps at most 2,000 output lines and 512 KiB
-  of output text, caps each analyzer summary at 4,000 characters, and caps the
-  serialized record at 8 MiB, dropping session output when that is what pushes
-  it over. A shortened record carries `truncated: true` and a
-  `truncation_note` naming what was cut, so an oversized diagnostic is never
-  stored silently.
+  `profile.jsonl.1`. The log is opened without following a symlink and is
+  written only when the opened descriptor is a regular file. A stored run keeps
+  at most 2,000 output lines and 512 KiB of output text, caps each analyzer
+  summary at 4,000 characters, and caps the serialized record at 8 MiB. When
+  session output is not enough, stored findings are dropped target-first and
+  then module trees, while each analyzer keeps its reported `issue_count`. A
+  shortened record carries `truncated: true` and a `truncation_note` naming what
+  was cut, including how many findings were stored versus reported, so an
+  oversized diagnostic is never stored silently.
 
 ### Added
 
