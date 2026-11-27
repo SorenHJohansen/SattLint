@@ -6,8 +6,12 @@ Only the latest published release receives security fixes. Older releases are
 not patched, so upgrade before reporting:
 
 ```bash
-python3 -m pip install --user --upgrade sattlint
+pipx upgrade sattlint
 ```
+
+If SattLint lives in a virtual environment, run
+`.venv/bin/python -m pip install --upgrade sattlint` (on Windows,
+`.venv\Scripts\python`).
 
 ## Reporting a vulnerability
 

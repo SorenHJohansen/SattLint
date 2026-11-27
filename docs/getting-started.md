@@ -11,12 +11,22 @@ PyPI under the name `sattlint`.
 
 ### Linux
 
-Install with [pipx](https://pipx.pypa.io/) so SattLint gets its own environment
-and its command lands on `PATH`:
+Install [pipx](https://pipx.pypa.io/) with your distribution package manager so
+SattLint gets its own environment and its command lands on `PATH`:
 
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
+sudo apt install pipx        # Debian, Ubuntu
+sudo dnf install pipx        # Fedora
+sudo pacman -S python-pipx   # Arch
+```
+
+On an interpreter without the PEP 668 protection you can also bootstrap it with
+`python3 -m pip install --user pipx`.
+
+Then install SattLint and refresh `PATH`:
+
+```bash
+pipx ensurepath
 pipx install sattlint
 ```
 
@@ -40,7 +50,13 @@ python3 -m venv .venv
 .venv/bin/sattlint --version
 ```
 
-On Windows, use `.venv\Scripts\python` and `.venv\Scripts\sattlint`.
+On Windows:
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python -m pip install sattlint
+.venv\Scripts\sattlint --version
+```
 
 Confirm the installed command:
 
@@ -60,6 +76,9 @@ cd SattLint
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
+
+On Windows, use `py -m venv .venv` and
+`.venv\Scripts\python -m pip install -e .`.
 
 For development setup with the locked environment, see
 [Development](development.md).

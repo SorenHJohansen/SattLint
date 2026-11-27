@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import select
 import subprocess
@@ -744,10 +745,15 @@ def test_textual_refresh_view_raises_when_required_widget_is_missing(monkeypatch
     asyncio.run(_run())
 
 
-def test_a_missing_shell_stylesheet_falls_back_to_the_default(tmp_path: Path) -> None:
+def test_a_missing_shell_stylesheet_falls_back_to_the_default(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """A wheel without its package data must still let the shell import."""
 
-    fallback = app_textual_shared_module.load_shell_css(tmp_path / "missing.tcss")
+    with caplog.at_level(logging.WARNING, logger=app_textual_shared_module.__name__):
+        fallback = app_textual_shared_module.load_shell_css(tmp_path / "missing.tcss")
 
     assert fallback == app_textual_shared_module.DEFAULT_SHELL_CSS
-    assert "Screen" in fallback
+    assert "missing.tcss" in caplog.text
+    # The fallback has to be parseable, not merely non-empty, so the app can
+    # still start on Textual's CSS pipeline.
+    stylesheet_module = pytest.importorskip("textual.css.stylesheet")
+    stylesheet_module.Stylesheet().add_source(fallback)

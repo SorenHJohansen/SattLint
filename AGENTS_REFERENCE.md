@@ -85,11 +85,13 @@ per-file suppressions in test files), and the standard pre-commit-hooks checks.
 `ci.yml` is the single required workflow. It runs Ruff lint and format, Pyright
 on production code and tests, the full pytest suite (with an aggregate coverage
 floor of 80% that only ratchets up), a bounded `fuzz-smoke` over SattLint-owned
-`.icf`/graphics readers, and clean-wheel install smokes on Linux and Windows.
-No required command masks failures.
+`.icf`/graphics readers, clean-wheel install smokes on Linux and Windows, and a
+packaging matrix on Python 3.13 and 3.14 that installs both the wheel and the
+sdist. No required command masks failures.
 
-`publish.yml` builds distributions, checks metadata, smokes a clean wheel, and
-publishes to PyPI only on explicit `v*` tag pushes.
+`publish.yml` runs the same gate, checks that the tag is on `main`, builds
+distributions, checks metadata, smokes a clean wheel, and publishes to PyPI
+only on explicit `v*` tag pushes.
 
 ---
 

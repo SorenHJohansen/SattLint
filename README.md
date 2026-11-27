@@ -49,9 +49,22 @@ puts the `sattlint` command on your `PATH`.
 
 #### Linux
 
+Install pipx with your distribution package manager, which avoids the
+`externally-managed-environment` rejection from a system Python:
+
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
+sudo apt install pipx        # Debian, Ubuntu
+sudo dnf install pipx        # Fedora
+sudo pacman -S python-pipx   # Arch
+```
+
+On an interpreter without that protection you can also bootstrap it with
+`python3 -m pip install --user pipx`.
+
+Then install SattLint and refresh `PATH`:
+
+```bash
+pipx ensurepath
 pipx install sattlint
 ```
 
@@ -75,7 +88,13 @@ python3 -m venv .venv
 .venv/bin/sattlint --version
 ```
 
-On Windows use `.venv\Scripts\python` and `.venv\Scripts\sattlint`.
+On Windows:
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python -m pip install sattlint
+.venv\Scripts\sattlint --version
+```
 
 ### 2. Verify
 
@@ -94,6 +113,8 @@ cd SattLint
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
+
+On Windows, use `py -m venv .venv` and `.venv\Scripts\python -m pip install -e .`.
 
 For the locked development environment, see [Development](docs/development.md).
 
@@ -322,8 +343,16 @@ and `%USERPROFILE%\.local\bin` on Windows. In a virtual environment, call
 
 ### Python version error
 
-SattLint needs Python 3.13 or newer. Install a current Python, then run
-`pipx install sattlint` or `pipx upgrade sattlint`.
+SattLint needs Python 3.13 or newer. Install a current Python, then point the
+existing pipx environment at it. `pipx upgrade` and `pipx reinstall` keep the
+interpreter they were created with unless you name a new one:
+
+```bash
+pipx reinstall --python 3.14 sattlint
+```
+
+Use the interpreter version you installed. If pipx reports that SattLint is
+already installed, run `pipx install --python 3.14 --force sattlint` instead.
 
 ### Targets not found
 

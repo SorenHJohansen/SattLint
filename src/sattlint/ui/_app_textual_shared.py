@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from typing import Any, cast
 from ..cli.interaction import MenuInteraction
 from ..config.types import ConfigDict
 from ..core.syntax import CodeMode, code_ext_candidates, normalize_code_mode
+
+log = logging.getLogger(__name__)
 
 APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+1", "show_analyze", "Analyze"),
@@ -175,6 +178,7 @@ def load_shell_css(css_path: Path | None = None) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except OSError:
+        log.warning("Shell stylesheet %s is missing; using the minimal fallback.", path)
         return DEFAULT_SHELL_CSS
 
 

@@ -31,14 +31,16 @@ sattlint --version
 ### Python version error
 
 SattLint requires Python 3.13 or newer. Check the interpreter used by the
-installer, install a current Python, and reinstall:
+installer, install a current Python, then point the pipx environment at it.
+`pipx upgrade` and `pipx reinstall` keep the interpreter they were created
+with unless you name a new one:
 
 ```bash
-pipx install sattlint
+pipx reinstall --python 3.14 sattlint
 ```
 
-To move an existing pipx install to the new interpreter, run
-`pipx reinstall sattlint`.
+Use the interpreter version you installed. If pipx reports that SattLint is
+already installed, run `pipx install --python 3.14 --force sattlint` instead.
 
 ### Interactive shell fails to start
 

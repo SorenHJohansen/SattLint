@@ -24,9 +24,11 @@ desktop platforms are Linux and Windows.
 5. Run Ruff lint.
 6. Run Ruff format check.
 7. Run Pyright on production code and tests.
-8. Run the pre-commit hygiene hooks, skipping the hooks already run directly.
-9. Run the full pytest suite with coverage and an 80 percent floor.
-10. Build a wheel, install it into a clean virtual environment, and smoke the
+8. Run the release state check; for a tag, verify the tag matches the package
+   version.
+9. Run the pre-commit hygiene hooks, skipping the hooks already run directly.
+10. Run the full pytest suite with coverage and an 80 percent floor.
+11. Build a wheel, install it into a clean virtual environment, and smoke the
     package version, the UI import, and the CLI entry point. The packaging
     matrix below proves the wheel and the sdist on both supported interpreters;
     this step is the quick 3.13 smoke inside the gate.
@@ -51,6 +53,10 @@ Runs on Python 3.13 and 3.14. Each job:
 5. Asserts the sdist carries the changelog, the license, the readme, and the
    packaged stylesheet, and carries no tests, docs, scripts, workflow files, or
    generated `egg-info` files beyond the `SOURCES.txt` setuptools appends.
+6. Asserts the wheel carries `sattlint/ui/app_textual.tcss` and the packaged
+   `sattlint/assets` files. This is the check that catches a wheel built
+   without its package data, because the UI import falls back instead of
+   failing.
 
 ### Fuzz smoke
 
@@ -102,8 +108,10 @@ same markdownlint configuration used by CI.
 
 The wheel carries the same package and asset set through
 `[tool.setuptools.package-data]`. The packaging matrix installs the sdist as
-well as the wheel, so a missing asset or an excluded source file fails CI
-instead of reaching a release.
+well as the wheel, asserts the wheel carries the stylesheet and package assets,
+and fails when either archive would ship an incomplete install. The build
+backend is pinned in `[build-system]` so the wheel comparison measures the
+project, not a backend release that happened between two builds.
 
 ## Versioning
 
@@ -153,7 +161,7 @@ The publish workflow:
 7. Uploads the distributions.
 8. Publishes to PyPI through trusted publishing when the trigger is a `v*` tag.
 
-A workflow-level concurrency group serializes runs for the same ref and never
+A workflow-level concurrency group serializes every publish run and never
 cancels an in-progress publish. A manual dispatch builds and validates without
 publishing. Re-running a publish fails when the version already exists; it never
 reports a false success.

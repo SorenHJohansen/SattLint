@@ -166,6 +166,23 @@ jobs:
             "${venv}/bin/sattlint" analyzers list >/dev/null
           done
 
+      - name: Verify the wheel contents
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = glob.glob("dist-a/*.whl")[0]
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+
+          assert "sattlint/ui/app_textual.tcss" in names
+          assets = [name for name in names if name.startswith("sattlint/assets/") and not name.endswith("/")]
+          assert assets, "wheel carries no package assets"
+          print("wheel contents OK")
+          PY
+
       - name: Verify the sdist contents
         shell: bash
         run: |

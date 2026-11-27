@@ -15,9 +15,10 @@ permissions:
   contents: read
 
 concurrency:
-  # A release tag and a manual dispatch must never race each other. Queue the
-  # later run instead of cancelling a publish that may already be uploading.
-  group: publish-${{ github.ref }}
+  # Every publish run shares one group, so a tag push and a manual dispatch
+  # cannot race each other. The later run waits instead of cancelling a publish
+  # that may already be uploading.
+  group: publish-pypi
   cancel-in-progress: false
 
 jobs:

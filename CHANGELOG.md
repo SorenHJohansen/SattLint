@@ -106,14 +106,15 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The package declares Linux and Windows support instead of the untested
   OS-independent claim, lists Python 3.14, and bounds `rich` below the next
   major (`<16`) to match the tested release.
-- A missing shell stylesheet now degrades to a minimal fallback instead of
-  failing at import, so an installation with incomplete package data still
-  starts.
-- CI builds the wheel and the sdist twice with a fixed `SOURCE_DATE_EPOCH`,
-  compares the wheels byte for byte and the sdist members by content, installs
-  both artifacts on Python 3.13 and 3.14, checks the sdist contents against
-  `MANIFEST.in`, checks that a release tag is an ancestor of `main`, and
-  serializes publishes for the same ref.
+- A missing shell stylesheet now falls back to a minimal stylesheet and logs a
+  warning instead of failing at import, so an installation with incomplete
+  package data still starts. CI asserts the wheel carries the stylesheet and
+  the package assets.
+- CI builds the wheel and the sdist twice with a fixed `SOURCE_DATE_EPOCH`
+  and a pinned build backend, compares the wheels byte for byte and the sdist
+  members by content, installs both artifacts on Python 3.13 and 3.14, checks
+  the expected sdist and wheel contents, checks that a release tag is an
+  ancestor of `main`, and serializes every publish run.
 
 ### Fixed
 

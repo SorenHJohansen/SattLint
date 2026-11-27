@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=82.0.1", "wheel"]
+# Exact pins keep the wheel byte-reproducible across CI runs; the comparison
+# in the packaging job would otherwise drift when a new backend is released.
+requires = ["setuptools==84.2.1", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
