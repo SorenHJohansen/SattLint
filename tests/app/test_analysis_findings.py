@@ -12,6 +12,7 @@ from sattlint.cli._findings import flat_findings
 from sattlint.cli.entry import run_cli
 from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.models._variable_issues import IssueKind, variable_issue_metadata
+from sattlint.parser_api import SourceSpan
 from sattlint.reporting.variables_report import (
     MagicNumberIssue,
     ProcedureStatusIssue,
@@ -109,6 +110,118 @@ def test_extract_report_findings_handles_rule_based_issues_and_message_fallback(
     assert findings[1].message  # falls back to str(item)
 
 
+def test_extract_report_findings_reads_icf_source_location() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(
+                kind="icf.unresolved_path",
+                message="Demo.icf:12: unresolved path",
+                module_path=["Program"],
+                data={"file": "programs/Demo.icf", "line": 12},
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].file == "programs/Demo.icf"
+    assert findings[0].line == 12
+    assert findings[0].column is None
+    assert findings[0].end_line is None
+
+
+def test_extract_report_findings_reads_comment_code_source_location() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(
+                kind="comment_code",
+                message="Demo.s:4-6 commented code",
+                module_path=["Root"],
+                data={
+                    "path": "programs/Demo.s",
+                    "start_line": 4,
+                    "end_line": 6,
+                    "start_col": 2,
+                    "end_col": 9,
+                },
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].file == "programs/Demo.s"
+    assert findings[0].line == 4
+    assert findings[0].column == 2
+    assert findings[0].end_line == 6
+
+
+def test_extract_report_findings_reads_magic_number_literal_span() -> None:
+    report = SimpleNamespace(
+        issues=[
+            MagicNumberIssue(
+                module_path=["Root"],
+                literal_value=7,
+                literal_span=SourceSpan(start=41, end=42, line=9, column=3),
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].file is None
+    assert findings[0].line == 9
+    assert findings[0].column == 3
+    assert findings[0].end_line is None
+
+
+def test_extract_report_findings_reads_location_attributes_without_inventing_missing_fields() -> None:
+    report = SimpleNamespace(
+        issues=[
+            SimpleNamespace(
+                kind="comment_code",
+                module_path=["Root"],
+                file=Path("programs/Demo.s"),
+                line=5,
+                column=2,
+                end_line=7,
+            ),
+            Issue(kind="unused", message="declared but never read", module_path=["Root"]),
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].file == "programs/Demo.s"
+    assert findings[0].line == 5
+    assert findings[0].column == 2
+    assert findings[0].end_line == 7
+    assert findings[1].file is None
+    assert findings[1].line is None
+    assert findings[1].column is None
+    assert findings[1].end_line is None
+
+
+def test_extract_report_findings_ignores_a_picture_path_as_a_source_file() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(
+                kind="picture_display_paths.unresolved",
+                message="unresolved path",
+                module_path=["Root"],
+                data={"path": "+MissingPanel"},
+            )
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert findings[0].file is None
+    assert findings[0].line is None
+    assert findings[0].column is None
+    assert findings[0].end_line is None
+
+
 def test_extract_report_findings_returns_empty_for_missing_or_non_list_issues() -> None:
     assert extract_report_findings(SimpleNamespace(), default_name="Root") == ()
     assert extract_report_findings(SimpleNamespace(issues=[]), default_name="Root") == ()
@@ -189,6 +302,38 @@ def test_analysis_finding_round_trips_through_dict() -> None:
     restored = AnalysisFinding.from_dict(finding.to_dict())
 
     assert restored == finding
+
+
+def test_analysis_finding_round_trips_source_location_through_dict() -> None:
+    finding = AnalysisFinding(
+        kind="comment_code",
+        message="Demo.s:4-6 commented code",
+        module_path=("Root",),
+        file="programs/Demo.s",
+        line=4,
+        column=2,
+        end_line=6,
+    )
+
+    payload = finding.to_dict()
+    restored = AnalysisFinding.from_dict(payload)
+
+    assert payload["file"] == "programs/Demo.s"
+    assert payload["line"] == 4
+    assert payload["column"] == 2
+    assert payload["end_line"] == 6
+    assert restored == finding
+
+
+def test_analysis_finding_location_fields_default_to_none_in_dict() -> None:
+    finding = AnalysisFinding(kind="unused", message="declared but never read")
+
+    payload = finding.to_dict()
+
+    assert payload["file"] is None
+    assert payload["line"] is None
+    assert payload["column"] is None
+    assert payload["end_line"] is None
 
 
 def test_extract_report_findings_carries_issue_data_and_sanitizes_values() -> None:
@@ -339,6 +484,48 @@ def _run(run_id: str, project_path: str) -> RunRecord:
                                 kind="unused",
                                 message="declared but never read",
                                 module_path=("Demo", "A"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def _located_run(
+    run_id: str,
+    *,
+    file: str | None = "programs/Demo.s",
+    line: int | None = 12,
+    column: int | None = 4,
+    end_line: int | None = None,
+) -> RunRecord:
+    return RunRecord(
+        run_id=run_id,
+        started_at="2026-01-01T00:00:00Z",
+        finished_at="2026-01-01T00:00:01Z",
+        project_tag="Demo",
+        project_path="",
+        selected_analyzers=("variables",),
+        targets=(
+            RunTargetRecord(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(
+                            AnalysisFinding(
+                                kind="unused",
+                                message="declared but never read",
+                                module_path=("Demo", "A"),
+                                file=file,
+                                line=line,
+                                column=column,
+                                end_line=end_line,
                             ),
                         ),
                     ),
@@ -533,6 +720,87 @@ def test_findings_reports_ambiguous_project_discovery(
     candidates = {Path(item).name for item in error["details"]["candidates"]}
     assert candidates == {"first.slproj", "second.slproj"}
     assert "--project" in error["message"]
+
+
+def test_findings_text_line_includes_the_source_location(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_located_run("located")])
+
+    code = run_cli(["findings", "--run", "located"])
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "programs/Demo.s:12:4  Demo.A: Unused variable - declared but never read (variables)" in output
+
+
+def test_findings_text_line_uses_a_line_only_location(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_located_run("line-only", file=None, column=None)])
+
+    code = run_cli(["findings", "--run", "line-only"])
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "line 12  Demo.A: Unused variable - declared but never read (variables)" in output
+
+
+def test_finding_identity_ignores_the_source_location() -> None:
+    first = _located_run("first", file="programs/Demo.s", line=12, column=4)
+    moved = _located_run("moved", file="programs/Demo.s", line=40, column=1)
+
+    assert flat_findings(first)[0].id == flat_findings(moved)[0].id
+
+
+def test_findings_json_includes_the_source_location_and_null_when_absent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_located_run("located"), _run("plain", "")])
+
+    code = run_cli(["findings", "--run", "located", "--format", "json"])
+
+    assert code == 0
+    located = json.loads(capsys.readouterr().out)["findings"][0]
+    assert located["file"] == "programs/Demo.s"
+    assert located["line"] == 12
+    assert located["column"] == 4
+    assert located["end_line"] is None
+
+    code = run_cli(["findings", "--run", "plain", "--format", "json"])
+
+    assert code == 0
+    plain = json.loads(capsys.readouterr().out)["findings"][0]
+    assert plain["file"] is None
+    assert plain["line"] is None
+    assert plain["column"] is None
+    assert plain["end_line"] is None
+
+
+def test_show_text_and_markdown_include_the_source_location(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    record = _located_run("located", end_line=14)
+    _install_runs(monkeypatch, [record])
+    finding_id = flat_findings(record)[0].id
+
+    code = run_cli(["show", finding_id, "--run", "located"])
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "File:    programs/Demo.s" in output
+    assert "Line:    12-14" in output
+    assert "Column:  4" in output
+
+    code = run_cli(["show", finding_id, "--run", "located", "--format", "markdown"])
+
+    assert code == 0
+    markdown = capsys.readouterr().out
+    assert "- **Location:** `programs/Demo.s:12-14:4`" in markdown
 
 
 def test_show_latest_uses_the_discovered_project(

@@ -40,6 +40,10 @@ class AnalysisFinding:
     rule_id: str | None = None
     explanation: str | None = None
     suggestion: str | None = None
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    end_line: int | None = None
     data: Mapping[str, FindingDataValue] = field(default_factory=_empty_data)
 
     def to_dict(self) -> dict[str, object]:
@@ -50,6 +54,10 @@ class AnalysisFinding:
             "rule_id": self.rule_id,
             "explanation": self.explanation,
             "suggestion": self.suggestion,
+            "file": self.file,
+            "line": self.line,
+            "column": self.column,
+            "end_line": self.end_line,
             "data": dict(self.data),
         }
 
@@ -69,6 +77,10 @@ class AnalysisFinding:
             rule_id=optional_text(payload.get("rule_id")),
             explanation=optional_text(payload.get("explanation")),
             suggestion=optional_text(payload.get("suggestion")),
+            file=optional_text(payload.get("file")),
+            line=_positive_int(payload.get("line")),
+            column=_positive_int(payload.get("column")),
+            end_line=_positive_int(payload.get("end_line")),
             data=data,
         )
 
@@ -98,6 +110,57 @@ def optional_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _positive_int(value: object) -> int | None:
+    """A one-based position, or ``None`` when the value is absent or unusable."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value > 0 else None
+
+
+_SOURCE_FILE_SUFFIXES = frozenset({".s", ".x", ".sattline"})
+
+
+def _looks_like_source_path(text: str) -> bool:
+    """Whether a ``path`` payload value names a source file rather than a UI path.
+
+    Some analyzers use ``path`` for a display path inside a picture. Those
+    values carry no directory separator and no source-file suffix, so they must
+    not become the finding's file.
+    """
+    if "/" in text or "\\" in text:
+        return True
+    suffix = text.rsplit(".", 1)[-1].casefold() if "." in text else ""
+    return f".{suffix}" in _SOURCE_FILE_SUFFIXES
+
+
+def format_source_location(
+    *,
+    file: str | None,
+    line: int | None,
+    column: int | None = None,
+    end_line: int | None = None,
+) -> str | None:
+    """A compact one-based source location, or ``None`` when nothing is known."""
+    has_range = line is not None and end_line is not None and end_line > line
+    if file:
+        location = file
+        if line is not None:
+            location = f"{location}:{line}"
+            if has_range:
+                location = f"{location}-{end_line}"
+            if column is not None:
+                location = f"{location}:{column}"
+        return location
+    if line is None:
+        return None
+    location = f"line {line}"
+    if has_range:
+        location = f"line {line}-{end_line}"
+    if column is not None:
+        location = f"{location}, column {column}"
+    return location
 
 
 def _kind_value(item: object) -> str:
@@ -169,12 +232,18 @@ def _declaration_role_value(item: object) -> str | None:
     return str(role) if role in _DECLARATION_ROLES else None
 
 
-def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
+def _raw_issue_data(item: object) -> Mapping[str, object] | None:
     raw_data = getattr(item, "data", None)
+    if not isinstance(raw_data, Mapping):
+        return None
+    return cast(Mapping[str, object], raw_data)
+
+
+def _issue_data_value(item: object) -> dict[str, FindingDataValue]:
+    raw_data = _raw_issue_data(item)
     data: dict[str, FindingDataValue] = {}
-    if isinstance(raw_data, Mapping):
-        mapping = cast(Mapping[str, object], raw_data)
-        for key, value in mapping.items():
+    if raw_data is not None:
+        for key, value in raw_data.items():
             data[str(key)] = _sanitize_data_value(value)
     if isinstance(item, FieldPathVariableIssue | UnusedDatatypeFieldIssue) and item.field_path:
         data.setdefault("field_path", item.field_path)
@@ -243,6 +312,83 @@ def _synthesized_relation(item: object) -> str | None:
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class _IssueLocation:
+    """The source location an issue already carries, if any."""
+
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    end_line: int | None = None
+
+
+def _data_text(data: Mapping[str, object], key: str) -> str | None:
+    return optional_text(data.get(key))
+
+
+def _data_int(data: Mapping[str, object], *keys: str) -> int | None:
+    for key in keys:
+        value = _positive_int(data.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _attribute_text(item: object, *names: str) -> str | None:
+    for name in names:
+        text = optional_text(getattr(item, name, None))
+        if text is not None:
+            return text
+    return None
+
+
+def _attribute_int(item: object, name: str) -> int | None:
+    return _positive_int(getattr(item, name, None))
+
+
+def _span_int(item: object, name: str) -> int | None:
+    for span_name in ("literal_span", "span"):
+        span = getattr(item, span_name, None)
+        if span is None:
+            continue
+        value = _positive_int(getattr(span, name, None))
+        if value is not None:
+            return value
+    return None
+
+
+def _issue_location(item: object) -> _IssueLocation:
+    """Read the source location an issue carries, without inventing positions.
+
+    Sources are the issue's ``data`` mapping (``file``/``path``,
+    ``line``/``start_line``, ``column``/``start_col``, ``end_line``), the issue's
+    own attributes, and a ``SourceSpan``-like ``literal_span`` or ``span``. A
+    value the issue does not report stays ``None``.
+    """
+    data = _raw_issue_data(item) or {}
+    file = _data_text(data, "file")
+    if file is None:
+        path_text = _data_text(data, "path")
+        if path_text is not None and _looks_like_source_path(path_text):
+            file = path_text
+    if file is None:
+        file = _attribute_text(item, "file", "file_path")
+    line = _data_int(data, "line", "start_line")
+    if line is None:
+        line = _attribute_int(item, "line")
+    if line is None:
+        line = _span_int(item, "line")
+    column = _data_int(data, "column", "start_col")
+    if column is None:
+        column = _attribute_int(item, "column")
+    if column is None:
+        column = _span_int(item, "column")
+    end_line = _data_int(data, "end_line")
+    if end_line is None:
+        end_line = _attribute_int(item, "end_line")
+    return _IssueLocation(file=file, line=line, column=column, end_line=end_line)
+
+
 def extract_report_findings(report: object, *, default_name: str) -> tuple[AnalysisFinding, ...]:
     """Normalize a report's ``issues`` into structured findings.
 
@@ -267,6 +413,7 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
         metadata = variable_issue_metadata(_kind_object(item))
         explanation = _issue_metadata_value(item, "explanation") or metadata.explanation
         suggestion = _issue_metadata_value(item, "suggestion") or metadata.suggestion
+        location = _issue_location(item)
         findings.append(
             AnalysisFinding(
                 kind=_kind_value(item),
@@ -275,6 +422,10 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
                 rule_id=_issue_metadata_value(item, "rule_id"),
                 explanation=explanation,
                 suggestion=suggestion,
+                file=location.file,
+                line=location.line,
+                column=location.column,
+                end_line=location.end_line,
                 data=_issue_data_value(item),
             )
         )
@@ -389,5 +540,6 @@ __all__ = [
     "AnalysisFinding",
     "extract_report_findings",
     "finding_data_key",
+    "format_source_location",
     "kind_human_label",
 ]

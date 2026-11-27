@@ -146,7 +146,7 @@ sattlint show 7d3f9c1a --format markdown
 
 ## Output contracts
 
-- JSON output is a single object with `schema_version: 1` and a `command` field,
+- JSON output is a single object with `schema_version: 2` and a `command` field,
   so consumers can pin the contract.
 - NDJSON output writes one JSON object per line, which suits streaming and
   `jq`.

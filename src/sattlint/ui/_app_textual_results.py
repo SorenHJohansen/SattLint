@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from rich.style import Style
 from rich.text import Text
 
-from ..application.findings import AnalysisFinding, finding_data_key, kind_human_label
+from ..application.findings import AnalysisFinding, finding_data_key, format_source_location, kind_human_label
 from ..models._variable_issues import (
     DECLARATION_ROLE_LOCAL_VARIABLE,
     DECLARATION_ROLE_MODULE_PARAMETER,
@@ -225,8 +225,21 @@ def _readable_site(site: str) -> str:
     return " \u203a ".join(parts)
 
 
+def _finding_location(finding: AnalysisFinding) -> str | None:
+    """The one-based source location the finding records, if any."""
+    return format_source_location(
+        file=finding.file,
+        line=finding.line,
+        column=finding.column,
+        end_line=finding.end_line,
+    )
+
+
 def _finding_details(finding: AnalysisFinding) -> list[str]:
     details: list[str] = []
+    location = _finding_location(finding)
+    if location:
+        details.append(f"Location: {location}")
     message = _LEADING_MODULE_PATH_RE.sub("", finding.message).strip()
     context = _finding_label(finding)
     if message and context.casefold() not in message.casefold():
@@ -701,6 +714,9 @@ def _build_module_findings_report(
                         style=label_style,
                     )
                 )
+                location = _finding_location(finding)
+                if location:
+                    lines.append(Text(f"  {location}", style="#38545a"))
                 site = _site_label(finding)
                 if site:
                     lines.append(Text(f"  {_readable_site(site)}", style="#38545a"))

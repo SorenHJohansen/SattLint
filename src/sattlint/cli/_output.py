@@ -14,7 +14,7 @@ from typing import Any
 
 from ._payloads import ErrorPayload
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class CliError(Exception):

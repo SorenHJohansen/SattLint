@@ -156,6 +156,10 @@ def finding_payload(finding: FlatFinding) -> FindingPayload:
         "message": analysis.message,
         "explanation": analysis.explanation,
         "suggestion": analysis.suggestion,
+        "file": analysis.file,
+        "line": analysis.line,
+        "column": analysis.column,
+        "end_line": analysis.end_line,
         "occurrence_count": finding.occurrence_count,
         "data": dict(analysis.data),
     }

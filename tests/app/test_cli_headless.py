@@ -207,7 +207,7 @@ def test_analyzers_list_json(capsys: pytest.CaptureFixture[str], tmp_path: Path)
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     keys = {entry["key"] for entry in payload["analyzers"]}
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert {"variables", "dataflow", "icf"} <= keys
     assert all("cli_exposed" not in entry for entry in payload["analyzers"])
 

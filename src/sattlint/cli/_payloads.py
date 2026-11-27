@@ -85,6 +85,10 @@ class FindingPayload(TypedDict):
     message: str
     explanation: str | None
     suggestion: str | None
+    file: str | None
+    line: int | None
+    column: int | None
+    end_line: int | None
     occurrence_count: int
     data: dict[str, object]
 

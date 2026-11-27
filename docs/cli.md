@@ -191,6 +191,9 @@ Rules:
 - The summary counts both findings and occurrences. Repeated identical findings
   collapse into one entry with an occurrence count.
 - `--limit` applies after filtering and before grouping.
+- Each finding line starts with its source location when the analyzer knows one,
+  for example `programs/Demo.s:12:4`. A finding with only a line, or no
+  location, stays readable without placeholders.
 - `latest` resolves within the project: discovery from the current directory,
   or an explicit `--project`. A run recorded for another project is never
   returned.
@@ -224,6 +227,10 @@ Shows one finding, including its location and context, by its stable ID.
 sattlint show f_7d3f9c1a --format markdown
 ```
 
+Text output adds `File:`, `Line:`, and `Column:` lines when the finding records
+them. Markdown output adds a single `Location` bullet. A location the analyzer
+does not know is omitted rather than shown as zero.
+
 A missing finding, an ambiguous run identifier, or an unscoped `latest` is an
 error with exit code `2`.
 
@@ -240,12 +247,15 @@ error with exit code `2`.
 ### JSON
 
 - Every JSON document is a single object.
-- Every document carries `schema_version: 1`.
+- Every document carries `schema_version: 2`.
 - Every document carries a `command` field.
 - Errors use a separate error envelope on stderr with an `error` object
   containing a stable code, a message, and details.
 - A partial analyze document adds a `failures` array and a `failed_targets`
   count. Successful runs keep the same shape without those fields.
+- Every finding carries optional `file`, `line`, `column`, and `end_line`
+  fields. Positions are one-based. A value the analyzer does not know is
+  `null`, never zero.
 
 ### NDJSON
 
@@ -259,12 +269,15 @@ produced, so a consumer can stream them.
 Text and Markdown output use human-readable finding labels. Machine
 identifiers stay in JSON and NDJSON. Text output is designed for terminals and
 CI logs; Markdown output is designed for a pull request comment or a review.
+When a finding records a source location, text finding lines start with it and
+`show` lists it, while Markdown carries it as a `Location` bullet.
 
 ### Finding identity
 
 A finding ID is a stable hash of the target, analyzer, finding kind, optional
 rule identifier, module path, site, context, message, and structured payload.
-The same finding keeps the same ID across runs.
+The same finding keeps the same ID across runs. The location fields are
+presentation metadata and are not part of the identity hash.
 
 Repeated identical findings within one run collapse into one entry with an
 occurrence count.

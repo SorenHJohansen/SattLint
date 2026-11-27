@@ -8,6 +8,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ## [Unreleased]
 
+### Added
+
+- Findings can carry a source location. JSON output gains optional `file`,
+  `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
+  view show the location when an analyzer records one. Missing locations stay
+  `null` instead of being invented.
+
 ## [2026.11.6] - 2026-11-26
 
 ### Added

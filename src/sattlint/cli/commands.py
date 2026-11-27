@@ -18,7 +18,7 @@ from ..analyzers.catalog import (
 )
 from ..application.analyze import collect_checks_result, no_analyzer_selection_message
 from ..application.checks import ChecksRunResult, TargetLoadFailure, build_run_record
-from ..application.findings import kind_human_label
+from ..application.findings import format_source_location, kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
 from ..core.progress import (
@@ -545,7 +545,14 @@ def _analyze_text(payload: AnalyzePayload) -> list[str]:
 
 def _finding_line(finding: FindingPayload) -> str:
     module = finding["module"] or "(unknown)"
-    return f"{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
+    location = format_source_location(
+        file=finding["file"],
+        line=finding["line"],
+        column=finding["column"],
+        end_line=finding["end_line"],
+    )
+    prefix = f"{location}  " if location else ""
+    return f"{prefix}{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
 _LATEST_SELECTOR = "latest"
@@ -694,6 +701,15 @@ def _finding_text(payload: ShowPayload) -> list[str]:
         f"Module:  {finding['module'] or '(unknown)'}",
         f"Kind:    {kind_human_label(finding['kind'])}",
     ]
+    if finding["file"]:
+        lines.append(f"File:    {finding['file']}")
+    if finding["line"] is not None:
+        line = f"{finding['line']}"
+        if finding["end_line"] is not None and finding["end_line"] > finding["line"]:
+            line = f"{line}-{finding['end_line']}"
+        lines.append(f"Line:    {line}")
+    if finding["column"] is not None:
+        lines.append(f"Column:  {finding['column']}")
     if finding["site"]:
         lines.append(f"Site:    {finding['site']}")
     lines.extend(
@@ -720,6 +736,14 @@ def _finding_markdown(payload: ShowPayload) -> list[str]:
         f"- **Analyzer:** `{finding['analyzer']}`",
         f"- **Target:** `{finding['target']}`",
     ]
+    location = format_source_location(
+        file=finding["file"],
+        line=finding["line"],
+        column=finding["column"],
+        end_line=finding["end_line"],
+    )
+    if location:
+        lines.append(f"- **Location:** `{location}`")
     if finding["site"]:
         lines.append(f"- **Site:** `{finding['site']}`")
     lines.extend(["", finding["message"]])
