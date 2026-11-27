@@ -90,6 +90,105 @@ jobs:
           /tmp/clean-venv/bin/python -c "import sattlint.ui; print('ui package importable')"
           /tmp/clean-venv/bin/python -c "from sattlint.cli.startup import cli; print('entry point reachable')"
 
+  packaging:
+    name: Packaging (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+    env:
+      # A fixed epoch makes the wheel byte-reproducible; the sdist backend
+      # stamps its archive metadata with the build instant, so its members are
+      # compared by content instead.
+      SOURCE_DATE_EPOCH: "1735689600"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build both distributions twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m build --outdir dist-a
+          python -m build --outdir dist-b
+          # The wheel is byte-identical under a fixed SOURCE_DATE_EPOCH.
+          for wheel in dist-a/*.whl; do
+            cmp "${wheel}" "dist-b/$(basename "${wheel}")"
+          done
+          # The sdist backend stamps the archive metadata with the build
+          # instant, so compare the members and their bytes instead.
+          python - <<'PY'
+          import glob
+          import hashlib
+          import tarfile
+
+          def contents(pattern):
+              path = glob.glob(pattern)[0]
+              with tarfile.open(path) as archive:
+                  return {
+                      member.name: hashlib.sha256(archive.extractfile(member).read()).hexdigest()
+                      for member in archive.getmembers()
+                      if member.isfile()
+                  }
+
+          assert contents("dist-a/*.tar.gz") == contents("dist-b/*.tar.gz")
+          print("sdist member contents are identical")
+          PY
+
+      - name: Check distribution metadata
+        run: python -m twine check dist-a/*
+
+      # Both artifacts must install and expose the same commands, on every
+      # supported interpreter. Installing the sdist proves it carries the
+      # package data, not just the wheel.
+      - name: Install the wheel and the sdist into clean environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          index=0
+          for artifact in dist-a/*.whl dist-a/*.tar.gz; do
+            index=$((index + 1))
+            venv="/tmp/artifact-venv-${index}"
+            python -m venv "${venv}"
+            "${venv}/bin/python" -m pip install --upgrade pip
+            "${venv}/bin/python" -m pip install "${artifact}"
+            "${venv}/bin/sattlint" --version
+            "${venv}/bin/sattlint" analyzers list >/dev/null
+          done
+
+      - name: Verify the sdist contents
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob
+          import tarfile
+
+          sdist = glob.glob("dist-a/*.tar.gz")[0]
+          with tarfile.open(sdist) as archive:
+              names = archive.getnames()
+
+          required = ("CHANGELOG.md", "LICENSE", "README.md", "app_textual.tcss")
+          for suffix in required:
+              assert any(name.endswith(suffix) for name in names), suffix
+          for excluded in ("/tests/", "/.github/", "/docs/", "/scripts/"):
+              assert not any(excluded in name for name in names), excluded
+          # ``SOURCES.txt`` is the one egg-info member setuptools appends after
+          # the manifest is applied; nothing else from the generated tree ships.
+          egg_info = [name for name in names if ".egg-info/" in name and not name.endswith("/SOURCES.txt")]
+          assert not egg_info, egg_info
+          print("sdist contents OK")
+          PY
+
   windows-gate:
     name: Windows gate
     runs-on: windows-latest

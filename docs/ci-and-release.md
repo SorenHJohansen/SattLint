@@ -2,14 +2,15 @@
 
 GitHub Actions is the trust boundary. A pull request runs the full gate, `main`
 runs the same gate on every push, and a release tag runs the gate again before
-publishing.
+publishing. Supported interpreters are Python 3.13 and 3.14; supported
+desktop platforms are Linux and Windows.
 
 ## Workflows
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | Pull request, push to `main`, manual, reusable call | Lint, type-check, test, fuzz, dependency audit, docs checks, package smoke. |
-| `publish.yml` | `v*` tag or manual dispatch | Run the release gate, build, verify metadata, smoke a clean wheel, publish to PyPI. |
+| `ci.yml` | Pull request, push to `main`, manual, reusable call | Lint, type-check, test, fuzz, dependency audit, docs checks, packaging on 3.13 and 3.14. |
+| `publish.yml` | `v*` tag or manual dispatch | Run the release gate, check tag ancestry, build, verify metadata and reproducibility, smoke both artifacts, publish to PyPI. |
 | `scorecard.yml` | Weekly schedule and push to `main` | OpenSSF supply-chain analysis. |
 
 ## CI jobs
@@ -26,12 +27,30 @@ publishing.
 8. Run the pre-commit hygiene hooks, skipping the hooks already run directly.
 9. Run the full pytest suite with coverage and an 80 percent floor.
 10. Build a wheel, install it into a clean virtual environment, and smoke the
-    package version, the UI import, and the CLI entry point.
+    package version, the UI import, and the CLI entry point. The packaging
+    matrix below proves the wheel and the sdist on both supported interpreters;
+    this step is the quick 3.13 smoke inside the gate.
 
 ### Windows gate
 
 Runs the same lint, format, type, test, and clean-wheel smoke path on Windows.
 It does not run the coverage floor or the fuzz jobs.
+
+### Packaging matrix
+
+Runs on Python 3.13 and 3.14. Each job:
+
+1. Sets `SOURCE_DATE_EPOCH` to a fixed instant.
+2. Builds the wheel and the sdist twice. The wheel is compared byte for byte,
+   so a build that embeds wall-clock time fails the job. The sdist backend
+   stamps its archive metadata with the build instant, so the two sdists are
+   compared by member names and member bytes instead.
+3. Runs `twine check` over both artifacts.
+4. Installs the wheel and the sdist into separate clean virtual environments,
+   then runs `sattlint --version` and `sattlint analyzers list` from each.
+5. Asserts the sdist carries the changelog, the license, the readme, and the
+   packaged stylesheet, and carries no tests, docs, scripts, workflow files, or
+   generated `egg-info` files beyond the `SOURCES.txt` setuptools appends.
 
 ### Fuzz smoke
 
@@ -70,6 +89,22 @@ python scripts/check_docs.py
 Run markdownlint through pre-commit when the hook is installed, or through the
 same markdownlint configuration used by CI.
 
+## Distribution contents
+
+`MANIFEST.in` gives the source distribution an explicit policy:
+
+- included: `CHANGELOG.md`, `LICENSE`, `README.md`, the package sources under
+  `src/sattlint`, and the packaged assets including `app_textual.tcss`;
+- excluded: `tests/`, `docs/`, `scripts/`, `.github/`, and generated
+  `egg-info` files. Setuptools appends `src/sattlint.egg-info/SOURCES.txt`
+  after the manifest runs; that file is the only `egg-info` member in the
+  archive.
+
+The wheel carries the same package and asset set through
+`[tool.setuptools.package-data]`. The packaging matrix installs the sdist as
+well as the wheel, so a missing asset or an excluded source file fails CI
+instead of reaching a release.
+
 ## Versioning
 
 SattLint uses calendar versioning:
@@ -89,10 +124,13 @@ that month. The package version is single-sourced from
 3. Confirm `CHANGELOG.md` has a dated entry for the release and that the
    unreleased block is empty.
 4. Confirm `sattlint --version` reports the intended version.
-5. Confirm `python -m build` and `python -m twine check dist/*` pass.
+5. Confirm `python -m build` and `python -m twine check dist/*` pass, and that
+   two builds with the same `SOURCE_DATE_EPOCH` produce an identical wheel and
+   identical sdist member contents.
 6. Confirm documentation matches the shipped commands, paths, exit codes, and
    configuration.
-7. Tag the commit:
+7. Confirm the release commit is an ancestor of `main`.
+8. Tag the commit:
 
    ```bash
    git tag vYYYY.M.number
@@ -106,15 +144,19 @@ The publish workflow:
 1. Runs `ci.yml` as the release gate.
 2. Checks that the package version matches the tag, or the expected version
    supplied to a manual dispatch.
-3. Builds the source distribution and wheel.
-4. Runs `twine check`.
-5. Installs the wheel into a clean environment and smokes the package version,
+3. For a tag, checks that the tagged commit is an ancestor of `main`, so a tag
+   on a side branch cannot publish code that never passed the main gate.
+4. Builds the source distribution and wheel.
+5. Runs `twine check`.
+6. Installs the wheel into a clean environment and smokes the package version,
    the UI import, the CLI entry point, and `sattlint --version`.
-6. Uploads the distributions.
-7. Publishes to PyPI through trusted publishing when the trigger is a `v*` tag.
+7. Uploads the distributions.
+8. Publishes to PyPI through trusted publishing when the trigger is a `v*` tag.
 
-A manual dispatch builds and validates without publishing. Re-running a publish
-fails when the version already exists; it never reports a false success.
+A workflow-level concurrency group serializes runs for the same ref and never
+cancels an in-progress publish. A manual dispatch builds and validates without
+publishing. Re-running a publish fails when the version already exists; it never
+reports a false success.
 
 ## Environment protection
 

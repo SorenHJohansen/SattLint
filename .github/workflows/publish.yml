@@ -14,6 +14,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # A release tag and a manual dispatch must never race each other. Queue the
+  # later run instead of cancelling a publish that may already be uploading.
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   gate:
     name: Release gate
@@ -26,6 +32,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The tag ancestry check needs the commit history back to main.
+          fetch-depth: 0
 
       - name: Set up Python 3.13
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -57,6 +66,20 @@ jobs:
             exit 1
           fi
           echo "Version consistency OK: ${package_version}"
+
+      # A release tag must point at a commit that is already on main. A tag on
+      # a side branch would publish code that never passed the main gate.
+      - name: Check the tag is on main
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} is not an ancestor of main"
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} is on main"
 
       - name: Build distributions
         run: uv run --frozen python -m build

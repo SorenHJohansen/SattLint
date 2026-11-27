@@ -97,6 +97,24 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The checked-in `.sattlint-baseline.json` has its own `schema_version: 1`,
   separate from the CLI JSON schema.
 
+### Changed
+
+- Installation uses `pipx install sattlint` as the primary path, with a
+  dedicated virtual environment as the fallback. The bare `pip install --user`
+  recommendation is gone from the readme, the getting started page, and the
+  troubleshooting page.
+- The package declares Linux and Windows support instead of the untested
+  OS-independent claim, lists Python 3.14, and bounds `rich` below the next
+  major (`<16`) to match the tested release.
+- A missing shell stylesheet now degrades to a minimal fallback instead of
+  failing at import, so an installation with incomplete package data still
+  starts.
+- CI builds the wheel and the sdist twice with a fixed `SOURCE_DATE_EPOCH`,
+  compares the wheels byte for byte and the sdist members by content, installs
+  both artifacts on Python 3.13 and 3.14, checks the sdist contents against
+  `MANIFEST.in`, checks that a release tag is an ancestor of `main`, and
+  serializes publishes for the same ref.
+
 ### Fixed
 
 - ICF reference parsing still drops one value prefix and recovers the reference
