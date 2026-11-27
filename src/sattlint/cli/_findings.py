@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -86,7 +87,10 @@ def _finding_id(
         finding.message,
         finding_data_key(finding),
     )
-    digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+    # A JSON array delimits parts unambiguously, so text that contains a
+    # separator character cannot shift the boundary into another field.
+    encoded = json.dumps(list(parts), ensure_ascii=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
     return f"f_{digest[:12]}"
 
 

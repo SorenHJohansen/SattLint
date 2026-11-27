@@ -19,6 +19,8 @@ contracts.
 | `sattlint analyze` | Run analyzers and report findings. |
 | `sattlint findings` | Query findings from a stored run. |
 | `sattlint show` | Show one finding by its stable ID. |
+| `sattlint baseline update` | Accept the current findings as the checked-in baseline. |
+| `sattlint baseline diff` | Compare a stored run with the baseline without writing it. |
 | `sattlint --version` | Print the package version. |
 
 ## Project selection
@@ -93,7 +95,8 @@ Runs the selected analyzers against the project targets.
 | `--analyzer KEY` | Analyzer to run; repeatable. Overrides the project's `analyzers` list. |
 | `--target NAME` | Analyze only this target; repeatable. Names must be configured. |
 | `--module PREFIX` | Report only findings at or below this module path; repeatable. |
-| `--fail-on {error,warning,any,none}` | Exit `1` at or above this severity, or always exit `0`; default `any`. |
+| `--fail-on {error,warning,any,none}` | Exit `1` at or above this severity, or always exit `0`; default `any`. With `--baseline`, only added or changed findings are considered. |
+| `--baseline PATH` | Compare the filtered findings with a checked-in baseline and fail only on new or more severe ones. |
 | `--no-cache` | Ignore stored analyzer reports for this run. The parsed project graph is still reused. |
 | `--no-save` | Do not store the run in run history. |
 | `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
@@ -126,6 +129,23 @@ Severity thresholds:
 Only the filtered findings decide the exit code. A value outside this set is a
 usage error with exit code `2`.
 
+With `--baseline PATH`, the same filtered findings are compared with the
+baseline first, and the exit code depends only on the added and changed entries:
+
+| `--fail-on` | Exit `1` when |
+| --- | --- |
+| `error` | at least one added or changed entry is `error` |
+| `warning` | at least one added or changed entry is `warning` or `error` |
+| `any` | any entry was added or changed, regardless of severity |
+| `none` | never |
+
+Stale, moved, and unchanged entries never fail. A severity decrease is not a
+change. Without `--baseline`, the previous table applies unchanged.
+
+`--baseline` is the CI gate. Review new findings, accept the known ones with
+`sattlint baseline update`, and commit the baseline file. The `findings` command
+is a query only and never applies the baseline.
+
 Progress records carry a `sattlint-progress` prefix followed by a space and one JSON object
 per line. Each record names the phase (`start`, `loading`, `analyzing`, or
 `target-complete`) plus the target and analyzer positions, so a supervising
@@ -138,6 +158,7 @@ sattlint analyze --project app.slproj --analyzer variables --format ndjson
 sattlint analyze --project app.slproj --module Root.A --fail-on none --format json
 sattlint analyze --project app.slproj --fail-on warning
 sattlint analyze --project app.slproj --no-cache --no-save
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
 ```
 
 The analyze summary carries `fail_on` with the chosen threshold and
@@ -252,6 +273,79 @@ zero.
 A missing finding, an ambiguous run identifier, or an unscoped `latest` is an
 error with exit code `2`.
 
+## `sattlint baseline`
+
+The baseline is a checked-in JSON document that records findings a team has
+accepted. By default it is `.sattlint-baseline.json` next to the project file.
+The document carries a schema version, the generator and creation time, and an
+`entries` array sorted by stable finding identity. Each entry stores the
+identity, analyzer, kind, severity, module path, project-relative file, line,
+and message. It never stores an absolute path, a source snippet, or an
+occurrence count.
+
+A reader rejects an unknown schema version instead of treating the document as
+empty.
+
+### `sattlint baseline update`
+
+Rewrites the baseline from a stored run. This is the command that accepts known
+findings and prunes entries that no longer occur.
+
+| Option | Effect |
+| --- | --- |
+| `--project PATH` | Project file or directory. |
+| `--run ID` | Run ID, unique prefix, or `latest`; default `latest`. |
+| `--path PATH` | Baseline file. Defaults to `.sattlint-baseline.json` next to the project file. |
+| `--format {json,text}` | Output format; default `text`. |
+| `--output PATH` | Write output to a file instead of stdout. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+When a baseline already exists, the command compares it with the rewritten
+entries and reports how many entries were added and pruned. A new baseline
+reports the entry count only.
+
+The JSON payload carries `path`, `entry_count`, `generated_by`, `created`, and
+the `added` and `pruned` counts when a previous baseline existed.
+
+### `sattlint baseline diff`
+
+Compares a stored run with the baseline and never writes. It exits `0`
+regardless of added or changed entries, because the CI gate is
+`analyze --baseline`. The run resolution and options are the same as for
+`baseline update`. The JSON payload carries `path`, the resolved run, and a
+`baseline` object with the same counts and records as the analyze document.
+
+```bash
+sattlint baseline update --project app.slproj
+sattlint baseline diff --project app.slproj --run latest --format json
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
+```
+
+### Baseline matching
+
+- Identity comes first. The stable finding ID is the same in the baseline and
+  the run.
+- Unchanged: same identity, same severity, same file, and same line.
+- Moved: same identity with a different file or line, or an identity that
+  disappeared while exactly one unmatched baseline entry shares its analyzer,
+  kind, module path, and message. A moved entry is reported, never fatal.
+- Changed: same identity with a higher severity. This is the only change that
+  can fail a run.
+- Added: a current finding with no identity match and no unique secondary
+  match.
+- Stale: a baseline entry with no current match. Stale entries are advisory and
+  are pruned by `baseline update`.
+- If several baseline entries share the secondary fields, the current finding
+  is reported as added and the baseline entries as stale. The tool never
+  guesses.
+
+A severity decrease is not a change. It is reported as moved when the site also
+moved, otherwise as unchanged.
+
+The `findings` command remains a query over stored runs. It never applies the
+baseline, so `findings --run latest` reports the same findings with or without
+one.
+
 ## Output contracts
 
 ### Streams
@@ -271,6 +365,14 @@ error with exit code `2`.
   containing a stable code, a message, and details.
 - A partial analyze document adds a `failures` array and a `failed_targets`
   count. Successful runs keep the same shape without those fields.
+- An `analyze --baseline` document adds a `baseline` object with `path`, the
+  `added`, `moved`, `changed`, `stale`, and `unchanged` counts, and an `entries`
+  array for every non-unchanged entry. A moved record adds `previous_file` and
+  `previous_line`; a changed record adds `previous_severity`.
+- A `baseline update` document carries `path`, `entry_count`, `generated_by`,
+  `created`, and `added` and `pruned` when a previous baseline existed.
+- A `baseline diff` document carries `path`, the resolved `run`, and a
+  `baseline` object with the same counts and records as the analyze document.
 - Every finding carries `severity` (`error`, `warning`, or `info`) and optional
   `file`, `line`, `column`, and `end_line` fields. Positions are one-based. A
   position the analyzer does not know is `null`, never zero.
@@ -294,8 +396,10 @@ When a finding records a source location, text finding lines start with it and
 
 A finding ID is a stable hash of the target, analyzer, finding kind, optional
 rule identifier, module path, site, context, message, and structured payload.
-The same finding keeps the same ID across runs. The location fields are
-presentation metadata and are not part of the identity hash.
+The encoded parts are an array, so separator-like text inside one part cannot
+shift a boundary into another part. The same finding keeps the same ID across
+runs. The location fields are presentation metadata and are not part of the
+identity hash.
 
 Repeated identical findings within one run collapse into one entry with an
 occurrence count.
@@ -305,7 +409,7 @@ occurrence count.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success, or no finding at or above the `--fail-on` threshold. |
-| `1` | At least one filtered finding is at or above the `--fail-on` threshold. |
+| `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. |
 | `2` | Usage, configuration, project, or target-loading error. |
 | `3` | Internal error. |
 | `130` | Interrupted. |
@@ -319,6 +423,16 @@ The recommended CI setting is `--fail-on warning`. It fails the build on
 correctness defects and on risky patterns, while naming, comment, complexity,
 and design advice remains visible as `info` without breaking the pipeline. A
 strict correctness gate can use `--fail-on error` instead.
+
+A team that has accepted known findings can commit `.sattlint-baseline.json`
+and gate only on new or more severe findings:
+
+```bash
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
+```
+
+The baseline gate ignores unchanged, moved, and stale entries, so only added or
+changed findings at or above the threshold fail the job.
 
 ```bash
 sattlint analyze --project app.slproj --fail-on warning --format json
@@ -338,6 +452,12 @@ sattlint findings --run latest --module Root.A --group-by module --format json
 
 # 4. Open one finding with its full context.
 sattlint show <finding-id> --format markdown
+
+# 5. Accept reviewed findings and commit the baseline.
+sattlint baseline update --project app.slproj
+
+# 6. Make CI fail only on new or more severe findings.
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
 ```
 
 ## Related pages

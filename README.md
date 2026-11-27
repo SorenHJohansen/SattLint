@@ -99,11 +99,18 @@ sattlint analyzers list --format json
 sattlint analyze --project app.slproj --analyzer variables --format json
 sattlint findings --run latest --module Root.A --group-by module --format json
 sattlint show <finding-id> --format json
+sattlint baseline update --project app.slproj
+sattlint analyze --project app.slproj --baseline .sattlint-baseline.json --fail-on warning
 ```
 
 Commands write data to stdout and diagnostics to stderr. JSON output carries a
 `schema_version`; finding IDs are stable across runs. Text and Markdown output
 use human-readable finding labels; structured output keeps the machine IDs.
+
+A checked-in `.sattlint-baseline.json` lets a pipeline fail only on new or more
+severe findings. `sattlint baseline update` accepts reviewed findings and prunes
+stale ones, while `sattlint analyze --baseline` is the CI gate. `findings` stays
+a read-only query and never applies the baseline.
 
 Exit codes:
 
@@ -112,6 +119,9 @@ Exit codes:
 - `2` — usage, configuration, project, or target-loading error
 - `3` — internal error
 - `130` — interrupted
+
+With `--baseline`, exit `1` means an added or changed finding crossed the
+`--fail-on` threshold.
 
 ---
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from sattlint.application.findings import AnalysisFinding
+from sattlint.cli._findings import flat_findings
 from sattlint.core.timings import NamedTimings, PhaseTiming
 from sattlint.runs import (
     RunAnalyzerRecord,
@@ -564,3 +565,50 @@ def test_prune_runs_removes_old_schema_files(tmp_path: Path) -> None:
 
     assert removed == 1
     assert not old_path.exists()
+
+
+def _record_with_finding(finding: AnalysisFinding) -> RunRecord:
+    return RunRecord(
+        run_id="run-1",
+        started_at="2026-09-06T10:00:00Z",
+        finished_at="2026-09-06T10:05:00Z",
+        project_tag="Demo",
+        targets=(
+            RunTargetRecord(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key="variables",
+                        name="Variable issues",
+                        status="completed",
+                        findings=(finding,),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def test_finding_identity_does_not_collide_on_delimiter_text() -> None:
+    first = _record_with_finding(
+        AnalysisFinding(
+            kind="unused",
+            rule_id="a\x1fb",
+            message="declared but never read",
+            module_path=("Demo", "A"),
+        )
+    )
+    second = _record_with_finding(
+        AnalysisFinding(
+            kind="unused\x1fa",
+            rule_id="b",
+            message="declared but never read",
+            module_path=("Demo", "A"),
+        )
+    )
+    first_parts = ("Demo", "variables", "unused", "a\x1fb", "Demo.A", "", "", "declared but never read", "{}")
+    second_parts = ("Demo", "variables", "unused\x1fa", "b", "Demo.A", "", "", "declared but never read", "{}")
+
+    assert "\x1f".join(first_parts) == "\x1f".join(second_parts)
+    assert flat_findings(first)[0].id != flat_findings(second)[0].id

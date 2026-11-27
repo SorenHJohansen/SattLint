@@ -189,6 +189,35 @@ A corrupt or unreadable run record, summary, or acknowledgement file is ignored.
 Listing runs never writes to the run store. A failed save leaves the previous
 record intact because writes are atomic.
 
+## Baseline
+
+The baseline is a checked-in file, not cache state:
+
+```text
+<project root>/.sattlint-baseline.json
+```
+
+`sattlint baseline update` rewrites it from a stored run. `analyze --baseline`
+compares a run with it, and `sattlint baseline diff` reports the comparison
+without writing. The file is safe to commit because entries contain no absolute
+paths and no source snippets.
+
+Matching uses the stable finding identity first. An entry with the same identity
+keeps its place unless the severity increased (changed) or the file or line
+moved (moved). An identity that disappears is recognized as moved only when
+exactly one unmatched baseline entry shares its analyzer, kind, module path, and
+message. When several candidates match, the current finding is reported as
+added and the baseline entries as stale instead of guessed.
+
+Stale entries describe findings that no longer occur. They are advisory: they
+never fail a run, and `baseline update` prunes them. A missing baseline is an
+error for `analyze --baseline`, so CI cannot pass by accident when the file is
+absent.
+
+The per-run acknowledged state described above stays a Results view
+convenience. The baseline is the durable, reviewable record of accepted
+findings.
+
 ## Profiling output
 
 When profiling is enabled, JSONL events are written to:

@@ -11,6 +11,7 @@ from itertools import chain
 from pathlib import Path
 from typing import cast
 
+from ..__version__ import __version__
 from ..analyzers.catalog import (
     canonicalize_analyzer_keys,
     get_default_analyzer_catalog,
@@ -29,7 +30,23 @@ from ..core.progress import (
 from ..project.io import ProjectAmbiguousError, discover_project_result
 from ..project.models import SattLintProjectFile
 from ..project.support import TARGET_FAILURE_DETAIL_LIMIT, TargetLoadError, get_analyzed_targets
-from ..runs import RunRecord
+from ..runs import (
+    BASELINE_FILENAME,
+    Baseline,
+    BaselineDiff,
+    BaselineDiffEntry,
+    BaselineEntry,
+    BaselineInvalidError,
+    BaselineNotFoundError,
+    BaselineWriteError,
+    RunRecord,
+    baseline_fails,
+    diff_baseline,
+    load_baseline,
+    relative_source_file,
+    save_baseline,
+    utc_now_iso,
+)
 from ._findings import (
     FindingFilters,
     FlatFinding,
@@ -55,6 +72,10 @@ from ._payloads import (
     AnalyzerInfo,
     AnalyzersListPayload,
     AnalyzeSummary,
+    BaselineBlockPayload,
+    BaselineDiffEntryPayload,
+    BaselineDiffPayload,
+    BaselineUpdatePayload,
     FailOn,
     FindingGroup,
     FindingPayload,
@@ -90,6 +111,7 @@ class _AnalyzeOptions:
     fail_on: FailOn
     jobs: int | None
     progress: bool
+    baseline: Path | None
 
 
 def _output_options(args: argparse.Namespace) -> _OutputOptions:
@@ -150,6 +172,7 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
         fail_on=cast(FailOn, str(args.fail_on)),
         jobs=None if int(args.jobs) == 0 else int(args.jobs),
         progress=bool(args.progress),
+        baseline=output_path(args.baseline),
     )
 
 
@@ -418,10 +441,120 @@ def _result_record(result: ChecksRunResult, cfg: ConfigDict, *, project_path: st
     return record
 
 
+def _baseline_not_found_error(path: Path) -> CliError:
+    return CliError(
+        f"Baseline file {path} was not found. Run 'sattlint baseline update' to create it.",
+        code="baseline_not_found",
+        exit_code=2,
+        details={"path": str(path)},
+    )
+
+
+def _load_baseline_for_cli(path: Path) -> Baseline:
+    try:
+        return load_baseline(path)
+    except BaselineNotFoundError as exc:
+        raise _baseline_not_found_error(path) from exc
+    except BaselineInvalidError as exc:
+        raise CliError(
+            str(exc),
+            code="baseline_invalid",
+            exit_code=2,
+            details={"path": str(path)},
+        ) from exc
+
+
+def _baseline_entries(findings: Iterable[FlatFinding], project_root: Path) -> list[BaselineEntry]:
+    return [
+        BaselineEntry(
+            identity=finding.id,
+            analyzer=finding.analyzer_key,
+            kind=finding.finding.kind,
+            severity=finding.severity,
+            module_path=finding.module_path,
+            file=relative_source_file(finding.finding.file, project_root),
+            line=finding.finding.line,
+            message=finding.finding.message,
+        )
+        for finding in findings
+    ]
+
+
+def _baseline_entry_payload(entry: BaselineDiffEntry) -> BaselineDiffEntryPayload:
+    payload: BaselineDiffEntryPayload = {
+        "status": entry.status,
+        "identity": entry.identity,
+        "analyzer": entry.analyzer,
+        "kind": entry.kind,
+        "severity": entry.severity,
+        "module": entry.module,
+        "file": entry.file,
+        "line": entry.line,
+        "message": entry.message,
+    }
+    if entry.status == "moved":
+        payload["previous_file"] = entry.previous_file
+        payload["previous_line"] = entry.previous_line
+    elif entry.status == "changed" and entry.previous_severity is not None:
+        payload["previous_severity"] = entry.previous_severity
+    return payload
+
+
+def _baseline_block(path: Path, diff: BaselineDiff) -> BaselineBlockPayload:
+    return {
+        "path": str(path),
+        "added": diff.count("added"),
+        "moved": diff.count("moved"),
+        "changed": diff.count("changed"),
+        "stale": diff.count("stale"),
+        "unchanged": diff.count("unchanged"),
+        "entries": [_baseline_entry_payload(entry) for entry in diff.reported],
+    }
+
+
+def _baseline_counts_text(block: BaselineBlockPayload) -> str:
+    return (
+        f"Baseline: {block['path']}  Added: {block['added']}  Moved: {block['moved']}  "
+        f"Changed: {block['changed']}  Stale: {block['stale']}  Unchanged: {block['unchanged']}"
+    )
+
+
+def _resolved_project_root(record: RunRecord, project_path: str | None) -> Path | None:
+    raw = project_path or record.project_path
+    return Path(raw).expanduser().parent.resolve() if raw else None
+
+
+def _baseline_target_path(args: argparse.Namespace, root: Path | None) -> Path:
+    raw = getattr(args, "path", None)
+    if raw is not None:
+        text = str(raw).strip()
+        if not text:
+            raise CliError("--path must not be empty.", code="usage_error", exit_code=2)
+        return Path(text).expanduser()
+    if root is None:
+        raise CliError(
+            "No project could be resolved, so the baseline path is unknown. Pass --project PATH or --path PATH.",
+            code="project_not_found",
+            exit_code=2,
+        )
+    return root / BASELINE_FILENAME
+
+
+def _resolve_baseline_run(args: argparse.Namespace) -> tuple[RunRecord, str | None, Path, Path]:
+    """Resolve the run, its project root, and the baseline path for a command."""
+    selector, project_path = _run_scope(args)
+    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    root = _resolved_project_root(record, project_path)
+    path = _baseline_target_path(args, root)
+    effective_root = root if root is not None else path.resolve().parent
+    return record, project_path, effective_root, path
+
+
 def command_analyze(args: argparse.Namespace) -> int:
     options = _analyze_options(args)
     project = _resolve_project(options.project)
     _drain_quiet_warnings(options.output)
+    baseline = None if options.baseline is None else _load_baseline_for_cli(options.baseline)
     cfg = _apply_target_filter(effective_project_config(project, quiet=options.output.quiet), options.targets)
     keys = _resolve_analyzer_keys(options.analyzers or project.analyzers)
     _require_configured_targets(cfg)
@@ -485,6 +618,7 @@ def command_analyze(args: argparse.Namespace) -> int:
     record = _result_record(result, cfg, project_path=project_path)
     all_findings = flat_findings(record)
     findings = filter_findings(all_findings, FindingFilters(modules=options.modules))
+    baseline_diff = None if baseline is None else diff_baseline(baseline, _baseline_entries(findings, project.root))
     summary: AnalyzeSummary = {
         **finding_summary(findings),
         "total_findings": len(all_findings),
@@ -508,12 +642,37 @@ def command_analyze(args: argparse.Namespace) -> int:
     if partial_failures:
         payload["failures"] = _bounded_failures(partial_failures)
         payload["failed_targets"] = len(partial_failures)
+    _attach_baseline(payload, options.baseline, baseline_diff)
     _emit_findings(options.output, payload=payload, findings=findings, text_lines=_analyze_text(payload))
+    return _analyze_exit_code(
+        findings=findings,
+        fail_on=options.fail_on,
+        baseline_diff=baseline_diff,
+        partial_failures=partial_failures,
+    )
+
+
+def _attach_baseline(
+    payload: AnalyzePayload,
+    path: Path | None,
+    diff: BaselineDiff | None,
+) -> None:
+    if diff is not None and path is not None:
+        payload["baseline"] = _baseline_block(path, diff)
+
+
+def _analyze_exit_code(
+    *,
+    findings: list[FlatFinding],
+    fail_on: FailOn,
+    baseline_diff: BaselineDiff | None,
+    partial_failures: tuple[TargetLoadFailure, ...],
+) -> int:
     if partial_failures:
         return 2
-    if _findings_reach_threshold(findings, options.fail_on):
-        return 1
-    return 0
+    if baseline_diff is not None:
+        return 1 if baseline_fails(baseline_diff, fail_on) else 0
+    return 1 if _findings_reach_threshold(findings, fail_on) else 0
 
 
 def _findings_reach_threshold(findings: Iterable[FlatFinding], fail_on: FailOn) -> bool:
@@ -555,6 +714,9 @@ def _analyze_text(payload: AnalyzePayload) -> list[str]:
         if omitted:
             lines.append(f"  - ... and {omitted} more")
         lines.append("Fix the failed targets, then rerun. The other targets' results above are complete.")
+    baseline_block = payload.get("baseline")
+    if baseline_block is not None:
+        lines.append(_baseline_counts_text(baseline_block))
     lines.extend(_finding_line(finding) for finding in payload["findings"])
     return lines
 
@@ -773,9 +935,96 @@ def _finding_markdown(payload: ShowPayload) -> list[str]:
     return lines
 
 
+def command_baseline_update(args: argparse.Namespace) -> int:
+    """Accept the current findings as the checked-in baseline."""
+    options = _output_options(args)
+    record, _project_path, root, path = _resolve_baseline_run(args)
+    _drain_quiet_warnings(options)
+    entries = _baseline_entries(flat_findings(record), root)
+    existing = _load_baseline_for_cli(path) if path.exists() else None
+    generated_by = f"sattlint {__version__}"
+    created = utc_now_iso()
+    baseline = Baseline.create(entries, generated_by=generated_by, created=created)
+    try:
+        save_baseline(baseline, path)
+    except BaselineWriteError as exc:
+        raise CliError(
+            str(exc),
+            code="baseline_write_failed",
+            exit_code=2,
+            details={"path": str(path)},
+        ) from exc
+    payload: BaselineUpdatePayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "baseline update",
+        "path": str(path),
+        "entry_count": len(entries),
+        "generated_by": generated_by,
+        "created": created,
+    }
+    if existing is not None:
+        diff = diff_baseline(existing, entries)
+        payload["added"] = len(diff.added)
+        payload["pruned"] = len(diff.stale)
+    _emit_document(options, payload=payload, text_lines=_baseline_update_text(payload))
+    return 0
+
+
+def _baseline_update_text(payload: BaselineUpdatePayload) -> list[str]:
+    lines = [
+        f"Baseline: {payload['path']}",
+        f"Entries: {payload['entry_count']}",
+        f"Generated by: {payload['generated_by']}",
+        f"Created: {payload['created']}",
+    ]
+    if "added" in payload and "pruned" in payload:
+        lines.append(f"Added: {payload['added']}  Pruned: {payload['pruned']}")
+    else:
+        lines.append("Created a new baseline.")
+    return lines
+
+
+def command_baseline_diff(args: argparse.Namespace) -> int:
+    """Report how a stored run differs from the baseline without writing."""
+    options = _output_options(args)
+    record, project_path, root, path = _resolve_baseline_run(args)
+    _drain_quiet_warnings(options)
+    baseline = _load_baseline_for_cli(path)
+    diff = diff_baseline(baseline, _baseline_entries(flat_findings(record), root))
+    payload: BaselineDiffPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "baseline diff",
+        "path": str(path),
+        "run": run_payload(record, project_path=project_path),
+        "baseline": _baseline_block(path, diff),
+    }
+    _emit_document(options, payload=payload, text_lines=_baseline_diff_text(payload))
+    return 0
+
+
+def _baseline_diff_text(payload: BaselineDiffPayload) -> list[str]:
+    block = payload["baseline"]
+    lines = [_baseline_counts_text(block)]
+    for entry in block["entries"]:
+        location = format_source_location(
+            file=entry["file"],
+            line=entry["line"],
+            column=None,
+            end_line=None,
+        )
+        prefix = f"{location}  " if location else ""
+        lines.append(
+            f"[{entry['status']}] [{entry['severity']}] {prefix}{entry['module'] or '(unknown)'}: "
+            f"{kind_human_label(entry['kind'])} - {entry['message']}"
+        )
+    return lines
+
+
 __all__ = [
     "command_analyze",
     "command_analyzers_list",
+    "command_baseline_diff",
+    "command_baseline_update",
     "command_findings",
     "command_project_show",
     "command_show",

@@ -2,6 +2,26 @@
 
 from __future__ import annotations
 
+from .baseline import (
+    BASELINE_FILENAME,
+    BASELINE_SCHEMA_VERSION,
+    Baseline,
+    BaselineDiff,
+    BaselineDiffEntry,
+    BaselineEntry,
+    BaselineError,
+    BaselineFailOn,
+    BaselineInvalidError,
+    BaselineNotFoundError,
+    BaselineStatus,
+    BaselineWriteError,
+    baseline_fails,
+    diff_baseline,
+    load_baseline,
+    relative_source_file,
+    save_baseline,
+    utc_now_iso,
+)
 from .finding_keys import finding_acknowledgement_key
 from .io import (
     DEFAULT_RUN_HISTORY_LIMIT,
@@ -19,22 +39,40 @@ from .io import (
 from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
 
 __all__ = [
+    "BASELINE_FILENAME",
+    "BASELINE_SCHEMA_VERSION",
     "DEFAULT_RUN_HISTORY_LIMIT",
     "RUN_RECORD_SCHEMA_VERSION",
+    "Baseline",
+    "BaselineDiff",
+    "BaselineDiffEntry",
+    "BaselineEntry",
+    "BaselineError",
+    "BaselineFailOn",
+    "BaselineInvalidError",
+    "BaselineNotFoundError",
+    "BaselineStatus",
+    "BaselineWriteError",
     "RunAnalyzerRecord",
     "RunModuleRecord",
     "RunRecord",
     "RunSummary",
     "RunTargetRecord",
+    "baseline_fails",
     "delete_run",
+    "diff_baseline",
     "finding_acknowledgement_key",
     "get_runs_dir",
     "get_runs_dir_or_none",
     "list_runs",
+    "load_baseline",
     "load_run",
     "load_run_acknowledgements",
     "prune_runs",
+    "relative_source_file",
     "runs_dir_location",
+    "save_baseline",
     "save_run",
     "save_run_acknowledgements",
+    "utc_now_iso",
 ]

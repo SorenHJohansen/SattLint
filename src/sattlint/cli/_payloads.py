@@ -17,6 +17,8 @@ type GroupBy = Literal["none", "module", "analyzer", "kind"]
 
 type FailOn = Literal["error", "warning", "any", "none"]
 
+type BaselineEntryStatus = Literal["unchanged", "moved", "changed", "added", "stale"]
+
 
 class ErrorInfo(TypedDict):
     code: str
@@ -150,6 +152,57 @@ class TargetLoadFailurePayload(TypedDict):
     column: int | None
 
 
+class BaselineDiffEntryPayload(TypedDict):
+    """One non-unchanged entry in a baseline comparison."""
+
+    status: BaselineEntryStatus
+    identity: str
+    analyzer: str
+    kind: str
+    severity: Severity
+    module: str
+    file: str | None
+    line: int | None
+    message: str
+    # A moved entry carries where the matched baseline entry used to be.
+    previous_file: NotRequired[str | None]
+    previous_line: NotRequired[int | None]
+    # A changed entry carries the severity the baseline accepted.
+    previous_severity: NotRequired[Severity]
+
+
+class BaselineBlockPayload(TypedDict):
+    """The comparison counts and records added to an analyze document."""
+
+    path: str
+    added: int
+    moved: int
+    changed: int
+    stale: int
+    unchanged: int
+    entries: list[BaselineDiffEntryPayload]
+
+
+class BaselineUpdatePayload(TypedDict):
+    schema_version: int
+    command: str
+    path: str
+    entry_count: int
+    generated_by: str
+    created: str
+    # Present only when a previous baseline existed and was compared.
+    added: NotRequired[int]
+    pruned: NotRequired[int]
+
+
+class BaselineDiffPayload(TypedDict):
+    schema_version: int
+    command: str
+    path: str
+    run: RunPayload
+    baseline: BaselineBlockPayload
+
+
 class AnalyzePayload(TypedDict):
     schema_version: int
     command: str
@@ -163,6 +216,8 @@ class AnalyzePayload(TypedDict):
     # partial result, is not stored in run history, and exits 2.
     failures: NotRequired[list[TargetLoadFailurePayload]]
     failed_targets: NotRequired[int]
+    # Present only when the run was compared with a baseline.
+    baseline: NotRequired[BaselineBlockPayload]
 
 
 class FindingsFilters(TypedDict):
@@ -199,6 +254,11 @@ __all__ = [
     "AnalyzeSummary",
     "AnalyzerInfo",
     "AnalyzersListPayload",
+    "BaselineBlockPayload",
+    "BaselineDiffEntryPayload",
+    "BaselineDiffPayload",
+    "BaselineEntryStatus",
+    "BaselineUpdatePayload",
     "ConfigInfo",
     "ErrorInfo",
     "ErrorPayload",

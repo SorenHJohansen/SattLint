@@ -21,6 +21,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `severity` field. `--fail-on` now accepts `error`, `warning`, `any`, and
   `none`; the default remains `any`, and `--fail-on warning` is the recommended
   CI gate. The analyze summary names the threshold as `fail_on`.
+- Analysis can compare a run with a checked-in `.sattlint-baseline.json`.
+  `analyze --baseline` reports added, moved, changed, stale, and unchanged
+  findings and fails only on new or more severe ones at the `--fail-on`
+  threshold. `baseline update` accepts the current findings and prunes stale
+  entries, and `baseline diff` reports the comparison without writing. Finding
+  identities now use an unambiguous encoding, so delimiter-like text in a
+  finding cannot collide with another finding.
 
 ## [2026.11.6] - 2026-11-26
 

@@ -145,6 +145,14 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
         help=("Exit 1 at or above this severity: error, warning, or any finding; none always exits 0."),
     )
     parser.add_argument(
+        "--baseline",
+        metavar="PATH",
+        help=(
+            "Compare filtered findings with a checked-in baseline and fail only on new or more severe "
+            "findings at the --fail-on threshold."
+        ),
+    )
+    parser.add_argument(
         "--progress",
         action="store_true",
         help="Emit machine-readable progress records on stderr while the run is in progress.",
@@ -206,6 +214,49 @@ def _build_show_parser(subparsers: _SubParserAction) -> None:
     _add_output_args(parser, formats=("json", "markdown", "text"))
 
 
+def _build_baseline_parser(subparsers: _SubParserAction) -> None:
+    parser = subparsers.add_parser(
+        "baseline",
+        help="Accept known findings in a checked-in baseline and compare a run with it.",
+    )
+    baseline_sub = parser.add_subparsers(dest="baseline_command", required=True)
+    update = baseline_sub.add_parser(
+        "update",
+        help="Rewrite the baseline from a stored run, accepting its findings and pruning stale entries.",
+    )
+    _add_project_arg(update)
+    update.add_argument(
+        "--run",
+        default="latest",
+        metavar="ID",
+        help="Run ID, unique prefix, or 'latest'. 'latest' resolves within the project.",
+    )
+    update.add_argument(
+        "--path",
+        metavar="PATH",
+        help="Baseline file. Defaults to .sattlint-baseline.json next to the project file.",
+    )
+    _add_output_args(update)
+
+    difference = baseline_sub.add_parser(
+        "diff",
+        help="Compare a stored run with the baseline without writing it.",
+    )
+    _add_project_arg(difference)
+    difference.add_argument(
+        "--run",
+        default="latest",
+        metavar="ID",
+        help="Run ID, unique prefix, or 'latest'. 'latest' resolves within the project.",
+    )
+    difference.add_argument(
+        "--path",
+        metavar="PATH",
+        help="Baseline file. Defaults to .sattlint-baseline.json next to the project file.",
+    )
+    _add_output_args(difference)
+
+
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = _Parser(prog="sattlint", description="Headless SattLint automation surface.")
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
@@ -215,6 +266,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     _build_analyze_parser(subparsers)
     _build_findings_parser(subparsers)
     _build_show_parser(subparsers)
+    _build_baseline_parser(subparsers)
     return parser
 
 
@@ -225,6 +277,7 @@ def _handlers() -> dict[str, AppCommandFn]:
         "analyze": commands.command_analyze,
         "findings": commands.command_findings,
         "show": commands.command_show,
+        "baseline": _dispatch_baseline,
     }
 
 
@@ -234,6 +287,12 @@ def _dispatch_project(args: argparse.Namespace) -> int:
 
 def _dispatch_analyzers(args: argparse.Namespace) -> int:
     return commands.command_analyzers_list(args)
+
+
+def _dispatch_baseline(args: argparse.Namespace) -> int:
+    if args.baseline_command == "update":
+        return commands.command_baseline_update(args)
+    return commands.command_baseline_diff(args)
 
 
 def _format_from_args(args: argparse.Namespace) -> str:
@@ -287,6 +346,20 @@ def _validate_args(args: argparse.Namespace) -> None:
     if project is not None and not str(project).strip():
         raise _UsageError(
             "--project must not be empty.",
+            code="usage_error",
+            exit_code=EXIT_USAGE_ERROR,
+        )
+    for attribute in ("baseline", "path"):
+        value = getattr(args, attribute, None)
+        if value is not None and not str(value).strip():
+            raise _UsageError(
+                f"--{attribute} must not be empty.",
+                code="usage_error",
+                exit_code=EXIT_USAGE_ERROR,
+            )
+    if command == "baseline" and not str(getattr(args, "run", "")).strip():
+        raise _UsageError(
+            "--run must not be empty.",
             code="usage_error",
             exit_code=EXIT_USAGE_ERROR,
         )
