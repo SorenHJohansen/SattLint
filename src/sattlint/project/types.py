@@ -23,6 +23,7 @@ class ProjectDict(TypedDict):
     ABB_lib_dir: str
     icf_dir: str
     other_lib_dirs: list[str]
+    allow_external_roots: bool
     analysis: AnalysisConfig
 
 
@@ -36,6 +37,7 @@ DEFAULT_PROJECT_DICT: ProjectDict = {
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
+    "allow_external_roots": False,
     "analysis": deepcopy(cast(AnalysisConfig, cast(Any, DEFAULT_CONFIG)["analysis"])),
 }
 

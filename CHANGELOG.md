@@ -17,6 +17,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   picks a code fence longer than any backtick run in the source, so a snippet
   cannot close its block and inject a heading. JSON and NDJSON output keep the
   original values.
+- A project file cannot silently point the tool at an unrelated directory.
+  `program_dir`, `ABB_lib_dir`, `icf_dir`, and every `other_lib_dirs` entry must
+  resolve under the directory that contains the `.slproj` file. An external
+  root fails to load with a message that names the raw value, the resolved
+  path, the project root, and the `allow_external_roots = true` opt in. Loading
+  warns about absolute roots and raw values with a `..` component, including
+  ones that still resolve inside the project.
 
 ### Added
 

@@ -37,6 +37,24 @@ def _write_project(path: Path, body: str = "") -> None:
     path.write_text(f"slproj_version = {SLPROJ_VERSION}\n{body}{STANDARD_STRING_CAPACITIES_TOML}", encoding="utf-8")
 
 
+def _project_with_roots(tmp_path: Path, body: str) -> tuple[Path, Path, Path]:
+    """Create a project directory, an outside directory, and the project file."""
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    path = project_root / "proj.slproj"
+    _write_project(path, body)
+    return path, project_root, outside
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are not available on this platform: {exc}")
+
+
 def test_discover_project_walks_upwards(tmp_path: Path) -> None:
     assert discover_project(tmp_path) is None
     (tmp_path / SLPROJ_FILENAME).write_text(f"slproj_version = {SLPROJ_VERSION}\n")
@@ -190,6 +208,7 @@ def test_load_project_fills_defaults_for_missing_keys(tmp_path: Path) -> None:
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
     assert project.data["string_capacities"] == DEFAULT_PROJECT_DICT["string_capacities"]
+    assert project.data["allow_external_roots"] is False
 
     cfg = project.to_config_dict()
     assert cfg["analyzed_programs_and_libraries"] == []
@@ -218,6 +237,10 @@ def test_load_project_rejects_wrong_value_types(tmp_path: Path) -> None:
 
     _write_project(path, "analysis = 'nope'\n")
     with pytest.raises(ValueError, match=r"analysis"):
+        load_project(path)
+
+    _write_project(path, "allow_external_roots = 'yes'\n")
+    with pytest.raises(ValueError, match=r"allow_external_roots"):
         load_project(path)
 
     path.write_text("slproj_version = 'one'\n")
@@ -328,6 +351,8 @@ def test_init_project_scaffolds_defaults(tmp_path: Path) -> None:
     assert project.data["slproj_version"] == SLPROJ_VERSION
     assert project.data["mode"] == "official"
     assert project.data["analysis"] == DEFAULT_PROJECT_DICT["analysis"]
+    assert project.data["allow_external_roots"] is False
+    assert "allow_external_roots = false" in path.read_text(encoding="utf-8")
     assert project.data["string_capacities"] == {
         "identstring": 15,
         "tagstring": 30,
@@ -364,6 +389,143 @@ def test_init_project_does_not_alias_the_process_defaults(tmp_path: Path) -> Non
     assert DEFAULT_PROJECT_DICT["analyzed_programs_and_libraries"] == []
     assert DEFAULT_PROJECT_DICT["other_lib_dirs"] == []
     assert DEFAULT_PROJECT_DICT["string_capacities"]["string"] == 40
+
+
+def test_load_project_refuses_a_parent_relative_root_outside_the_project(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, 'program_dir = "../outside"\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert "../outside" in message
+    assert str(outside.resolve()) in message
+    assert str(project_root.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_load_project_refuses_an_absolute_root_outside_the_project(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, "")
+    _write_project(path, f'program_dir = "{outside}"\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert str(outside) in message
+    assert str(outside.resolve()) in message
+    assert str(project_root.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_load_project_allows_an_external_root_with_the_opt_in(tmp_path: Path) -> None:
+    path, _project_root, outside = _project_with_roots(
+        tmp_path,
+        'allow_external_roots = true\nprogram_dir = "../outside"\n',
+    )
+
+    project = load_project(path)
+
+    assert project.data["allow_external_roots"] is True
+    assert project.to_config_dict()["program_dir"] == outside.resolve()
+
+
+def test_load_project_accepts_a_nested_root_without_warnings(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "src/programs"\n')
+
+    project = load_project(path)
+
+    assert project.warnings == ()
+    assert project.to_config_dict()["program_dir"] == (project_root / "src" / "programs").resolve()
+
+
+def test_load_project_warns_about_a_parent_component_that_stays_inside(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "src/../programs"\n')
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    warning = project.warnings[0]
+    assert "src/../programs" in warning
+    assert str((project_root / "programs").resolve()) in warning
+
+
+def test_load_project_warns_about_an_absolute_root_inside_the_project(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    inside = project_root / "programs"
+    path = project_root / "proj.slproj"
+    _write_project(path, f'program_dir = "{inside}"\n')
+
+    project = load_project(path)
+
+    assert len(project.warnings) == 1
+    warning = project.warnings[0]
+    assert str(inside) in warning
+    assert str(inside.resolve()) in warning
+
+
+def test_load_project_accepts_a_symlink_inside_the_project(tmp_path: Path) -> None:
+    path, project_root, _outside = _project_with_roots(tmp_path, 'program_dir = "link"\n')
+    real = project_root / "real"
+    real.mkdir()
+    _symlink_or_skip(project_root / "link", real)
+
+    project = load_project(path)
+
+    assert project.warnings == ()
+    assert project.to_config_dict()["program_dir"] == real.resolve()
+
+
+def test_load_project_refuses_a_symlink_to_an_outside_directory(tmp_path: Path) -> None:
+    path, project_root, outside = _project_with_roots(tmp_path, 'program_dir = "link"\n')
+    _symlink_or_skip(project_root / "link", outside)
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert str(outside.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+    _write_project(path, 'allow_external_roots = true\nprogram_dir = "link"\n')
+    assert load_project(path).to_config_dict()["program_dir"] == outside.resolve()
+
+
+def test_load_project_checks_other_lib_dirs_entry_by_entry(tmp_path: Path) -> None:
+    path, _project_root, outside = _project_with_roots(tmp_path, 'other_lib_dirs = ["libs", "../outside"]\n')
+
+    with pytest.raises(ValueError) as raised:
+        load_project(path)
+
+    message = str(raised.value)
+    assert "'other_lib_dirs'" in message
+    assert "../outside" in message
+    assert str(outside.resolve()) in message
+    assert "allow_external_roots = true" in message
+
+
+def test_to_config_dict_enforces_containment_without_load_project(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    path = project_root / "proj.slproj"
+    data = cast(ProjectDict, {**DEFAULT_PROJECT_DICT, "program_dir": "../outside"})
+
+    with pytest.raises(ValueError) as raised:
+        SattLintProjectFile(path=path, data=data).to_config_dict()
+
+    direct_message = str(raised.value)
+    assert "../outside" in direct_message
+    assert str(outside.resolve()) in direct_message
+    assert str(project_root.resolve()) in direct_message
+    assert "allow_external_roots = true" in direct_message
+
+    _write_project(path, 'program_dir = "../outside"\n')
+    with pytest.raises(ValueError) as loaded:
+        load_project(path)
+    assert direct_message == str(loaded.value)
 
 
 def test_normalize_converters() -> None:

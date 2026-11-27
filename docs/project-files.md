@@ -22,6 +22,7 @@ program_dir = "src/programs"
 ABB_lib_dir = "src/abb"
 icf_dir = "src/icf"
 other_lib_dirs = ["src/vendor", "src/shared"]
+allow_external_roots = false
 
 [string_capacities]
 identstring = 15
@@ -55,6 +56,7 @@ valid. The string capacity table is required.
 | `ABB_lib_dir` | string | `""` | Primary ABB library directory. |
 | `icf_dir` | string | `""` | Directory containing `.icf` configuration files. |
 | `other_lib_dirs` | list of strings | `[]` | Additional library roots searched after the primary roots. |
+| `allow_external_roots` | boolean | `false` | Allow configured roots to resolve outside the project directory. |
 | `string_capacities` | table | required | Capacity of every SattLine string datatype. |
 | `analysis` | table | `{}` | Analyzer-specific settings; see [Configuration](configuration.md). |
 
@@ -68,12 +70,39 @@ Every path value resolves relative to the directory that contains the
 
 - empty `program_dir` means an empty path, not the current directory;
 - `program_dir = "."` means the project directory;
-- absolute paths are used as written;
+- absolute paths are resolved as written;
 - `other_lib_dirs` entries are resolved individually, and blank entries are
   dropped.
 
 The project remains valid when the whole directory is moved or checked out on
 another machine, as long as the relative layout is preserved.
+
+## Root containment
+
+`program_dir`, `ABB_lib_dir`, `icf_dir`, and every `other_lib_dirs` entry must
+resolve under the directory that contains the `.slproj` file. The default is
+`allow_external_roots = false`, so a root outside the project is a load error.
+The error names the raw value, the resolved path, the project root, and the key
+to change.
+
+Set the key when a project intentionally reads a sibling or shared tree:
+
+```toml
+allow_external_roots = true
+program_dir = "../shared/programs"
+other_lib_dirs = ["../shared/libs"]
+```
+
+Loading also warns when a root is absolute or when its raw value contains a
+`..` component. The warning names the raw value and the resolved path. It
+appears even when the resolved path stays inside the project or the opt in
+allows the root, so the project stays portable.
+
+A nested root such as `src/programs` loads without a warning. A symlink inside
+the project that resolves to a directory inside the project also loads without
+a warning. A symlink that resolves outside the project is refused unless
+`allow_external_roots = true` is set, because containment compares resolved
+paths.
 
 ## Discovery
 
@@ -170,6 +199,10 @@ Loading a `.slproj`:
 - rejects a missing or malformed `[string_capacities]` table;
 - rejects a wrong type for a known key;
 - rejects an invalid `mode`;
+- rejects a configured root that resolves outside the project directory unless
+  `allow_external_roots = true`;
+- warns about an absolute root or a raw root with a `..` component, naming the
+  raw value and the resolved path;
 - ignores unknown keys with a warning instead of reading them by accident;
 - accepts missing known keys by applying project defaults.
 

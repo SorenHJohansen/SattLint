@@ -16,7 +16,13 @@ import tomli_w
 
 from ..config.string_capacities import validate_string_capacities
 from ..config.types import ConfigObjectMap
-from .models import SattLintProjectFile
+from .models import (
+    OTHER_LIB_DIRS_KEY,
+    PROJECT_ROOT_KEYS,
+    SattLintProjectFile,
+    enforce_project_root,
+    project_root_warnings,
+)
 from .types import DEFAULT_PROJECT_DICT, SLPROJ_VERSION, ProjectDict
 
 SLPROJ_SUFFIX = ".slproj"
@@ -240,8 +246,35 @@ def _validate_project_data(raw: Mapping[str, object], path: Path) -> tuple[Proje
         if not isinstance(data[key], str):
             raise _type_error(key, "a string", path)
 
+    allow_external_roots = data["allow_external_roots"]
+    if not isinstance(allow_external_roots, bool):
+        raise _type_error("allow_external_roots", "a boolean", path)
+
     if not isinstance(data["analysis"], Mapping):
         raise _type_error("analysis", "a table", path)
+
+    project_root = path.parent.resolve()
+    for key in PROJECT_ROOT_KEYS:
+        root_value = cast(str, data[key])
+        if not root_value.strip():
+            continue
+        entry = enforce_project_root(
+            project_root,
+            root_value,
+            key=key,
+            allow_external_roots=allow_external_roots,
+        )
+        warnings.extend(project_root_warnings(entry))
+    for lib_entry in data["other_lib_dirs"]:
+        if not lib_entry.strip():
+            continue
+        entry = enforce_project_root(
+            project_root,
+            lib_entry,
+            key=OTHER_LIB_DIRS_KEY,
+            allow_external_roots=allow_external_roots,
+        )
+        warnings.extend(project_root_warnings(entry))
 
     return cast(ProjectDict, data), tuple(warnings)
 
