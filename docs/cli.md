@@ -93,7 +93,7 @@ Runs the selected analyzers against the project targets.
 | `--analyzer KEY` | Analyzer to run; repeatable. Overrides the project's `analyzers` list. |
 | `--target NAME` | Analyze only this target; repeatable. Names must be configured. |
 | `--module PREFIX` | Report only findings at or below this module path; repeatable. |
-| `--fail-on {any,none}` | Exit `1` when findings exist, or always exit `0`; default `any`. |
+| `--fail-on {error,warning,any,none}` | Exit `1` at or above this severity, or always exit `0`; default `any`. |
 | `--no-cache` | Ignore stored analyzer reports for this run. The parsed project graph is still reused. |
 | `--no-save` | Do not store the run in run history. |
 | `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
@@ -114,6 +114,18 @@ Selection rules:
 - Targets are matched case-insensitively against configured target names.
 - An empty filter value is a usage error.
 
+Severity thresholds:
+
+| `--fail-on` | Exit `1` when |
+| --- | --- |
+| `error` | at least one `error` finding exists |
+| `warning` | at least one `warning` or `error` finding exists |
+| `any` | any finding exists, regardless of severity |
+| `none` | never |
+
+Only the filtered findings decide the exit code. A value outside this set is a
+usage error with exit code `2`.
+
 Progress records carry a `sattlint-progress` prefix followed by a space and one JSON object
 per line. Each record names the phase (`start`, `loading`, `analyzing`, or
 `target-complete`) plus the target and analyzer positions, so a supervising
@@ -124,8 +136,12 @@ suppresses them together with the rest of the stderr output.
 sattlint analyze --project app.slproj
 sattlint analyze --project app.slproj --analyzer variables --format ndjson
 sattlint analyze --project app.slproj --module Root.A --fail-on none --format json
+sattlint analyze --project app.slproj --fail-on warning
 sattlint analyze --project app.slproj --no-cache --no-save
 ```
+
+The analyze summary carries `fail_on` with the chosen threshold and
+`by_severity` with the finding count in each bucket.
 
 ### Module attribution
 
@@ -188,12 +204,13 @@ Rules:
 - `/` in a module filter is treated like `.`.
 - A `.*` suffix is accepted and removed.
 - `--exact-module` requires at least one `--module`.
-- The summary counts both findings and occurrences. Repeated identical findings
-  collapse into one entry with an occurrence count.
+- The summary counts both findings and occurrences, and reports `by_severity`.
+  Repeated identical findings collapse into one entry with an occurrence count.
 - `--limit` applies after filtering and before grouping.
-- Each finding line starts with its source location when the analyzer knows one,
-  for example `programs/Demo.s:12:4`. A finding with only a line, or no
-  location, stays readable without placeholders.
+- Each finding line starts with its severity tag, for example `[warning]`, then
+  its source location when the analyzer knows one, for example
+  `[warning] programs/Demo.s:12:4`. A finding with only a line, or no location,
+  stays readable without placeholders.
 - `latest` resolves within the project: discovery from the current directory,
   or an explicit `--project`. A run recorded for another project is never
   returned.
@@ -227,9 +244,10 @@ Shows one finding, including its location and context, by its stable ID.
 sattlint show f_7d3f9c1a --format markdown
 ```
 
-Text output adds `File:`, `Line:`, and `Column:` lines when the finding records
-them. Markdown output adds a single `Location` bullet. A location the analyzer
-does not know is omitted rather than shown as zero.
+Text output adds a `Severity:` line and `File:`, `Line:`, and `Column:` lines
+when the finding records them. Markdown output adds `Severity` and `Location`
+bullets. A location the analyzer does not know is omitted rather than shown as
+zero.
 
 A missing finding, an ambiguous run identifier, or an unscoped `latest` is an
 error with exit code `2`.
@@ -253,9 +271,9 @@ error with exit code `2`.
   containing a stable code, a message, and details.
 - A partial analyze document adds a `failures` array and a `failed_targets`
   count. Successful runs keep the same shape without those fields.
-- Every finding carries optional `file`, `line`, `column`, and `end_line`
-  fields. Positions are one-based. A value the analyzer does not know is
-  `null`, never zero.
+- Every finding carries `severity` (`error`, `warning`, or `info`) and optional
+  `file`, `line`, `column`, and `end_line` fields. Positions are one-based. A
+  position the analyzer does not know is `null`, never zero.
 
 ### NDJSON
 
@@ -286,16 +304,25 @@ occurrence count.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success, or no blocking findings. |
-| `1` | Findings were reported and `--fail-on any` is in effect. |
+| `0` | Success, or no finding at or above the `--fail-on` threshold. |
+| `1` | At least one filtered finding is at or above the `--fail-on` threshold. |
 | `2` | Usage, configuration, project, or target-loading error. |
 | `3` | Internal error. |
 | `130` | Interrupted. |
 | `141` | Broken pipe, such as when a downstream `head` closes the stream. |
 
-A CI job that treats findings as failures can rely on the default `--fail-on
-any` and skip parsing. A job that reports findings without failing should pass
-`--fail-on none` and inspect the JSON payload.
+A CI job that treats every finding as a failure can rely on the default
+`--fail-on any` and skip parsing. A job that reports findings without failing
+should pass `--fail-on none` and inspect the JSON payload.
+
+The recommended CI setting is `--fail-on warning`. It fails the build on
+correctness defects and on risky patterns, while naming, comment, complexity,
+and design advice remains visible as `info` without breaking the pipeline. A
+strict correctness gate can use `--fail-on error` instead.
+
+```bash
+sattlint analyze --project app.slproj --fail-on warning --format json
+```
 
 ## End-to-end example
 

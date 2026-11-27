@@ -140,9 +140,9 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
     )
     parser.add_argument(
         "--fail-on",
-        choices=("any", "none"),
+        choices=("error", "warning", "any", "none"),
         default="any",
-        help="Exit 1 when findings are reported (any) or always exit 0 (none).",
+        help=("Exit 1 at or above this severity: error, warning, or any finding; none always exits 0."),
     )
     parser.add_argument(
         "--progress",

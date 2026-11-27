@@ -12,7 +12,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Literal, cast
 
 from ..models._variable_issues import (
     DECLARATION_ROLE_LOCAL_VARIABLE,
@@ -27,6 +27,10 @@ from ..reporting.variables_report import VariablesReport
 
 type FindingDataValue = str | int | float | bool | list[FindingDataValue] | dict[str, FindingDataValue] | None
 
+type Severity = Literal["error", "warning", "info"]
+
+_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
+
 
 def _empty_data() -> dict[str, FindingDataValue]:
     return {}
@@ -38,6 +42,7 @@ class AnalysisFinding:
     message: str
     module_path: tuple[str, ...] = ()
     rule_id: str | None = None
+    severity: Severity | None = None
     explanation: str | None = None
     suggestion: str | None = None
     file: str | None = None
@@ -52,6 +57,7 @@ class AnalysisFinding:
             "message": self.message,
             "module_path": list(self.module_path),
             "rule_id": self.rule_id,
+            "severity": self.severity,
             "explanation": self.explanation,
             "suggestion": self.suggestion,
             "file": self.file,
@@ -75,6 +81,7 @@ class AnalysisFinding:
             message=str(payload.get("message") or ""),
             module_path=module_path,
             rule_id=optional_text(payload.get("rule_id")),
+            severity=_severity_value(payload.get("severity")),
             explanation=optional_text(payload.get("explanation")),
             suggestion=optional_text(payload.get("suggestion")),
             file=optional_text(payload.get("file")),
@@ -117,6 +124,13 @@ def _positive_int(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value if value > 0 else None
+
+
+def _severity_value(value: object) -> Severity | None:
+    """A known severity, or ``None`` when the stored value is absent or unusable."""
+    if isinstance(value, str) and value in _SEVERITIES:
+        return cast(Severity, value)
+    return None
 
 
 _SOURCE_FILE_SUFFIXES = frozenset({".s", ".x", ".sattline"})
@@ -389,6 +403,103 @@ def _issue_location(item: object) -> _IssueLocation:
     return _IssueLocation(file=file, line=line, column=column, end_line=end_line)
 
 
+#: Severity policy: this answers one CI question, whether a finding is certain
+#: enough to fail a build. It is keyed by finding kind, never by analyzer
+#: category, because one analyzer can report both defects and advice. ``error``
+#: is reserved for defects the tool can prove from the parsed structure.
+#: Uncertain heuristics and risky patterns are ``warning``. Naming, comment,
+#: complexity, and design advice is ``info``. A kind that is not listed here
+#: stays unknown at extraction time so the analyzer's delivery default applies.
+_FINDING_SEVERITY: dict[str, Severity] = {
+    # Proven defects.
+    "dataflow.dead_overwrite": "error",
+    "dataflow.conflicting_constants": "error",
+    "sfc_parallel_write_race": "error",
+    "sfc_unreachable_transition": "error",
+    "sfc_duplicate_transition_guard": "error",
+    "sfc_missing_initial_step": "error",
+    "sfc_self_fork": "error",
+    "sfc_cross_sequence_fork": "error",
+    "string_capacity.literal_overflow": "error",
+    "string_capacity.assignment_overflow": "error",
+    "string_capacity.procedure_overflow": "error",
+    "reset_contamination": "error",
+    "icf.unresolved_path": "error",
+    "icf.invalid_field_path": "error",
+    # Risky patterns and uncertain heuristics.
+    "unused": "warning",
+    "field_read_only": "warning",
+    "read_only_non_const": "warning",
+    "procedure_status": "warning",
+    "field_never_read": "warning",
+    "never_read": "warning",
+    "record_component_order_dependence": "warning",
+    "write_without_effect": "warning",
+    "unknown_parameter_target": "warning",
+    "string_mapping_mismatch": "warning",
+    "min_max_mapping_mismatch": "warning",
+    "shadowing": "warning",
+    "unsafe_boolean_default": "warning",
+    "read_before_write": "warning",
+    "implicit_latch": "warning",
+    "secure_candidate": "warning",
+    "alarm.duplicate_tag": "warning",
+    "alarm.duplicate_condition": "warning",
+    "alarm.never_cleared": "warning",
+    "module_layout.invalid_clipping": "warning",
+    "module_layout.origo_not_centered_or_corner": "warning",
+    "module_layout.size_off_grid": "warning",
+    "module_layout.position_off_grid": "warning",
+    "module_layout.object_outside_clipping": "warning",
+    "picture_display_paths.unresolved": "warning",
+    "picture_display_paths.above_base": "warning",
+    "module.version_drift": "warning",
+    "module.unused_type": "warning",
+    "same_cycle_parallel_read_write_hazard": "warning",
+    "dataflow.condition_always_true": "warning",
+    "dataflow.condition_always_false": "warning",
+    "dataflow.unreachable_branch": "warning",
+    "dataflow.self_compare_condition": "warning",
+    "dataflow.scan_cycle_stale_read": "warning",
+    "dataflow.scan_cycle_implicit_new": "warning",
+    "dataflow.non_state_multi_site": "warning",
+    "sfc_unreachable_sequence_node": "warning",
+    "icf.program_mismatch": "warning",
+    "icf.reference_case_mismatch": "warning",
+    "icf.unit_tag_mismatch": "warning",
+    "icf.group_tag_mismatch": "warning",
+    "icf.missing_journal_field": "warning",
+    "icf.unit_structure_drift": "warning",
+    "icf.value_prefix_inconsistency": "warning",
+    "icf.program_load_failed": "warning",
+    "icf.issue": "warning",
+    # Naming, comment, complexity, and design advice.
+    "magic_number": "info",
+    "comment_code": "info",
+    "module.cyclomatic_complexity": "info",
+    "step.cyclomatic_complexity": "info",
+    "equation.cyclomatic_complexity": "info",
+    "spec.sequence_step_prefix": "info",
+    "spec.transition_name_missing": "info",
+    "spec.transition_prefix": "info",
+    "spec.sequence_name_prefix": "info",
+    "spec.equation_block_prefix": "info",
+    "string_style.narrower_datatype": "info",
+    "string_style.generic_copy": "info",
+    "unused_datatype": "info",
+    "unused_datatype_field": "info",
+    "datatype_duplication": "info",
+    "global_scope_minimization": "info",
+    "hidden_global_coupling": "info",
+    "high_fan_in_out": "info",
+}
+
+
+def finding_severity(kind: str) -> Severity | None:
+    """The curated severity for a finding kind, or ``None`` when it is unknown."""
+    return _FINDING_SEVERITY.get(kind)
+
+
 def extract_report_findings(report: object, *, default_name: str) -> tuple[AnalysisFinding, ...]:
     """Normalize a report's ``issues`` into structured findings.
 
@@ -407,7 +518,8 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
         else None
     )
     for item in cast(list[object], issues):
-        if visible_kinds is not None and _kind_value(item) not in visible_kinds:
+        kind = _kind_value(item)
+        if visible_kinds is not None and kind not in visible_kinds:
             continue
         module_path = _module_path_value(item)
         metadata = variable_issue_metadata(_kind_object(item))
@@ -416,10 +528,11 @@ def extract_report_findings(report: object, *, default_name: str) -> tuple[Analy
         location = _issue_location(item)
         findings.append(
             AnalysisFinding(
-                kind=_kind_value(item),
+                kind=kind,
                 message=_message_value(item),
                 module_path=module_path or (default_name,),
                 rule_id=_issue_metadata_value(item, "rule_id"),
+                severity=finding_severity(kind),
                 explanation=explanation,
                 suggestion=suggestion,
                 file=location.file,
@@ -538,8 +651,10 @@ def kind_human_label(kind: str) -> str:
 
 __all__ = [
     "AnalysisFinding",
+    "Severity",
     "extract_report_findings",
     "finding_data_key",
+    "finding_severity",
     "format_source_location",
     "kind_human_label",
 ]

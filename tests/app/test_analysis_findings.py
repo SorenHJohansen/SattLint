@@ -7,8 +7,19 @@ from sattline_parser.models.ast_model import ScalarDatatype, Variable
 
 from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.shared._validators import StringMappingValidator
-from sattlint.application.findings import AnalysisFinding, extract_report_findings, kind_human_label
-from sattlint.cli._findings import flat_findings
+from sattlint.application.checks import ChecksAnalyzerResult, ChecksRunResult, ChecksTargetResult
+from sattlint.application.findings import (
+    AnalysisFinding,
+    extract_report_findings,
+    finding_severity,
+    kind_human_label,
+)
+from sattlint.cli._findings import (
+    analyzer_default_severity,
+    finding_payload,
+    finding_summary,
+    flat_findings,
+)
 from sattlint.cli.entry import run_cli
 from sattlint.config.string_capacities import STANDARD_STRING_CAPACITIES
 from sattlint.models._variable_issues import IssueKind, variable_issue_metadata
@@ -820,3 +831,257 @@ def test_show_latest_uses_the_discovered_project(
     payload = json.loads(capsys.readouterr().out)
     assert payload["run"]["run_id"] == "mine"
     assert payload["run"]["project_path"] == str(project)
+
+
+_ANALYZE_PROJECT_BODY = """
+slproj_version = 2
+analyzed_programs_and_libraries = ["Demo"]
+analyzers = ["variables"]
+mode = "official"
+program_dir = "programs"
+ABB_lib_dir = ""
+icf_dir = ""
+other_lib_dirs = []
+
+[string_capacities]
+identstring = 15
+tagstring = 30
+string = 40
+linestring = 80
+maxstring = 140
+"""
+
+
+@pytest.fixture
+def isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("sattlint.cli._project.config_path_location", lambda: tmp_path / "config.toml")
+
+
+def _write_analyze_project(tmp_path: Path) -> Path:
+    (tmp_path / "programs").mkdir(exist_ok=True)
+    project = tmp_path / "demo.slproj"
+    project.write_text(_ANALYZE_PROJECT_BODY, encoding="utf-8")
+    return project
+
+
+def _checks_result(*findings: AnalysisFinding, analyzer_key: str = "variables") -> ChecksRunResult:
+    return ChecksRunResult(
+        output_lines=(),
+        targets=(
+            ChecksTargetResult(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    ChecksAnalyzerResult(
+                        key=analyzer_key,
+                        name="Variable issues",
+                        status="completed",
+                        findings=tuple(findings),
+                    ),
+                ),
+            ),
+        ),
+        selected_analyzers=(analyzer_key,),
+        run_id="run-analyze",
+    )
+
+
+def _fake_collect(result: ChecksRunResult):
+    def _collect(*_args: object, **_kwargs: object) -> ChecksRunResult:
+        return result
+
+    return _collect
+
+
+def _run_with_findings(
+    run_id: str,
+    *findings: AnalysisFinding,
+    analyzer_key: str = "variables",
+) -> RunRecord:
+    return RunRecord(
+        run_id=run_id,
+        started_at="2026-01-01T00:00:00Z",
+        finished_at="2026-01-01T00:00:01Z",
+        project_tag="Demo",
+        project_path="",
+        selected_analyzers=(analyzer_key,),
+        targets=(
+            RunTargetRecord(
+                target_name="Demo",
+                is_library=False,
+                analyzers=(
+                    RunAnalyzerRecord(
+                        key=analyzer_key,
+                        name="Variable issues",
+                        status="completed",
+                        findings=tuple(findings),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def test_finding_severity_covers_error_warning_and_info_kinds() -> None:
+    assert finding_severity("dataflow.dead_overwrite") == "error"
+    assert finding_severity("string_capacity.literal_overflow") == "error"
+    assert finding_severity("sfc_missing_initial_step") == "error"
+    assert finding_severity("unused") == "warning"
+    assert finding_severity("alarm.never_cleared") == "warning"
+    assert finding_severity("magic_number") == "info"
+    assert finding_severity("comment_code") == "info"
+    assert finding_severity("custom.unknown_kind") is None
+
+
+def test_extract_report_findings_sets_severity_from_the_kind_table() -> None:
+    report = SimpleNamespace(
+        issues=[
+            Issue(kind="dataflow.dead_overwrite", message="overwritten", module_path=["Root"]),
+            Issue(kind="unused", message="declared but never read", module_path=["Root"]),
+            Issue(kind="magic_number", message="literal 7", module_path=["Root"]),
+        ]
+    )
+
+    findings = extract_report_findings(report, default_name="Root")
+
+    assert [finding.severity for finding in findings] == ["error", "warning", "info"]
+
+
+def test_unknown_kind_stays_unknown_and_the_payload_uses_the_analyzer_default() -> None:
+    report = SimpleNamespace(issues=[Issue(kind="custom.unknown_kind", message="custom check", module_path=["Root"])])
+    extracted = extract_report_findings(report, default_name="Root")
+
+    assert extracted[0].severity is None
+    assert analyzer_default_severity("cyclomatic-complexity") == "info"
+    assert analyzer_default_severity("not-in-the-catalog") == "warning"
+
+    record = _run_with_findings("unknown", extracted[0], analyzer_key="cyclomatic-complexity")
+    payload = finding_payload(flat_findings(record)[0])
+
+    assert payload["severity"] == "info"
+
+
+def test_finding_summary_counts_by_severity() -> None:
+    record = _run_with_findings(
+        "summary",
+        AnalysisFinding(kind="a", message="one", module_path=("Demo", "A"), severity="error"),
+        AnalysisFinding(kind="b", message="two", module_path=("Demo", "A"), severity="warning"),
+        AnalysisFinding(kind="c", message="three", module_path=("Demo", "A"), severity="info"),
+    )
+
+    summary = finding_summary(flat_findings(record))
+
+    assert summary["by_severity"] == {"error": 1, "warning": 1, "info": 1}
+
+
+def test_analyze_fail_on_thresholds(
+    isolate_user_config: None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_analyze_project(tmp_path)
+    info_finding = AnalysisFinding(
+        kind="magic_number",
+        message="literal 7",
+        module_path=("Demo", "A"),
+        severity="info",
+    )
+    monkeypatch.setattr(
+        "sattlint.cli.commands.collect_checks_result",
+        _fake_collect(_checks_result(info_finding)),
+    )
+
+    assert run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "warning"]) == 0
+    capsys.readouterr()
+    assert run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "any"]) == 1
+    capsys.readouterr()
+
+    warning_finding = AnalysisFinding(
+        kind="unused",
+        message="declared but never read",
+        module_path=("Demo", "A"),
+        severity="warning",
+    )
+    monkeypatch.setattr(
+        "sattlint.cli.commands.collect_checks_result",
+        _fake_collect(_checks_result(warning_finding)),
+    )
+
+    assert run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "warning"]) == 1
+    capsys.readouterr()
+    assert run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "none"]) == 0
+    capsys.readouterr()
+    assert run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "bogus"]) == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_analyze_json_and_text_carry_severity(
+    isolate_user_config: None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_analyze_project(tmp_path)
+    error_finding = AnalysisFinding(
+        kind="dataflow.dead_overwrite",
+        message="overwritten before it is read",
+        module_path=("Demo", "A"),
+        severity="error",
+    )
+    monkeypatch.setattr(
+        "sattlint.cli.commands.collect_checks_result",
+        _fake_collect(_checks_result(error_finding)),
+    )
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json", "--fail-on", "error"])
+
+    assert code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["findings"][0]["severity"] == "error"
+    assert payload["summary"]["by_severity"] == {"error": 1, "warning": 0, "info": 0}
+    assert payload["summary"]["fail_on"] == "error"
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "text", "--fail-on", "none"])
+
+    assert code == 0
+    assert "[error] Demo.A: Dead overwrite - overwritten before it is read (variables)" in capsys.readouterr().out
+
+
+def test_findings_and_show_text_include_severity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    record = _run_with_findings(
+        "severity",
+        AnalysisFinding(
+            kind="unused",
+            message="declared but never read",
+            module_path=("Demo", "A"),
+            severity="warning",
+        ),
+    )
+    _install_runs(monkeypatch, [record])
+    finding_id = flat_findings(record)[0].id
+
+    code = run_cli(["findings", "--run", "severity"])
+
+    assert code == 0
+    assert "[warning] Demo.A: Unused variable - declared but never read (variables)" in capsys.readouterr().out
+
+    code = run_cli(["findings", "--run", "severity", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["findings"][0]["severity"] == "warning"
+    assert payload["summary"]["by_severity"] == {"error": 0, "warning": 1, "info": 0}
+
+    code = run_cli(["show", finding_id, "--run", "severity"])
+
+    assert code == 0
+    assert "Severity: warning" in capsys.readouterr().out
+
+    code = run_cli(["show", finding_id, "--run", "severity", "--format", "markdown"])
+
+    assert code == 0
+    assert "- **Severity:** `warning`" in capsys.readouterr().out

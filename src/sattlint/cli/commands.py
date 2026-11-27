@@ -55,6 +55,7 @@ from ._payloads import (
     AnalyzerInfo,
     AnalyzersListPayload,
     AnalyzeSummary,
+    FailOn,
     FindingGroup,
     FindingPayload,
     FindingsFilters,
@@ -86,7 +87,7 @@ class _AnalyzeOptions:
     use_cache: bool
     refresh_ast: bool
     persist_run: bool
-    fail_on_findings: bool
+    fail_on: FailOn
     jobs: int | None
     progress: bool
 
@@ -146,7 +147,7 @@ def _analyze_options(args: argparse.Namespace) -> _AnalyzeOptions:
         use_cache=not bool(args.no_cache),
         refresh_ast=bool(args.refresh_ast),
         persist_run=not bool(args.no_save),
-        fail_on_findings=str(args.fail_on) == "any",
+        fail_on=cast(FailOn, str(args.fail_on)),
         jobs=None if int(args.jobs) == 0 else int(args.jobs),
         progress=bool(args.progress),
     )
@@ -489,6 +490,7 @@ def command_analyze(args: argparse.Namespace) -> int:
         "total_findings": len(all_findings),
         "targets": sum(1 for target in result.targets if not target.is_pseudo),
         "analyzers": len(result.selected_analyzers),
+        "fail_on": options.fail_on,
     }
     payload: AnalyzePayload = {
         "schema_version": SCHEMA_VERSION,
@@ -509,9 +511,23 @@ def command_analyze(args: argparse.Namespace) -> int:
     _emit_findings(options.output, payload=payload, findings=findings, text_lines=_analyze_text(payload))
     if partial_failures:
         return 2
-    if options.fail_on_findings and findings:
+    if _findings_reach_threshold(findings, options.fail_on):
         return 1
     return 0
+
+
+def _findings_reach_threshold(findings: Iterable[FlatFinding], fail_on: FailOn) -> bool:
+    """Whether the filtered findings should fail the run at this threshold."""
+    if fail_on == "none":
+        return False
+    for finding in findings:
+        if fail_on == "any":
+            return True
+        if fail_on == "warning" and finding.severity in {"warning", "error"}:
+            return True
+        if fail_on == "error" and finding.severity == "error":
+            return True
+    return False
 
 
 def _write_diagnostics(result: ChecksRunResult, options: _AnalyzeOptions) -> None:
@@ -526,7 +542,7 @@ def _analyze_text(payload: AnalyzePayload) -> list[str]:
     lines = [
         f"Run: {payload['run_id'] or '(not saved)'}",
         f"Targets: {summary.get('targets', 0)}  Analyzers: {summary.get('analyzers', 0)}  "
-        f"Findings: {summary['findings']}",
+        f"Findings: {summary['findings']}  Fail on: {summary.get('fail_on', 'any')}",
     ]
     failed_total = payload.get("failed_targets", 0)
     if failed_total:
@@ -551,7 +567,8 @@ def _finding_line(finding: FindingPayload) -> str:
         column=finding["column"],
         end_line=finding["end_line"],
     )
-    prefix = f"{location}  " if location else ""
+    tag = f"[{finding['severity']}] "
+    prefix = f"{tag}{location}  " if location else tag
     return f"{prefix}{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
@@ -700,6 +717,7 @@ def _finding_text(payload: ShowPayload) -> list[str]:
         f"Finding: {finding['id']}",
         f"Module:  {finding['module'] or '(unknown)'}",
         f"Kind:    {kind_human_label(finding['kind'])}",
+        f"Severity: {finding['severity']}",
     ]
     if finding["file"]:
         lines.append(f"File:    {finding['file']}")
@@ -733,6 +751,7 @@ def _finding_markdown(payload: ShowPayload) -> list[str]:
         "",
         f"- **Finding:** `{finding['id']}`",
         f"- **Run:** `{payload['run']['run_id']}`",
+        f"- **Severity:** `{finding['severity']}`",
         f"- **Analyzer:** `{finding['analyzer']}`",
         f"- **Target:** `{finding['target']}`",
     ]

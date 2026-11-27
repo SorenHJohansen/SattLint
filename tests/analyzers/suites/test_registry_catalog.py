@@ -46,7 +46,30 @@ def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
 
     assert delivery.delivery_scope == "workspace"
     assert delivery.implementation_bucket == "analyzers"
+    assert delivery.severity == "warning"
     assert delivery.output_artifacts == ("custom-analyzer.summary",)
+
+
+def test_builtin_analyzer_delivery_severity_defaults():
+    catalog = registry_module.get_default_analyzer_catalog()
+    severity_by_key = {metadata.spec.key: metadata.delivery.severity for metadata in catalog.analyzers}
+
+    assert severity_by_key == {
+        "variables": "warning",
+        "datatype-fields": "warning",
+        "moduletype-usage": "warning",
+        "module-layout": "warning",
+        "picture-display-paths": "warning",
+        "string-capacity": "warning",
+        "string-style": "info",
+        "icf": "warning",
+        "sfc": "warning",
+        "comment-code": "info",
+        "alarm-integrity": "warning",
+        "cyclomatic-complexity": "info",
+        "same-cycle": "warning",
+        "dataflow": "warning",
+    }
 
 
 def test_default_runner_closures_cover_remaining_paths(monkeypatch: pytest.MonkeyPatch):

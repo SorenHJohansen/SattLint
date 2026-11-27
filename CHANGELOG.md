@@ -14,6 +14,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
   view show the location when an analyzer records one. Missing locations stay
   `null` instead of being invented.
+- Findings carry a severity of `error`, `warning`, or `info`, assigned per
+  finding kind so correctness defects and style advice stay apart. `analyze`
+  and `findings` add a `by_severity` count to their summaries, text lines gain a
+  severity tag, `show` reports the severity, and JSON finding payloads carry a
+  `severity` field. `--fail-on` now accepts `error`, `warning`, `any`, and
+  `none`; the default remains `any`, and `--fail-on warning` is the recommended
+  CI gate. The analyze summary names the threshold as `fail_on`.
 
 ## [2026.11.6] - 2026-11-26
 

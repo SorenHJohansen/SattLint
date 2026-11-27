@@ -9,10 +9,13 @@ from __future__ import annotations
 from typing import Literal, NotRequired, TypedDict
 
 from ..analyzers.catalog import AnalyzerMetadataDict
+from ..application.findings import Severity
 from ..config.string_capacities import StringCapacitiesDict
 from ..project.support import LoadFailureKind
 
 type GroupBy = Literal["none", "module", "analyzer", "kind"]
+
+type FailOn = Literal["error", "warning", "any", "none"]
 
 
 class ErrorInfo(TypedDict):
@@ -77,6 +80,7 @@ class FindingPayload(TypedDict):
     analyzer: str
     analyzer_name: str
     kind: str
+    severity: Severity
     rule_id: str | None
     module_path: list[str]
     module: str
@@ -109,12 +113,14 @@ class FindingSummary(TypedDict):
     by_analyzer: dict[str, int]
     by_kind: dict[str, int]
     by_module: dict[str, int]
+    by_severity: dict[str, int]
 
 
 class AnalyzeSummary(FindingSummary, total=False):
     total_findings: int
     targets: int
     analyzers: int
+    fail_on: FailOn
 
 
 class FindingsSummary(FindingSummary, total=False):
@@ -196,6 +202,7 @@ __all__ = [
     "ConfigInfo",
     "ErrorInfo",
     "ErrorPayload",
+    "FailOn",
     "FindingGroup",
     "FindingPayload",
     "FindingSummary",

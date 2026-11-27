@@ -7,13 +7,28 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
-from ..analyzers.catalog import canonicalize_analyzer_keys
-from ..application.findings import AnalysisFinding, finding_data_key
+from ..analyzers.catalog import canonicalize_analyzer_keys, get_default_analyzer_catalog
+from ..application.findings import AnalysisFinding, Severity, finding_data_key
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
 
 _PROJECT_ANALYZER_TARGET = ""
+
+_SEVERITY_ORDER: tuple[Severity, ...] = ("error", "warning", "info")
+
+
+def analyzer_default_severity(analyzer_key: str) -> Severity:
+    """The delivery default for an analyzer, or ``warning`` outside the catalog."""
+    for metadata in get_default_analyzer_catalog().analyzers:
+        if metadata.spec.key == analyzer_key:
+            return metadata.delivery.severity
+    return "warning"
+
+
+def effective_finding_severity(finding: AnalysisFinding, analyzer_key: str) -> Severity:
+    """The finding's own severity, else its analyzer's delivery default."""
+    return finding.severity or analyzer_default_severity(analyzer_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +40,7 @@ class FlatFinding:
     analyzer_key: str
     analyzer_name: str
     finding: AnalysisFinding
+    severity: Severity
     module_path: tuple[str, ...]
     site: str | None
     context: str | None
@@ -120,6 +136,7 @@ def flat_findings(record: RunRecord) -> list[FlatFinding]:
                     analyzer_key=analyzer.key,
                     analyzer_name=analyzer.name,
                     finding=finding,
+                    severity=effective_finding_severity(finding, analyzer.key),
                     module_path=finding.module_path,
                     site=site,
                     context=context,
@@ -148,6 +165,7 @@ def finding_payload(finding: FlatFinding) -> FindingPayload:
         "analyzer": finding.analyzer_key,
         "analyzer_name": finding.analyzer_name,
         "kind": analysis.kind,
+        "severity": finding.severity,
         "rule_id": analysis.rule_id,
         "module_path": list(finding.module_path),
         "module": finding.module,
@@ -356,23 +374,28 @@ def finding_summary(findings: Iterable[FlatFinding]) -> FindingSummary:
     by_analyzer: dict[str, int] = {}
     by_kind: dict[str, int] = {}
     by_module: dict[str, int] = {}
+    by_severity: dict[str, int] = dict.fromkeys(_SEVERITY_ORDER, 0)
     for finding in items:
         by_analyzer[finding.analyzer_key] = by_analyzer.get(finding.analyzer_key, 0) + 1
         by_kind[finding.finding.kind] = by_kind.get(finding.finding.kind, 0) + 1
         module = finding.module or "(unknown)"
         by_module[module] = by_module.get(module, 0) + 1
+        by_severity[finding.severity] = by_severity.get(finding.severity, 0) + 1
     return {
         "findings": len(items),
         "occurrences": sum(finding.occurrence_count for finding in items),
         "by_analyzer": dict(sorted(by_analyzer.items())),
         "by_kind": dict(sorted(by_kind.items())),
         "by_module": dict(sorted(by_module.items())),
+        "by_severity": by_severity,
     }
 
 
 __all__ = [
     "FindingFilters",
     "FlatFinding",
+    "analyzer_default_severity",
+    "effective_finding_severity",
     "filter_findings",
     "finding_payload",
     "finding_summary",
