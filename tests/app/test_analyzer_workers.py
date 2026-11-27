@@ -5,9 +5,14 @@ from __future__ import annotations
 
 import io
 import multiprocessing
+import os
 import pickle
+import signal
 import sys
+import threading
+import time
 from collections.abc import Callable, Generator
+from multiprocessing.process import BaseProcess
 from typing import Any, cast
 
 import pytest
@@ -288,6 +293,64 @@ def _pooled_run(specs: dict[str, AnalyzerSpec]) -> analyzer_workers.AnalyzerRun:
     return make_run(target_name="TargetA", specs=specs)
 
 
+def _block_the_worker(_context: AnalysisContext) -> object:
+    """Hold a worker until the test kills it or the run shuts the pool down."""
+    threading.Event().wait()
+    return ReportDouble()
+
+
+def _child_pids() -> frozenset[int]:
+    return frozenset(child.pid for child in multiprocessing.active_children() if child.pid is not None)
+
+
+def _new_children(existing: frozenset[int]) -> list[BaseProcess]:
+    return [child for child in multiprocessing.active_children() if child.pid is not None and child.pid not in existing]
+
+
+def _drain_within(
+    pending: Generator[tuple[analyzer_workers.AnalyzerJobResult, ...]],
+    *,
+    timeout: float,
+) -> list[tuple[analyzer_workers.AnalyzerJobResult, ...]]:
+    groups: list[tuple[analyzer_workers.AnalyzerJobResult, ...]] = []
+    failures: list[BaseException] = []
+
+    def consume() -> None:
+        try:
+            groups.extend(pending)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the test thread
+            failures.append(exc)
+
+    thread = threading.Thread(target=consume, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    assert not thread.is_alive(), "the pooled run did not finish before the deadline"
+    if failures:
+        raise failures[0]
+    return groups
+
+
+def _close_within(
+    pending: Generator[tuple[analyzer_workers.AnalyzerJobResult, ...]],
+    *,
+    timeout: float,
+) -> None:
+    failures: list[BaseException] = []
+
+    def close() -> None:
+        try:
+            pending.close()
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the test thread
+            failures.append(exc)
+
+    thread = threading.Thread(target=close, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    assert not thread.is_alive(), "closing the pooled run did not return before the deadline"
+    if failures:
+        raise failures[0]
+
+
 @pytestmark_pooled
 def test_run_jobs_pooled_returns_every_analyzer_result() -> None:
     specs = {
@@ -343,19 +406,93 @@ def test_run_jobs_pooled_reports_a_failure_without_stopping_the_batch() -> None:
 
 
 @pytestmark_pooled
-def test_run_jobs_pooled_terminates_the_workers_when_the_caller_stops_early() -> None:
-    specs = {"first": make_spec("first", lambda _context: ReportDouble(summary="first done"))}
+def test_run_jobs_pooled_fails_the_unreported_key_when_a_worker_is_killed() -> None:
+    specs = {
+        "first": make_spec("first", lambda _context: ReportDouble(summary="first done")),
+        "second": make_spec("second", _block_the_worker, name="Second"),
+    }
     run = _pooled_run(specs)
+    existing = _child_pids()
+    pending = analyzer_workers.run_jobs_pooled(run, (("first",), ("second",)), workers=2)
+
+    (first,) = next(pending)
+    workers = _new_children(existing)
+    assert workers, "the pooled run started no worker process"
+    for worker in workers:
+        assert worker.pid is not None
+        os.kill(worker.pid, signal.SIGKILL)
+
+    started_at = time.monotonic()
+    groups = _drain_within(pending, timeout=5.0)
+    elapsed = time.monotonic() - started_at
+
+    results = {job.key: job for group in groups for job in group}
+    assert first.key == "first"
+    assert elapsed < 5.0
+    assert set(results) == {"second"}
+    assert results["second"].result.status == "failed"
+    assert results["second"].result.summary == "Analyzer worker stopped before completing Second."
+    assert results["second"].result.issue_count == 0
+    assert analyzer_workers._worker_run is None
+    assert all(not worker.is_alive() for worker in workers)
+
+
+@pytestmark_pooled
+def test_run_jobs_pooled_fails_every_key_of_a_lost_group() -> None:
+    specs = {
+        "first": make_spec("first", lambda _context: ReportDouble(summary="first done")),
+        "second": make_spec("second", _block_the_worker, name="Second"),
+        "third": make_spec("third", lambda _context: ReportDouble(summary="third done"), name="Third"),
+    }
+    run = _pooled_run(specs)
+    existing = _child_pids()
+    pending = analyzer_workers.run_jobs_pooled(run, (("first",), ("second", "third")), workers=2)
+
+    (first,) = next(pending)
+    workers = _new_children(existing)
+    assert workers, "the pooled run started no worker process"
+    for worker in workers:
+        assert worker.pid is not None
+        os.kill(worker.pid, signal.SIGKILL)
+
+    groups = _drain_within(pending, timeout=5.0)
+    results = {job.key: job for group in groups for job in group}
+
+    assert first.key == "first"
+    assert set(results) == {"second", "third"}
+    assert all(job.result.status == "failed" for job in results.values())
+    assert {results["second"].result.summary, results["third"].result.summary} == {
+        "Analyzer worker stopped before completing Second.",
+        "Analyzer worker stopped before completing Third.",
+    }
+    assert all(job.result.issue_count == 0 for job in results.values())
+    assert all(not worker.is_alive() for worker in workers)
+
+
+@pytestmark_pooled
+def test_run_jobs_pooled_terminates_the_workers_when_the_caller_stops_early() -> None:
+    specs = {
+        "first": make_spec("first", lambda _context: ReportDouble(summary="first done")),
+        "second": make_spec("second", _block_the_worker),
+    }
+    run = _pooled_run(specs)
+    existing = _child_pids()
     pending: Generator[tuple[analyzer_workers.AnalyzerJobResult, ...]] = analyzer_workers.run_jobs_pooled(
-        run, (("first",),), workers=1
+        run, (("first",), ("second",)), workers=2
     )
 
     (first,) = next(pending)
-    pending.close()
+    workers = _new_children(existing)
+    assert workers, "the pooled run started no worker process"
+
+    started_at = time.monotonic()
+    _close_within(pending, timeout=5.0)
+    elapsed = time.monotonic() - started_at
 
     assert first.key == "first"
+    assert elapsed < 5.0
     assert analyzer_workers._worker_run is None
-    assert not [child for child in multiprocessing.active_children() if child.name.startswith("ForkPoolWorker")]
+    assert all(not worker.is_alive() for worker in workers)
 
 
 def test_reports_are_plain_data_that_survives_a_process_boundary() -> None:

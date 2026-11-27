@@ -82,6 +82,13 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 - The checked-in `.sattlint-baseline.json` has its own `schema_version: 1`,
   separate from the CLI JSON schema.
 
+### Fixed
+
+- A run no longer hangs when an analyzer worker process dies before it reports.
+  Every analyzer that has not answered yet finishes with a failed result that
+  names the lost worker, so the run exits with those diagnostics instead of
+  waiting forever. Stopping a run early still terminates its workers promptly.
+
 ## [2026.11.6] - 2026-11-26
 
 ### Added

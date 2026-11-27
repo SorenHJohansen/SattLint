@@ -15,6 +15,11 @@ That only costs time; every analyzer can run standalone.
 Results come back in completion order. The caller drains them in the run's
 declared analyzer order, so the printed output and the stored run record stay
 deterministic no matter which analyzer finishes first.
+
+The workers run in a process executor whose broken state is part of its public
+contract: if a worker dies while it holds a job, every future still waiting for
+an answer fails with ``BrokenProcessPool`` instead of blocking the run. The
+parent turns those keys into failed results and finishes the run with them.
 """
 
 from __future__ import annotations
@@ -23,8 +28,11 @@ import io
 import multiprocessing
 import os
 from collections.abc import Callable, Generator, Mapping, Sequence
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, replace
+from multiprocessing.process import BaseProcess
 from time import perf_counter
 from typing import cast
 
@@ -178,6 +186,27 @@ def analyze_job(run: AnalyzerRun, key: str) -> AnalyzerJobResult:
     )
 
 
+def _failed_job_result(
+    run: AnalyzerRun,
+    key: str,
+    summary: str,
+    *,
+    output_lines: tuple[str, ...] = (),
+) -> AnalyzerJobResult:
+    spec = run.specs[key]
+    return AnalyzerJobResult(
+        key=key,
+        result=ChecksAnalyzerResult(
+            key=spec.key,
+            name=str(spec.name),
+            status="failed",
+            summary=summary,
+            issue_count=0,
+        ),
+        output_lines=output_lines,
+    )
+
+
 def degraded_job_result(
     run: AnalyzerRun,
     key: str,
@@ -188,17 +217,18 @@ def degraded_job_result(
     """Turn a raised analyzer into a failure record so the run keeps going."""
     spec = run.specs[key]
     message = analyzer_failure_message(str(spec.name), exc, debug=debug_enabled(run.cfg))
-    return AnalyzerJobResult(
-        key=key,
-        result=ChecksAnalyzerResult(
-            key=spec.key,
-            name=str(spec.name),
-            status="failed",
-            summary=message,
-            issue_count=0,
-        ),
-        output_lines=output_lines,
-    )
+    return _failed_job_result(run, key, message, output_lines=output_lines)
+
+
+def _worker_stopped_result(run: AnalyzerRun, key: str) -> AnalyzerJobResult:
+    """Fail an analyzer whose worker died before it could report.
+
+    The message is fixed on purpose: the run history and the UI read it, and the
+    reason a process disappeared is not something the parent can explain, so the
+    text names the lost work without exposing process internals.
+    """
+    spec = run.specs[key]
+    return _failed_job_result(run, key, f"Analyzer worker stopped before completing {spec.name}.")
 
 
 def pooling_supported() -> bool:
@@ -260,6 +290,67 @@ def _worker_entry(keys: tuple[str, ...]) -> tuple[AnalyzerJobResult, ...]:
     return tuple(results)
 
 
+def _live_executor_processes(executor: ProcessPoolExecutor) -> Mapping[int, BaseProcess] | None:
+    # ``shutdown`` waits for running tasks, and the public ``terminate_workers``
+    # only exists from Python 3.14, so the private worker map is the only way to
+    # stop a cancelled run's workers promptly.
+    processes: Mapping[int, BaseProcess] | None = executor._processes  # pyright: ignore[reportPrivateUsage]
+    return processes
+
+
+def _shutdown_executor(executor: ProcessPoolExecutor, *, terminate: bool) -> None:
+    """Stop the pool, terminating live workers when the run did not finish."""
+    processes = _live_executor_processes(executor)
+    if terminate and processes is not None:
+        for process in processes.values():
+            if process.is_alive():
+                process.terminate()
+    executor.shutdown(wait=True, cancel_futures=terminate)
+
+
+def _job_results(
+    futures: Mapping[Future[tuple[AnalyzerJobResult, ...]], tuple[str, ...]],
+    run: AnalyzerRun,
+    jobs: tuple[tuple[str, ...], ...],
+) -> Generator[tuple[AnalyzerJobResult, ...]]:
+    """Yield finished jobs in completion order, failing the ones a dead worker lost."""
+    unreported = dict(futures)
+    reported: set[str] = set()
+    broken = False
+    for future in as_completed(unreported):
+        try:
+            group = future.result()
+        except BrokenProcessPool:
+            broken = True
+            break
+        del unreported[future]
+        reported.update(job.key for job in group)
+        yield group
+
+    if not broken:
+        return
+
+    # The executor marks every pending task failed when a worker dies, and a
+    # task that already finished keeps its result. Report those first, then fail
+    # the keys whose worker never got to answer.
+    for future in unreported:
+        if not future.done():
+            continue
+        try:
+            group = future.result()
+        except BrokenProcessPool:
+            continue
+        reported.update(job.key for job in group)
+        yield group
+
+    for job in jobs:
+        missing = tuple(key for key in job if key not in reported)
+        if not missing:
+            continue
+        reported.update(missing)
+        yield tuple(_worker_stopped_result(run, key) for key in missing)
+
+
 def run_jobs_pooled(
     run: AnalyzerRun,
     jobs: tuple[tuple[str, ...], ...],
@@ -268,21 +359,25 @@ def run_jobs_pooled(
     """Yield each job's analyzer results in completion order.
 
     The workers are forked here, after the project graph exists, so they inherit
-    it instead of loading or pickling it again. The pool is terminated when the
-    caller stops consuming, which is what a cancelled run does.
+    it instead of loading or pickling it again. A worker that dies mid-job makes
+    the executor broken; the remaining keys are reported as failed instead of
+    waiting forever. The pool is terminated when the caller stops consuming,
+    which is what a cancelled run does.
     """
     global _worker_run
 
     context = multiprocessing.get_context("fork")
     _worker_run = _WorkerRun(run=run)
     try:
-        pool = context.Pool(processes=workers)
+        executor = ProcessPoolExecutor(max_workers=workers, mp_context=context)
     except BaseException:
         _worker_run = None
         raise
+    finished = False
     try:
-        yield from pool.imap_unordered(_worker_entry, jobs, chunksize=1)
+        futures = {executor.submit(_worker_entry, job): job for job in jobs}
+        yield from _job_results(futures, run, jobs)
+        finished = True
     finally:
         _worker_run = None
-        pool.terminate()
-        pool.join()
+        _shutdown_executor(executor, terminate=not finished)
