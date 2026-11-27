@@ -15,22 +15,26 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   `?`, so an escape sequence or bidirectional override in a target, module, or
   finding name cannot change the terminal or hide text. Change Review Markdown
   picks a code fence longer than any backtick run in the source, so a snippet
-  cannot close its block and inject a heading. JSON and NDJSON output keep the
-  original values.
+  cannot close its block and inject a heading. Configuration warnings on stderr
+  and the shell's output pane and error dialog pass through the same sanitizer.
+  JSON and NDJSON output keep the original values.
 - The cache directory is no longer a trust boundary. A project graph manifest now
   carries its own magic and HMAC-SHA256 signature under the same key as the
-  payload, so a writer who can reach the cache directory cannot pair a signed old
-  payload with a fresh-looking file snapshot. The signing key is read only from a
-  regular file of the expected size that the current user owns and that group and
-  other cannot read or write; a symlink, a foreign owner, or a wider mode makes the
-  entry a miss instead of being followed. Cached pickles are decoded by a
-  restricted unpickler that resolves only the SattLint and parser model modules and
-  a small allow list of standard library modules, so a crafted payload cannot call
-  a process launch or another arbitrary global. Cache keys now include the cached
-  model version and the key schema moved to 3, so entries written before this
-  release are not reused and an older unsigned manifest is discarded. The AST
-  cache also applies its payload budget after each save instead of only at
-  startup.
+  payload, and both the payload and the manifest record the cache key they belong
+  to, so a writer who can reach the cache directory cannot pair a signed old
+  payload with a fresh-looking file snapshot or copy one target's entry onto
+  another target's key. The signing key is read only from a regular file of the
+  expected size that the current user owns and that group and other cannot read or
+  write; a symlink, a foreign owner, or a wider mode makes the entry a miss
+  instead of being followed. Cached pickles are decoded by a restricted unpickler
+  that resolves only the SattLint and parser model modules and named standard
+  library objects, with introspection helpers and code builders refused, so a
+  crafted payload cannot call a process launch or another arbitrary global. Cache
+  keys now include the cached model version and the key schema moved to 3, so
+  entries written before this release are not reused and an older manifest is
+  discarded. Manifest digests are streamed in bounded chunks, so proving a
+  multi-gigabyte companion unchanged never loads it whole. The AST cache also
+  applies its payload budget after each save instead of only at startup.
 - A project file cannot silently point the tool at an unrelated directory.
   `program_dir`, `ABB_lib_dir`, `icf_dir`, and every `other_lib_dirs` entry must
   resolve under the directory that contains the `.slproj` file. An external
@@ -51,7 +55,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   then module trees, while each analyzer keeps its reported `issue_count`. A
   shortened record carries `truncated: true` and a `truncation_note` naming what
   was cut, including how many findings were stored versus reported, so an
-  oversized diagnostic is never stored silently.
+  oversized diagnostic is never stored silently. The `findings` and `show` run
+  payloads carry the same `truncated` and `truncation_note` fields, and their
+  text header names the truncation, so a reduced finding set is never presented
+  as complete.
 
 ### Added
 
@@ -62,7 +69,12 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   size over every configured root. A refused load names the file or total and
   the setting to raise, and the run continues instead of aborting. ICF
   reference parsing is now a linear scan instead of a backtracking regular
-  expression, so a long colon-free line cannot stall the analyzer.
+  expression, so a long colon-free line cannot stall the analyzer. A direct
+  call to the ICF parser also applies the default limit instead of reading an
+  unbounded file.
+- An ICF file above the configured limit is reported as its own finding, and
+  the source preflight counts exactly the code extensions the parser accepts
+  for the configured mode.
 - Findings can carry a source location. JSON output gains optional `file`,
   `line`, `column`, and `end_line` fields, and text, Markdown, and the Results
   view show the location when an analyzer records one. Missing locations stay
@@ -87,6 +99,10 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
 
 ### Fixed
 
+- ICF reference parsing still drops one value prefix and recovers the reference
+  in text such as `note F::Program:Path`, but a value that would lose its colon
+  after the prefix is removed, such as `Program:Module.Note::x`, keeps its full
+  path instead of being dropped.
 - A run no longer hangs when an analyzer worker process dies before it reports.
   Every analyzer that has not answered yet finishes with a failed result that
   names the lost worker, so the run exits with those diagnostics instead of

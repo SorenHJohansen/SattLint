@@ -9,6 +9,7 @@ import pytest
 
 from sattlint import cache as cache_module
 from sattlint.cache import manager as cache_manager_module
+from sattlint.project import loading as project_loading_module
 
 # Ensure `src/` is on sys.path so `import sattlint` works in dev/test runs.
 _ROOT = Path(__file__).resolve().parents[1]
@@ -32,5 +33,9 @@ def _isolate_analysis_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     # The manager registry is process-global and keyed by directory; a manager
     # built by an earlier test must never serve a later one.
     cache_manager_module._CACHE_MANAGERS.clear()
+    # The input-size preflight keeps one stat snapshot per process load session.
+    # A test that rewrites a source of the same size must see the new bytes.
+    project_loading_module._reset_source_size_snapshot()
     yield
     cache_manager_module._CACHE_MANAGERS.clear()
+    project_loading_module._reset_source_size_snapshot()

@@ -41,6 +41,7 @@ from ..project.io import (
     save_project as _save_slproj,
 )
 from ..project.types import ProjectDict
+from ..utils.terminal_text import sanitize_terminal_text
 from ._app_textual_shared import (
     _ANALYZER_LIST_ID_PREFIX,
     _TEXTUAL_BUTTON,
@@ -341,12 +342,16 @@ def _clear_output_widget(self: Any, output_widget: Any) -> None:
 
 
 def _append_output_line_to_widget(self: Any, output_widget: Any, line_text: str, *, previous_line: str | None) -> str:
-    rendered = f"{line_text}\n"
+    # The pane is a human sink even though the stored session output is a data
+    # record. Only the rendered copy is sanitized, so a control character in a
+    # project name cannot move the cursor while the run history stays intact.
+    display_text = sanitize_terminal_text(line_text, keep_tabs=True)
+    rendered = f"{display_text}\n"
     if hasattr(output_widget, "append_plain_text"):
         output_widget.append_plain_text(rendered)
-    if _output_line_needs_gap(line_text) and previous_line not in (None, ""):
+    if _output_line_needs_gap(display_text) and previous_line not in (None, ""):
         output_widget.write("", scroll_end=False)
-    output_widget.write(_render_output_line(line_text), scroll_end=False)
+    output_widget.write(_render_output_line(display_text), scroll_end=False)
     return line_text
 
 
@@ -420,7 +425,13 @@ def _show_error_modal(self: Any, title: str, message: str) -> None:
         # first one impossible to dismiss without closing both.
         return
     self._error_modal_active = True
-    self.push_screen(_ErrorScreen(title=title, message=message), self._on_error_modal_closed)
+    self.push_screen(
+        _ErrorScreen(
+            title=sanitize_terminal_text(title),
+            message=sanitize_terminal_text(message, keep_newlines=True),
+        ),
+        self._on_error_modal_closed,
+    )
 
 
 def _on_error_modal_closed(self: Any, _result: object | None = None) -> None:

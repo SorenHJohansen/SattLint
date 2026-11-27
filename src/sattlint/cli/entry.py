@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import NoReturn, Protocol, cast
 
 from ..__version__ import __version__
+from ..utils.terminal_text import sanitize_terminal_text
 from . import commands
 from ._output import CliError, emit_error
 from ._project import drain_config_warnings
@@ -400,7 +401,7 @@ def run_cli(argv: list[str]) -> int:
                 exc.details.setdefault("warnings", list(warnings))
             else:
                 for warning in warnings:
-                    sys.stderr.write(f"{warning}\n")
+                    sys.stderr.write(f"{sanitize_terminal_text(warning)}\n")
         emit_error(exc, output_format=_format_from_args(args))
         return exc.exit_code
     except BrokenPipeError:
@@ -427,7 +428,7 @@ def run_cli(argv: list[str]) -> int:
     warnings = drain_config_warnings()
     if warnings and _format_from_args(args) not in {"json", "ndjson"}:
         for warning in warnings:
-            sys.stderr.write(f"{warning}\n")
+            sys.stderr.write(f"{sanitize_terminal_text(warning)}\n")
     return exit_code
 
 

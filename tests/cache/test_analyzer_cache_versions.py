@@ -70,7 +70,7 @@ PINS: dict[str, tuple[str, str]] = {
         "2026-11-26-language-identity",
         "54e6aa724cbbe86dfadfb3e70ce7ce28121c9315abc4e40625182636c74bde4d",
     ),
-    "icf": ("2026-11-27-input-limits", "b00e575f7ba06d549e9aaf88fcaca3db556748228e97ac501e02baa4d5816e77"),
+    "icf": ("2026-11-27-reliability", "0e49b8b344443bf19d6e2b95a1b1a9cd46698ea184dfb07a107825c0eda3d475"),
     "module-layout": (
         "2026-11-26-language-identity",
         "edc32d620ca001cfbd6e56b9b128eeb986ac31651c53051eefeca4654140f12d",

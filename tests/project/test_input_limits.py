@@ -44,7 +44,7 @@ ENDDEF (*BasePicture*);
 """
 
 
-def _config(program_dir: Path, **analysis: object) -> ConfigDict:
+def _config(program_dir: Path, *, mode: str = "official", **analysis: object) -> ConfigDict:
     return cast(
         ConfigDict,
         {
@@ -52,7 +52,7 @@ def _config(program_dir: Path, **analysis: object) -> ConfigDict:
             "ABB_lib_dir": "",
             "other_lib_dirs": [],
             "icf_dir": "",
-            "mode": "official",
+            "mode": mode,
             "debug": False,
             "analysis": analysis,
         },
@@ -75,7 +75,7 @@ def test_source_file_over_the_limit_fails_before_parsing(tmp_path: Path) -> None
 
     with pytest.raises(ValueError) as excinfo:
         load_project(
-            _config(programs, source_byte_limit=1024),
+            _config(programs, mode="draft", source_byte_limit=1024),
             target_name="Big",
             require_analyzed_targets_fn=lambda _cfg: ["Big"],
             cache_key_for_target_fn=_unexpected_cache_key,
@@ -99,7 +99,7 @@ def test_project_total_over_the_limit_fails_with_the_total(tmp_path: Path) -> No
 
     with pytest.raises(ValueError) as excinfo:
         load_project(
-            _config(programs, project_byte_limit=4096),
+            _config(programs, mode="draft", project_byte_limit=4096),
             target_name="One",
             require_analyzed_targets_fn=lambda _cfg: ["One", "Two"],
             cache_key_for_target_fn=_unexpected_cache_key,
@@ -114,16 +114,29 @@ def test_project_total_over_the_limit_fails_with_the_total(tmp_path: Path) -> No
     assert "[analysis].project_byte_limit" in message
 
 
-def test_only_source_suffixes_count_toward_the_limits(tmp_path: Path) -> None:
+def test_only_the_parser_code_suffixes_count_toward_the_limits(tmp_path: Path) -> None:
     programs = tmp_path / "programs"
     programs.mkdir()
     (programs / "Small.S").write_bytes(b"x" * 128)
     (programs / "Small.x").write_bytes(b"x" * 128)
-    (programs / "Small.sattline").write_bytes(b"x" * 128)
+    (programs / "Small.sattline").write_bytes(b"x" * 8192)
     (programs / "Notes.txt").write_bytes(b"x" * 8192)
 
     _enforce_input_limits(
-        _config(programs, source_byte_limit=1024, project_byte_limit=1024),
+        _config(programs, mode="draft", source_byte_limit=1024, project_byte_limit=1024),
+        target_name="Small",
+        target_names=["Small"],
+    )
+
+
+def test_the_official_mode_counts_only_the_official_extension(tmp_path: Path) -> None:
+    programs = tmp_path / "programs"
+    programs.mkdir()
+    (programs / "Small.s").write_bytes(b"x" * 8192)
+    (programs / "Small.x").write_bytes(b"x" * 128)
+
+    _enforce_input_limits(
+        _config(programs, mode="official", source_byte_limit=1024, project_byte_limit=1024),
         target_name="Small",
         target_names=["Small"],
     )

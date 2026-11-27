@@ -56,21 +56,21 @@ __all__ = [
 type CacheManifest = dict[str, tuple[int, int, str]]
 
 CACHE_VERSION = (
-    18  # Bump when cached AST semantics, manifest entries, or attached graphics companion record shapes change.
+    19  # Bump when cached AST semantics, manifest entries, or attached graphics companion record shapes change.
 )
-# Bumped to 7 with the content-digest manifest: entries from before it cannot
-# prove which bytes produced their report, so they are pruned instead of replayed.
-ANALYSIS_REPORT_CACHE_VERSION = 7
+# Bumped to 8 with the cache-key binding: an entry copied to another key must
+# not be replayed, so entries from before it are pruned instead of trusted.
+ANALYSIS_REPORT_CACHE_VERSION = 8
 #: A parsed project graph is tens to hundreds of megabytes and every distinct
 #: directory setting and target produces its own entry, so abandoned
 #: configurations would otherwise accumulate without limit. The least recently
 #: used payloads are dropped once the family exceeds this budget.
 CACHE_PAYLOAD_BUDGET_BYTES = 4 * 1024**3
-#: Entries used more recently than this are never evicted, so a working set that
-#: is currently in use cannot lose its cache to a single oversized sibling.
+#: Entries written more recently than this are never evicted, so a working set
+#: that is being produced cannot lose its cache to a single oversized sibling.
 CACHE_EVICTION_MIN_AGE_SECONDS = 7 * 24 * 60 * 60
 _PICKLE_CACHE_MAGIC = b"SATTLINT-PICKLE-V1\n"
-_MANIFEST_CACHE_MAGIC = b"SATTLINT-MANIFEST-V1\n"
+_MANIFEST_CACHE_MAGIC = b"SATTLINT-MANIFEST-V2\n"
 _SIGNATURE_HEX_LENGTH = hashlib.sha256().digest_size * 2
 _PICKLE_HMAC_KEY_NAME = ".sattlint-cache-key"
 _PICKLE_HMAC_SIZE = 32
@@ -81,6 +81,9 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 #: Module prefixes whose classes a cached project graph and report can hold.
 #: SattLint rewrites every cacheable model, so its own package is allowed.
 _ALLOWED_PICKLE_MODULE_PREFIXES = ("sattlint", "sattline_parser")
+#: Read size for a manifest digest. Hashing streams the file, so a rejected or
+#: oversized source is never loaded whole just to prove it is unchanged.
+_HASH_CHUNK_BYTES = 1024 * 1024
 #: Stdlib modules the parser and report models use in their pickle state.
 #: Submodules are covered by the prefix rule below.
 _ALLOWED_PICKLE_MODULES = frozenset(
@@ -92,15 +95,20 @@ _ALLOWED_PICKLE_MODULES = frozenset(
         "datetime",
         "decimal",
         "enum",
-        "functools",
         "ntpath",
         "pathlib",
         "posixpath",
         "re",
-        "types",
         "uuid",
     }
 )
+#: Explicitly allowed names for modules that also expose code-building globals.
+#: A prefix rule over these modules would admit ``types.CodeType`` and the
+#: ``functools`` helpers that can wrap an arbitrary callable.
+_ALLOWED_PICKLE_MODULE_NAMES: dict[str, frozenset[str]] = {
+    "functools": frozenset({"partial"}),
+    "types": frozenset({"MappingProxyType"}),
+}
 #: Builtins a legitimate payload needs. ``find_class`` hands the pickler a
 #: callable, so the set is explicit rather than every builtin.
 _ALLOWED_PICKLE_BUILTINS = frozenset(
@@ -113,7 +121,6 @@ _ALLOWED_PICKLE_BUILTINS = frozenset(
         "dict",
         "float",
         "frozenset",
-        "getattr",
         "int",
         "list",
         "object",
@@ -124,7 +131,6 @@ _ALLOWED_PICKLE_BUILTINS = frozenset(
         "staticmethod",
         "str",
         "tuple",
-        "type",
     }
 )
 
@@ -183,10 +189,10 @@ def _safe_stat(path: Path) -> os.stat_result | None:
 def payloads_over_budget(payloads: Sequence[Path], now: float) -> list[Path]:
     """The least recently used payloads to drop so a cache family fits its budget.
 
-    ``payloads`` is the family's payload set. Entries touched within
-    :data:`CACHE_EVICTION_MIN_AGE_SECONDS` are never returned, so a working set in
-    active use cannot be evicted by an unlucky total; when those alone exceed the
-    budget the cache stays over it until an entry ages out.
+    ``payloads`` is the family's payload set. Entries written within
+    :data:`CACHE_EVICTION_MIN_AGE_SECONDS` are never returned, so a working set
+    being produced cannot be evicted by an unlucky total; when those alone
+    exceed the budget the cache stays over it until an entry ages out.
     """
     entries: list[tuple[float, int, Path]] = []
     total = 0
@@ -226,14 +232,19 @@ def _source_digest(path: Path) -> str | None:
     A manifest records the ICF directory itself so a newly added file
     invalidates the entry. A directory has no bytes to hash, so its digest
     covers the sorted names it holds: adding or removing an entry changes it.
+    A regular file is hashed in bounded chunks, so proving a multi-gigabyte
+    companion unchanged never holds the whole file in memory.
     """
     try:
         if path.is_dir():
             return hashlib.sha256("\0".join(sorted(entry.name for entry in path.iterdir())).encode()).hexdigest()
-        raw_bytes = path.read_bytes()
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(_HASH_CHUNK_BYTES), b""):
+                digest.update(chunk)
     except OSError:
         return None
-    return hashlib.sha256(raw_bytes).hexdigest()
+    return digest.hexdigest()
 
 
 def _matches_source_identity(path: Path, *, mtime_ns: object, size: object, digest: object) -> bool:
@@ -267,13 +278,14 @@ def _snapshot_manifest(files: Iterable[Path]) -> CacheManifest | None:
     return manifest or None
 
 
-def _load_manifest_payload(path: Path) -> CacheManifest | None:
-    """Read a signed manifest, or ``None`` when it is missing or untrusted.
+def _load_manifest_payload(path: Path, *, cache_key: str) -> CacheManifest | None:
+    """Read a manifest signed for ``cache_key``, or ``None`` when it is untrusted.
 
-    The payload is signed, so the manifest beside it is signed too: otherwise
-    a writer who can reach the cache directory could pair a signed old payload
-    with a fresh-looking file snapshot. A missing or untrusted key, a bad
-    magic, a wrong signature length, and a signature mismatch are all a cache
+    The payload and the manifest are both signed, and both carry the cache key
+    they belong to: otherwise a writer who can reach the cache directory could
+    copy one target's entry onto another key and have the next run accept the
+    wrong graph. A missing or untrusted key, a bad magic, an entry for another
+    key, a wrong signature length, and a signature mismatch are all a cache
     miss, never an error.
     """
     try:
@@ -301,8 +313,15 @@ def _load_manifest_payload(path: Path) -> CacheManifest | None:
     if not isinstance(loaded, dict):
         return None
 
+    payload = cast(dict[object, object], loaded)
+    if payload.get("cache_key") != cache_key:
+        return None
+    raw_files = payload.get("files")
+    if not isinstance(raw_files, dict):
+        return None
+
     manifest: CacheManifest = {}
-    for raw_path, raw_meta in cast(dict[object, object], loaded).items():
+    for raw_path, raw_meta in cast(dict[object, object], raw_files).items():
         if not isinstance(raw_path, str):
             return None
         if not isinstance(raw_meta, list | tuple):
@@ -340,6 +359,9 @@ def _pickle_global_is_allowed(module: str, name: str) -> bool:
     """Whether a cached payload may reference ``module.name``."""
     if module == "builtins":
         return name in _ALLOWED_PICKLE_BUILTINS
+    allowed_names = _ALLOWED_PICKLE_MODULE_NAMES.get(module)
+    if allowed_names is not None:
+        return name in allowed_names
     if any(module == prefix or module.startswith(f"{prefix}.") for prefix in _ALLOWED_PICKLE_MODULE_PREFIXES):
         return True
     return any(module == allowed or module.startswith(f"{allowed}.") for allowed in _ALLOWED_PICKLE_MODULES)
@@ -564,19 +586,25 @@ def _remove_file(path: Path) -> bool:
     return True
 
 
-def _save_manifest_payload(path: Path, manifest: CacheManifest) -> None:
-    """Write a manifest atomically, owner-only, under the cache HMAC key.
+def _save_manifest_payload(path: Path, manifest: CacheManifest, *, cache_key: str) -> None:
+    """Write a manifest atomically, owner-only, signed for ``cache_key``.
 
     The payload is signed; an unsigned manifest beside it is the weak link,
     because a writer who can replace the manifest can pair a signed old payload
-    with a fresh-looking file snapshot. The signature covers the JSON body, so
-    the body keeps the shape every reader already parses.
+    with a fresh-looking file snapshot. The signature covers the JSON body, and
+    the body names the cache key it belongs to, so a manifest copied onto
+    another key is not trusted for that key either.
     """
     key = _load_or_create_pickle_hmac_key()
     if key is None:
         raise OSError(f"Could not create the cache signing key for {path}")
 
-    body = json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+    body = json.dumps(
+        {"cache_key": cache_key, "files": manifest},
+        ensure_ascii=True,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
     signature = hmac.new(key, body, hashlib.sha256).hexdigest().encode("ascii")
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
@@ -652,7 +680,7 @@ _ANALYSIS_REPORT_ANALYZER_VERSIONS = {
     "moduletype-usage": "2026-11-26-language-identity",
     "module-layout": "2026-11-26-language-identity",
     "picture-display-paths": "2026-11-25-stable-string-pass",
-    "icf": "2026-11-27-input-limits",
+    "icf": "2026-11-27-reliability",
     "dataflow": "2026-11-26-language-identity",
     "same-cycle": "2026-11-26-language-identity",
     "alarm-integrity": "2026-11-26-language-identity",

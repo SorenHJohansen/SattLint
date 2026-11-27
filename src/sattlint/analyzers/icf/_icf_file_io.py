@@ -6,6 +6,7 @@ import codecs
 import re
 from pathlib import Path
 
+from ...config.analysis import DEFAULT_ICF_BYTE_LIMIT
 from ...reporting.icf_report import ICFEntry
 
 _ICF_HEADER_RE = re.compile(r"^\[(?P<tag>[^\]\s]+)(?:\s+(?P<label>.+?))?\]$")
@@ -50,15 +51,12 @@ def decode_icf_text(raw_bytes: bytes) -> tuple[str, str, bool]:
     return raw_bytes.decode("latin-1", errors="replace"), "latin-1", False
 
 
-def _read_icf_bytes(file_path: Path, max_bytes: int | None) -> bytes:
+def _read_icf_bytes(file_path: Path, max_bytes: int) -> bytes:
     """Read an ICF file without ever holding more than ``max_bytes`` bytes.
 
     The stat check rejects a file that is already known to be too large, and
     the chunk loop covers a file that grows between the stat and the read.
     """
-    if max_bytes is None:
-        return file_path.read_bytes()
-
     observed_bytes = file_path.stat().st_size
     if observed_bytes > max_bytes:
         raise IcfFileTooLargeError(file_path, observed_bytes=observed_bytes, limit=max_bytes)
@@ -79,12 +77,12 @@ def _read_icf_bytes(file_path: Path, max_bytes: int | None) -> bytes:
     return b"".join(chunks)
 
 
-def parse_icf_file(file_path: Path, *, max_bytes: int | None = None) -> list[ICFEntry]:
+def parse_icf_file(file_path: Path, *, max_bytes: int = DEFAULT_ICF_BYTE_LIMIT) -> list[ICFEntry]:
     """Parse a .icf file into key/value entries with section and line number info.
 
-    ``max_bytes`` caps the bytes read from the file. The default ``None`` keeps
-    the historical unlimited read for direct callers; the analyzer always
-    passes the configured limit.
+    ``max_bytes`` caps the bytes read from the file and defaults to the same
+    limit the analyzer applies, so a direct caller cannot bypass the configured
+    ceiling by omitting it.
     """
     entries: list[ICFEntry] = []
     section: str | None = None
@@ -167,9 +165,18 @@ def _without_value_prefix(value: str) -> str:
 
 
 def extract_icf_sattline_ref(value: str) -> tuple[str | None, str | None]:
-    """Extract (program, path) from an ICF value string."""
-    text = _without_value_prefix(value.strip())
-    program, separator, path = text.partition(":")
+    """Extract (program, path) from an ICF value string.
+
+    One leading value prefix such as ``F::`` is dropped, and text before it is
+    discarded, so ``note F::Program:Path`` still names ``Program``. If removing
+    the prefix would leave no colon-shaped reference, the original text is used
+    instead: a value such as ``Program:Module.Note::x`` keeps its full path.
+    """
+    text = value.strip()
+    stripped = _without_value_prefix(text)
+    if ":" not in stripped and ":" in text:
+        stripped = text
+    program, separator, path = stripped.partition(":")
     if not separator:
         return None, None
     program = program.strip()

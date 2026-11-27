@@ -275,6 +275,7 @@ def test_analysis_report_cache_rejects_legacy_payload(tmp_path: Path):
     stat_result = source_path.stat()
     payload: dict[str, object] = {
         "version": ANALYSIS_REPORT_CACHE_VERSION + 1,
+        "cache_key": key,
         "report": {"issues": []},
         "files": {str(source_path): (stat_result.st_mtime_ns, stat_result.st_size)},
     }

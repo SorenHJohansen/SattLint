@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
 import subprocess
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
@@ -241,12 +243,86 @@ def test_a_manifest_with_a_tampered_body_is_rejected(tmp_path: Path) -> None:
     manifest_path = cache.cache_dir / "key.manifest.json"
     magic, signature, body = _split_signed_manifest(manifest_path)
     rewritten = json.loads(body)
-    rewritten[str(source)] = [0, 0, "f" * 64]
+    rewritten["files"][str(source)] = [0, 0, "f" * 64]
 
     manifest_path.write_bytes(magic + signature + b"\n" + json.dumps(rewritten).encode("utf-8"))
 
     assert cache.load_manifest("key") is None
     assert cache.load_validated("key") is None
+
+
+def test_an_ast_entry_copied_onto_another_key_is_not_trusted(tmp_path: Path) -> None:
+    """Signing proves who wrote an entry, not which target it belongs to.
+
+    Without the key inside the signed payload, a writer who can reach the cache
+    directory could copy one target's payload and manifest onto another target's
+    key and have the next run analyze the wrong graph.
+    """
+    source = _source(tmp_path)
+    cache = ASTCache(tmp_path / "caches")
+    cache.save("first", project={"generation": 1}, files=[source])
+
+    cache._path("first").replace(cache._path("second"))
+    cache._manifest_path("first").replace(cache._manifest_path("second"))
+
+    assert cache.load("second") is None
+    assert cache.load_validated("second") is None
+
+
+def test_a_report_entry_copied_onto_another_key_is_not_trusted(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    cache = AnalysisReportCache(tmp_path / "caches")
+    assert cache.save("first", report={"report": "first"}, files=[source]) is True
+
+    cache._path("first").replace(cache._path("second"))
+
+    assert cache.load("second") is None
+
+
+def test_hashing_a_manifest_never_reads_a_file_whole(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _source(tmp_path)
+    expected_digest = hashlib.sha256(b"x := 1;").hexdigest()
+
+    def fail_read_bytes(self: Path) -> bytes:
+        raise AssertionError("manifest hashing must stream the file instead of holding it whole")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    manifest = cache_module._snapshot_manifest([source])
+
+    assert manifest is not None
+    assert manifest[str(source)][2] == expected_digest
+
+
+def test_a_source_digest_reads_in_bounded_chunks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _source(tmp_path)
+    read_sizes: list[int] = []
+    real_open = Path.open
+
+    class _RecordingHandle:
+        def __init__(self, handle: BinaryIO) -> None:
+            self._handle = handle
+
+        def __enter__(self) -> _RecordingHandle:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self._handle.close()
+
+        def read(self, size: int = -1) -> bytes:
+            data = self._handle.read(size)
+            read_sizes.append(len(data))
+            return data
+
+    def recording_open(self: Path, *_args: object, **_kwargs: object) -> _RecordingHandle:
+        return _RecordingHandle(real_open(self, "rb"))
+
+    monkeypatch.setattr(cache_module, "_HASH_CHUNK_BYTES", 4)
+    monkeypatch.setattr(Path, "open", recording_open)
+
+    assert cache_module._source_digest(source) == hashlib.sha256(b"x := 1;").hexdigest()
+    assert read_sizes[:2] == [4, 3]
+    assert all(size <= 4 for size in read_sizes)
 
 
 def test_a_signed_manifest_still_loads_and_validates(tmp_path: Path) -> None:
@@ -338,6 +414,24 @@ def test_a_crafted_pickle_cannot_reach_a_process_launch(tmp_path: Path) -> None:
 
         assert cache_module._load_pickle_payload(payload_path) is None
         assert not marker.exists()
+
+
+def test_the_unpickler_does_not_expose_introspection_or_code_builders(tmp_path: Path) -> None:
+    """``getattr`` and ``type`` are the first step of most pickle gadgets.
+
+    ``types.CodeType`` and ``functools.reduce`` would let a signed crafted
+    payload build and call code; the allow list names only the two objects the
+    cached models actually use.
+    """
+    payload_path = tmp_path / "crafted.pickle"
+    cache_module._save_pickle_payload(payload_path, _CraftedCall(getattr, (object, "__subclasses__")))
+
+    assert cache_module._load_pickle_payload(payload_path) is None
+    assert cache_module._pickle_global_is_allowed("builtins", "getattr") is False
+    assert cache_module._pickle_global_is_allowed("builtins", "type") is False
+    assert cache_module._pickle_global_is_allowed("types", "CodeType") is False
+    assert cache_module._pickle_global_is_allowed("functools", "reduce") is False
+    assert cache_module._pickle_global_is_allowed("functools", "partial") is True
 
 
 def test_a_save_over_the_budget_prunes_the_oldest_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

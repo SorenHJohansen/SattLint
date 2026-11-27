@@ -851,6 +851,9 @@ def _run_header(run: Mapping[str, object]) -> str:
     project_path = str(run.get("project_path") or "")
     if project_path:
         header = f"{header}  Project: {project_path}"
+    truncation_note = run.get("truncation_note")
+    if run.get("truncated") and isinstance(truncation_note, str) and truncation_note:
+        header = f"{header}  Stored record truncated: {truncation_note}"
     return header
 
 

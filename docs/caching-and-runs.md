@@ -96,14 +96,18 @@ re-resolves and re-indexes the project without re-parsing unchanged files.
 - A missing key means a payload cannot be verified and is treated as a miss.
 - Manifests are signed with the same key as payloads, so replacing the manifest
   alone cannot pair a signed old payload with a new file snapshot.
+- Both the payload and the manifest record the cache key they were written for.
+  An entry copied onto another key is a miss, so write access to the cache
+  directory cannot make one target analyze another target's graph.
 - The signing key is trusted only when it is a regular file of the expected size,
   owned by the current user, and inaccessible to group and other. A symlink, a
   foreign owner, or a wider mode makes the entry a miss rather than following the
   file.
 - Pickle payloads are decoded by a restricted unpickler that resolves only the
-  SattLint and parser model modules plus a small allow list of standard library
-  modules. A crafted payload therefore cannot reach a process launch or another
-  arbitrary callable, even when it carries a valid signature.
+  SattLint and parser model modules plus named standard library objects. A
+  crafted payload therefore cannot reach introspection helpers, code builders, a
+  process launch, or another arbitrary callable, even when it carries a valid
+  signature.
 - A failed write is logged and the run continues.
 - An unusable cache directory degrades to an uncached run.
 
@@ -138,7 +142,7 @@ freshness is decided by the manifest.
 
 The AST cache also enforces a payload budget after every save. Once the payload
 family exceeds 4 GiB, the least recently used entries are removed, and entries
-used within the last seven days are never evicted.
+written within the last seven days are never evicted.
 
 The interactive shell exposes cache maintenance through its application flows.
 The headless CLI exposes two separate switches on `analyze`, one per decision:

@@ -281,6 +281,7 @@ The analyzer reports:
 - a missing required journal identity field;
 - unit structure drift;
 - a value prefix inconsistency across lines;
+- an ICF file above the configured byte limit;
 - a referenced program that could not be loaded.
 
 A file name is configuration, not program identity. A channel configuration can

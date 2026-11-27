@@ -31,7 +31,11 @@ class ASTCache:
             return None
         payload = cache_module._load_pickle_payload(p)
         payload_map = cache_module._as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != cache_module.CACHE_VERSION:
+        if (
+            payload_map is None
+            or payload_map.get("version") != cache_module.CACHE_VERSION
+            or payload_map.get("cache_key") != key
+        ):
             return None
         return payload
 
@@ -39,7 +43,7 @@ class ASTCache:
         return self._path(key).exists()
 
     def load_manifest(self, key: str) -> cache_module.CacheManifest | None:
-        return cache_module._load_manifest_payload(self._manifest_path(key))
+        return cache_module._load_manifest_payload(self._manifest_path(key), cache_key=key)
 
     def has_manifest(self, key: str) -> bool:
         return self.load_manifest(key) is not None
@@ -66,6 +70,7 @@ class ASTCache:
 
         payload: dict[str, object] = {
             "version": cache_module.CACHE_VERSION,
+            "cache_key": key,
             "project": project,
         }
 
@@ -73,7 +78,7 @@ class ASTCache:
         # the payload first, so a failed write leaves the previous manifest
         # paired with the previous payload instead of blessing a stale one.
         cache_module._save_pickle_payload(self._path(key), payload)
-        cache_module._save_manifest_payload(self._manifest_path(key), manifest)
+        cache_module._save_manifest_payload(self._manifest_path(key), manifest, cache_key=key)
         self._prune_after_save()
 
     def _prune_after_save(self) -> None:
@@ -109,7 +114,10 @@ class ASTCache:
         for payload_path in self.cache_dir.glob("*.pickle"):
             payload_stems.add(payload_path.stem)
             manifest_path = self._manifest_path(payload_path.stem)
-            manifest_valid = manifest_path.exists() and cache_module._load_manifest_payload(manifest_path) is not None
+            manifest_valid = (
+                manifest_path.exists()
+                and cache_module._load_manifest_payload(manifest_path, cache_key=payload_path.stem) is not None
+            )
 
             if manifest_valid:
                 continue
@@ -140,7 +148,11 @@ class ASTCache:
             manifest_path = self._manifest_path(payload_path.stem)
             payload = cache_module._load_pickle_payload(payload_path)
             payload_map = cache_module._as_mapping(payload)
-            manifest = cache_module._load_manifest_payload(manifest_path) if manifest_path.exists() else None
+            manifest = (
+                cache_module._load_manifest_payload(manifest_path, cache_key=payload_path.stem)
+                if manifest_path.exists()
+                else None
+            )
             payload_valid = payload_map is not None and payload_map.get("version") == cache_module.CACHE_VERSION
             manifest_valid = manifest is not None
 
@@ -233,7 +245,8 @@ class AnalysisReportCache:
         if not p.exists():
             return None
         payload = cache_module._load_pickle_payload(p)
-        if payload is None:
+        payload_map = cache_module._as_mapping(payload)
+        if payload_map is None or payload_map.get("cache_key") != key:
             return None
         return payload
 
@@ -250,6 +263,7 @@ class AnalysisReportCache:
 
         payload: dict[str, object] = {
             "version": cache_module.ANALYSIS_REPORT_CACHE_VERSION,
+            "cache_key": key,
             "report": report,
             "files": manifest,
         }

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -589,6 +590,23 @@ def test_findings_text_header_names_the_project(
     assert code == 0
     first_line = capsys.readouterr().out.splitlines()[0]
     assert first_line.startswith(f"Run: mine  Project: {project}")
+
+
+def test_a_truncated_record_is_visible_in_the_run_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    note = "Findings truncated: stored 4 of 10 findings."
+    _install_runs(monkeypatch, [replace(_run("mine", str(project)), truncated=True, truncation_note=note)])
+
+    code = run_cli(["findings"])
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "Stored record truncated:" in output
+    assert note in output
 
 
 def test_findings_ndjson_envelope_names_the_project(

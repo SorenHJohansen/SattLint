@@ -444,6 +444,7 @@ _FINDING_SEVERITY: dict[str, Severity] = {
     "icf.missing_journal_field": "warning",
     "icf.unit_structure_drift": "warning",
     "icf.value_prefix_inconsistency": "warning",
+    "icf.file_too_large": "warning",
     "icf.program_load_failed": "warning",
     "icf.issue": "warning",
     # Naming, comment, complexity, and design advice.
@@ -602,6 +603,7 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
     "icf.missing_journal_field": "ICF missing journal field",
     "icf.unit_structure_drift": "ICF unit structure drift",
     "icf.value_prefix_inconsistency": "ICF value prefix inconsistency",
+    "icf.file_too_large": "ICF file too large",
     "icf.program_load_failed": "ICF program load failed",
 }
 

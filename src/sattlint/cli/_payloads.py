@@ -107,6 +107,8 @@ class RunPayload(TypedDict):
     project_path: str
     selected_analyzers: list[str]
     cancelled: bool
+    truncated: bool
+    truncation_note: str
 
 
 class FindingSummary(TypedDict):

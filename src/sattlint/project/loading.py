@@ -16,6 +16,7 @@ from sattlint.parser_api import (
     LoadMode,
     LoadValidation,
     ProjectLoadError,
+    code_ext_candidates,
     resolve_distribution_companion_path,
 )
 
@@ -52,9 +53,16 @@ from .support import LoadFailureDetail, configured_icf_files, describe_load_fail
 
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
-#: Source suffixes the parser treats as code bodies. The preflight counts the
-#: same files so a load limit matches what the parser can read.
-_SOURCE_SUFFIXES = frozenset({".s", ".x", ".sattline"})
+
+def _source_suffixes(cfg: ConfigDict) -> tuple[str, ...]:
+    """The code extensions the parser will try for the configured mode.
+
+    The preflight must count exactly the files the parser can read. A hardcoded
+    set drifts when the parser adds an extension or narrows one by mode.
+    """
+    mode = str(cfg.get("mode", "official")).strip().casefold()
+    load_mode = LoadMode.DRAFT if mode == "draft" else LoadMode.OFFICIAL
+    return tuple(extension.lower() for extension in code_ext_candidates(load_mode))
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,13 +102,14 @@ def _configured_source_roots(cfg: ConfigDict) -> tuple[Path, ...]:
     return tuple(roots)
 
 
-def _iter_source_files(root: Path) -> Iterator[tuple[Path, int]]:
+def _iter_source_files(root: Path, suffixes: tuple[str, ...]) -> Iterator[tuple[Path, int]]:
     """Stat every regular source file under ``root`` without reading it."""
+    wanted = frozenset(suffixes)
     for directory, subdirectories, filenames in os.walk(root, followlinks=False):
         subdirectories.sort()
         for filename in sorted(filenames):
             path = Path(directory) / filename
-            if path.suffix.lower() not in _SOURCE_SUFFIXES:
+            if path.suffix.lower() not in wanted:
                 continue
             try:
                 file_stat = path.stat()
@@ -116,13 +125,15 @@ def _iter_source_files(root: Path) -> Iterator[tuple[Path, int]]:
 @lru_cache(maxsize=16)
 def _source_size_snapshot(
     roots: tuple[Path, ...],
+    suffixes: tuple[str, ...],
     source_limit: int,
     project_limit: int,
 ) -> _SourceSizeSnapshot:
     """One stat pass over the configured roots, cached for the load session.
 
-    The root tuple and both limits form the cache key, so a configuration
-    change rescans. The snapshot never opens a file: it only records sizes.
+    The root tuple, the accepted suffixes, and both limits form the cache key,
+    so a configuration change rescans. The snapshot never opens a file: it only
+    records sizes.
     """
     del project_limit  # Part of the cache key, not of the scan itself.
     file_count = 0
@@ -131,7 +142,7 @@ def _source_size_snapshot(
     for root in roots:
         if not root.is_dir():
             continue
-        for path, size in _iter_source_files(root):
+        for path, size in _iter_source_files(root, suffixes):
             file_count += 1
             total_bytes += size
             if size > source_limit:
@@ -163,7 +174,7 @@ def _enforce_input_limits(
         return
     source_limit = source_byte_limit(cfg)
     project_limit = project_byte_limit(cfg)
-    snapshot = _source_size_snapshot(roots, source_limit, project_limit)
+    snapshot = _source_size_snapshot(roots, _source_suffixes(cfg), source_limit, project_limit)
     target_keys = {unit_key(name) for name in target_names}
     selected_key = unit_key(target_name)
     for oversized in snapshot.oversized_files:

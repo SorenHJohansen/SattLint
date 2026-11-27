@@ -24,6 +24,7 @@ from sattline_parser.models.ast_model import (
 from sattlint.analyzers import icf as icf_module
 from sattlint.analyzers.icf import _icf_datatype_resolution as icf_datatype_module
 from sattlint.analyzers.icf._icf_file_io import IcfFileTooLargeError
+from sattlint.config.analysis import DEFAULT_ICF_BYTE_LIMIT
 from sattlint.reporting.icf_report import ICFEntry, summarize_icf_unit_drift
 from sattlint.resolution.common import ResolvedModulePath
 
@@ -103,6 +104,7 @@ def test_icf_helper_parse_and_extract_edge_cases(tmp_path: Path):
         ("   Program:Path   ", ("Program", "Path")),
         ("Program:Path.With.Colons", ("Program", "Path.With.Colons")),
         ("Program:Path:More", ("Program", "Path:More")),
+        ("Program:Module.Note::x", ("Program", "Module.Note::x")),
         ("Program:", (None, None)),
         (":Path", (None, None)),
         ("NoColon", (None, None)),
@@ -141,6 +143,18 @@ def test_icf_file_over_the_limit_is_rejected_with_the_file_and_limit(tmp_path: P
     assert "[analysis].icf_byte_limit" in message
     assert excinfo.value.limit == 1024
     assert excinfo.value.observed_bytes == 4096
+
+
+def test_parse_icf_file_applies_the_default_limit_when_none_is_given(tmp_path: Path) -> None:
+    icf_file = tmp_path / "Huge.icf"
+    with icf_file.open("wb") as handle:
+        handle.seek(DEFAULT_ICF_BYTE_LIMIT)
+        handle.write(b"x")
+
+    with pytest.raises(IcfFileTooLargeError) as excinfo:
+        icf_module.parse_icf_file(icf_file)
+
+    assert excinfo.value.limit == DEFAULT_ICF_BYTE_LIMIT
 
 
 def test_icf_file_that_grows_after_the_stat_is_still_rejected(

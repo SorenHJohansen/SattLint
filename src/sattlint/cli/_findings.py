@@ -375,6 +375,8 @@ def run_payload(record: RunRecord, *, project_path: str | None = None) -> RunPay
         "project_path": record.project_path or project_path or "",
         "selected_analyzers": list(record.selected_analyzers),
         "cancelled": record.cancelled,
+        "truncated": record.truncated,
+        "truncation_note": record.truncation_note or "",
     }
 
 
