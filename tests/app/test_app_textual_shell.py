@@ -742,3 +742,12 @@ def test_textual_refresh_view_raises_when_required_widget_is_missing(monkeypatch
                 app_instance._refresh_view()
 
     asyncio.run(_run())
+
+
+def test_a_missing_shell_stylesheet_falls_back_to_the_default(tmp_path: Path) -> None:
+    """A wheel without its package data must still let the shell import."""
+
+    fallback = app_textual_shared_module.load_shell_css(tmp_path / "missing.tcss")
+
+    assert fallback == app_textual_shared_module.DEFAULT_SHELL_CSS
+    assert "Screen" in fallback

@@ -43,37 +43,59 @@ with the page that matches what you are doing:
 
 ### 1. Install SattLint
 
-Install the released package with pip.
+SattLint requires Python 3.13 or newer. Install the released package with
+[pipx](https://pipx.pypa.io/), which keeps SattLint in its own environment and
+puts the `sattlint` command on your `PATH`.
 
 #### Linux
 
 ```bash
-python3 -m pip install --user sattlint
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+pipx install sattlint
 ```
+
+Restart the terminal after `ensurepath` changes `PATH`.
 
 #### Windows
 
 ```powershell
-py -m pip install --user sattlint
+py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install sattlint
 ```
 
-This installs the `sattlint` command for your user account.
+#### Virtual environment fallback
+
+If pipx is not available, install into a dedicated virtual environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install sattlint
+.venv/bin/sattlint --version
+```
+
+On Windows use `.venv\Scripts\python` and `.venv\Scripts\sattlint`.
 
 ### 2. Verify
 
 ```bash
-sattlint
+sattlint --version
+sattlint analyzers list
 ```
 
 ### From source (for development)
 
-To run the latest code from the repository instead of the released package:
+To run the latest code from the repository:
 
 ```bash
 git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
-python3 -m pip install --user .
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 ```
+
+For the locked development environment, see [Development](docs/development.md).
 
 ---
 
@@ -264,10 +286,12 @@ these config defaults (see [Project Files](#project-files-slproj)).
 Update the released package from PyPI:
 
 ```bash
-python3 -m pip install --user --upgrade sattlint
+pipx upgrade sattlint
 ```
 
-For a source checkout, reinstall with `python3 -m pip install --user .`.
+In a virtual environment, run `.venv/bin/python -m pip install --upgrade
+sattlint` (on Windows, `.venv\Scripts\python`). For a source checkout, pull the
+changes and reinstall with `.venv/bin/python -m pip install -e .`.
 
 ---
 
@@ -291,14 +315,15 @@ To dig deeper from the UI:
 
 ### `sattlint` not found
 
-The `sattlint` script is not on your PATH. After a `pip install --user`,
-scripts are placed in `~/.local/bin` on Linux (or
-`%APPDATA%\Python\Python313\Scripts` on Windows); add that directory to your
-PATH and restart your terminal.
+The `sattlint` script is not on your `PATH`. With pipx, run `pipx ensurepath`
+and restart the terminal; pipx installs commands under `~/.local/bin` on Linux
+and `%USERPROFILE%\.local\bin` on Windows. In a virtual environment, call
+`.venv/bin/sattlint` or `.venv\Scripts\sattlint` directly.
 
 ### Python version error
 
-Install Python 3.13+ and reinstall with `python3 -m pip install --user --upgrade sattlint`.
+SattLint needs Python 3.13 or newer. Install a current Python, then run
+`pipx install sattlint` or `pipx upgrade sattlint`.
 
 ### Targets not found
 

@@ -14,12 +14,15 @@ analyzer selection. Most "it cannot find my code" problems are visible there.
 
 ### `sattlint` is not found
 
-The user scripts directory is not on `PATH`.
+The pipx or virtual environment scripts directory is not on `PATH`.
 
-- Linux: usually `~/.local/bin`.
-- Windows: usually `%APPDATA%\Python\Python313\Scripts`.
+- With pipx: run `pipx ensurepath`, then restart the terminal.
+- pipx commands live under `~/.local/bin` on Linux and
+  `%USERPROFILE%\.local\bin` on Windows.
+- In a virtual environment, call `.venv/bin/sattlint` or
+  `.venv\Scripts\sattlint` directly.
 
-Add it to `PATH` and restart the terminal. Confirm with:
+Confirm with:
 
 ```bash
 sattlint --version
@@ -28,11 +31,14 @@ sattlint --version
 ### Python version error
 
 SattLint requires Python 3.13 or newer. Check the interpreter used by the
-installer and reinstall:
+installer, install a current Python, and reinstall:
 
 ```bash
-python3 -m pip install --user --upgrade sattlint
+pipx install sattlint
 ```
+
+To move an existing pipx install to the new interpreter, run
+`pipx reinstall sattlint`.
 
 ### Interactive shell fails to start
 

@@ -154,6 +154,30 @@ def _query_required(widget_owner: Any, selector: str, expected_type: Any | None 
 DEFAULT_SHELL_TITLE = "SattLint"
 _ANALYZER_LIST_ID_PREFIX = "analyze-section-"
 
+#: A minimal stylesheet for an installation whose package data is incomplete.
+#: Textual runs with its own defaults, so the shell must not fail to import over
+#: a missing file; this keeps the screen background and text readable.
+DEFAULT_SHELL_CSS = """Screen {
+    background: $background;
+    color: $foreground;
+}
+"""
+
+
+def load_shell_css(css_path: Path | None = None) -> str:
+    """Read the packaged shell stylesheet, or return the fallback.
+
+    A wheel built without its package data, or a trimmed installation, can be
+    missing ``app_textual.tcss``. The shell then loses its authored layout but
+    still starts, which is preferable to failing at import time.
+    """
+    path = css_path if css_path is not None else Path(__file__).with_name("app_textual.tcss")
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return DEFAULT_SHELL_CSS
+
+
 MENU_DEFINITIONS: list[tuple[str, str]] = [
     ("Open Configuration", "menu-file-open-project"),
     ("New Configuration", "menu-file-new-project"),
@@ -166,7 +190,7 @@ NO_PROJECT_NOTICE = (
     "Use Open Configuration or New Configuration from the File menu to load or create a "
     "configuration before analyzing, viewing results, or changing the configuration settings."
 )
-TEXTUAL_SHELL_CSS = Path(__file__).with_name("app_textual.tcss").read_text(encoding="utf-8")
+TEXTUAL_SHELL_CSS = load_shell_css()
 
 
 @dataclass(frozen=True)

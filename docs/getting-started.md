@@ -6,36 +6,59 @@ project schema and every configuration key, continue with
 
 ## 1. Install SattLint
 
-SattLint requires Python 3.13 or newer.
+SattLint requires Python 3.13 or newer. The released package is published on
+PyPI under the name `sattlint`.
 
 ### Linux
 
+Install with [pipx](https://pipx.pypa.io/) so SattLint gets its own environment
+and its command lands on `PATH`:
+
 ```bash
-python3 -m pip install --user sattlint
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+pipx install sattlint
 ```
+
+Restart the terminal after `ensurepath` changes `PATH`.
 
 ### Windows
 
 ```powershell
-py -m pip install --user sattlint
+py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install sattlint
 ```
+
+### Virtual environment fallback
+
+If pipx is not available, use a dedicated virtual environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install sattlint
+.venv/bin/sattlint --version
+```
+
+On Windows, use `.venv\Scripts\python` and `.venv\Scripts\sattlint`.
 
 Confirm the installed command:
 
 ```bash
 sattlint --version
+sattlint analyzers list
 ```
 
-If the command is not found, the scripts directory is not on `PATH`. On Linux
-it is usually `~/.local/bin`; on Windows it is usually
-`%APPDATA%\Python\Python313\Scripts`.
+If the command is not found, see the installation troubleshooting in
+[Troubleshooting](troubleshooting.md).
 
 ### From a source checkout
 
 ```bash
 git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
-python3 -m pip install --user .
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 ```
 
 For development setup with the locked environment, see

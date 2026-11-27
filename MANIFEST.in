@@ -1,0 +1,11 @@
+# The source distribution carries what is needed to build and to read the
+# release history. Development-only trees stay out of the published archive.
+include CHANGELOG.md
+include LICENSE
+include README.md
+
+prune .github
+prune docs
+prune scripts
+prune tests
+prune src/sattlint.egg-info

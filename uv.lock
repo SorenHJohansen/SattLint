@@ -1223,7 +1223,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.0.0" },
     { name = "pytest-timeout", marker = "extra == 'test'", specifier = ">=2.3.1" },
-    { name = "rich", specifier = ">=13.9.0" },
+    { name = "rich", specifier = ">=13.9.0,<16" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.4" },
     { name = "sattline-parser", specifier = "==2026.11.9" },
     { name = "sattlint", extras = ["test"], marker = "extra == 'dev'" },
