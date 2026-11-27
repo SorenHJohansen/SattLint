@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING
 
+from ...models.severity import Severity
 from ..framework import AnalyzerSpec
 from ._registry_delivery_data import default_delivery_templates
-
-if TYPE_CHECKING:
-    from ...application.findings import Severity
 
 #: Default severity for findings whose kind has no curated entry. It is the
 #: analyzer's broad posture, not a copy of its category. An analyzer that mixes

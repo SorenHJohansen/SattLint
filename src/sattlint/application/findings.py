@@ -12,7 +12,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Literal, cast
+from typing import cast
 
 from ..models._variable_issues import (
     DECLARATION_ROLE_LOCAL_VARIABLE,
@@ -23,13 +23,10 @@ from ..models._variable_issues import (
     VariableTargetIssue,
     variable_issue_metadata,
 )
+from ..models.severity import SEVERITIES, Severity
 from ..reporting.variables_report import VariablesReport
 
 type FindingDataValue = str | int | float | bool | list[FindingDataValue] | dict[str, FindingDataValue] | None
-
-type Severity = Literal["error", "warning", "info"]
-
-_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
 
 
 def _empty_data() -> dict[str, FindingDataValue]:
@@ -128,7 +125,7 @@ def _positive_int(value: object) -> int | None:
 
 def _severity_value(value: object) -> Severity | None:
     """A known severity, or ``None`` when the stored value is absent or unusable."""
-    if isinstance(value, str) and value in _SEVERITIES:
+    if isinstance(value, str) and value in SEVERITIES:
         return cast(Severity, value)
     return None
 
