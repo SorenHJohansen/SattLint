@@ -9,6 +9,7 @@ from typing import cast
 from ..cache import cache_dir_location
 from ..change_review.settings import review_output_dir_location
 from ..config import config_path_location, load_config
+from ..config.analysis import effective_analysis_settings
 from ..config.defaults import DEFAULT_CONFIG
 from ..config.string_capacities import resolve_string_capacities
 from ..config.types import ConfigDict
@@ -121,7 +122,7 @@ def project_payload(project: SattLintProjectFile, *, quiet: bool = False) -> Pro
         "targets": list(raw.get("analyzed_programs_and_libraries", [])),
         "analyzers": list(raw.get("analyzers", [])),
         "string_capacities": resolve_string_capacities(cfg).as_dict(),
-        "analysis": dict(cfg.get("analysis") or {}),
+        "analysis": effective_analysis_settings(cfg),
         "paths": project_paths(cfg),
         "config": config,
         "cache_dir": str(cache_dir_location()),

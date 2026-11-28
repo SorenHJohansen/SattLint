@@ -64,10 +64,16 @@ The JSON payload contains:
 - the load mode;
 - configured targets and the project's analyzer selection;
 - the effective string capacities;
-- the effective `[analysis]` settings;
+- the effective `[analysis]` settings, with defaults resolved;
 - the resolved program, ABB, ICF, and additional library paths;
 - the config file path and whether it exists;
 - the cache directory, run-history directory, and Change Review directory.
+
+Because the analysis settings are resolved rather than copied from the file, a
+setting left out of the project or user configuration appears with the value the
+analyzers actually use. Configuration validation follows the same merge: an
+optional ICF or library directory is checked only when a selected analyzer or a
+configured target needs it, so an unused path does not block an unrelated run.
 
 ```bash
 sattlint project show --project app.slproj

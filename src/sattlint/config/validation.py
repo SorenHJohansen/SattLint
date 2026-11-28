@@ -525,10 +525,28 @@ def target_exists(target: str, cfg: ConfigDict | ConfigOverrideDict) -> bool:
     return False
 
 
+def _selected_analyzer_keys(cfg: ConfigDict) -> frozenset[str]:
+    return frozenset(str(value).strip().casefold() for value in _object_list(cfg.get("analyzers", [])))
+
+
+def _optional_library_roots_needed(cfg: ConfigDict) -> bool:
+    """Whether a configured target is missing when only ``program_dir`` is searched.
+
+    ``ABB_lib_dir`` and ``other_lib_dirs`` are optional inputs. Their absence
+    matters only when the target set actually depends on them, so an unused
+    path does not block an unrelated run.
+    """
+    targets = _configured_targets(cfg)
+    if not targets:
+        return False
+    program_only = cast(ConfigDict, {**cfg, "ABB_lib_dir": "", "other_lib_dirs": []})
+    return any(not target_exists(target, program_only) for target in targets)
+
+
 def validate_loaded_config(cfg: ConfigDict) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
-    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
+    for name in ("program_dir",):
         raw = str(cfg.get(name, "")).strip()
         if not raw:
             continue
@@ -549,16 +567,55 @@ def validate_loaded_config(cfg: ConfigDict) -> ConfigValidationResult:
                 )
             )
 
-    for index, raw_path in enumerate(_object_list(cfg.get("other_lib_dirs", []))):
-        path = Path(str(raw_path))
-        if path.exists():
-            continue
-        errors.append(
-            ConfigValidationError(
-                key_path=f"other_lib_dirs[{index}]",
-                message=f"other_lib_dirs entry missing: {path}",
+    # The ICF directory is required only when the ICF analyzer is selected.
+    if "icf" in _selected_analyzer_keys(cfg):
+        raw_icf = str(cfg.get("icf_dir", "")).strip()
+        if raw_icf:
+            path = Path(raw_icf)
+            if not path.exists():
+                errors.append(
+                    ConfigValidationError(
+                        key_path="icf_dir",
+                        message=f"icf_dir does not exist: {path}",
+                    )
+                )
+            elif not os.access(path, os.R_OK):
+                errors.append(
+                    ConfigValidationError(
+                        key_path="icf_dir",
+                        message=f"icf_dir not readable: {path}",
+                    )
+                )
+
+    if _optional_library_roots_needed(cfg):
+        raw_abb = str(cfg.get("ABB_lib_dir", "")).strip()
+        if raw_abb:
+            path = Path(raw_abb)
+            if not path.exists():
+                errors.append(
+                    ConfigValidationError(
+                        key_path="ABB_lib_dir",
+                        message=f"ABB_lib_dir does not exist: {path}",
+                    )
+                )
+            elif not os.access(path, os.R_OK):
+                errors.append(
+                    ConfigValidationError(
+                        key_path="ABB_lib_dir",
+                        message=f"ABB_lib_dir not readable: {path}",
+                    )
+                )
+
+        for index, raw_path in enumerate(_object_list(cfg.get("other_lib_dirs", []))):
+            path = Path(str(raw_path))
+            if path.exists():
+                continue
+            errors.append(
+                ConfigValidationError(
+                    key_path=f"other_lib_dirs[{index}]",
+                    message=f"other_lib_dirs entry missing: {path}",
+                )
             )
-        )
 
     for index, target in enumerate(_configured_targets(cfg)):
         if target_exists(target, cfg):

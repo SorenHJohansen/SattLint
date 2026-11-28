@@ -134,6 +134,27 @@ def project_byte_limit(config: Mapping[str, Any] | None) -> int:
     )
 
 
+def effective_analysis_settings(config: Mapping[str, Any] | None) -> dict[str, object]:
+    """Every analysis setting the analyzers actually use, defaults included.
+
+    Configuration stores only the keys a user set, so showing the raw table
+    would hide the defaults and disagree with the run. This resolves each
+    accessor once, which is also the shape ``project show`` renders.
+    """
+    return {
+        "unsafe_default_tokens": list(unsafe_default_tokens(dict(config) if config else None)),
+        "cyclomatic_module_threshold": cyclomatic_module_threshold(dict(config) if config else None),
+        "cyclomatic_step_threshold": cyclomatic_step_threshold(dict(config) if config else None),
+        "cyclomatic_equation_block_threshold": cyclomatic_equation_block_threshold(dict(config) if config else None),
+        "fan_in_out_threshold": fan_in_out_threshold(dict(config) if config else None),
+        "module_grid": module_grid(dict(config) if config else None),
+        "module_grid_tolerance": module_grid_tolerance(dict(config) if config else None),
+        "source_byte_limit": source_byte_limit(config),
+        "icf_byte_limit": icf_byte_limit(config),
+        "project_byte_limit": project_byte_limit(config),
+    }
+
+
 __all__ = [
     "DEFAULT_CYCLOMATIC_EQUATION_BLOCK_THRESHOLD",
     "DEFAULT_CYCLOMATIC_MODULE_THRESHOLD",
@@ -148,6 +169,7 @@ __all__ = [
     "cyclomatic_equation_block_threshold",
     "cyclomatic_module_threshold",
     "cyclomatic_step_threshold",
+    "effective_analysis_settings",
     "fan_in_out_threshold",
     "icf_byte_limit",
     "module_grid",

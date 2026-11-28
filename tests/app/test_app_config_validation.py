@@ -528,6 +528,7 @@ def test_self_check_reports_invalid_nested_config_errors(
     cfg.update(
         {
             "analyzed_programs_and_libraries": ["MissingTarget"],
+            "analyzers": ["icf"],
             "program_dir": str(tmp_path / "missing-programs"),
             "ABB_lib_dir": "",
             "icf_dir": str(tmp_path / "missing-icf"),
@@ -547,7 +548,7 @@ def test_self_check_reports_invalid_nested_config_errors(
     assert "MissingTarget (not found)" in out
 
 
-def test_self_check_fails_when_only_an_extra_library_is_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_self_check_ignores_an_unused_extra_library(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     cfg = deepcopy(DEFAULT_CONFIG)
     missing = tmp_path / "missing-other"
     cfg["other_lib_dirs"] = [str(missing)]
@@ -555,8 +556,8 @@ def test_self_check_fails_when_only_an_extra_library_is_missing(tmp_path: Path, 
     ok = config_module.self_check(cast(ConfigDict, cfg))
 
     out = capsys.readouterr().out
-    assert f"other_lib_dirs entry missing: {missing}" in out
-    assert ok is False
+    assert f"other_lib_dirs entry missing: {missing}" not in out
+    assert ok is True
 
 
 def test_main_pauses_when_initial_ast_check_fails(monkeypatch: pytest.MonkeyPatch):
