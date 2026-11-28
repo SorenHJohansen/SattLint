@@ -13,7 +13,7 @@ from ..application.findings import Severity
 from ..config.string_capacities import StringCapacitiesDict
 from ..project.support import LoadFailureKind
 
-type GroupBy = Literal["none", "module", "analyzer", "kind"]
+type GroupBy = Literal["none", "module", "analyzer", "target", "kind"]
 
 type FailOn = Literal["error", "warning", "any", "none"]
 

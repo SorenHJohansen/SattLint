@@ -182,17 +182,23 @@ def _build_findings_parser(subparsers: _SubParserAction) -> None:
         help="Filter by module path prefix, e.g. Root.A (matches descendants).",
     )
     parser.add_argument("--exact-module", action="store_true", help="Require an exact module path match.")
-    parser.add_argument("--kind", action="append", default=[], metavar="KIND", help="Filter by finding kind.")
+    parser.add_argument(
+        "--kind",
+        action="append",
+        default=[],
+        metavar="KIND",
+        help="Filter by finding kind or its documented label; repeatable. An unknown value exits 2.",
+    )
     parser.add_argument(
         "--rule",
         action="append",
         default=[],
         metavar="RULE",
-        help="Filter by rule ID, falling back to the finding kind.",
+        help="Filter by rule ID, finding kind, or documented label; repeatable. An unknown value exits 2.",
     )
     parser.add_argument(
         "--group-by",
-        choices=("none", "module", "analyzer", "kind"),
+        choices=("none", "module", "analyzer", "target", "kind"),
         default="none",
         help="Also return grouped counts for the selected findings.",
     )
@@ -300,6 +306,10 @@ def _format_from_args(args: argparse.Namespace) -> str:
     return str(getattr(args, "format", "text") or "text")
 
 
+def _quiet_from_args(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "quiet", False))
+
+
 def _requested_format(argv: list[str]) -> str:
     """Read ``--format`` before parsing fails and no namespace exists.
 
@@ -396,7 +406,7 @@ def run_cli(argv: list[str]) -> int:
         exit_code = int(handler(args) or EXIT_SUCCESS)
     except CliError as exc:
         warnings = drain_config_warnings()
-        if warnings:
+        if warnings and not _quiet_from_args(args):
             if _format_from_args(args) in {"json", "ndjson"}:
                 exc.details.setdefault("warnings", list(warnings))
             else:
@@ -426,7 +436,7 @@ def run_cli(argv: list[str]) -> int:
         emit_error(error, output_format=_format_from_args(args))
         return 3
     warnings = drain_config_warnings()
-    if warnings and _format_from_args(args) not in {"json", "ndjson"}:
+    if warnings and not _quiet_from_args(args) and _format_from_args(args) not in {"json", "ndjson"}:
         for warning in warnings:
             sys.stderr.write(f"{sanitize_terminal_text(warning)}\n")
     return exit_code

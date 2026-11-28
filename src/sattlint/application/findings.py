@@ -608,6 +608,31 @@ _KIND_HUMAN_LABELS: dict[str, str] = {
 }
 
 
+def known_finding_kinds() -> frozenset[str]:
+    """Every finding kind the curated severity or label tables name."""
+    return frozenset((*_FINDING_SEVERITY, *_KIND_HUMAN_LABELS))
+
+
+def finding_kind_for_label(label: str) -> str | None:
+    """Resolve a kind key or its human label to the kind key.
+
+    A filter accepts both spellings, so ``--kind "Unused variable"`` and
+    ``--kind unused`` select the same findings. An unknown value returns
+    ``None`` so the CLI can reject it instead of quietly matching nothing.
+    """
+    text = label.strip()
+    if not text:
+        return None
+    folded = text.casefold()
+    for kind in known_finding_kinds():
+        if kind.casefold() == folded:
+            return kind
+    for kind, human in _KIND_HUMAN_LABELS.items():
+        if human.casefold() == folded:
+            return kind
+    return None
+
+
 def kind_human_label(kind: str) -> str:
     """Return a short human-readable label for an issue kind.
 
@@ -629,7 +654,9 @@ __all__ = [
     "Severity",
     "extract_report_findings",
     "finding_data_key",
+    "finding_kind_for_label",
     "finding_severity",
     "format_source_location",
     "kind_human_label",
+    "known_finding_kinds",
 ]

@@ -5,11 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
 from ..analyzers.catalog import canonicalize_analyzer_keys, get_default_analyzer_catalog
-from ..application.findings import AnalysisFinding, Severity, finding_data_key, finding_severity
+from ..application.findings import (
+    AnalysisFinding,
+    Severity,
+    finding_data_key,
+    finding_kind_for_label,
+    finding_severity,
+    known_finding_kinds,
+)
 from ..runs import RunRecord, list_runs, load_run
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
@@ -202,6 +209,54 @@ class FindingFilters:
     rules: tuple[str, ...] = ()
 
 
+def _normalized_filter_values(
+    values: Iterable[str],
+    *,
+    accepted: Mapping[str, str],
+    label: str,
+) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for raw in values:
+        text = raw.strip()
+        if not text:
+            continue
+        key = accepted.get(text.casefold())
+        if key is None:
+            kind = finding_kind_for_label(text)
+            if kind is None:
+                raise CliError(
+                    f"Unknown {label} {text!r}. Use a documented finding label, a kind key, "
+                    "or a rule ID from the selected run.",
+                    code="invalid_filter",
+                    exit_code=2,
+                    details={"filter": label, "value": text},
+                )
+            key = kind
+        normalized.append(key.casefold())
+    return tuple(normalized)
+
+
+def normalize_finding_filters(
+    kinds: Iterable[str],
+    rules: Iterable[str],
+    *,
+    record_kinds: Iterable[str] = (),
+    record_rules: Iterable[str] = (),
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Resolve documented labels and reject an unknown filter value.
+
+    ``--kind`` and ``--rule`` both accept a kind key, its human label, or a
+    rule ID that the selected run actually contains. A typo raises a usage
+    error instead of matching nothing and exiting zero.
+    """
+    kind_index = {kind.casefold(): kind for kind in (*known_finding_kinds(), *record_kinds)}
+    rule_index = {kind.casefold(): kind for kind in (*known_finding_kinds(), *record_kinds, *record_rules)}
+    return (
+        _normalized_filter_values(kinds, accepted=kind_index, label="finding kind"),
+        _normalized_filter_values(rules, accepted=rule_index, label="rule or finding kind"),
+    )
+
+
 def _normalized_module_pattern(value: str) -> str:
     return value.strip().replace("/", ".").removesuffix(".*").strip(".").casefold()
 
@@ -251,6 +306,8 @@ def group_findings(findings: Iterable[FlatFinding], group_by: GroupBy) -> list[F
             return item.module or "(unknown)"
         if group_by == "analyzer":
             return item.analyzer_key
+        if group_by == "target":
+            return item.target or "(project)"
         return item.finding.kind
 
     buckets: dict[str, list[str]] = {}

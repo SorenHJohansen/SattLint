@@ -56,6 +56,7 @@ from ._findings import (
     finding_summary,
     flat_findings,
     group_findings,
+    normalize_finding_filters,
     resolve_run,
     run_payload,
 )
@@ -744,6 +745,7 @@ def _analyze_text(payload: AnalyzePayload) -> list[str]:
 
 def _finding_line(finding: FindingPayload) -> str:
     module = finding["module"] or "(unknown)"
+    target = finding["target"] or "(project)"
     location = format_source_location(
         file=finding["file"],
         line=finding["line"],
@@ -751,7 +753,7 @@ def _finding_line(finding: FindingPayload) -> str:
         end_line=finding["end_line"],
     )
     tag = f"[{finding['severity']}] "
-    prefix = f"{tag}{location}  " if location else tag
+    prefix = f"{tag}{target}  {location}  " if location else f"{tag}{target}  "
     return f"{prefix}{module}: {kind_human_label(finding['kind'])} - {finding['message']} ({finding['analyzer']})"
 
 
@@ -797,15 +799,22 @@ def command_findings(args: argparse.Namespace) -> int:
     selector, project_path = _run_scope(args)
     _drain_quiet_warnings(options)
     record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    flattened = flat_findings(record)
+    kinds, rules = normalize_finding_filters(
+        (str(value) for value in args.kind),
+        (str(value) for value in args.rule),
+        record_kinds=(finding.finding.kind for finding in flattened),
+        record_rules=(finding.finding.rule_id for finding in flattened if finding.finding.rule_id),
+    )
     filters = FindingFilters(
         targets=tuple(str(value) for value in args.target),
         analyzers=requested_analyzers,
         modules=tuple(str(value) for value in args.module),
         exact_module=bool(args.exact_module),
-        kinds=tuple(str(value) for value in args.kind),
-        rules=tuple(str(value) for value in args.rule),
+        kinds=kinds,
+        rules=rules,
     )
-    findings = filter_findings(flat_findings(record), filters)
+    findings = filter_findings(flattened, filters)
     matched = len(findings)
     limit = args.limit
     if limit is not None:

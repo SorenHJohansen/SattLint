@@ -215,9 +215,9 @@ Reads findings from a stored run without analyzing again.
 | `--target NAME` | Filter by target name; repeatable. |
 | `--module PREFIX` | Filter by module path prefix; repeatable. |
 | `--exact-module` | Require an exact module path match. |
-| `--kind KIND` | Filter by finding kind; repeatable. |
-| `--rule RULE` | Filter by rule identifier, falling back to the finding kind when a finding has no rule identifier. |
-| `--group-by {none,module,analyzer,kind}` | Also return grouped counts; default `none`. |
+| `--kind KIND` | Filter by finding kind or its documented label; repeatable. |
+| `--rule RULE` | Filter by rule identifier, finding kind, or documented label; repeatable. |
+| `--group-by {none,module,analyzer,target,kind}` | Also return grouped counts; default `none`. |
 | `--limit N` | Return at most N findings after filtering. |
 | `--format {json,ndjson,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
@@ -229,15 +229,20 @@ Rules:
 - `/` in a module filter is treated like `.`.
 - A `.*` suffix is accepted and removed.
 - `--exact-module` requires at least one `--module`.
+- `--kind` accepts either the kind key (for example `unused`) or its documented
+  label (for example `Unused variable`). `--rule` accepts a rule ID that the
+  selected run contains, a kind key, or a documented label. An unknown value
+  exits `2`; it never returns an empty result with exit `0`.
 - The summary counts both findings and occurrences, and reports `by_severity`.
   Repeated identical findings collapse into one entry with an occurrence count.
 - `--limit` applies after filtering and before grouping.
 - Each finding line starts with its severity tag, for example `[warning]`, then
-  the source location the analyzer recorded when it knows one, for example
-  `[warning] /work/app/programs/Demo.s:12:4`. The CLI does not rewrite that path
-  to a repository-relative form; it shows what the analyzer recorded. The
-  baseline file stores a project-relative file instead. A finding with only a
-  line, or no location, stays readable without placeholders.
+  the target name, then the source location the analyzer recorded when it knows
+  one, for example `[warning] Demo  /work/app/programs/Demo.s:12:4`. The CLI does
+  not rewrite that path to a repository-relative form; it shows what the
+  analyzer recorded. The baseline file stores a project-relative file instead.
+  A finding with only a line, or no location, stays readable without
+  placeholders.
 - `latest` resolves within the project: discovery from the current directory,
   or an explicit `--project`. A run recorded for another project is never
   returned.
@@ -251,8 +256,15 @@ sattlint findings --run latest
 sattlint findings --project app.slproj --run latest
 sattlint findings --run 2026-11-26T10-00-00 --format json
 sattlint findings --module Root.A --group-by module --format json
+sattlint findings --group-by target --format text
+sattlint findings --kind "Unused variable" --format json
 sattlint findings --rule <rule-id> --limit 20 --format ndjson
 ```
+
+`--quiet` drops the progress and diagnostic lines on stderr, including the
+unknown-project-key warning. It never suppresses the final error line or the
+document on stdout, so `--format json --quiet` writes only the JSON document to
+stdout and nothing to stderr on success.
 
 ## `sattlint show`
 

@@ -592,6 +592,85 @@ def test_findings_text_header_names_the_project(
     assert first_line.startswith(f"Run: mine  Project: {project}")
 
 
+def test_findings_accepts_a_documented_kind_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    _install_runs(monkeypatch, [_run("mine", str(project))])
+
+    code = run_cli(["findings", "--kind", "Unused variable", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["findings"] == 1
+    assert payload["filters"]["kind"] == ["unused"]
+
+
+def test_findings_rejects_an_unknown_kind_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    _install_runs(monkeypatch, [_run("mine", str(project))])
+
+    code = run_cli(["findings", "--kind", "Unused variabel", "--format", "json"])
+
+    assert code == 2
+    error = json.loads(capsys.readouterr().err)["error"]
+    assert error["code"] == "invalid_filter"
+
+
+def test_findings_text_lines_name_the_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    _install_runs(monkeypatch, [_run("mine", str(project))])
+
+    code = run_cli(["findings"])
+
+    assert code == 0
+    finding_line = capsys.readouterr().out.splitlines()[1]
+    assert "[warning] Demo  " in finding_line
+
+
+def test_findings_groups_by_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    _install_runs(monkeypatch, [_run("mine", str(project))])
+
+    code = run_cli(["findings", "--group-by", "target", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [group["key"] for group in payload["groups"]] == ["Demo"]
+    assert payload["groups"][0]["group_by"] == "target"
+    assert payload["groups"][0]["count"] == 1
+
+
+def test_findings_json_quiet_writes_only_the_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = _write_project(tmp_path / "app.slproj")
+    _install_runs(monkeypatch, [_run("mine", str(project))])
+
+    code = run_cli(["findings", "--format", "json", "--quiet"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out)["command"] == "findings"
+
+
 def test_a_truncated_record_is_visible_in_the_run_header(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1070,7 +1149,7 @@ def test_analyze_json_and_text_carry_severity(
     code = run_cli(["analyze", "--project", str(project), "--format", "text", "--fail-on", "none"])
 
     assert code == 0
-    assert "[error] Demo.A: Dead overwrite - overwritten before it is read (variables)" in capsys.readouterr().out
+    assert "[error] Demo  Demo.A: Dead overwrite - overwritten before it is read (variables)" in capsys.readouterr().out
 
 
 def test_findings_and_show_text_include_severity(
@@ -1092,7 +1171,7 @@ def test_findings_and_show_text_include_severity(
     code = run_cli(["findings", "--run", "severity"])
 
     assert code == 0
-    assert "[warning] Demo.A: Unused variable - declared but never read (variables)" in capsys.readouterr().out
+    assert "[warning] Demo  Demo.A: Unused variable - declared but never read (variables)" in capsys.readouterr().out
 
     code = run_cli(["findings", "--run", "severity", "--format", "json"])
 
