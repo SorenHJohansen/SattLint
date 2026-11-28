@@ -209,7 +209,7 @@ The shell starts with no project loaded. Use **Open Configuration** to open a
    and mode.
 2. Open **Analyze** (`Ctrl+1`), select analyzers, and run them.
 3. Open **Results** (`Ctrl+2`) to browse stored runs.
-4. Open **Output** (`Ctrl+5`) to generate a Change Review.
+4. Open **Change Review** (`Ctrl+5`) to generate a Change Review.
 
 For view details and keyboard shortcuts, see [Interactive UI](interactive-ui.md).
 
@@ -217,8 +217,8 @@ For view details and keyboard shortcuts, see [Interactive UI](interactive-ui.md)
 
 A Change Review compares the official version of a project with its draft
 version. Configure both versions in the project directories, open the
-**Output** view, and choose **Generate Change Review**. SattLint writes one JSON
-and one Markdown artifact per target into the configured review output
+**Change Review** view, and choose **Generate Change Review**. SattLint writes
+one JSON and one Markdown artifact per target into the configured review output
 directory.
 
 The review contains the semantic changes, the complete containing equation

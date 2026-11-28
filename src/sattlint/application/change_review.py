@@ -64,9 +64,11 @@ class ChangeReviewOutcome:
 
 
 def _prepare_output_dir(path: Path) -> Path:
-    """Create the output directory, or raise a stable application error."""
+    """Create the output directory owner-only, or raise a stable application error."""
     try:
-        path.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if path.stat().st_mode & 0o777 & ~0o700:
+            path.chmod(0o700)
     except OSError as exc:
         raise ChangeReviewOutputError(
             f"Change Review output directory {path} is not usable: {exc}",
@@ -133,8 +135,9 @@ def generate_change_review(
 ) -> str:
     """Generate Change Review artifacts and return a human-readable summary.
 
-    This is the TUI contract: the interactive Output view prints the returned
-    string. Headless callers use :func:`run_change_review` for structured data.
+    This is the TUI contract: the interactive Change Review view prints the
+    returned string. Headless callers use :func:`run_change_review` for
+    structured data.
     """
     outcome = run_change_review(cfg, target_names, output_dir=output_dir)
     if not outcome.generated:

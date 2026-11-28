@@ -954,8 +954,9 @@ def test_finding_filters_and_all_groupings() -> None:
     assert [finding.module for finding in by_rule] == ["Other.A"]
 
     # Analyzers rarely set a rule ID, so the filter falls back to the kind.
+    # A kind match also covers a finding that does carry a rule ID.
     by_kind_as_rule = filter_findings(findings, FindingFilters(rules=("unused",)))
-    assert [finding.module for finding in by_kind_as_rule] == ["Demo.A"]
+    assert [finding.module for finding in by_kind_as_rule] == ["Demo.A", "Other.A"]
     by_kind_mixed = filter_findings(findings, FindingFilters(rules=("rule-1", "shadowing")))
     assert [finding.module for finding in by_kind_mixed] == ["Demo.B", "Other.A"]
 

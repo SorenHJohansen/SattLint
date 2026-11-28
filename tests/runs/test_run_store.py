@@ -211,14 +211,13 @@ def test_save_run_writes_summary_sidecar(tmp_path: Path) -> None:
     assert payload["issue_count"] == 1
 
 
-def test_list_runs_reads_summary_without_parsing_run_json(tmp_path: Path) -> None:
+def test_list_runs_validates_the_record_before_trusting_the_sidecar(tmp_path: Path) -> None:
     record = save_run(_sample_record(), runs_dir=tmp_path)
     (tmp_path / f"{record.run_id}.json").write_text("not json", encoding="utf-8")
 
     summaries = list_runs(runs_dir=tmp_path)
 
-    assert [summary.run_id for summary in summaries] == [record.run_id]
-    assert summaries[0].project_tag == "RootProgram"
+    assert summaries == ()
 
 
 def test_list_runs_summarizes_legacy_run_without_writing(tmp_path: Path) -> None:
@@ -558,7 +557,7 @@ def test_prune_runs_collects_orphan_summary_sidecars(tmp_path: Path) -> None:
     assert not (tmp_path / f"{orphan.run_id}.summary").exists()
 
 
-def test_prune_runs_removes_old_schema_files(tmp_path: Path) -> None:
+def test_prune_runs_keeps_old_schema_files(tmp_path: Path) -> None:
     save_run(
         RunRecord(
             run_id="",
@@ -573,8 +572,8 @@ def test_prune_runs_removes_old_schema_files(tmp_path: Path) -> None:
 
     removed = prune_runs(tmp_path, limit=1)
 
-    assert removed == 1
-    assert not old_path.exists()
+    assert removed == 0
+    assert old_path.exists()
 
 
 def _record_with_finding(finding: AnalysisFinding) -> RunRecord:

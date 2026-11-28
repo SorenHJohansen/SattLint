@@ -12,6 +12,7 @@ from sattlint.runs import (
     RunRecord,
     list_runs,
     load_run,
+    prune_runs,
     save_run,
     scan_runs,
 )
@@ -99,3 +100,35 @@ def test_a_current_record_with_a_current_sidecar_is_listed_normally(tmp_path: Pa
 
     assert [summary.run_id for summary in scan.summaries] == [stored.run_id]
     assert scan.skipped == ()
+
+
+def test_a_valid_sidecar_cannot_hide_a_corrupt_record(tmp_path: Path) -> None:
+    run_id = "20260102T000000000000Z-corrupt"
+    (tmp_path / f"{run_id}.json").write_text("not json", encoding="utf-8")
+    _write_summary(tmp_path / f"{run_id}.summary", run_id, version=RUN_RECORD_SCHEMA_VERSION)
+
+    scan = scan_runs(runs_dir=tmp_path)
+
+    assert scan.summaries == ()
+    assert [entry.run_id for entry in scan.skipped] == [run_id]
+    assert scan.skipped[0].reason == "unreadable"
+
+
+def test_retention_does_not_delete_a_foreign_record(tmp_path: Path) -> None:
+    readable = save_run(
+        RunRecord(
+            run_id="20260101T000000000000Z-readable",
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            project_tag="RootProgram",
+        ),
+        runs_dir=tmp_path,
+    )
+    foreign_id = "20260102T000000000000Z-foreign"
+    _write_record(tmp_path / f"{foreign_id}.json", foreign_id, version=RUN_RECORD_SCHEMA_VERSION + 1)
+
+    removed = prune_runs(tmp_path, limit=0)
+
+    assert removed == 1
+    assert not (tmp_path / f"{readable.run_id}.json").exists()
+    assert (tmp_path / f"{foreign_id}.json").exists()

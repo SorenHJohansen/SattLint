@@ -96,6 +96,27 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   finding cannot collide with another finding.
 - The checked-in `.sattlint-baseline.json` has its own `schema_version: 1`,
   separate from the CLI JSON schema.
+- `sattlint review` generates the Change Review JSON and Markdown artifacts
+  without the TUI. It reuses the same application seam, creates a missing output
+  directory, defaults to every configured target, and exits `0` for a complete
+  review, `1` for a partial one, and `2` when nothing was generated.
+- `sattlint runs list`, `runs show`, and `runs prune` inspect stored run history.
+  A failed analysis is stored with a failed status and its per-target or
+  per-analyzer detail, so it becomes `latest` instead of leaving an older
+  success in place. `findings --run latest` refuses a failed or unreadable
+  newest record with exit `2`.
+- `sattlint project targets`, `project init`, and `project check` support the
+  first setup: targets are listed with their inferred kind and resolved path,
+  init writes a minimal version 2 file, and check validates the schema, roots,
+  and target identity. Duplicate names in one root warn, while the same name in
+  two roots, a retained file suffix, and a missing target are errors.
+- `sattlint analyze --format sarif` and `sattlint findings --format sarif`
+  export SARIF 2.1.0 for code scanning. Severity maps to SARIF levels, the rule
+  ID is the finding rule or analyzer plus kind, and a finding without a location
+  stays a document-level result instead of receiving a fake position.
+- `findings --kind` and `--rule` accept documented finding labels as well as
+  kind keys and run rule IDs, and reject an unknown value with exit `2`. Text
+  finding lines name the target, and `--group-by target` groups by it.
 
 ### Changed
 
@@ -115,6 +136,18 @@ and this project uses calendar versioning (`vYYYY.M.number`) to match
   members by content, installs both artifacts on Python 3.13 and 3.14, checks
   the expected sdist and wheel contents, checks that a release tag is an
   ancestor of `main`, and serializes every publish run.
+- The shell's **Open Configuration** dialog accepts a typed path and offers
+  **Browse**, so a checked-in `.slproj` opens from its own directory. **New
+  Configuration** defaults to the current directory instead of the configuration
+  folder, and the former Output view is now **Change Review**.
+- The user configuration carries `schema_version = 1`. Unknown keys survive a
+  read and write, and a file written by a newer version is refused rather than
+  overwritten. `project show` renders the effective analysis settings with
+  defaults resolved, and filesystem validation checks optional ICF and library
+  directories only when a selected analyzer or target needs them.
+- The documentation adds an adoption page with a runnable CI workflow, SARIF
+  upload, baseline, and Change Review artifacts, plus the new project commands
+  in the getting started path and feature guide.
 
 ### Fixed
 

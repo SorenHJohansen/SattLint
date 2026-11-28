@@ -1013,11 +1013,6 @@ def _confirm_delete_configuration(self: Any, path: Path) -> None:
     )
 
 
-def _sanitize_project_name(name: str) -> str:
-    sanitized = re.sub(r'[/\\:*?"<>|\x00-\x1f]+', "-", name).strip(" .")
-    return sanitized or "project"
-
-
 def _new_project(self: Any) -> None:
     if self._active_request is not None:
         return

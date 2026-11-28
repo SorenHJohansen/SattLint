@@ -85,12 +85,16 @@ def _run_self_check_preflight(
     cfg: ConfigDict,
     *,
     self_check_fn: Callable[[ConfigDict], bool] | None,
+    selected_analyzers: tuple[str, ...] = (),
 ) -> tuple[bool, list[str]]:
     if self_check_fn is None:
         return True, []
+    # The merged config deliberately omits the selected analyzer list, but the
+    # self-check needs it to decide whether an optional directory is required.
+    check_cfg = cast(ConfigDict, {**cfg, "analyzers": list(selected_analyzers)})
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        ok = self_check_fn(cfg)
+        ok = self_check_fn(check_cfg)
     lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
     return ok, lines
 
@@ -209,7 +213,9 @@ def collect_run_checks_result(  # noqa: PLR0915 - the run keeps its phase state 
 
     per_target_analyzers, per_run_analyzers = partition_analyzers(analyzers)
 
-    self_check_ok, self_check_lines = _run_self_check_preflight(cfg, self_check_fn=resolved_self_check)
+    self_check_ok, self_check_lines = _run_self_check_preflight(
+        cfg, self_check_fn=resolved_self_check, selected_analyzers=selected_analyzer_keys
+    )
     if not self_check_ok:
         _emit_self_check_failure(self_check_lines, emit_line)
         return build_run_result(

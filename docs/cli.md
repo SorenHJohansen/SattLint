@@ -447,7 +447,9 @@ Run-history commands read the stored records without analyzing again.
 ### `sattlint runs list`
 
 Lists stored runs newest first. Each row shows the run ID, start time, target
-count, finding count, status, and project.
+count, finding count, status, and project. A truncated record shows
+`[truncated]` beside its status, because its stored finding count can be
+smaller than the analyzer reported.
 
 | Option | Effect |
 | --- | --- |
@@ -461,11 +463,14 @@ count, finding count, status, and project.
 - Without it, discovery walks up from the current directory. When no project is
   found, every stored run is listed.
 - Records this build cannot read are counted and named after the table, with
-  the reason. They are never silently dropped.
+  the reason and the project path when the store can attribute one. They are
+  never silently dropped.
 - The JSON document carries `project`, `runs`, `skipped`, and `skipped_count`.
   Each run carries `run_id`, `started_at`, `finished_at`, `project_tag`,
   `project_path`, `target_count`, `analyzer_count`, `finding_count`,
-  `failure_count`, and `status`.
+  `failure_count`, `status`, and `truncated`. A truncated run shows
+  `[truncated]` in the text status column, because the stored finding count can
+  be smaller than the analyzer reported.
 
 ```bash
 sattlint runs list --project app.slproj

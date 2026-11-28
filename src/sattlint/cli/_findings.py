@@ -17,7 +17,7 @@ from ..application.findings import (
     finding_severity,
     known_finding_kinds,
 )
-from ..runs import RunRecord, list_runs, load_run
+from ..runs import RunRecord, SkippedRun, list_runs, load_run, scan_runs
 from ._output import CliError
 from ._payloads import FindingGroup, FindingPayload, FindingSummary, GroupBy, RunPayload
 
@@ -289,8 +289,11 @@ def filter_findings(findings: Iterable[FlatFinding], filters: FindingFilters) ->
             continue
         if kinds and finding.finding.kind.casefold() not in kinds:
             continue
-        if rules and (finding.finding.rule_id or finding.finding.kind).casefold() not in rules:
-            continue
+        if rules:
+            rule_id = (finding.finding.rule_id or "").casefold()
+            kind = finding.finding.kind.casefold()
+            if rule_id not in rules and kind not in rules:
+                continue
         if not _matches_module(finding.module, filters.modules, exact=filters.exact_module):
             continue
         selected.append(finding)
@@ -323,6 +326,42 @@ def _same_project_path(left: str, right: str) -> bool:
     return os.path.normcase(left) == os.path.normcase(right)
 
 
+def _matching_skipped(
+    skipped: tuple[SkippedRun, ...],
+    selector: str,
+    *,
+    project_path: str | None,
+    latest: bool,
+) -> SkippedRun | None:
+    """The newest skipped record that explains a missing selector."""
+    candidates = [entry for entry in skipped if entry.run_id.startswith(selector)]
+    if latest:
+        candidates = [
+            entry
+            for entry in skipped
+            if not project_path or not entry.project_path or _same_project_path(entry.project_path, project_path)
+        ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda entry: entry.run_id)
+
+
+def _skipped_run_error(skipped: SkippedRun) -> CliError:
+    reason = (
+        "its schema version is not supported by this build"
+        if skipped.reason == "unknown_schema"
+        else "the record could not be read"
+    )
+    detail = f" {skipped.detail}" if skipped.detail else ""
+    return CliError(
+        f"Run {skipped.run_id} cannot be read: {reason}.{detail} "
+        "Run 'sattlint runs list' to see skipped records or 'sattlint runs prune' to remove them.",
+        code="run_unreadable",
+        exit_code=2,
+        details={"run_id": skipped.run_id, "reason": skipped.reason, "detail": skipped.detail},
+    )
+
+
 def resolve_run(
     run_id: str | None,
     *,
@@ -343,14 +382,18 @@ def resolve_run(
             code="run_invalid",
             exit_code=2,
         )
+    latest = selector.casefold() == "latest"
     summaries = list_runs()
     if not summaries:
+        skipped = _matching_skipped(scan_runs().skipped, selector, project_path=project_path, latest=latest)
+        if skipped is not None:
+            raise _skipped_run_error(skipped)
         raise CliError(
             "No analysis runs are available. Run 'sattlint analyze' first.",
             code="no_runs",
             exit_code=2,
         )
-    if selector == "latest":
+    if latest:
         # `latest` means the newest run for the project being inspected, not
         # the newest run on the machine.
         if project_path:
@@ -360,6 +403,9 @@ def resolve_run(
                 if summary.project_path and _same_project_path(summary.project_path, project_path)
             ]
             if not matching:
+                skipped = _matching_skipped(scan_runs().skipped, selector, project_path=project_path, latest=True)
+                if skipped is not None:
+                    raise _skipped_run_error(skipped)
                 raise CliError(
                     "No analysis runs are recorded for this project.",
                     code="no_runs_for_project",
@@ -399,6 +445,9 @@ def resolve_run(
                 details={"matches": matches[:5]},
             )
         if not matches:
+            skipped = _matching_skipped(scan_runs().skipped, selector, project_path=project_path, latest=False)
+            if skipped is not None:
+                raise _skipped_run_error(skipped)
             raise CliError(
                 f"Run {selector!r} was not found.",
                 code="run_not_found",

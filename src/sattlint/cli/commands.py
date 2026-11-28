@@ -128,12 +128,14 @@ class _RunSummaryPayload(TypedDict):
     finding_count: int
     failure_count: int
     status: RunStatus
+    truncated: bool
 
 
 class _SkippedRunPayload(TypedDict):
     run_id: str
     reason: str
     detail: str
+    project_path: str
 
 
 class RunsListPayload(TypedDict):
@@ -264,6 +266,20 @@ def _emit_document(options: _OutputOptions, *, payload: Mapping[str, object], te
         emit_text(text_lines, output=options.output)
 
 
+def _sarif_project_root(payload: Mapping[str, object]) -> Path | None:
+    project = payload.get("project")
+    if isinstance(project, Mapping):
+        raw = cast(Mapping[str, object], project).get("path")
+        if isinstance(raw, str) and raw:
+            return Path(raw).parent
+    run = payload.get("run")
+    if isinstance(run, Mapping):
+        raw = cast(Mapping[str, object], run).get("project_path")
+        if isinstance(raw, str) and raw:
+            return Path(raw).parent
+    return None
+
+
 def _emit_findings(
     options: _OutputOptions,
     *,
@@ -276,7 +292,11 @@ def _emit_findings(
     elif options.output_format == "sarif":
         run_id = payload.get("run_id")
         emit_json(
-            build_sarif(findings, run_id=run_id if isinstance(run_id, str) else None),
+            build_sarif(
+                findings,
+                run_id=run_id if isinstance(run_id, str) else None,
+                project_root=_sarif_project_root(payload),
+            ),
             output=options.output,
         )
     elif options.output_format == "ndjson":
@@ -460,7 +480,8 @@ def command_project_check(args: argparse.Namespace) -> int:
     project = _resolve_project(args.project)
     _drain_quiet_warnings(options)
     cfg = effective_project_config(project, quiet=options.quiet)
-    validation = validate_loaded_config(cfg)
+    check_cfg = cast(ConfigDict, {**cfg, "analyzers": list(project.analyzers)})
+    validation = validate_loaded_config(check_cfg)
     scan = scan_project_targets(cfg)
     errors = [f"{error.key_path}: {error.message}" for error in validation.errors] + list(scan.errors)
     warnings = [*project.warnings, *scan.warnings]
@@ -503,7 +524,7 @@ def command_project_init(args: argparse.Namespace) -> int:
         target = target.with_suffix(SLPROJ_FILENAME)
     target = target.resolve()
     try:
-        project = init_project(target)
+        project = init_project(target, program_dir=".")
     except FileExistsError as exc:
         raise CliError(str(exc), code="project_exists", exit_code=2) from exc
     except (OSError, ValueError) as exc:
@@ -1684,11 +1705,17 @@ def _run_summary_payload(summary: RunSummary) -> _RunSummaryPayload:
         "finding_count": summary.issue_count,
         "failure_count": summary.failure_count,
         "status": summary.status,
+        "truncated": summary.truncated,
     }
 
 
 def _skipped_run_payload(skipped: SkippedRun) -> _SkippedRunPayload:
-    return {"run_id": skipped.run_id, "reason": skipped.reason, "detail": skipped.detail}
+    return {
+        "run_id": skipped.run_id,
+        "reason": skipped.reason,
+        "detail": skipped.detail,
+        "project_path": skipped.project_path,
+    }
 
 
 def _skip_reason_label(reason: str) -> str:
@@ -1767,9 +1794,10 @@ def _runs_list_text(payload: RunsListPayload) -> list[str]:
         lines.append(f"  {'Run ID':<30}  {'Started':<24}  {'Targets':>7}  {'Findings':>8}  Status    Project")
         for run in payload["runs"]:
             project = run["project_path"] or run["project_tag"] or "(unknown)"
+            status = run["status"] + (" [truncated]" if run["truncated"] else "")
             lines.append(
                 f"  {run['run_id']:<30}  {run['started_at']:<24}  {run['target_count']:>7}  "
-                f"{run['finding_count']:>8}  {run['status']:<8}  {project}"
+                f"{run['finding_count']:>8}  {status:<8}  {project}"
             )
     else:
         lines.append("  No stored runs match this scope.")

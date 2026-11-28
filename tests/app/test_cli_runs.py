@@ -455,3 +455,26 @@ def test_runs_prune_prints_a_human_summary(capsys: pytest.CaptureFixture[str], t
     text = capsys.readouterr().out
     assert "Removed: 1 run record(s)" in text
     assert "Kept: 1 readable run record(s)" in text
+
+
+def test_a_real_failed_analysis_is_stored_and_latest_refuses_it(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    project = _write_project(tmp_path / "project", targets=["Missing"])
+
+    code = run_cli(["analyze", "--project", str(project), "--format", "json"])
+
+    assert code == 2
+    capsys.readouterr()
+
+    code = run_cli(["runs", "list", "--project", str(project), "--format", "json"])
+
+    assert code == 0
+    runs = json.loads(capsys.readouterr().out)["runs"]
+    assert runs and runs[0]["status"] == "failed"
+
+    code = run_cli(["findings", "--project", str(project), "--run", "latest", "--format", "json"])
+
+    assert code == 2
+    assert json.loads(capsys.readouterr().err)["error"]["code"] == "run_failed"

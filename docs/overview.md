@@ -45,8 +45,8 @@ semantic loading layer but runs no analyzers.
 | Surface | Entry point | Purpose |
 | --- | --- | --- |
 | Interactive shell | `sattlint` | Configure a project, run analyzers, browse results, generate a Change Review. |
-| Headless CLI | `sattlint project show`, `analyzers list`, `analyze`, `findings`, `show` | Automation with JSON, NDJSON, or text output. |
-| Change Review | Interactive Output view | Semantic diff plus surrounding behavior context for official versus draft code. |
+| Headless CLI | `sattlint project show`, `analyzers list`, `analyze`, `findings`, `show`, `review`, `runs` | Automation with JSON, NDJSON, SARIF, or text output. |
+| Change Review | Interactive Change Review view or `sattlint review` | Semantic diff plus surrounding behavior context for official versus draft code. |
 | Analyzer registry | `sattlint analyzers list` | The single catalog of selectable analyzers. |
 
 ## Design decisions that shape the code

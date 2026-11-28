@@ -137,8 +137,9 @@ the user configuration:
 - **Session output retention**: how many lines the output pane keeps.
 - **Change Review output folder**: where review artifacts are written.
 
-Saving app settings preserves project keys in the same file and strips unknown
-or stale keys, so an out-of-date file does not block the save.
+Saving app settings preserves project keys in the same file and keeps unknown
+or stale keys on disk, so an out-of-date file does not block the save and a
+downgrade does not lose a newer setting.
 
 ## Change Review view
 

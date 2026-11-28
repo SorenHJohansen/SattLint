@@ -305,11 +305,13 @@ def save_run(record: RunRecord, *, runs_dir: Path | None = None) -> RunRecord:
 
 
 def prune_runs(runs_dir: Path | None, *, limit: int) -> int:
-    """Delete the oldest run files beyond *limit*, returning the count removed.
+    """Delete the oldest readable run files beyond *limit*, returning the count removed.
 
-    A negative limit disables pruning; zero keeps no runs. Summary sidecars
-    whose run record is gone are collected too, so an interrupted save or a
-    manual delete cannot leave an orphan behind.
+    A negative limit disables pruning; zero keeps no runs. A record this build
+    cannot load is left in place for ``runs prune`` to report, so a downgrade
+    cannot silently delete newer history. Summary sidecars whose run record is
+    gone are collected too, so an interrupted save or a manual delete cannot
+    leave an orphan behind.
     """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     removed = _prune_runs_beyond_limit(resolved_runs_dir, limit=limit)
@@ -321,11 +323,14 @@ def _prune_runs_beyond_limit(runs_dir: Path, *, limit: int) -> int:
     if limit < 0:
         return 0
     paths = sorted(runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda path: path.name, reverse=True)
-    if len(paths) <= limit:
+    readable = [
+        path for path in paths if isinstance(_read_run_file(path, path.name[: -len(_RUN_JSON_SUFFIX)]), RunRecord)
+    ]
+    if len(readable) <= limit:
         return 0
 
     removed = 0
-    for path in reversed(paths[limit:]):
+    for path in reversed(readable[limit:]):
         run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
         try:
             path.unlink()
@@ -493,13 +498,13 @@ def scan_runs(*, runs_dir: Path | None = None) -> RunScan:
     skipped: list[SkippedRun] = []
     for path in sorted(resolved_runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda p: p.name, reverse=True):
         run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
-        summary = _read_summary_sidecar(resolved_runs_dir, run_id)
-        if summary is not None:
-            summaries.append(summary)
-            continue
+        # The record decides readability. A sidecar is only a cached summary of
+        # a record this build can load, so it can never hide a corrupt or
+        # foreign record from listing or pruning.
         record = _read_run_file(path, run_id)
         if isinstance(record, RunRecord):
-            summaries.append(RunSummary.from_record(record))
+            summary = _read_summary_sidecar(resolved_runs_dir, run_id)
+            summaries.append(summary if summary is not None else RunSummary.from_record(record))
         elif record is None:
             skipped.append(SkippedRun(run_id, "unreadable", "the run record could not be read"))
         else:

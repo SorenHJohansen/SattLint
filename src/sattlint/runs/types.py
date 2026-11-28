@@ -29,6 +29,16 @@ type RunSkipReason = Literal["unknown_schema", "unreadable"]
 #: What a stored failure belongs to.
 type RunFailureKind = Literal["target", "analyzer", "preflight"]
 
+_RUN_STATUS_VALUES = frozenset({"ok", "failed", "cancelled"})
+_RUN_FAILURE_KIND_VALUES = frozenset({"target", "analyzer", "preflight"})
+
+
+def _status_field(payload: Mapping[str, object], key: str, *, default: str = RUN_STATUS_OK) -> RunStatus:
+    value = _text_field(payload, key, default=default) or default
+    if value not in _RUN_STATUS_VALUES:
+        raise ValueError(f"run field {key!r} has an unsupported status {value!r}")
+    return cast(RunStatus, value)
+
 
 def _text_field(payload: Mapping[str, object], key: str, *, default: str = "") -> str:
     """A required text field; a corrupt value rejects the record."""
@@ -280,6 +290,8 @@ class RunFailure:
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunFailure:
         kind = _text_field(payload, "kind", default="preflight") or "preflight"
+        if kind not in _RUN_FAILURE_KIND_VALUES:
+            raise ValueError(f"run failure has an unsupported kind {kind!r}")
         return cls(
             kind=cast(RunFailureKind, kind),
             message=_text_field(payload, "message"),
@@ -405,7 +417,7 @@ class RunRecord:
             if isinstance(raw_targets, (list, tuple))
             else ()
         )
-        status = _text_field(payload, "status", default=RUN_STATUS_OK) or RUN_STATUS_OK
+        status = _status_field(payload, "status", default=RUN_STATUS_OK)
         return cls(
             run_id=_text_field(payload, "run_id"),
             started_at=_text_field(payload, "started_at"),
@@ -420,7 +432,7 @@ class RunRecord:
             # Records written before record bounds existed carry neither field.
             truncated=_bool_field(payload, "truncated"),
             truncation_note=optional_text(payload.get("truncation_note")),
-            status=cast(RunStatus, status),
+            status=status,
             failures=_failure_tuple(payload.get("failures")),
             failure_message=optional_text(payload.get("failure_message")),
         )
@@ -457,6 +469,7 @@ class RunSummary:
     project_path: str = ""
     status: RunStatus = RUN_STATUS_OK
     failure_count: int = 0
+    truncated: bool = False
 
     @classmethod
     def from_record(cls, record: RunRecord) -> RunSummary:
@@ -472,6 +485,7 @@ class RunSummary:
             project_path=record.project_path,
             status=record.effective_status,
             failure_count=len(record.failures) + len(record.failed_analyzers),
+            truncated=record.truncated,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -487,11 +501,12 @@ class RunSummary:
             "project_path": self.project_path,
             "status": self.status,
             "failure_count": self.failure_count,
+            "truncated": self.truncated,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunSummary:
-        status = _text_field(payload, "status", default=RUN_STATUS_OK) or RUN_STATUS_OK
+        status = _status_field(payload, "status", default=RUN_STATUS_OK)
         return cls(
             run_id=_text_field(payload, "run_id"),
             started_at=_text_field(payload, "started_at"),
@@ -504,8 +519,9 @@ class RunSummary:
             # Older records and sidecars predate the field; an empty path means unknown.
             project_path=_text_field(payload, "project_path"),
             # Sidecars written before failure visibility existed describe a completed run.
-            status=cast(RunStatus, status),
+            status=status,
             failure_count=_int_field(payload, "failure_count"),
+            truncated=_bool_field(payload, "truncated"),
         )
 
 

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from typing import Any, cast
 
@@ -35,6 +37,8 @@ def test_run_change_review_returns_structured_per_target_detail(tmp_path: Path) 
     assert generated.json_path.exists()
     assert generated.markdown_path.exists()
     assert generated.json_path.parent == output_dir
+    if os.name == "posix":
+        assert stat.S_IMODE(output_dir.stat().st_mode) == 0o700
 
 
 def test_run_change_review_collects_every_target_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

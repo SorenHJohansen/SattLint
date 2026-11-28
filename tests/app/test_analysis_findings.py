@@ -33,7 +33,7 @@ from sattlint.reporting.variables_report import (
     UnusedIssue,
     VariablesReport,
 )
-from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from sattlint.runs import RunAnalyzerRecord, RunRecord, RunScan, RunSummary, RunTargetRecord
 
 
 def test_extract_report_findings_normalizes_framework_issues() -> None:
@@ -496,6 +496,7 @@ def _located_run(
     line: int | None = 12,
     column: int | None = 4,
     end_line: int | None = None,
+    rule_id: str | None = None,
 ) -> RunRecord:
     return RunRecord(
         run_id=run_id,
@@ -522,6 +523,7 @@ def _located_run(
                                 line=line,
                                 column=column,
                                 end_line=end_line,
+                                rule_id=rule_id,
                             ),
                         ),
                     ),
@@ -535,6 +537,10 @@ def _install_runs(monkeypatch: pytest.MonkeyPatch, records: list[RunRecord]) -> 
     summaries = tuple(RunSummary.from_record(record) for record in records)
     by_id = {record.run_id: record for record in records}
     monkeypatch.setattr("sattlint.cli._findings.list_runs", lambda: summaries)
+    monkeypatch.setattr(
+        "sattlint.cli._findings.scan_runs",
+        lambda: RunScan(summaries=summaries),
+    )
 
     def _load(run_id: str) -> RunRecord | None:
         return by_id.get(run_id)
@@ -669,6 +675,43 @@ def test_findings_json_quiet_writes_only_the_document(
     captured = capsys.readouterr()
     assert captured.err == ""
     assert json.loads(captured.out)["command"] == "findings"
+
+
+def test_findings_accepts_a_stored_rule_id(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_located_run("rule", rule_id="VAR001")])
+
+    code = run_cli(["findings", "--run", "rule", "--rule", "VAR001", "--format", "json"])
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["findings"] == 1
+
+
+def test_findings_rule_label_matches_a_finding_that_has_a_rule_id(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_located_run("rule", rule_id="VAR001")])
+
+    code = run_cli(["findings", "--run", "rule", "--rule", "Unused variable", "--format", "json"])
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["findings"] == 1
+
+
+def test_findings_quiet_keeps_the_final_error_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_runs(monkeypatch, [_run("mine", "elsewhere")])
+
+    code = run_cli(["findings", "--run", "missing", "--format", "json", "--quiet"])
+
+    assert code == 2
+    error = json.loads(capsys.readouterr().err)["error"]
+    assert error["code"] == "run_not_found"
 
 
 def test_a_truncated_record_is_visible_in_the_run_header(

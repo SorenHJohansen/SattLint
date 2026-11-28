@@ -22,7 +22,14 @@ def _write_program(root: Path, name: str) -> Path:
     return path
 
 
-def _write_project(root: Path, targets: list[str], *, abb: Path | None = None) -> Path:
+def _write_project(
+    root: Path,
+    targets: list[str],
+    *,
+    abb: Path | None = None,
+    analyzers: list[str] | None = None,
+    icf_dir: str = "",
+) -> Path:
     programs = root / "programs"
     programs.mkdir(parents=True, exist_ok=True)
     project = root / ".slproj"
@@ -31,11 +38,11 @@ def _write_project(root: Path, targets: list[str], *, abb: Path | None = None) -
             [
                 "slproj_version = 2",
                 f"analyzed_programs_and_libraries = {json.dumps(targets)}",
-                'analyzers = ["variables"]',
+                f"analyzers = {json.dumps(analyzers or ['variables'])}",
                 'mode = "official"',
                 'program_dir = "programs"',
                 f'ABB_lib_dir = "{abb or ""}"',
-                'icf_dir = ""',
+                f'icf_dir = "{icf_dir}"',
                 "other_lib_dirs = []",
                 "",
                 "[string_capacities]",
@@ -58,14 +65,22 @@ def test_project_init_creates_a_minimal_project(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    _write_program(tmp_path, "Demo")
 
     code = run_cli(["project", "init"])
 
     assert code == 0
     project = tmp_path / ".slproj"
     assert project.is_file()
+    assert 'program_dir = "."' in project.read_text(encoding="utf-8")
     assert "Created project" in capsys.readouterr().out
     assert run_cli(["project", "check"]) == 0
+    capsys.readouterr()
+
+    code = run_cli(["project", "targets", "--format", "json"])
+
+    assert code == 0
+    assert [target["name"] for target in json.loads(capsys.readouterr().out)["targets"]] == ["Demo"]
 
 
 def test_project_init_refuses_an_existing_file(
@@ -153,3 +168,24 @@ def test_project_check_accepts_a_valid_project(
 
     assert code == 0
     assert "Result:  ok" in capsys.readouterr().out
+
+
+def test_project_check_requires_icf_dir_when_the_analyzer_is_selected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_program(tmp_path / "programs", "Demo")
+    _write_project(
+        tmp_path,
+        ["Demo"],
+        analyzers=["icf"],
+        icf_dir="missing-icf",
+    )
+
+    code = run_cli(["project", "check", "--format", "json"])
+
+    assert code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert any("icf_dir" in error for error in payload["errors"])

@@ -270,9 +270,11 @@ schema version is unchanged.
 ### Retention
 
 `run_history.enabled` controls whether runs are saved, including failed runs.
-`run_history.limit` controls how many recent runs remain. Pruning removes the
-oldest runs and their summary and acknowledgement sidecars. A negative limit
-disables pruning; zero keeps no runs.
+`run_history.limit` controls how many recent readable runs remain. Pruning
+removes the oldest readable runs and their summary and acknowledgement
+sidecars, and leaves records this build cannot load in place so a downgrade
+cannot delete newer history. A negative limit disables pruning; zero keeps no
+readable runs.
 
 `sattlint runs prune` is a separate maintenance command. Without options it
 removes only records this build cannot load, together with their sidecars.

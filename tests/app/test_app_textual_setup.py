@@ -747,13 +747,6 @@ def test_textual_open_project_without_targets_skips_ast_refresh(
     assert app_instance._interaction_locked() is False
 
 
-def test_sanitize_project_name_preserves_spaces_and_strips_path_separators() -> None:
-    assert app_textual_actions_module._sanitize_project_name("OG batchrapporter") == "OG batchrapporter"
-    assert app_textual_actions_module._sanitize_project_name("  My   Project  ") == "My   Project"
-    assert app_textual_actions_module._sanitize_project_name("a/b\\c") == "a-b-c"
-    assert app_textual_actions_module._sanitize_project_name("  ") == "project"
-
-
 def test_textual_make_project_relative_keeps_empty_paths_empty(tmp_path: Path) -> None:
     project_dir = tmp_path / "proj"
     elsewhere = tmp_path / "elsewhere"

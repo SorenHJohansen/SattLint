@@ -10,6 +10,7 @@ line or column.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
 from ..__version__ import __version__
@@ -30,9 +31,13 @@ def _rule_id(finding: FlatFinding) -> str:
     return finding.finding.rule_id or f"{finding.analyzer_key}.{finding.finding.kind}"
 
 
-def _artifact_uri(path: str) -> str:
-    """A SARIF artifact URI for a filesystem path, without inventing a scheme."""
-    return Path(path).as_posix()
+def _artifact_uri(path: str, project_root: Path | None) -> str:
+    """A SARIF artifact URI, relative to the project root when it is inside it."""
+    artifact = Path(path)
+    if project_root is not None:
+        with suppress(ValueError):
+            artifact = artifact.relative_to(project_root)
+    return artifact.as_posix()
 
 
 def _region(finding: FlatFinding) -> dict[str, object] | None:
@@ -49,7 +54,7 @@ def _region(finding: FlatFinding) -> dict[str, object] | None:
     return region
 
 
-def _location(finding: FlatFinding) -> list[dict[str, object]] | None:
+def _location(finding: FlatFinding, project_root: Path | None) -> list[dict[str, object]] | None:
     file = finding.finding.file
     region = _region(finding)
     if not file or region is None:
@@ -57,7 +62,7 @@ def _location(finding: FlatFinding) -> list[dict[str, object]] | None:
     return [
         {
             "physicalLocation": {
-                "artifactLocation": {"uri": _artifact_uri(file)},
+                "artifactLocation": {"uri": _artifact_uri(file, project_root)},
                 "region": region,
             }
         }
@@ -68,6 +73,7 @@ def build_sarif(
     findings: Iterable[FlatFinding],
     *,
     run_id: str | None = None,
+    project_root: Path | None = None,
 ) -> dict[str, object]:
     """Build a SARIF 2.1.0 document for the selected findings."""
     rules: dict[str, dict[str, object]] = {}
@@ -101,7 +107,7 @@ def build_sarif(
                 "occurrence_count": finding.occurrence_count,
             },
         }
-        locations = _location(finding)
+        locations = _location(finding, project_root)
         if locations is not None:
             result["locations"] = locations
         results.append(result)

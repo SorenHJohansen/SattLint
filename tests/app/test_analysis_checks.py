@@ -1,4 +1,4 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 import json
 import multiprocessing
 import os
@@ -1683,3 +1683,21 @@ def test_collect_run_checks_result_reports_project_wide_progress() -> None:
     assert events[1].project_wide is True
     assert (events[1].analyzer_index, events[1].analyzer_total) == (1, 0)
     assert events[1].analyzer_name == "Duplicate code"
+
+
+def test_self_check_preflight_receives_the_selected_analyzers() -> None:
+    seen: dict[str, object] = {}
+
+    def _check(cfg: ConfigDict) -> bool:
+        seen.update(cast("dict[str, object]", cfg))
+        return True
+
+    ok, lines = checks_application._run_self_check_preflight(
+        cast(ConfigDict, {}),
+        self_check_fn=_check,
+        selected_analyzers=("icf",),
+    )
+
+    assert ok is True
+    assert lines == []
+    assert seen["analyzers"] == ["icf"]

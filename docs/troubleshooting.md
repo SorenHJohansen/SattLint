@@ -84,8 +84,9 @@ All five keys are required, and every value must be a positive integer.
 ### Unknown configuration key
 
 A typo was ignored with a warning. Compare the key with
-[Configuration](configuration.md). Unknown keys are stripped deliberately so a
-misspelled key does not silently change behavior in an unpredictable way.
+[Configuration](configuration.md). Unknown keys are ignored for this run but
+kept unchanged when the file is next saved, so a downgrade does not discard a
+setting this build does not understand.
 
 ### Configuration value error
 

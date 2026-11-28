@@ -9,7 +9,7 @@ import pytest
 
 from sattlint.application.findings import AnalysisFinding
 from sattlint.cli.entry import build_cli_parser, run_cli
-from sattlint.runs import RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from sattlint.runs import RunAnalyzerRecord, RunRecord, RunScan, RunSummary, RunTargetRecord
 
 
 @pytest.fixture(autouse=True)
@@ -44,13 +44,13 @@ def _write_project(path: Path) -> Path:
     return path.resolve()
 
 
-def _run(*, file: str | None, line: int | None, column: int | None = None) -> RunRecord:
+def _run(*, file: str | None, line: int | None, column: int | None = None, project_path: str = "") -> RunRecord:
     return RunRecord(
         run_id="run-sarif",
         started_at="2026-01-01T00:00:00Z",
         finished_at="2026-01-01T00:00:01Z",
         project_tag="Demo",
-        project_path="",
+        project_path=project_path,
         selected_analyzers=("variables",),
         targets=(
             RunTargetRecord(
@@ -82,7 +82,9 @@ def _install(monkeypatch: pytest.MonkeyPatch, record: RunRecord) -> None:
     def _load(_run_id: str) -> RunRecord:
         return record
 
-    monkeypatch.setattr("sattlint.cli._findings.list_runs", lambda: (RunSummary.from_record(record),))
+    summary = RunSummary.from_record(record)
+    monkeypatch.setattr("sattlint.cli._findings.list_runs", lambda: (summary,))
+    monkeypatch.setattr("sattlint.cli._findings.scan_runs", lambda: RunScan(summaries=(summary,)))
     monkeypatch.setattr("sattlint.cli._findings.load_run", _load)
 
 
@@ -114,6 +116,22 @@ def test_sarif_maps_severity_rule_and_location(
     assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "programs/Demo.s"
     assert result["locations"][0]["physicalLocation"]["region"] == {"startLine": 12, "startColumn": 4}
     assert project.exists()
+
+
+def test_sarif_uses_a_project_relative_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _write_project(tmp_path / ".slproj")
+    source = tmp_path / "programs" / "Demo.s"
+    source.parent.mkdir()
+    source.write_text("(* module *)\n", encoding="utf-8")
+    _install(monkeypatch, _run(file=str(source), line=1, project_path=str(project)))
+
+    code = run_cli(["findings", "--run", "run-sarif", "--format", "sarif"])
+
+    assert code == 0
+    result = json.loads(capsys.readouterr().out)["runs"][0]["results"][0]
+    assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "programs/Demo.s"
 
 
 def test_sarif_omits_a_location_rather_than_inventing_one(
