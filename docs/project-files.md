@@ -63,6 +63,26 @@ valid. The string capacity table is required.
 Unit names never include a file extension. Write `LineController`, not
 `LineController.s`.
 
+### Target identity
+
+`sattlint project targets` scans the configured roots and reports each target
+with its inferred kind and resolved path.
+
+- A target under `program_dir` is a program; a target under `ABB_lib_dir` or an
+  `other_lib_dirs` entry is a library. The project file does not declare the
+  kind.
+- Two files with the same unit name in one root produce a warning. The loader
+  uses one of them.
+- The same unit name in two different roots is an error, because the choice
+  would depend on search order. Remove one file or correct the directory.
+- A configured name that keeps its file suffix is an error that suggests the
+  bare name.
+- A configured target that no root provides is an error that names the target
+  and asks for the directory or name correction.
+
+`sattlint project check` runs the same scan together with schema and filesystem
+validation.
+
 ## Path rules
 
 Every path value resolves relative to the directory that contains the

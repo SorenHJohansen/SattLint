@@ -93,6 +93,21 @@ def _build_project_parser(subparsers: _SubParserAction) -> None:
     show = project_sub.add_parser("show", help="Show the resolved project.")
     _add_project_arg(show)
     _add_output_args(show)
+    targets = project_sub.add_parser("targets", help="List configured targets with their kind and resolved path.")
+    _add_project_arg(targets)
+    _add_output_args(targets)
+    check = project_sub.add_parser("check", help="Validate the project schema, roots, and targets without analysis.")
+    _add_project_arg(check)
+    _add_output_args(check)
+    init = project_sub.add_parser("init", help="Create a minimal version 2 project file.")
+    init.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        metavar="PATH",
+        help="Directory or .slproj path; default is the current directory.",
+    )
+    _add_output_args(init)
 
 
 def _build_analyzers_parser(subparsers: _SubParserAction) -> None:
@@ -344,6 +359,12 @@ def _handlers() -> dict[str, AppCommandFn]:
 
 
 def _dispatch_project(args: argparse.Namespace) -> int:
+    if args.project_command == "targets":
+        return commands.command_project_targets(args)
+    if args.project_command == "check":
+        return commands.command_project_check(args)
+    if args.project_command == "init":
+        return commands.command_project_init(args)
     return commands.command_project_show(args)
 
 

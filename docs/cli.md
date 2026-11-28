@@ -80,6 +80,68 @@ sattlint project show --project app.slproj
 sattlint project show --project ./projects --format json
 ```
 
+## `sattlint project targets`
+
+Lists every target the configured roots provide, with the inferred kind
+(`program` or `library`), the resolved file path, and any identity problem.
+
+Options: `--project`, `--format {json,text}`, `--output`, `--quiet`.
+
+- A target under `program_dir` is a program; a target under `ABB_lib_dir` or an
+  `other_lib_dirs` entry is a library. The kind is inferred from the root, not
+  parsed from the source.
+- A duplicate name in one root is a warning.
+- The same name in two roots is an error that names both files.
+- A configured target that keeps a file suffix, or that is not found in any
+  configured root, is an error that suggests the correction.
+- The command exits `1` when it reports an error and `0` otherwise. A missing
+  project is exit `2`.
+
+```bash
+sattlint project targets --project app.slproj
+sattlint project targets --format json
+```
+
+## `sattlint project check`
+
+Validates the project schema, configured roots, and target identity without
+running analyzers.
+
+Options: `--project`, `--format {json,text}`, `--output`, `--quiet`.
+
+The check combines the conditional filesystem validation with the target scan,
+so an unused optional directory does not fail it while a missing required root
+or an ambiguous target does. The JSON payload carries `ok`, `errors`,
+`warnings`, and `target_count`. The command exits `0` when the project is valid,
+`1` when it reports an error, and `2` for a missing or unreadable project.
+
+```bash
+sattlint project check --project app.slproj
+```
+
+## `sattlint project init`
+
+Writes a minimal valid version 2 project file. It creates parent directories and
+refuses to overwrite an existing file.
+
+Options: `PATH` (a directory or a `.slproj` path, default the current
+directory), `--format {json,text}`, `--output`, `--quiet`.
+
+```bash
+sattlint project init
+sattlint project init ./demo
+sattlint project init ./demo/app.slproj --format json
+```
+
+A new user can go from an empty directory to a valid target list with three
+commands:
+
+```bash
+sattlint project init
+sattlint project targets
+sattlint project check
+```
+
 ## `sattlint analyzers list`
 
 Lists every analyzer a run can select. The `key` value is the exact value for
@@ -612,7 +674,7 @@ occurrence count.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success, or no finding at or above the `--fail-on` threshold. For `review`, every selected target generated artifacts. |
-| `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. For `review`, a partial review: some targets generated artifacts and some failed. |
+| `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. For `review`, a partial review: some targets generated artifacts and some failed. For `project check` and `project targets`, at least one reported validation error. |
 | `2` | Usage, configuration, project, or target-loading error. A stored run that failed or could not be read is also exit `2`. For `review`, missing input, no selected target, an unusable output directory, or no artifact generated. |
 | `3` | Internal error. |
 | `130` | Interrupted. |

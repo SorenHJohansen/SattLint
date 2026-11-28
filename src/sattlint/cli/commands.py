@@ -30,14 +30,16 @@ from ..application.checks import AnalyzerFailure, ChecksRunResult, TargetLoadFai
 from ..application.findings import format_source_location, kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
+from ..config.validation import validate_loaded_config
 from ..core.progress import (
     AnalysisProgressEvent,
     ProgressCallback,
     encode_progress_line,
 )
-from ..project.io import ProjectAmbiguousError, discover_project_result
+from ..project.io import SLPROJ_FILENAME, ProjectAmbiguousError, discover_project_result, init_project
 from ..project.models import SattLintProjectFile
 from ..project.support import TARGET_FAILURE_DETAIL_LIMIT, TargetLoadError, get_analyzed_targets
+from ..project.targets import ProjectTarget, scan_project_targets
 from ..runs import (
     BASELINE_FILENAME,
     RUN_STATUS_FAILED,
@@ -372,6 +374,141 @@ def _display_value(value: object) -> str:
     if isinstance(value, (list, tuple)):
         return ", ".join(_display_value(item) for item in cast(list[object] | tuple[object, ...], value))
     return str(value)
+
+
+class _ProjectTargetPayload(TypedDict):
+    name: str
+    kind: str
+    path: str
+
+
+class ProjectTargetsPayload(TypedDict):
+    schema_version: int
+    command: str
+    project: str
+    targets: list[_ProjectTargetPayload]
+    warnings: list[str]
+    errors: list[str]
+
+
+class ProjectCheckPayload(TypedDict):
+    schema_version: int
+    command: str
+    project: str
+    ok: bool
+    errors: list[str]
+    warnings: list[str]
+    target_count: int
+
+
+class ProjectInitPayload(TypedDict):
+    schema_version: int
+    command: str
+    path: str
+    created: bool
+
+
+def _project_target_payload(target: ProjectTarget) -> _ProjectTargetPayload:
+    return {
+        "name": target.name,
+        "kind": target.kind,
+        "path": str(target.path),
+    }
+
+
+def command_project_targets(args: argparse.Namespace) -> int:
+    """List every target the configured roots provide, with its inferred kind."""
+    options = _output_options(args)
+    project = _resolve_project(args.project)
+    _drain_quiet_warnings(options)
+    scan = scan_project_targets(effective_project_config(project, quiet=options.quiet))
+    payload: ProjectTargetsPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "project targets",
+        "project": str(project.path),
+        "targets": [_project_target_payload(target) for target in scan.targets],
+        "warnings": list(scan.warnings),
+        "errors": list(scan.errors),
+    }
+    _emit_document(options, payload=payload, text_lines=_project_targets_text(payload))
+    return 1 if scan.errors else 0
+
+
+def _project_targets_text(payload: ProjectTargetsPayload) -> list[str]:
+    lines = [f"Project: {payload['project']}", f"Targets: {len(payload['targets'])}"]
+    for target in payload["targets"]:
+        lines.append(f"  {target['name']}  {target['kind']}  {target['path']}")
+    if payload["warnings"]:
+        lines.append("Warnings:")
+        lines.extend(f"  - {warning}" for warning in payload["warnings"])
+    if payload["errors"]:
+        lines.append("Errors:")
+        lines.extend(f"  - {error}" for error in payload["errors"])
+    return lines
+
+
+def command_project_check(args: argparse.Namespace) -> int:
+    """Validate the project schema, configured roots, and target identity."""
+    options = _output_options(args)
+    project = _resolve_project(args.project)
+    _drain_quiet_warnings(options)
+    cfg = effective_project_config(project, quiet=options.quiet)
+    validation = validate_loaded_config(cfg)
+    scan = scan_project_targets(cfg)
+    errors = [f"{error.key_path}: {error.message}" for error in validation.errors] + list(scan.errors)
+    warnings = [*project.warnings, *scan.warnings]
+    payload: ProjectCheckPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "project check",
+        "project": str(project.path),
+        "ok": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "target_count": len(scan.targets),
+    }
+    _emit_document(options, payload=payload, text_lines=_project_check_text(payload))
+    return 0 if not errors else 1
+
+
+def _project_check_text(payload: ProjectCheckPayload) -> list[str]:
+    lines = [
+        f"Project: {payload['project']}",
+        f"Targets: {payload['target_count']}",
+        "Result:  " + ("ok" if payload["ok"] else "failed"),
+    ]
+    if payload["warnings"]:
+        lines.append("Warnings:")
+        lines.extend(f"  - {warning}" for warning in payload["warnings"])
+    if payload["errors"]:
+        lines.append("Errors:")
+        lines.extend(f"  - {error}" for error in payload["errors"])
+    return lines
+
+
+def command_project_init(args: argparse.Namespace) -> int:
+    """Scaffold a minimal version 2 project file at the requested path."""
+    options = _output_options(args)
+    raw = str(args.path or ".").strip() or "."
+    target = Path(raw).expanduser()
+    if target.is_dir() or raw.endswith(("/", "\\")):
+        target = target / SLPROJ_FILENAME
+    elif target.suffix.lower() != SLPROJ_FILENAME:
+        target = target.with_suffix(SLPROJ_FILENAME)
+    target = target.resolve()
+    try:
+        project = init_project(target)
+    except FileExistsError as exc:
+        raise CliError(str(exc), code="project_exists", exit_code=2) from exc
+    except (OSError, ValueError) as exc:
+        raise CliError(f"Could not create project {target}: {exc}", code="project_write_failed", exit_code=2) from exc
+    payload: ProjectInitPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "project init",
+        "path": str(project.path),
+        "created": True,
+    }
+    _emit_document(options, payload=payload, text_lines=[f"Created project: {project.path}"])
+    return 0
 
 
 def command_analyzers_list(args: argparse.Namespace) -> int:
@@ -1763,7 +1900,10 @@ __all__ = [
     "command_baseline_diff",
     "command_baseline_update",
     "command_findings",
+    "command_project_check",
+    "command_project_init",
     "command_project_show",
+    "command_project_targets",
     "command_runs_list",
     "command_runs_prune",
     "command_runs_show",
