@@ -128,9 +128,8 @@ Start the interactive terminal UI:
 sattlint
 ```
 
-Open a configuration first (**File → Open Configuration** or **File → New
-Configuration**), then use the **Analyze** view to pick analyzers and run
-checks.
+Open a configuration first (**Open Configuration** or **New Configuration** in
+the top bar), then use the **Analyze** view to pick analyzers and run checks.
 
 ### Headless automation
 
@@ -175,8 +174,8 @@ sattlint
 ```
 
 Opens the Textual interactive terminal UI. The app starts with no
-configuration loaded; use **File → Open Configuration** or **File → New
-Configuration** to load or create a project.
+configuration loaded; use **Open Configuration** or **New Configuration** in the
+top bar to load or create a project.
 
 Views (switch with `Ctrl+1`…`Ctrl+5` or the tabs at the top):
 
@@ -184,10 +183,10 @@ Views (switch with `Ctrl+1`…`Ctrl+5` or the tabs at the top):
 - **Results** — browse and inspect previous analysis runs
 - **Configuration Settings** — set directories, targets, and mode
 - **App Settings** — run history, logging, and Change Review output
-- **Output** — generate Change Review artifacts
+- **Change Review** — generate Change Review artifacts
 
-The **File** menu also offers **Help** (first-run guidance and keyboard
-shortcuts) and **Quit**.
+The top bar also offers **Help** (first-run guidance and keyboard shortcuts) and
+**Quit**.
 
 ---
 
@@ -198,9 +197,10 @@ checked-in file: targets, directories, mode, and output/cache paths. Paths
 inside a `.slproj` are relative to the file itself, so projects are portable
 across machines.
 
-- Use **File → New Configuration** in the UI to scaffold a new
-  `.slproj` in the current directory.
-- Use **File → Open Configuration** to load an existing `.slproj`.
+- Use **New Configuration** in the UI to scaffold a new `.slproj` at the path
+  you enter, which defaults to the current directory.
+- Use **Open Configuration** to load an existing `.slproj`, by selecting it
+  from the list, typing its path, or choosing **Browse**.
 - Project settings merge over `~/.config/sattlint/config.toml` defaults.
 
 Prefer a `.slproj` project file over editing `~/.config/sattlint/config.toml`
@@ -279,13 +279,13 @@ The first time SattLint runs, it creates a config file automatically:
 - **Linux:** `~/.config/sattlint/config.toml`
 
 For a portable, checked-in setup, create a `.slproj` project file from the
-UI's **File → New Configuration** action instead; project settings merge over
+UI's **New Configuration** action instead; project settings merge over
 these config defaults (see [Project Files](#project-files-slproj)).
 
 ### Configuration
 
 1. Start SattLint with `sattlint`
-2. Use **File → Open Configuration** or **File → New Configuration** to load a project
+2. Use **Open Configuration** or **New Configuration** in the top bar to load a project
 3. Select **Configuration Settings** (or press `Ctrl+3`) and configure:
 
    - `program_dir` — your SattLine program folder

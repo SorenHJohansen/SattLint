@@ -87,7 +87,7 @@ For development setup with the locked environment, see
 
 A `.slproj` file is the checked-in description of one analysis project. Create
 a file named `.slproj` at the root of the SattLine code you want to analyze, or
-create one from the interactive shell with **File → New Configuration**.
+create one from the interactive shell with **New Configuration**.
 
 A minimal version 2 project looks like this:
 
@@ -178,8 +178,8 @@ Finding IDs are stable for the same finding across runs.
 sattlint
 ```
 
-The shell starts with no project loaded. Use **File → Open Configuration** to
-open a `.slproj`, then:
+The shell starts with no project loaded. Use **Open Configuration** to open a
+`.slproj`, then:
 
 1. Open **Configuration Settings** (`Ctrl+3`) to review targets, directories,
    and mode.

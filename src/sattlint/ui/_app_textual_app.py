@@ -59,9 +59,9 @@ _DEFAULT_VIEW_REGISTRY: dict[str, _ShellViewState] = {
     ),
     "output": _ShellViewState(
         action_id="action-output",
-        title="Output",
+        title="Change Review",
         description="Generate Change Review artifacts for the configured project.",
-        note="",
+        note="Open the JSON and Markdown artifacts from the review output directory.",
     ),
 }
 
@@ -169,7 +169,7 @@ if _TEXTUAL_APP is not None:
                     yield _TEXTUAL_STATIC("Results", id="nav-tab-results", classes="nav-tab")
                     yield _TEXTUAL_STATIC("Configuration Settings", id="nav-tab-setup", classes="nav-tab")
                     yield _TEXTUAL_STATIC("App Settings", id="nav-tab-settings", classes="nav-tab")
-                    yield _TEXTUAL_STATIC("Output", id="nav-tab-output", classes="nav-tab")
+                    yield _TEXTUAL_STATIC("Change Review", id="nav-tab-output", classes="nav-tab")
             with _TEXTUAL_VERTICAL(id="content-host"):
                 with _TEXTUAL_VERTICAL(id="workspace-host"):  # noqa: SIM117
                     with _TEXTUAL_VERTICAL(id="view-pane"):
@@ -412,7 +412,7 @@ if _TEXTUAL_APP is not None:
             self._clear_session_output()
             self._write_output(
                 "Welcome to SattLint.\n\n"
-                "No configuration is open yet. Use Open Configuration or New Configuration from the File menu "
+                "No configuration is open yet. Use Open Configuration or New Configuration in the top bar "
                 "to load or create a configuration, then configure its setup and run analyses."
             )
             self._analyze_help_shown = True

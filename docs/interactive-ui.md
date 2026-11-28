@@ -14,10 +14,10 @@ the same application layer, so they produce the same findings and run records.
 
 The shell always starts with no project loaded.
 
-- **File → Open Configuration** opens an existing `.slproj`.
-- **File → New Configuration** scaffolds a new project file.
-- **File → Help** shows first-run guidance and keyboard shortcuts.
-- **File → Quit** exits.
+- **Open Configuration** opens an existing `.slproj`, either from the list, by typing its path, or through **Browse**.
+- **New Configuration** scaffolds a new project file at the path you enter, defaulting to the current directory.
+- **Help** shows first-run guidance and keyboard shortcuts.
+- **Quit** exits.
 
 If no project is open, analysis, results, settings, and review actions explain
 that a configuration is required instead of silently doing nothing.
@@ -27,7 +27,7 @@ Textual is unavailable; the headless commands still work.
 
 ## Views
 
-Switch views with `Ctrl+1` through `Ctrl+5`, the navigation tabs, or the menu.
+Switch views with `Ctrl+1` through `Ctrl+5`, the navigation tabs, or the top bar.
 
 | View | Key | Purpose |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Switch views with `Ctrl+1` through `Ctrl+5`, the navigation tabs, or the menu.
 | Results | `Ctrl+2` | Browse stored runs, modules, and findings. |
 | Configuration Settings | `Ctrl+3` | Edit targets, directories, and load mode for the open project. |
 | App Settings | `Ctrl+4` | Edit user-level settings such as run history and output retention. |
-| Output | `Ctrl+5` | Generate Change Review artifacts. |
+| Change Review | `Ctrl+5` | Generate Change Review artifacts. |
 
 The footer shows the active bindings. `Ctrl+C` copies the current output, and
 `Tab` / `Shift+Tab` move focus between controls.
@@ -140,9 +140,10 @@ the user configuration:
 Saving app settings preserves project keys in the same file and strips unknown
 or stale keys, so an out-of-date file does not block the save.
 
-## Output view
+## Change Review view
 
-The Output view generates Change Review artifacts for the configured project.
+The Change Review view generates Change Review artifacts for the configured
+project.
 
 - **Generate Change Review** runs the review for every configured target.
 - Each successful target writes one JSON and one Markdown artifact.

@@ -17,6 +17,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency path
     _DirEntry = None
 
+from ..project.io import SLPROJ_FILENAME as _SLPROJ_FILENAME
 from ._app_textual_shared import (
     _TEXTUAL_APP,
     _TEXTUAL_BUTTON,
@@ -544,12 +545,17 @@ if _TEXTUAL_APP is not None:
             with _TEXTUAL_VERTICAL(id="project-picker-dialog"):
                 yield _TEXTUAL_STATIC("Open Configuration", id="project-picker-title")
                 yield _TEXTUAL_STATIC(
-                    "Select a configuration, then choose Open or Delete.",
+                    "Select a configuration, type its path, or choose Browse.",
                     id="project-picker-intro",
+                )
+                yield _TEXTUAL_INPUT(
+                    placeholder="Path to a .slproj file",
+                    id="project-picker-path",
                 )
                 yield _TEXTUAL_LIST_VIEW(id="project-picker-list")
                 with _TEXTUAL_HORIZONTAL(id="project-picker-actions"):
                     yield _TEXTUAL_BUTTON("Open", id="project-picker-open", classes="raised-button", disabled=True)
+                    yield _TEXTUAL_BUTTON("Browse", id="project-picker-browse", classes="raised-button")
                     yield _TEXTUAL_BUTTON("Delete", id="project-picker-delete", classes="raised-button", disabled=True)
                     yield _TEXTUAL_BUTTON("Cancel", id="project-picker-cancel", classes="raised-button")
 
@@ -587,8 +593,36 @@ if _TEXTUAL_APP is not None:
 
         def _set_selection(self, path: Path | None) -> None:
             self._selected_path = path
-            _query_required(self, "#project-picker-open", _TEXTUAL_BUTTON).disabled = path is None
+            self._refresh_open_state()
             _query_required(self, "#project-picker-delete", _TEXTUAL_BUTTON).disabled = path is None
+
+        def _typed_path(self) -> Path | None:
+            raw = str(_query_required(self, "#project-picker-path", _TEXTUAL_INPUT).value or "").strip()
+            if not raw:
+                return None
+            path = Path(raw).expanduser()
+            return path if path.is_absolute() else (Path.cwd() / path).resolve()
+
+        def _open_target(self) -> Path | None:
+            return self._typed_path() or self._selected_path
+
+        def _refresh_open_state(self) -> None:
+            _query_required(self, "#project-picker-open", _TEXTUAL_BUTTON).disabled = self._open_target() is None
+
+        def _browse_for_project(self) -> None:
+            start = self._projects_dir if self._projects_dir.is_dir() else Path.cwd()
+            self.app.push_screen(
+                _FileBrowserScreen(start_paths=[start], file_suffix=_SLPROJ_FILENAME),
+                self._on_browse_result,
+            )
+
+        def _on_browse_result(self, result: object | None) -> None:
+            if isinstance(result, Path):
+                self.dismiss(result)
+
+        def on_input_changed(self, event: Any) -> None:
+            if getattr(getattr(event, "input", None), "id", None) == "project-picker-path":
+                self._refresh_open_state()
 
         def on_list_view_highlighted(self, event: Any) -> None:
             list_view = getattr(event, "list_view", None)
@@ -608,8 +642,11 @@ if _TEXTUAL_APP is not None:
         def on_button_pressed(self, event: Any) -> None:
             button_id = getattr(event.button, "id", "") or ""
             if button_id == "project-picker-open":
-                if self._selected_path is not None:
-                    self.dismiss(self._selected_path)
+                target = self._open_target()
+                if target is not None:
+                    self.dismiss(target)
+            elif button_id == "project-picker-browse":
+                self._browse_for_project()
             elif button_id == "project-picker-delete":
                 if self._selected_path is not None:
                     self.dismiss(("delete", self._selected_path))

@@ -18,11 +18,12 @@ _HELP_TEXT = """--- Help ---
 SattLint analyzes configured programs and libraries together with their
 dependencies.
 
-SattLint starts with no configuration loaded. Use the File menu to open an
-existing configuration or create a new one before analyzing.
+SattLint starts with no configuration loaded. Use Open Configuration in the top
+bar to open an existing configuration, or New Configuration to create one,
+before analyzing.
 
 Recommended first run:
-1. Use File -> New Configuration (or Open Configuration) to load a project.
+1. Use New Configuration (or Open Configuration) to load a project.
 2. Open Configuration Settings and configure program_dir, ABB_lib_dir,
    icf_dir, and any extra library folders.
 3. Add one or more analysis targets without file extensions (saved automatically).
@@ -33,7 +34,7 @@ Main areas:
 - Configuration Settings: edit directories, targets, and mode (saved automatically to the configuration).
 - Results: browse and inspect previous analysis runs.
 - App Settings: run history, debug logging, and session output retention (saved to your user config).
-- Output: generate Change Review artifacts for the configured project.
+- Change Review: generate Change Review artifacts for the configured project.
 """
 
 

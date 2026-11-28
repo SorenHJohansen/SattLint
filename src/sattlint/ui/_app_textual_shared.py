@@ -20,7 +20,7 @@ APP_SHELL_BINDINGS: list[tuple[str, str, str]] = [
     ("ctrl+2", "show_results", "Results"),
     ("ctrl+3", "show_setup", "Configuration Settings"),
     ("ctrl+4", "show_settings", "App Settings"),
-    ("ctrl+5", "show_output", "Output"),
+    ("ctrl+5", "show_output", "Change Review"),
     ("escape", "cancel_run", "Cancel run"),
     ("ctrl+c", "copy_output", "Copy Output"),
     ("tab", "focus_next_control", "Next"),
@@ -191,7 +191,7 @@ MENU_DEFINITIONS: list[tuple[str, str]] = [
 
 NO_PROJECT_NOTICE = (
     "No configuration is open.\n\n"
-    "Use Open Configuration or New Configuration from the File menu to load or create a "
+    "Use Open Configuration or New Configuration in the top bar to load or create a "
     "configuration before analyzing, viewing results, or changing the configuration settings."
 )
 TEXTUAL_SHELL_CSS = load_shell_css()

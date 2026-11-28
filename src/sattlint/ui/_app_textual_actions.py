@@ -1021,20 +1021,31 @@ def _sanitize_project_name(name: str) -> str:
 def _new_project(self: Any) -> None:
     if self._active_request is not None:
         return
+    default_path = Path.cwd() / f"project{_SLPROJ_FILENAME}"
     request = InteractionRequest(
         kind="prompt",
         title="New configuration",
-        message="Enter a name for the new configuration.",
-        note=f"Configurations are stored in {config_module.get_projects_dir()}.",
+        message="Enter the path for the new configuration.",
+        default=str(default_path),
+        note="Relative paths resolve from the current directory, not the configuration folder.",
     )
 
+    def _resolve_project_path(raw: str) -> Path:
+        target = Path(raw).expanduser()
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        if raw.endswith(("/", "\\")) or target.is_dir():
+            target = target / f"project{_SLPROJ_FILENAME}"
+        elif target.suffix.lower() != _SLPROJ_FILENAME:
+            target = target.with_suffix(_SLPROJ_FILENAME)
+        return target.resolve()
+
     def _apply_response(response: object) -> None:
-        name = str(response or "").strip()
-        if not name:
-            self._write_output("Configuration name cannot be empty.")
+        raw = str(response or "").strip()
+        if not raw:
+            self._write_output("Configuration path cannot be empty.")
             return
-        sanitized = _sanitize_project_name(name)
-        project_path = config_module.get_projects_dir() / f"{sanitized}{_SLPROJ_FILENAME}"
+        project_path = _resolve_project_path(raw)
         if project_path.exists():
             self._write_output(f"A configuration already exists at {project_path}.")
             return
@@ -1044,7 +1055,7 @@ def _new_project(self: Any) -> None:
             self._report_error("Failed to create configuration", f"Failed to create configuration: {exc}")
             return
         self._load_project_object(project)
-        self._write_output(f"Created configuration: {project_path.name}")
+        self._write_output(f"Created configuration: {project_path}")
 
     self.present_request(request, on_response_fn=_apply_response)
 

@@ -184,6 +184,34 @@ def test_textual_project_picker_selects_the_first_project_after_mount(tmp_path: 
     asyncio.run(_run())
 
 
+def test_textual_project_picker_opens_a_path_outside_the_config_directory(tmp_path: Path) -> None:
+    if not app_textual.has_textual():
+        pytest.skip("Textual not installed")
+
+    project_path = tmp_path / "checked-in" / "app.slproj"
+    project_path.parent.mkdir()
+    init_project(project_path)
+
+    async def _run() -> None:
+        app_instance = make_textual_app(project=False)
+
+        async with app_instance.run_test() as pilot:
+            app_instance._open_project_browser()
+            await pilot.pause()
+
+            screen = app_instance.screen
+            screen.query_one("#project-picker-path").value = str(project_path)
+            await pilot.pause()
+            assert screen.query_one("#project-picker-open").disabled is False
+
+            await pilot.click("#project-picker-open")
+            await pilot.pause()
+
+        assert app_instance._project_path == project_path
+
+    asyncio.run(_run())
+
+
 def test_textual_setup_shows_empty_dirs_when_no_configuration_is_open() -> None:
     if not app_textual.has_textual():
         pytest.skip("Textual not installed")
@@ -393,13 +421,16 @@ def test_textual_setup_remove_selected_target_marks_dirty(tmp_path: Path, monkey
     assert messages == ["Removed analysis target 'TargetA' from the Setup view."]
 
 
-def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_textual_new_project_creates_project_at_the_entered_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     projects_dir = tmp_path / "new-project-root"
     projects_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
         "sattlint.config.paths.get_projects_dir",
         lambda: projects_dir,
     )
+    monkeypatch.chdir(tmp_path)
 
     app_instance = make_textual_app(project=False)
     captured: dict[str, object] = {}
@@ -424,15 +455,16 @@ def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest
     request = captured["request"]
     assert isinstance(request, app_textual_shared_module.InteractionRequest)
     assert request.kind == "prompt"
-    assert "stored in" in (request.note or "")
+    assert request.default == str(tmp_path / "project.slproj")
+    assert "current directory" in (request.note or "")
 
     callback = captured["callback"]
     assert callable(callback)
     callback("My Demo Project")
 
-    project_file = projects_dir / "My Demo Project.slproj"
+    project_file = tmp_path / "My Demo Project.slproj"
     assert project_file.is_file()
-    assert not (projects_dir / "My-Demo-Project").exists()
+    assert not projects_dir.exists() or not list(projects_dir.iterdir())
     scaffolded = load_project(project_file)
     assert scaffolded.data["slproj_version"] == 2
     assert scaffolded.data["string_capacities"] == {
@@ -446,8 +478,9 @@ def test_textual_new_project_creates_project_in_projects_dir(monkeypatch: pytest
     assert app_instance._project_loaded() is True
     assert app_instance._project_path == project_file
     assert "Created configuration" in messages[0]
+    assert str(project_file) in messages[0]
 
-    # Reject duplicate project names.
+    # Reject an existing project path.
     callback(None)
     callback("My Demo Project")
     assert any("already exists" in message for message in messages)
