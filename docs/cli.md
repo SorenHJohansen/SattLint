@@ -17,6 +17,7 @@ contracts.
 | `sattlint project show` | Show the resolved project settings. |
 | `sattlint analyzers list` | List selectable analyzers with keys, categories, and metadata. |
 | `sattlint analyze` | Run analyzers and report findings. |
+| `sattlint review` | Generate Change Review JSON and Markdown artifacts. |
 | `sattlint findings` | Query findings from a stored run. |
 | `sattlint show` | Show one finding by its stable ID. |
 | `sattlint runs list` | List stored runs with status and counts. |
@@ -210,6 +211,70 @@ from archiving an old result as if it were fresh.
 
 `--quiet` suppresses the unknown-project-key warning and the human summary, but
 never the final error line.
+
+## `sattlint review`
+
+Generates Change Review artifacts without the interactive UI. It reuses the
+same review engine as the TUI, so the JSON and Markdown content is identical for
+the same project and target.
+
+| Option | Effect |
+| --- | --- |
+| `--project PATH` | Project file or directory. |
+| `--target NAME` | Review only this target; repeatable. Defaults to every configured target. Names are matched case-insensitively. |
+| `--output-dir PATH` | Directory for the artifacts. Defaults to the configured review directory. A missing directory is created. |
+| `--format {json,text}` | Report format; default `text`. |
+| `--output PATH` | Write the report to a file instead of stdout. The artifacts still go to the review output directory. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+For each reviewed target the command writes two artifacts into the review
+output directory:
+
+- `<project>-change-review-<timestamp>.json`
+- `<project>-change-review-<timestamp>.md`
+
+The timestamp is UTC and comes from the review metadata. A relative
+`--output-dir` resolves against the current working directory. The JSON report
+names the resolved project, the resolved output directory, every generated
+artifact, and every failed target:
+
+```json
+{
+  "schema_version": 2,
+  "command": "review",
+  "project": "/workspace/app.slproj",
+  "output_dir": "/workspace/change-review",
+  "targets": [
+    {
+      "target": "Demo",
+      "json": "/workspace/change-review/Demo-change-review-20261119T102030.123456Z.json",
+      "markdown": "/workspace/change-review/Demo-change-review-20261119T102030.123456Z.md"
+    }
+  ],
+  "failures": [],
+  "generated_targets": 1,
+  "failed_targets": 0
+}
+```
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Every selected target generated both artifacts. |
+| `1` | At least one target generated artifacts and at least one failed (partial). |
+| `2` | Missing project, no configured or selected target, unusable output directory, or a usage error. Nothing was generated. |
+
+The command never returns `0` when it generated no artifact. A partial review
+still writes the successful targets' artifacts and returns `1`. A full failure
+uses the CLI error envelope, names each failed target, and returns `2`.
+
+```bash
+sattlint review --project app.slproj
+sattlint review --project app.slproj --target Demo --output-dir change-review
+sattlint review --project app.slproj --format json --quiet
+sattlint review --project app.slproj --format text --output review-report.txt
+```
 
 ## `sattlint findings`
 
@@ -500,6 +565,11 @@ one.
   `selected_analyzers`, `analyzers`, `failures`, and the failure reason. A
   `runs prune` document carries `removed`, `unreadable`, `over_limit`, `kept`,
   and `removed_run_ids`.
+- A `review` document carries `project`, `output_dir`, `targets`, `failures`,
+  `generated_targets`, and `failed_targets`. Each target entry carries its
+  target, JSON artifact path, and Markdown artifact path. Each failure entry
+  carries the target and a message. A partial review keeps this shape and adds
+  failure entries.
 - Every finding carries `severity` (`error`, `warning`, or `info`) and optional
   `file`, `line`, `column`, and `end_line` fields. Positions are one-based. A
   position the analyzer does not know is `null`, never zero.
@@ -535,9 +605,9 @@ occurrence count.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success, or no finding at or above the `--fail-on` threshold. |
-| `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. |
-| `2` | Usage, configuration, project, or target-loading error. A stored run that failed or could not be read is also exit `2`. |
+| `0` | Success, or no finding at or above the `--fail-on` threshold. For `review`, every selected target generated artifacts. |
+| `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. For `review`, a partial review: some targets generated artifacts and some failed. |
+| `2` | Usage, configuration, project, or target-loading error. A stored run that failed or could not be read is also exit `2`. For `review`, missing input, no selected target, an unusable output directory, or no artifact generated. |
 | `3` | Internal error. |
 | `130` | Interrupted. |
 | `141` | Broken pipe, such as when a downstream `head` closes the stream. |

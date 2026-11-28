@@ -19,6 +19,13 @@ from ..analyzers.catalog import (
     get_selectable_analyzer_keys,
 )
 from ..application.analyze import collect_checks_result, no_analyzer_selection_message
+from ..application.change_review import (
+    ChangeReviewError,
+    ChangeReviewNoTargetsError,
+    ChangeReviewOutcome,
+    ChangeReviewOutputError,
+    run_change_review,
+)
 from ..application.checks import AnalyzerFailure, ChecksRunResult, TargetLoadFailure, build_run_record
 from ..application.findings import format_source_location, kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
@@ -180,6 +187,28 @@ class RunsPrunePayload(TypedDict):
     over_limit: int
     kept: int
     removed_run_ids: list[str]
+
+
+class _ReviewTargetPayload(TypedDict):
+    target: str
+    json: str
+    markdown: str
+
+
+class _ReviewFailurePayload(TypedDict):
+    target: str
+    message: str
+
+
+class ReviewPayload(TypedDict):
+    schema_version: int
+    command: str
+    project: str
+    output_dir: str
+    targets: list[_ReviewTargetPayload]
+    failures: list[_ReviewFailurePayload]
+    generated_targets: int
+    failed_targets: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -901,6 +930,104 @@ def command_analyze(args: argparse.Namespace) -> int:
         baseline_diff=baseline_diff,
         partial_failures=partial_failures,
     )
+
+
+def command_review(args: argparse.Namespace) -> int:
+    """Generate Change Review artifacts for the selected targets.
+
+    Exit codes: 0 when every selected target generated artifacts, 1 when some
+    targets generated artifacts and some failed, and 2 when nothing was
+    generated or the input cannot be reviewed.
+    """
+    options = _output_options(args)
+    project = _resolve_project(args.project)
+    _drain_quiet_warnings(options)
+    cfg = _apply_target_filter(
+        effective_project_config(project, quiet=options.quiet),
+        tuple(str(value) for value in args.target),
+    )
+    _require_configured_targets(cfg)
+    targets = get_analyzed_targets(cfg)
+    output_dir = _review_output_dir(args.output_dir)
+    try:
+        outcome = run_change_review(cfg, targets, output_dir=output_dir)
+    except ChangeReviewNoTargetsError as exc:
+        raise CliError(str(exc), code="no_targets", exit_code=2) from exc
+    except ChangeReviewOutputError as exc:
+        raise CliError(str(exc), code="review_output_dir", exit_code=2) from exc
+    except ChangeReviewError as exc:
+        raise CliError(str(exc), code="review_failed", exit_code=2) from exc
+
+    if not outcome.generated:
+        _discard_output_file(options)
+        raise CliError(
+            "Change Review failed for every target and no artifacts were generated.",
+            code="review_failed",
+            exit_code=2,
+            details={
+                "failures": [{"target": failure.target, "message": failure.message} for failure in outcome.failures],
+            },
+        )
+
+    payload = _review_payload(project.path, outcome)
+    _emit_document(options, payload=payload, text_lines=_review_text(payload))
+    return _review_exit_code(outcome)
+
+
+def _review_output_dir(raw: object) -> Path | None:
+    if raw is None:
+        return None
+    try:
+        return Path(str(raw)).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise CliError(
+            f"Review output directory is not usable: {raw}",
+            code="review_output_dir",
+            exit_code=2,
+        ) from exc
+
+
+def _review_payload(project_path: Path, outcome: ChangeReviewOutcome) -> ReviewPayload:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": "review",
+        "project": str(project_path),
+        "output_dir": str(Path(outcome.output_dir).resolve()),
+        "targets": [
+            {
+                "target": generated.target,
+                "json": str(Path(generated.json_path).resolve()),
+                "markdown": str(Path(generated.markdown_path).resolve()),
+            }
+            for generated in outcome.generated
+        ],
+        "failures": [{"target": failure.target, "message": failure.message} for failure in outcome.failures],
+        "generated_targets": outcome.generated_targets,
+        "failed_targets": outcome.failed_targets,
+    }
+
+
+def _review_exit_code(outcome: ChangeReviewOutcome) -> int:
+    if outcome.failures:
+        return 1
+    return 0
+
+
+def _review_text(payload: ReviewPayload) -> list[str]:
+    lines = [
+        f"Change Review for {payload['project']}",
+        f"Output: {payload['output_dir']}",
+        f"Generated: {payload['generated_targets']} target(s)",
+    ]
+    for entry in payload["targets"]:
+        lines.append(f"- {entry['target']}")
+        lines.append(f"  JSON: {entry['json']}")
+        lines.append(f"  Markdown: {entry['markdown']}")
+    if payload["failures"]:
+        lines.append(f"Failed: {payload['failed_targets']} target(s)")
+        for failure in payload["failures"]:
+            lines.append(f"- {failure['target']}: {failure['message']}")
+    return lines
 
 
 def _attach_baseline(

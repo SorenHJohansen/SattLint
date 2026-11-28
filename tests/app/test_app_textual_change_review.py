@@ -14,7 +14,6 @@ import pytest
 from sattlint import ui as app_textual
 from sattlint.application import change_review as change_review_application
 from sattlint.cli import startup as app_module
-from sattlint.cli._output import CliError
 from sattlint.cli.startup import analysis_handler_fns
 from sattlint.config.types import ConfigDict
 from tests.helpers.app_textual_support import (
@@ -188,12 +187,13 @@ def test_change_review_ui_controls_present() -> None:
     asyncio.run(_run())
 
 
-def test_no_cli_command_introduced_for_change_review() -> None:
+def test_review_cli_command_is_available() -> None:
     parser = app_module.build_cli_parser()
-    assert parser is not None
-    # Change Review stays TUI-only; the headless CLI does not expose it yet.
-    with pytest.raises(CliError):
-        parser.parse_args(["review"])
+    args = parser.parse_args(["review", "--project", "demo.slproj"])
+    assert args.command == "review"
+    assert args.target == []
+    assert args.output_dir is None
+    assert args.format == "text"
 
 
 def test_textual_change_review_uses_its_own_action_id(monkeypatch: pytest.MonkeyPatch) -> None:

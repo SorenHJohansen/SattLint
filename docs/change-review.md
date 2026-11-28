@@ -24,10 +24,12 @@ flowchart LR
     Review --> Markdown["Markdown artifact"]
 ```
 
-The interactive **Output** view is the only caller. There is intentionally no
-headless Change Review command. The application entry point loops over the
-configured targets, generates a review for each target, and reports per-target
-success or failure.
+The interactive **Change Review** view and the headless `sattlint review`
+command are the two callers. Both use the same application entry point. It loops
+over the configured or selected targets, generates a review for each target, and
+reports per-target success or failure. The interactive view prints a human
+summary; the headless command writes the same two artifacts and returns a
+documented exit code.
 
 ## Loading both versions
 
@@ -113,7 +115,7 @@ external reviewer all consume the same review.
 
 ## Artifacts
 
-For each target, two artifacts are written into the configured review output
+For each target, two artifacts are written into the selected review output
 directory:
 
 - `<project>-change-review-<timestamp>.json`
@@ -130,6 +132,79 @@ readable by other local users.
 
 The JSON artifact is the structured contract. The Markdown artifact is the
 human-readable review. Both are generated from the same review object.
+
+## Headless command
+
+`sattlint review` generates the same artifacts without the interactive UI.
+
+| Option | Effect |
+| --- | --- |
+| `--project PATH` | Project file or a directory containing one. |
+| `--target NAME` | Review only this target; repeatable. Defaults to every configured target. |
+| `--output-dir PATH` | Directory for the artifacts. Defaults to the configured review directory. A missing directory is created. |
+| `--format {json,text}` | Report format; default `text`. |
+| `--output PATH` | Write the report to a file instead of stdout. The artifacts still go to the review output directory. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+The report contains the resolved output directory and the absolute path of every
+generated artifact. A relative `--output-dir` resolves against the current
+working directory. The headless report adds no source paths to the artifacts
+themselves; their contents stay exactly what the review engine writes.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Every selected target generated both artifacts. |
+| `1` | At least one target generated artifacts and at least one failed (partial). |
+| `2` | Missing project, no configured or selected target, unusable output directory, or a usage error. Nothing was generated. |
+
+The command never returns `0` when it generated no artifact. A full failure uses
+the normal CLI error envelope and names each failed target.
+
+### JSON report
+
+```json
+{
+  "schema_version": 2,
+  "command": "review",
+  "project": "/workspace/app.slproj",
+  "output_dir": "/workspace/change-review",
+  "targets": [
+    {
+      "target": "Demo",
+      "json": "/workspace/change-review/Demo-change-review-20261119T102030.123456Z.json",
+      "markdown": "/workspace/change-review/Demo-change-review-20261119T102030.123456Z.md"
+    }
+  ],
+  "failures": [],
+  "generated_targets": 1,
+  "failed_targets": 0
+}
+```
+
+A partial review keeps the same document shape and adds one entry to `failures`
+for each target that could not be reviewed. The artifact paths point at the
+review output directory, not at source files.
+
+### CI example
+
+```yaml
+- name: Generate Change Review
+  run: sattlint review --project app.slproj --output-dir change-review --format json --quiet
+
+- name: Upload Change Review
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: change-review
+    path: change-review/
+```
+
+The step fails on a partial review (`1`) and on a missing project or target
+(`2`), so an incomplete review never reaches the upload step as a success. Use
+`if: always()` on the upload so the artifacts from a partial review are still
+available for inspection.
 
 ## Size statistics
 
@@ -157,7 +232,8 @@ score.
 - relative: resolved against the configuration directory.
 
 The directory is created on demand. The **App Settings** view can change the
-location.
+location. For a single headless run, `--output-dir PATH` overrides the
+configured location without changing the configuration.
 
 ## Failure handling
 
@@ -165,11 +241,17 @@ Each target is reviewed independently. If one target fails, the application
 reports the failure and continues with the remaining targets. The operation
 fails only when every target fails.
 
+- The interactive view raises an error only when every target fails and
+  otherwise prints the per-target summary.
+- `sattlint review` exits `1` when some targets succeeded and some failed, and
+  `2` when no artifact was generated.
+
 A review is not a substitute for analysis. It does not report defects; it
 surfaces semantic changes and the behavior around them.
 
 ## Related pages
 
+- [CLI reference](cli.md)
 - [Interactive UI](interactive-ui.md)
 - [Resolution and semantics](resolution-and-semantics.md)
 - [Configuration](configuration.md)

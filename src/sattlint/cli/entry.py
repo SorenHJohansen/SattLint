@@ -161,6 +161,27 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
     _add_output_args(parser, formats=("json", "ndjson", "text"))
 
 
+def _build_review_parser(subparsers: _SubParserAction) -> None:
+    parser = subparsers.add_parser(
+        "review",
+        help="Generate Change Review JSON and Markdown artifacts without the interactive UI.",
+    )
+    _add_project_arg(parser)
+    parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Review only this target; repeatable. Defaults to every configured target.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        metavar="PATH",
+        help="Directory for the review artifacts. Defaults to the configured Change Review directory.",
+    )
+    _add_output_args(parser)
+
+
 def _build_findings_parser(subparsers: _SubParserAction) -> None:
     parser = subparsers.add_parser("findings", help="Query findings from a stored run.")
     _add_project_arg(parser)
@@ -301,6 +322,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     _build_project_parser(subparsers)
     _build_analyzers_parser(subparsers)
     _build_analyze_parser(subparsers)
+    _build_review_parser(subparsers)
     _build_findings_parser(subparsers)
     _build_show_parser(subparsers)
     _build_baseline_parser(subparsers)
@@ -313,6 +335,7 @@ def _handlers() -> dict[str, AppCommandFn]:
         "project": _dispatch_project,
         "analyzers": _dispatch_analyzers,
         "analyze": commands.command_analyze,
+        "review": commands.command_review,
         "findings": commands.command_findings,
         "show": commands.command_show,
         "baseline": _dispatch_baseline,
@@ -367,6 +390,7 @@ def _requested_format(argv: list[str]) -> str:
 
 _FILTER_ARGUMENTS: dict[str, tuple[str, ...]] = {
     "analyze": ("analyzer", "target", "module"),
+    "review": ("target",),
     "findings": ("analyzer", "target", "module", "kind", "rule"),
 }
 
@@ -400,7 +424,7 @@ def _validate_args(args: argparse.Namespace) -> None:
             code="usage_error",
             exit_code=EXIT_USAGE_ERROR,
         )
-    for attribute in ("baseline", "path"):
+    for attribute in ("baseline", "path", "output_dir"):
         value = getattr(args, attribute, None)
         if value is not None and not str(value).strip():
             raise _UsageError(

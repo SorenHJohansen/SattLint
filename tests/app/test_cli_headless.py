@@ -541,9 +541,11 @@ def test_analyze_refresh_ast_rebuilds_the_parsed_graph(
     capsys.readouterr()
 
 
-def test_parser_rejects_review_subcommand() -> None:
-    with pytest.raises(CliError):
-        build_cli_parser().parse_args(["review"])
+def test_parser_accepts_review_subcommand() -> None:
+    args = build_cli_parser().parse_args(["review"])
+    assert args.command == "review"
+    assert args.target == []
+    assert args.output_dir is None
 
 
 def test_project_show_text_and_discovery(
@@ -573,7 +575,8 @@ def test_project_show_text_and_discovery(
         "  maxstring: 140",
     ):
         assert line in out
-    assert "Analysis: (defaults)" in out
+    assert "Analysis:" in out
+    assert "source_byte_limit: 8388608" in out
     assert "Config:  " in out
 
 
