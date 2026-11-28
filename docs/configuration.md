@@ -20,6 +20,25 @@ validation rules.
 On first interactive launch SattLint creates the file from built-in defaults.
 The file is TOML.
 
+The file starts with a schema version:
+
+```toml
+schema_version = 1
+```
+
+A file written before the version key existed is version 0. Version 0 and
+version 1 have the same key shape, so reading a version 0 file applies the
+current defaults in memory; the file itself is not rewritten. The next save
+writes version 1. This build refuses to load or save a file whose version is
+higher than it supports, so a downgrade cannot silently discard settings. The
+message names the file, the version it declares, and the version this build
+supports; upgrade SattLint, or move the file aside to start from a fresh
+configuration.
+
+A key the current build does not understand is reported, not applied, and kept
+when the file is next saved. This holds for top-level keys and for keys inside a
+table with a fixed contract such as `[run_history]`.
+
 The same directory contains:
 
 - `projects/`, a location the interactive shell can use for project files;
@@ -33,6 +52,7 @@ configuration directory. See [Caching and runs](caching-and-runs.md).
 The built-in configuration is the base layer for every merge.
 
 ```toml
+schema_version = 1
 analyzed_programs_and_libraries = []
 mode = "official"
 debug = false
@@ -68,6 +88,7 @@ See [Analyzer settings](#analyzer-settings).
 
 | Key | Type | Purpose |
 | --- | --- | --- |
+| `schema_version` | integer | Configuration schema this file was written with. Managed by SattLint. |
 | `analyzed_programs_and_libraries` | list of strings | Default analysis targets. A project file normally supplies these. |
 | `mode` | `"official"` or `"draft"` | Which file variant the loader resolves. |
 | `debug` | boolean | Enables verbose diagnostics and debug-level logging. |
@@ -194,7 +215,8 @@ Configuration validation has two levels.
 
 **Value validation** checks shape and allowed keys:
 
-- unknown top-level or section keys are reported and stripped;
+- unknown top-level or section keys are reported and ignored for this run, and
+  kept unchanged when the file is next saved;
 - wrong types are load errors, for example `debug = "false"` or a string where
   a list is expected;
 - `mode` must be `official` or `draft`;
@@ -207,15 +229,18 @@ Configuration validation has two levels.
 
 **Filesystem validation** checks configured paths and targets:
 
-- `program_dir`, `ABB_lib_dir`, and `icf_dir` must exist and be readable when
-  set;
-- every `other_lib_dirs` entry must exist;
+- `program_dir` must exist and be readable when set;
+- `icf_dir` is checked only when the `icf` analyzer is selected;
+- `ABB_lib_dir` and every `other_lib_dirs` entry are checked only when a
+  configured target is not found under `program_dir` alone, because they are
+  optional inputs for targets that live elsewhere;
 - every configured target must resolve in one of the configured roots under the
   selected mode.
 
-A missing path is a warning at configuration load time and an error at analysis
-self-check time. This lets settings be edited while a directory is temporarily
-unavailable.
+An optional directory that nothing needs no longer blocks an unrelated run. A
+missing required path is a warning at configuration load time and an error at
+analysis self-check time. This lets settings be edited while a directory is
+temporarily unavailable.
 
 Saving settings performs value validation only. It never fails because a
 configured directory is temporarily missing.
@@ -242,10 +267,12 @@ Unknown project keys are ignored with a warning:
 Warning: Ignoring unknown .slproj key 'programdir' in my-project/.
 ```
 
-Unknown configuration keys are also reported before they are stripped, so a
-typo does not silently disable a setting. With `--format json` or `--format
-ndjson`, configuration warnings are attached to the CLI error envelope's
-`details` when a command fails.
+Unknown configuration keys are also reported before they are ignored, so a
+typo does not silently disable a setting. An unknown key stays in the file: it
+is written back unchanged on the next save, so downgrading and re-upgrading does
+not lose a setting. With `--format json` or `--format ndjson`, configuration
+warnings are attached to the CLI error envelope's `details` when a command
+fails.
 
 ## Environment variables
 

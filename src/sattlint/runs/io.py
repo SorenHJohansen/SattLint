@@ -595,9 +595,11 @@ def _lenient_text(payload: Mapping[str, object], key: str) -> str:
 def _read_summary_sidecar(runs_dir: Path, run_id: str) -> RunSummary | None:
     """Read a summary sidecar, ignoring one written by another build.
 
-    A missing, corrupt, or foreign sidecar returns nothing so the caller falls
-    back to the run record. That keeps the fast path for the common case while
-    making the record the single authority on whether a run can be read.
+    The sidecar must declare exactly this build's schema version; a missing or
+    different version means another build wrote it, so it returns nothing and
+    the caller falls back to the run record. The record then decides whether the
+    run is readable at all, which keeps listing and pruning in agreement and
+    prevents a foreign sidecar from hiding a skipped record.
     """
     path = _summary_path(runs_dir, run_id)
     if not path.exists():
@@ -610,8 +612,7 @@ def _read_summary_sidecar(runs_dir: Path, run_id: str) -> RunSummary | None:
     if not isinstance(payload, dict):
         return None
     payload_map = cast(dict[str, object], payload)
-    version = payload_map.get("schema_version")
-    if version is not None and version != RUN_RECORD_SCHEMA_VERSION:
+    if payload_map.get("schema_version") != RUN_RECORD_SCHEMA_VERSION:
         return None
     try:
         return RunSummary.from_dict(payload_map)
@@ -672,7 +673,9 @@ def _read_run_file(path: Path, run_id: str) -> RunRecord | SkippedRun | None:
         return SkippedRun(
             run_id=run_id,
             reason="unknown_schema",
-            detail=f"the record declares schema version {version!r}",
+            detail=(
+                f"the record declares schema version {version!r}; this build reads version {RUN_RECORD_SCHEMA_VERSION}"
+            ),
             project_path=_lenient_text(payload_map, "project_path"),
         )
     try:

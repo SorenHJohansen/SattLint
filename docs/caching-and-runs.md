@@ -197,9 +197,21 @@ A run record contains:
 - load and analyzer timings;
 - cancellation state.
 
-The record has its own schema version, independent of the analysis pipeline. A
-record from another schema version is not misread: `runs list` reports it as
-skipped and `runs prune` can remove it.
+The record has its own schema version, independent of the analysis pipeline.
+The current run schema version is 2. A record from another schema version is
+never misread: the store reports it as skipped instead of returning it as
+missing or as an empty run. Reading one record directly returns nothing for a
+version this build cannot read.
+
+A skipped record carries the run ID, a reason (`unknown_schema` or
+`unreadable`), and a detail message. For an unknown schema the detail names the
+version the record declares and the version this build reads. `runs list`
+reports every skipped record, and `runs prune` can remove it.
+
+A summary sidecar is used only when it declares this build's schema version. A
+missing or foreign version is ignored and the full record decides what happens,
+so a sidecar from another build cannot hide a record that this build must
+report as skipped.
 
 ### Run status and failures
 

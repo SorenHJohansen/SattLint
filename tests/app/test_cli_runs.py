@@ -384,8 +384,9 @@ def test_latest_findings_refuse_a_run_listed_from_a_legacy_sidecar_but_unreadabl
 
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
-    assert [run["run_id"] for run in payload["runs"]] == [unknown, readable.run_id]
-    assert payload["skipped_count"] == 0
+    assert [run["run_id"] for run in payload["runs"]] == [readable.run_id]
+    assert payload["skipped_count"] == 1
+    assert payload["skipped"][0]["run_id"] == unknown
 
     code = run_cli(["findings", "--project", str(project), "--run", "latest", "--format", "json"])
 

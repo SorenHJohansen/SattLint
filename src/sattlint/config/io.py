@@ -15,9 +15,14 @@ import tomli_w
 
 from .. import console as console_module
 from . import paths as _config_paths_module
-from .defaults import DEFAULT_CONFIG
+from .defaults import DEFAULT_CONFIG, VALID_TOP_LEVEL_CONFIG_KEYS
 from .types import ConfigDict, ConfigObjectMap, ConfigOverrideDict
 from .validation import (
+    VALID_ANALYSIS_KEYS,
+    VALID_OUTPUT_KEYS,
+    VALID_REVIEW_KEYS,
+    VALID_RUN_HISTORY_KEYS,
+    VALID_STRING_CAPACITY_KEYS,
     ConfigValidationError,
     deep_merge_dict,
     load_time_config_warnings,
@@ -27,6 +32,24 @@ from .validation import (
 )
 
 emit_output = console_module.print_output
+
+#: The configuration file schema this build reads and writes.
+CONFIG_SCHEMA_VERSION = 1
+#: The top-level key that records the configuration file schema version.
+CONFIG_SCHEMA_VERSION_KEY = "schema_version"
+
+#: Keys owned by the current build in each table that has a fixed contract.
+_SECTION_VALID_KEYS: dict[str, frozenset[str]] = {
+    "analysis": VALID_ANALYSIS_KEYS,
+    "run_history": VALID_RUN_HISTORY_KEYS,
+    "output": VALID_OUTPUT_KEYS,
+    "review": VALID_REVIEW_KEYS,
+    "string_capacities": VALID_STRING_CAPACITY_KEYS,
+}
+
+
+class ConfigVersionError(ValueError):
+    """A configuration file declares a schema version this build cannot handle."""
 
 
 def _merged_effective_config(cfg: ConfigDict | ConfigOverrideDict) -> ConfigDict:
@@ -59,6 +82,82 @@ def get_config_path() -> Path:
     return _config_paths_module.get_config_path()
 
 
+def _schema_version(payload: ConfigObjectMap, path: Path) -> int:
+    """The schema version recorded in *payload*; a missing key means version 0."""
+    value = payload.get(CONFIG_SCHEMA_VERSION_KEY)
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ConfigVersionError(
+            f"Configuration file {path} has an invalid {CONFIG_SCHEMA_VERSION_KEY} {value!r}; "
+            "expected a non-negative integer."
+        )
+    return value
+
+
+def _newer_config_message(path: Path, version: int, *, for_save: bool) -> str:
+    message = (
+        f"Cannot {'save' if for_save else 'load'} configuration file {path}: "
+        f"it declares schema version {version}, but this build supports version {CONFIG_SCHEMA_VERSION}."
+    )
+    if for_save:
+        message += " Saving would discard settings this build does not understand."
+    return f"{message} Upgrade SattLint to use this file, or move it aside to create a fresh configuration."
+
+
+def _read_existing_config(path: Path) -> ConfigObjectMap | None:
+    """The raw contents of an existing config file, if it can be read as TOML.
+
+    A missing or unreadable file returns nothing. The caller then writes the
+    configuration it was given, which is the only sane choice for a file that
+    cannot be parsed.
+    """
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as file_handle:
+            return cast(ConfigObjectMap, tomllib.load(file_handle))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+
+
+def _preserve_unknown_keys(incoming: ConfigObjectMap, existing: ConfigObjectMap) -> ConfigObjectMap:
+    """Copy keys this build does not understand from *existing* into *incoming*.
+
+    Known keys come from the caller, so a settings change still replaces them.
+    Every other key in the file is carried over verbatim, including keys inside
+    a table with a fixed contract. Saving therefore never deletes a setting a
+    newer build wrote.
+    """
+    preserved = deepcopy(incoming)
+
+    for key, value in existing.items():
+        if key == CONFIG_SCHEMA_VERSION_KEY or key in VALID_TOP_LEVEL_CONFIG_KEYS:
+            continue
+        preserved.setdefault(key, deepcopy(value))
+
+    for section_name, valid_keys in _SECTION_VALID_KEYS.items():
+        existing_section = existing.get(section_name)
+        if not isinstance(existing_section, dict):
+            continue
+        unknown = {
+            key: deepcopy(value)
+            for key, value in cast(ConfigObjectMap, existing_section).items()
+            if key not in valid_keys
+        }
+        if not unknown:
+            continue
+        incoming_section = preserved.get(section_name)
+        if isinstance(incoming_section, dict):
+            incoming_map = cast(ConfigObjectMap, incoming_section)
+            for key, value in unknown.items():
+                incoming_map.setdefault(key, value)
+        elif incoming_section is None:
+            preserved[section_name] = unknown
+
+    return preserved
+
+
 def config_path_location() -> Path:
     return _config_paths_module.config_path_location()
 
@@ -80,7 +179,17 @@ def load_config(path: Path, *, emit_fn: Callable[[str], None] | None = None) -> 
         return cfg, True
 
     with path.open("rb") as file_handle:
-        cfg = cast(ConfigOverrideDict, tomllib.load(file_handle))
+        raw = cast(ConfigObjectMap, tomllib.load(file_handle))
+
+    version = _schema_version(raw, path)
+    if version > CONFIG_SCHEMA_VERSION:
+        raise ConfigVersionError(_newer_config_message(path, version, for_save=False))
+    # Version 0 files predate the version key and already have the version 1
+    # key shape, so reading them with the current defaults is the whole
+    # in-memory migration. A load never rewrites the file; the next save writes
+    # the current version.
+    raw.pop(CONFIG_SCHEMA_VERSION_KEY, None)
+    cfg = cast(ConfigOverrideDict, raw)
 
     # Report unknown keys before stripping them, otherwise a typo vanishes silently.
     for warning in load_time_config_warnings(cfg):
@@ -107,10 +216,20 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
     if not isinstance(sanitized_cfg_obj, dict):
         raise ValueError("Config serialization must produce a table/object.")
     sanitized_cfg: ConfigObjectMap = cast(ConfigObjectMap, sanitized_cfg_obj)
+    # The version is this build's, not the caller's: a copy loaded from another
+    # file must not carry that file's version into this one.
+    sanitized_cfg.pop(CONFIG_SCHEMA_VERSION_KEY, None)
 
     validation_messages = _value_validation_errors(cast(ConfigOverrideDict, sanitized_cfg))
     if validation_messages:
         raise ValueError(_validation_failure_message(validation_messages))
+
+    existing = _read_existing_config(path)
+    if existing is not None:
+        existing_version = _schema_version(existing, path)
+        if existing_version > CONFIG_SCHEMA_VERSION:
+            raise ConfigVersionError(_newer_config_message(path, existing_version, for_save=True))
+        sanitized_cfg = _preserve_unknown_keys(sanitized_cfg, existing)
 
     def normalize(value: object) -> object:
         if isinstance(value, Path):
@@ -129,12 +248,13 @@ def save_config(path: Path, cfg: ConfigDict | ConfigOverrideDict) -> None:
     serializable_cfg = normalize(sanitized_cfg)
     if not isinstance(serializable_cfg, dict):
         raise ValueError("Config serialization must produce a table/object.")
+    serializable_map = cast(dict[str, Any], serializable_cfg)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
         with temp_path.open("wb") as file_handle:
-            tomli_w.dump(cast(dict[str, Any], serializable_cfg), file_handle)
+            tomli_w.dump({CONFIG_SCHEMA_VERSION_KEY: CONFIG_SCHEMA_VERSION, **serializable_map}, file_handle)
             file_handle.flush()
             os.fsync(file_handle.fileno())
         os.replace(temp_path, path)
@@ -153,8 +273,9 @@ def save_app_settings(path: Path, cfg: ConfigDict) -> None:
     Loads the existing config file (or defaults when missing) and overwrites
     only the user-scoped app keys (``debug``, ``run_history``, ``output``), so
     writing app settings never pollutes a project file with project keys.
-    Unknown/stale keys in the existing file are stripped, mirroring
-    :func:`load_config`, so an out-of-sync file does not fail the save.
+    Unknown/stale keys are dropped from this in-memory copy so validation sees
+    only the current contract; :func:`save_config` re-reads the file and writes
+    those keys back unchanged, so they are preserved on disk.
     """
     if path.exists():
         with path.open("rb") as file_handle:
@@ -162,6 +283,7 @@ def save_app_settings(path: Path, cfg: ConfigDict) -> None:
     else:
         existing = cast(ConfigObjectMap, deepcopy(DEFAULT_CONFIG))
 
+    existing.pop(CONFIG_SCHEMA_VERSION_KEY, None)
     strip_unknown_keys(cast(ConfigOverrideDict, existing))
 
     for key in APP_LEVEL_CONFIG_KEYS:
