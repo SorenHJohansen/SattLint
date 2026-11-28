@@ -15,10 +15,17 @@ code.
 | Command | Purpose |
 |---|---|
 | `sattlint project show` | Show the resolved project settings |
+| `sattlint project targets` | List configured targets with kind and path |
+| `sattlint project init` | Create a minimal version 2 project file |
+| `sattlint project check` | Validate schema, roots, and targets without analysis |
 | `sattlint analyzers list` | List analyzer keys, categories, and rule IDs |
 | `sattlint analyze` | Run analyzers and report findings |
+| `sattlint review` | Generate Change Review JSON and Markdown artifacts |
 | `sattlint findings` | Query findings from a stored run |
 | `sattlint show` | Show one finding by its stable ID |
+| `sattlint runs list` | List stored runs with status and counts |
+| `sattlint runs show` | Show one stored run with analyzer and failure detail |
+| `sattlint runs prune` | Remove run records this build cannot read |
 | `sattlint baseline update` | Accept the current findings as the checked-in baseline |
 | `sattlint baseline diff` | Compare a stored run with the baseline without writing it |
 
@@ -51,6 +58,24 @@ Options: `--project`, `--format {json,text}`, `--output`, `--quiet`.
 
 Use it to confirm which directories, targets, and mode an analysis will use.
 
+## `sattlint project targets`, `init`, and `check`
+
+- `project targets` scans the configured roots and lists each unit name with its
+  inferred kind and resolved path. Duplicate names in one root are warnings; a
+  name provided by two roots, a name that keeps a file suffix, and a missing
+  target are errors.
+- `project init` writes a minimal version 2 file at a directory or `.slproj`
+  path and refuses to overwrite.
+- `project check` validates the schema, the conditional filesystem rules, and
+  target identity. It exits `0` for a valid project and `1` for a reported
+  error.
+
+```bash
+sattlint project init
+sattlint project targets
+sattlint project check
+```
+
 ## `sattlint analyzers list`
 
 Lists every analyzer that can be selected, with its key, category, and rule
@@ -78,7 +103,7 @@ Runs the selected analyzers against the project targets and reports findings.
 | `--baseline PATH` | Compare with a checked-in baseline and fail only on new or more severe findings |
 | `--no-cache` | Skip the analysis cache for this run |
 | `--no-save` | Do not store the run in run history |
-| `--format {json,ndjson,text}` | Output format; default `text` |
+| `--format {json,ndjson,sarif,text}` | Output format; default `text` |
 | `--output PATH` | Write output to a file instead of stdout |
 | `--quiet` | Suppress progress and diagnostics on stderr |
 
@@ -88,6 +113,7 @@ sattlint analyze --project app.slproj --analyzer variables --format ndjson
 sattlint analyze --project app.slproj --module Root.A --fail-on none --format json
 sattlint analyze --project app.slproj --fail-on warning
 sattlint analyze --project app.slproj --no-cache --no-save
+sattlint analyze --project app.slproj --format sarif --output build/sattlint.sarif
 ```
 
 Every finding carries a severity of `error`, `warning`, or `info`. A proven
@@ -115,6 +141,33 @@ A record datatype that has no declaration or field access anywhere is
 reported once, as an unused datatype. Once any field is touched, the
 report names the fields that stay unused instead.
 
+## `sattlint review`
+
+Generates the Change Review JSON and Markdown artifacts without the TUI.
+
+```bash
+sattlint review --project app.slproj --output-dir change-review --format json --quiet
+```
+
+Exit `0` when every selected target generated artifacts, `1` for a partial
+review, and `2` when nothing was generated or the input is unusable. A missing
+output directory is created. See [Change Review](docs/change-review.md).
+
+## `sattlint runs list`, `show`, and `prune`
+
+List stored runs with their status and counts, inspect one run's analyzers and
+failure detail, and remove records this build cannot read.
+
+```bash
+sattlint runs list --format json
+sattlint runs show latest
+sattlint runs prune
+```
+
+`findings --run latest` refuses a failed or unreadable newest record with exit
+`2` instead of returning an older success. A plain prune removes only unreadable
+records; `--keep N` adds a bounded retention cut.
+
 ## `sattlint findings`
 
 Reads findings from a stored run without analyzing again.
@@ -126,11 +179,11 @@ Reads findings from a stored run without analyzing again.
 | `--target NAME` | Filter by target name; repeatable |
 | `--module PREFIX` | Filter by module path prefix; repeatable |
 | `--exact-module` | Require an exact module path match |
-| `--kind KIND` | Filter by finding kind; repeatable |
-| `--rule RULE` | Filter by rule ID, falling back to the finding kind when a finding carries no rule ID; repeatable |
-| `--group-by {none,module,analyzer,kind}` | Also return grouped counts; default `none` |
+| `--kind KIND` | Filter by finding kind or documented label; repeatable |
+| `--rule RULE` | Filter by rule ID, finding kind, or documented label; repeatable |
+| `--group-by {none,module,analyzer,target,kind}` | Also return grouped counts; default `none` |
 | `--limit N` | Return at most N findings after filtering |
-| `--format {json,ndjson,text}` | Output format; default `text` |
+| `--format {json,ndjson,sarif,text}` | Output format; default `text` |
 | `--output PATH` | Write output to a file instead of stdout |
 | `--quiet` | Suppress progress and diagnostics on stderr |
 

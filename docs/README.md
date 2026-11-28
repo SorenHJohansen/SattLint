@@ -17,6 +17,7 @@ same pull request.
 | [Project files](project-files.md) | Write or review a `.slproj` file and understand every setting. |
 | [Configuration](configuration.md) | Understand the user configuration, defaults, merging, and validation. |
 | [CLI reference](cli.md) | Automate SattLint with the headless commands and stable output contracts. |
+| [Adopting SattLint in CI](consumer-ci.md) | Add SattLint to a team pipeline with SARIF, a baseline, and review artifacts. |
 | [Analyzers](analyzers.md) | Choose analyzers, understand what each one reports, and add your own. |
 
 ## How SattLint works

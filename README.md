@@ -24,6 +24,7 @@ with the page that matches what you are doing:
 - [Project files](docs/project-files.md) and
   [Configuration](docs/configuration.md) for settings
 - [CLI reference](docs/cli.md) for automation
+- [Adopting SattLint in CI](docs/consumer-ci.md) for a team pipeline
 - [Analyzers](docs/analyzers.md) for every check and its selection
 - [Architecture](docs/architecture.md) for how the code is organized
 - [Change Review](docs/change-review.md) for official-versus-draft reviews

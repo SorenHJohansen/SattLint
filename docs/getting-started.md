@@ -89,6 +89,19 @@ A `.slproj` file is the checked-in description of one analysis project. Create
 a file named `.slproj` at the root of the SattLine code you want to analyze, or
 create one from the interactive shell with **New Configuration**.
 
+From a shell, start with the scaffold and let the target scan name the units:
+
+```bash
+cd path/to/your/sattline/code
+sattlint project init
+sattlint project targets
+```
+
+`project init` writes a minimal version 2 `.slproj` in the current directory and
+refuses to overwrite an existing file. `project targets` lists each unit it can
+find, with its inferred kind and resolved path, so you can copy valid names into
+the project.
+
 A minimal version 2 project looks like this:
 
 ```toml
@@ -128,6 +141,17 @@ sattlint project show --format text
 `project show` resolves project settings over the user configuration and prints
 the effective targets, mode, analyzer selection, string capacities, paths, run
 history directory, Change Review directory, and configuration file location.
+
+Confirm that the schema, roots, and targets are usable before running:
+
+```bash
+sattlint project check
+```
+
+`project check` exits `0` when the project is valid and `1` when it names a
+target that no configured root provides, a suffix that should be stripped, or a
+required directory that is missing. An optional directory that no analyzer needs
+does not fail the check.
 
 To confirm the analyzer keys you can select:
 
