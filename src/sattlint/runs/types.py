@@ -8,12 +8,26 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
+from itertools import chain
+from typing import Literal, cast
 
 from ..application.findings import AnalysisFinding, optional_text
 from ..core.timings import NamedTimings, PhaseTiming
 
 RUN_RECORD_SCHEMA_VERSION = 2
+
+#: A run that completed and stored every selected analyzer's result.
+RUN_STATUS_OK = "ok"
+#: A run that stopped before it could produce a usable result set.
+RUN_STATUS_FAILED = "failed"
+#: A stored run that the user interrupted.
+RUN_STATUS_CANCELLED = "cancelled"
+
+type RunStatus = Literal["ok", "failed", "cancelled"]
+#: Why a stored run file is listed but not readable by this build.
+type RunSkipReason = Literal["unknown_schema", "unreadable"]
+#: What a stored failure belongs to.
+type RunFailureKind = Literal["target", "analyzer", "preflight"]
 
 
 def _text_field(payload: Mapping[str, object], key: str, *, default: str = "") -> str:
@@ -241,6 +255,55 @@ class RunTargetRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class RunFailure:
+    """One reason a run did not complete, stored beside the run record."""
+
+    kind: RunFailureKind
+    message: str
+    target: str = ""
+    analyzer: str = ""
+    path: str | None = None
+    line: int | None = None
+    column: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "message": self.message,
+            "target": self.target,
+            "analyzer": self.analyzer,
+            "path": self.path,
+            "line": self.line,
+            "column": self.column,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> RunFailure:
+        kind = _text_field(payload, "kind", default="preflight") or "preflight"
+        return cls(
+            kind=cast(RunFailureKind, kind),
+            message=_text_field(payload, "message"),
+            target=_text_field(payload, "target"),
+            analyzer=_text_field(payload, "analyzer"),
+            path=optional_text(payload.get("path")),
+            line=_optional_int_field(payload, "line"),
+            column=_optional_int_field(payload, "column"),
+        )
+
+
+def _failure_tuple(values: object) -> tuple[RunFailure, ...]:
+    if values is None:
+        return ()
+    if not isinstance(values, (list, tuple)):
+        raise ValueError("run field 'failures' must be a list of objects")
+    return tuple(
+        RunFailure.from_dict(cast(Mapping[str, object], failure))
+        for failure in cast(Sequence[object], values)
+        if isinstance(failure, Mapping)
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class RunRecord:
     run_id: str
     started_at: str
@@ -254,6 +317,10 @@ class RunRecord:
     output_lines: tuple[str, ...] = ()
     truncated: bool = False
     truncation_note: str | None = None
+    # Records written before failure visibility existed load as a completed run.
+    status: RunStatus = RUN_STATUS_OK
+    failures: tuple[RunFailure, ...] = ()
+    failure_message: str | None = None
 
     @property
     def target_count(self) -> int:
@@ -268,6 +335,33 @@ class RunRecord:
         return sum(len(analyzer.findings) for target in self.targets for analyzer in target.analyzers) + sum(
             len(analyzer.findings) for analyzer in self.project_analyzers
         )
+
+    @property
+    def failed_analyzers(self) -> tuple[RunAnalyzerRecord, ...]:
+        return tuple(
+            analyzer
+            for analyzer in chain(
+                (analyzer for target in self.targets for analyzer in target.analyzers),
+                self.project_analyzers,
+            )
+            if analyzer.status == "failed"
+        )
+
+    @property
+    def effective_status(self) -> RunStatus:
+        """The status to report, deriving a failure a stored record implies.
+
+        An explicit status wins. Otherwise a cancelled run, or one whose
+        analyzer recorded a failure, is reported as such even when the record
+        was written by a build that had no run-level status.
+        """
+        if self.status != RUN_STATUS_OK:
+            return self.status
+        if self.cancelled:
+            return RUN_STATUS_CANCELLED
+        if self.failed_analyzers:
+            return RUN_STATUS_FAILED
+        return RUN_STATUS_OK
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -284,6 +378,9 @@ class RunRecord:
             "output_lines": list(self.output_lines),
             "truncated": self.truncated,
             "truncation_note": self.truncation_note,
+            "status": self.status,
+            "failures": [failure.to_dict() for failure in self.failures],
+            "failure_message": self.failure_message,
         }
 
     @classmethod
@@ -308,6 +405,7 @@ class RunRecord:
             if isinstance(raw_targets, (list, tuple))
             else ()
         )
+        status = _text_field(payload, "status", default=RUN_STATUS_OK) or RUN_STATUS_OK
         return cls(
             run_id=_text_field(payload, "run_id"),
             started_at=_text_field(payload, "started_at"),
@@ -322,7 +420,28 @@ class RunRecord:
             # Records written before record bounds existed carry neither field.
             truncated=_bool_field(payload, "truncated"),
             truncation_note=optional_text(payload.get("truncation_note")),
+            status=cast(RunStatus, status),
+            failures=_failure_tuple(payload.get("failures")),
+            failure_message=optional_text(payload.get("failure_message")),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SkippedRun:
+    """A run file that this build lists but cannot load."""
+
+    run_id: str
+    reason: RunSkipReason
+    detail: str = ""
+    project_path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RunScan:
+    """Readable run summaries and the files that were skipped, both newest-first."""
+
+    summaries: tuple[RunSummary, ...] = ()
+    skipped: tuple[SkippedRun, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +455,8 @@ class RunSummary:
     issue_count: int
     cancelled: bool
     project_path: str = ""
+    status: RunStatus = RUN_STATUS_OK
+    failure_count: int = 0
 
     @classmethod
     def from_record(cls, record: RunRecord) -> RunSummary:
@@ -349,6 +470,8 @@ class RunSummary:
             issue_count=record.issue_count,
             cancelled=record.cancelled,
             project_path=record.project_path,
+            status=record.effective_status,
+            failure_count=len(record.failures) + len(record.failed_analyzers),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -362,10 +485,13 @@ class RunSummary:
             "issue_count": self.issue_count,
             "cancelled": self.cancelled,
             "project_path": self.project_path,
+            "status": self.status,
+            "failure_count": self.failure_count,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RunSummary:
+        status = _text_field(payload, "status", default=RUN_STATUS_OK) or RUN_STATUS_OK
         return cls(
             run_id=_text_field(payload, "run_id"),
             started_at=_text_field(payload, "started_at"),
@@ -377,13 +503,25 @@ class RunSummary:
             cancelled=_bool_field(payload, "cancelled"),
             # Older records and sidecars predate the field; an empty path means unknown.
             project_path=_text_field(payload, "project_path"),
+            # Sidecars written before failure visibility existed describe a completed run.
+            status=cast(RunStatus, status),
+            failure_count=_int_field(payload, "failure_count"),
         )
 
 
 __all__ = [
     "RUN_RECORD_SCHEMA_VERSION",
+    "RUN_STATUS_CANCELLED",
+    "RUN_STATUS_FAILED",
+    "RUN_STATUS_OK",
     "RunAnalyzerRecord",
+    "RunFailure",
+    "RunFailureKind",
     "RunRecord",
+    "RunScan",
+    "RunSkipReason",
+    "RunStatus",
     "RunSummary",
     "RunTargetRecord",
+    "SkippedRun",
 ]

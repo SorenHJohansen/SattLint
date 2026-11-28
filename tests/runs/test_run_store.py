@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -13,6 +14,8 @@ from sattlint.cli._findings import flat_findings
 from sattlint.core.timings import NamedTimings, PhaseTiming
 from sattlint.runs import (
     RunAnalyzerRecord,
+    RunFailure,
+    RunHistoryPolicy,
     RunModuleRecord,
     RunRecord,
     RunSummary,
@@ -23,8 +26,12 @@ from sattlint.runs import (
     load_run,
     load_run_acknowledgements,
     prune_runs,
+    prune_unreadable_runs,
+    run_history_policy,
     save_run,
     save_run_acknowledgements,
+    save_run_for_history,
+    scan_runs,
 )
 from sattlint.runs import io as runs_io
 
@@ -794,3 +801,173 @@ def test_legacy_run_record_without_truncation_fields_still_loads(tmp_path: Path)
     assert loaded is not None
     assert loaded.truncated is False
     assert loaded.truncation_note is None
+
+
+def test_run_record_round_trips_status_and_failures() -> None:
+    failure = RunFailure(
+        kind="target",
+        message="root module could not be parsed",
+        target="Other",
+        path="/work/programs/Other.s",
+        line=12,
+        column=4,
+    )
+    record = replace(
+        _sample_record(),
+        status="failed",
+        failures=(failure,),
+        failure_message="Analysis stopped because 1 target could not be loaded.",
+    )
+
+    restored = RunRecord.from_dict(record.to_dict())
+
+    assert restored.status == "failed"
+    assert restored.failures == (failure,)
+    assert restored.failure_message == record.failure_message
+    assert restored.effective_status == "failed"
+
+    summary = RunSummary.from_record(restored)
+    assert summary.status == "failed"
+    assert summary.failure_count == 1
+    assert RunSummary.from_dict(summary.to_dict()) == summary
+
+
+def test_legacy_run_records_default_to_a_completed_status() -> None:
+    payload = _sample_record().to_dict()
+    payload.pop("status")
+    payload.pop("failures")
+    payload.pop("failure_message")
+
+    record = RunRecord.from_dict(payload)
+
+    assert record.status == "ok"
+    assert record.failures == ()
+    assert record.failure_message is None
+    assert record.effective_status == "ok"
+
+
+def test_run_status_and_failure_count_derive_from_a_failed_analyzer() -> None:
+    record = replace(_sample_record(), status="ok")
+    target = record.targets[0]
+    failed = replace(target.analyzers[0], status="failed", summary="engine error")
+    record = replace(record, targets=(replace(target, analyzers=(failed,)),))
+
+    assert record.effective_status == "failed"
+    summary = RunSummary.from_record(record)
+    assert summary.status == "failed"
+    assert summary.failure_count == 1
+
+
+def test_scan_runs_reports_unknown_schema_and_unreadable_records(tmp_path: Path) -> None:
+    readable = save_run(_sample_record(), runs_dir=tmp_path)
+    unknown = tmp_path / "0000unknown.json"
+    unknown.write_text(
+        json.dumps({"schema_version": 999, "run_id": "0000unknown", "project_path": "/work/demo.slproj"}),
+        encoding="utf-8",
+    )
+    broken = tmp_path / "0000broken.json"
+    broken.write_text("not json", encoding="utf-8")
+
+    scan = scan_runs(runs_dir=tmp_path)
+
+    assert [summary.run_id for summary in scan.summaries] == [readable.run_id]
+    assert {entry.run_id: entry.reason for entry in scan.skipped} == {
+        "0000unknown": "unknown_schema",
+        "0000broken": "unreadable",
+    }
+    skipped_unknown = next(entry for entry in scan.skipped if entry.run_id == "0000unknown")
+    assert skipped_unknown.project_path == "/work/demo.slproj"
+    assert list_runs(runs_dir=tmp_path) == scan.summaries
+    assert load_run("0000unknown", runs_dir=tmp_path) is None
+
+
+def test_scan_runs_ignores_a_summary_sidecar_from_another_schema(tmp_path: Path) -> None:
+    record = save_run(_sample_record(), runs_dir=tmp_path)
+    summary_path = tmp_path / f"{record.run_id}.summary"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 999
+    summary_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    scan = scan_runs(runs_dir=tmp_path)
+
+    # The record itself is current, so listing summarizes it and ignores the
+    # foreign sidecar instead of hiding a run that can be read.
+    assert [summary.run_id for summary in scan.summaries] == [record.run_id]
+    assert scan.summaries[0].issue_count == 1
+    assert scan.skipped == ()
+
+
+def test_prune_unreadable_runs_keeps_every_readable_record(tmp_path: Path) -> None:
+    kept = [save_run(_sample_record(), runs_dir=tmp_path) for _ in range(2)]
+    (tmp_path / "0000unknown.json").write_text(
+        json.dumps({"schema_version": 999, "run_id": "0000unknown"}), encoding="utf-8"
+    )
+    (tmp_path / "0000broken.json").write_text("not json", encoding="utf-8")
+
+    report = prune_unreadable_runs(runs_dir=tmp_path)
+
+    assert report.removed == 2
+    assert report.unreadable == 2
+    assert report.over_limit == 0
+    assert report.kept == 2
+    assert set(report.removed_run_ids) == {"0000unknown", "0000broken"}
+    assert {summary.run_id for summary in list_runs(runs_dir=tmp_path)} == {record.run_id for record in kept}
+    assert not (tmp_path / "0000unknown.json").exists()
+    assert not (tmp_path / "0000broken.json").exists()
+
+
+def test_prune_unreadable_runs_drops_older_readable_records_only_with_keep(tmp_path: Path) -> None:
+    run_ids = ["20260101T000000000000Z-aaa", "20260102T000000000000Z-bbb", "20260103T000000000000Z-ccc"]
+    for run_id in run_ids:
+        save_run(
+            RunRecord(
+                run_id=run_id,
+                started_at="2026-01-01T00:00:00Z",
+                finished_at="2026-01-01T00:00:01Z",
+                project_tag="RootProgram",
+            ),
+            runs_dir=tmp_path,
+        )
+
+    report = prune_unreadable_runs(runs_dir=tmp_path, keep=1)
+
+    assert report.removed == 2
+    assert report.unreadable == 0
+    assert report.over_limit == 2
+    assert report.kept == 1
+    assert [summary.run_id for summary in list_runs(runs_dir=tmp_path)] == [run_ids[-1]]
+
+
+def test_run_history_policy_reads_the_merged_config() -> None:
+    default = run_history_policy({})
+    assert default == RunHistoryPolicy(enabled=True, limit=runs_io.DEFAULT_RUN_HISTORY_LIMIT)
+
+    disabled = run_history_policy({"run_history": {"enabled": False, "limit": 0}})
+    assert disabled == RunHistoryPolicy(enabled=False, limit=runs_io.DEFAULT_RUN_HISTORY_LIMIT)
+
+
+def test_save_run_for_history_prunes_and_respects_a_disabled_policy(tmp_path: Path) -> None:
+    def _record(run_id: str) -> RunRecord:
+        return RunRecord(
+            run_id=run_id,
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            project_tag="RootProgram",
+        )
+
+    policy = RunHistoryPolicy(enabled=True, limit=1)
+    first = save_run_for_history(_record("20260101T000000000000Z-aaa"), policy=policy, runs_dir=tmp_path)
+    second = save_run_for_history(_record("20260102T000000000000Z-bbb"), policy=policy, runs_dir=tmp_path)
+
+    assert first is not None
+    assert second is not None
+    assert [summary.run_id for summary in list_runs(runs_dir=tmp_path)] == [second.run_id]
+
+    skipped = save_run_for_history(
+        _record("20260103T000000000000Z-ccc"),
+        policy=RunHistoryPolicy(enabled=False, limit=1),
+        runs_dir=tmp_path,
+    )
+
+    assert skipped is None
+    assert [summary.run_id for summary in list_runs(runs_dir=tmp_path)] == [second.run_id]

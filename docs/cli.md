@@ -19,6 +19,9 @@ contracts.
 | `sattlint analyze` | Run analyzers and report findings. |
 | `sattlint findings` | Query findings from a stored run. |
 | `sattlint show` | Show one finding by its stable ID. |
+| `sattlint runs list` | List stored runs with status and counts. |
+| `sattlint runs show` | Show one stored run, including analyzer and failure detail. |
+| `sattlint runs prune` | Remove run records this build cannot read. |
 | `sattlint baseline update` | Accept the current findings as the checked-in baseline. |
 | `sattlint baseline diff` | Compare a stored run with the baseline without writing it. |
 | `sattlint --version` | Print the package version. |
@@ -40,8 +43,10 @@ Every analysis command needs a `.slproj` project file.
   discovery.
 - Project settings merge over the user configuration.
 
-`findings` and `show` use the same discovery rule to scope stored-run queries.
-`latest` resolves to the newest run recorded for the resolved project.
+`findings`, `show`, `runs list`, and `runs show` use the same discovery rule to
+scope stored-run queries. `latest` resolves to the newest run recorded for the
+resolved project. `runs list` with no discoverable project lists every stored
+run; `runs show latest` still requires a scope.
 
 See [Project files](project-files.md) for the schema and merge rules.
 
@@ -197,8 +202,11 @@ remainder is summarized as a count.
 
 If every target fails, an analyzer raises, or the self-check fails, the command
 writes diagnostics to stderr, removes any previous `--output` file, and returns
-exit code `2`. A cancelled run returns `130` and also removes the stale output
-file. This prevents a pipeline from archiving an old result as if it were fresh.
+exit code `2`. The run is stored with a `failed` status and its failure detail,
+so it becomes `latest` instead of an older successful run. `findings --run
+latest` then exits `2` and names the failed run. A cancelled run returns `130`
+and removes the stale output file; it is not stored. This prevents a pipeline
+from archiving an old result as if it were fresh.
 
 `--quiet` suppresses the unknown-project-key warning and the human summary, but
 never the final error line.
@@ -249,6 +257,14 @@ Rules:
 - With no discoverable project, `latest` is refused with exit code `2` and a
   message that asks for `--project` or an explicit `--run`. An explicit run ID
   needs no project.
+- `latest` includes a failed run. When the newest record failed, the command
+  exits `2` with the `run_failed` code and a message that names the run and
+  points at `sattlint runs show`; it never returns an older run's findings. An
+  explicit `--run ID` naming a failed run is refused the same way.
+- When a record newer than the resolved run cannot be read, `latest` exits `2`
+  with the `run_unreadable` code instead of falling back to an older record.
+  `sattlint runs list` names the skipped record and `sattlint runs prune`
+  removes it.
 - Text and NDJSON output name the resolved project next to the run.
 
 ```bash
@@ -288,8 +304,91 @@ when the finding records them. Markdown output adds `Severity` and `Location`
 bullets. A location the analyzer does not know is omitted rather than shown as
 zero.
 
-A missing finding, an ambiguous run identifier, or an unscoped `latest` is an
-error with exit code `2`.
+A missing finding, an ambiguous run identifier, an unscoped `latest`, or a
+newest run that failed is an error with exit code `2`.
+
+## `sattlint runs`
+
+Run-history commands read the stored records without analyzing again.
+
+### `sattlint runs list`
+
+Lists stored runs newest first. Each row shows the run ID, start time, target
+count, finding count, status, and project.
+
+| Option | Effect |
+| --- | --- |
+| `--project PATH` | Project file or directory that scopes the listing. |
+| `--limit N` | Show at most N runs. |
+| `--format {json,text}` | Output format; default `text`. |
+| `--output PATH` | Write output to a file instead of stdout. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+- With `--project`, only runs recorded for that project are listed.
+- Without it, discovery walks up from the current directory. When no project is
+  found, every stored run is listed.
+- Records this build cannot read are counted and named after the table, with
+  the reason. They are never silently dropped.
+- The JSON document carries `project`, `runs`, `skipped`, and `skipped_count`.
+  Each run carries `run_id`, `started_at`, `finished_at`, `project_tag`,
+  `project_path`, `target_count`, `analyzer_count`, `finding_count`,
+  `failure_count`, and `status`.
+
+```bash
+sattlint runs list --project app.slproj
+sattlint runs list --format json --limit 5
+```
+
+### `sattlint runs show`
+
+Shows one stored run: the same summary as `runs list`, plus the selected
+analyzers, one line per analyzer result, and every recorded failure.
+
+| Option | Effect |
+| --- | --- |
+| `RUN_ID` | Run ID, unique prefix, or `latest`; default `latest`. |
+| `--project PATH` | Project file or directory that scopes `latest`. |
+| `--format {json,text}` | Output format; default `text`. |
+| `--output PATH` | Write output to a file instead of stdout. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+`runs show` always displays a failed run; it does not apply the refusal
+`findings` uses. The JSON document adds `cancelled`, `selected_analyzers`,
+`truncated`, `truncation_note`, `failure_message`, `failure_reason`,
+`analyzers`, `failures`, and `output_line_count`. An analyzer entry names its
+target, key, name, status, finding count, duration, summary, and skip reason. A
+failure entry carries `kind`, the `target` and `analyzer` it belongs to, a
+message, and the file, line, and column when known.
+
+```bash
+sattlint runs show latest --project app.slproj
+sattlint runs show 20261128T101500000000Z-abc123 --format json
+```
+
+`latest` resolves within the project and refuses with exit code `2` when no
+project can be discovered, when a newer record cannot be read, or when the run
+does not exist.
+
+### `sattlint runs prune`
+
+Removes run records this build cannot load, such as a record from another
+schema version or a corrupt file, together with their sidecars.
+
+| Option | Effect |
+| --- | --- |
+| `--keep N` | Also delete readable records older than the newest N. |
+| `--format {json,text}` | Output format; default `text`. |
+| `--output PATH` | Write output to a file instead of stdout. |
+| `--quiet` | Suppress progress and diagnostics on stderr. |
+
+A plain prune deletes only records it cannot read. A readable record is deleted
+only when `--keep N` asks for a bounded history. The JSON document carries
+`removed`, `unreadable`, `over_limit`, `kept`, and `removed_run_ids`.
+
+```bash
+sattlint runs prune
+sattlint runs prune --keep 20
+```
 
 ## `sattlint baseline`
 
@@ -321,6 +420,9 @@ findings and prunes entries that no longer occur.
 When a baseline already exists, the command compares it with the rewritten
 entries and reports how many entries were added and pruned. A new baseline
 reports the entry count only.
+
+A run that failed is refused with exit code `2`, so an incomplete run never
+becomes the accepted baseline.
 
 The JSON payload carries `path`, `entry_count`, `generated_by`, `created`, and
 the `added` and `pruned` counts when a previous baseline existed.
@@ -393,6 +495,11 @@ one.
   `created`, and `added` and `pruned` when a previous baseline existed.
 - A `baseline diff` document carries `path`, the resolved `run`, and a
   `baseline` object with the same counts and records as the analyze document.
+- A `runs list` document carries `project`, `runs`, `skipped`, and
+  `skipped_count`. A `runs show` document carries the run summary plus
+  `selected_analyzers`, `analyzers`, `failures`, and the failure reason. A
+  `runs prune` document carries `removed`, `unreadable`, `over_limit`, `kept`,
+  and `removed_run_ids`.
 - Every finding carries `severity` (`error`, `warning`, or `info`) and optional
   `file`, `line`, `column`, and `end_line` fields. Positions are one-based. A
   position the analyzer does not know is `null`, never zero.
@@ -430,10 +537,15 @@ occurrence count.
 | --- | --- |
 | `0` | Success, or no finding at or above the `--fail-on` threshold. |
 | `1` | At least one filtered finding is at or above the `--fail-on` threshold. With `--baseline`, at least one added or changed entry is. |
-| `2` | Usage, configuration, project, or target-loading error. |
+| `2` | Usage, configuration, project, or target-loading error. A stored run that failed or could not be read is also exit `2`. |
 | `3` | Internal error. |
 | `130` | Interrupted. |
 | `141` | Broken pipe, such as when a downstream `head` closes the stream. |
+
+A query against a failed or unreadable run reports a stable error code:
+`run_failed` when the resolved run did not complete, and `run_unreadable` when a
+newer record for the scope cannot be loaded. Both exit `2`, so a pipeline can
+tell a refusal apart from an empty result.
 
 A CI job that treats every finding as a failure can rely on the default
 `--fail-on any` and skip parsing. A job that reports findings without failing

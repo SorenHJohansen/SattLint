@@ -171,6 +171,10 @@ Each run has:
 - `<run-id>.acknowledged`: the finding keys acknowledged for that run, when any
   exist.
 
+`sattlint runs list` lists stored runs with their status and counts, and
+`sattlint runs show` shows one run's analyzers and failure detail. Both read the
+store without writing to it.
+
 ### Run IDs
 
 A run ID is a sortable UTC timestamp with a short random suffix. It is a single
@@ -183,6 +187,7 @@ A run record contains:
 
 - the run ID and timestamps;
 - the project tag and project path;
+- the run status and any recorded failure;
 - selected analyzers;
 - target records and their analyzer records;
 - project-level analyzer records;
@@ -193,7 +198,38 @@ A run record contains:
 - cancellation state.
 
 The record has its own schema version, independent of the analysis pipeline. A
-record from another schema version is ignored instead of being misread.
+record from another schema version is not misread: `runs list` reports it as
+skipped and `runs prune` can remove it.
+
+### Run status and failures
+
+A run that stops before it can produce a usable result set is still stored, so a
+failed analysis becomes the newest record instead of leaving the previous
+success in place.
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | Every selected analyzer completed for every target. |
+| `failed` | The run stopped before it could produce a usable result set: a target could not be loaded, the preflight failed, or an analyzer raised. |
+
+A record written before these statuses existed reports `ok` unless one of its
+analyzers recorded a failure, which is derived from what the record already
+stores.
+
+A record stored for a target-load or preflight failure carries no findings. An
+analyzer failure can still carry the results already produced for other targets;
+the failed status marks the set as incomplete. The record stores the message the
+user saw and one entry per failed target or analyzer, with the target name, the
+failure kind, and the file, line, and column when the parser reported them.
+
+A partial run is reported when it happens and is not stored, so it is never
+mistaken for a complete result.
+
+`findings --run latest` resolves `latest` to the newest record for the project,
+including a failed one. When that record is failed, the command exits 2 with a
+message that names the run and points at `sattlint runs show`; it never falls
+back to an older successful run. An explicit `--run ID` naming a failed run is
+refused the same way.
 
 ### Record bounds
 
@@ -221,10 +257,15 @@ schema version is unchanged.
 
 ### Retention
 
-`run_history.enabled` controls whether completed runs are saved.
+`run_history.enabled` controls whether runs are saved, including failed runs.
 `run_history.limit` controls how many recent runs remain. Pruning removes the
 oldest runs and their summary and acknowledgement sidecars. A negative limit
 disables pruning; zero keeps no runs.
+
+`sattlint runs prune` is a separate maintenance command. Without options it
+removes only records this build cannot load, together with their sidecars.
+`--keep N` also deletes readable records older than the newest N, and only then:
+a plain prune never deletes a record it can read.
 
 ### Acknowledgements
 
@@ -235,9 +276,18 @@ run has no acknowledgements and never blocks opening the run.
 
 ### Corruption handling
 
-A corrupt or unreadable run record, summary, or acknowledgement file is ignored.
-Listing runs never writes to the run store. A failed save leaves the previous
-record intact because writes are atomic.
+A corrupt or unreadable run file is ignored by queries and reported by
+`sattlint runs list`, which counts the records it could not read and names their
+run IDs. When a newer record cannot be read, `findings --run latest` fails with
+exit code `2` instead of silently resolving to an older record. Listing runs
+never writes to the run store. A failed save leaves the previous record intact
+because writes are atomic.
+
+`sattlint runs prune` removes unreadable records and their sidecars and reports
+how many it removed. Records skipped because of an unknown schema version are
+included: they stay on disk until the user prunes them, so a newer SattLint's
+history can be inspected with that build instead of being deleted by an
+accident.
 
 ## Baseline
 

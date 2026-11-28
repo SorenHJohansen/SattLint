@@ -6,14 +6,23 @@ import contextlib
 import json
 import os
 import re
-from dataclasses import replace
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from .. import cache as cache_module
-from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunRecord, RunSummary, RunTargetRecord
+from .types import (
+    RUN_RECORD_SCHEMA_VERSION,
+    RunAnalyzerRecord,
+    RunRecord,
+    RunScan,
+    RunSummary,
+    RunTargetRecord,
+    SkippedRun,
+)
 
 DEFAULT_RUN_HISTORY_LIMIT = 50
 
@@ -347,6 +356,115 @@ def _remove_file(path: Path) -> bool:
     return True
 
 
+def _remove_run_files(runs_dir: Path, run_id: str) -> bool:
+    removed = _remove_file(_run_path(runs_dir, run_id))
+    _remove_summary(runs_dir, run_id)
+    _remove_acknowledgements(runs_dir, run_id)
+    return removed
+
+
+@dataclass(frozen=True, slots=True)
+class PruneReport:
+    """What a store cleanup removed, split by reason."""
+
+    removed: int = 0
+    unreadable: int = 0
+    over_limit: int = 0
+    kept: int = 0
+    removed_run_ids: tuple[str, ...] = ()
+
+
+def prune_unreadable_runs(*, runs_dir: Path | None = None, keep: int | None = None) -> PruneReport:
+    """Remove run records this build cannot load, and optionally old readable ones.
+
+    Without *keep* only unreadable records are removed: a readable run is
+    deleted only when the caller explicitly asks to keep a bounded number of
+    the newest. A negative *keep* disables that cut; zero removes every
+    readable run.
+    """
+    resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
+    if not resolved_runs_dir.exists():
+        return PruneReport()
+
+    paths = sorted(resolved_runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda path: path.name, reverse=True)
+    readable: list[str] = []
+    unreadable: list[str] = []
+    for path in paths:
+        run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
+        if isinstance(_read_run_file(path, run_id), RunRecord):
+            readable.append(run_id)
+        else:
+            unreadable.append(run_id)
+
+    removed_ids: list[str] = []
+    unreadable_removed = 0
+    for run_id in unreadable:
+        if _remove_run_files(resolved_runs_dir, run_id):
+            removed_ids.append(run_id)
+            unreadable_removed += 1
+
+    over_limit_removed = 0
+    if keep is not None and keep >= 0:
+        for run_id in readable[keep:]:
+            if _remove_run_files(resolved_runs_dir, run_id):
+                removed_ids.append(run_id)
+                over_limit_removed += 1
+
+    _remove_orphan_sidecars(resolved_runs_dir)
+    return PruneReport(
+        removed=len(removed_ids),
+        unreadable=unreadable_removed,
+        over_limit=over_limit_removed,
+        kept=len(readable) - over_limit_removed,
+        removed_run_ids=tuple(removed_ids),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RunHistoryPolicy:
+    """Whether analyses are stored and how many are retained."""
+
+    enabled: bool = True
+    limit: int = DEFAULT_RUN_HISTORY_LIMIT
+
+
+def run_history_policy(raw: Mapping[str, object]) -> RunHistoryPolicy:
+    """Read the retention policy from a merged configuration mapping."""
+    section = raw.get("run_history")
+    if not isinstance(section, Mapping):
+        return RunHistoryPolicy()
+    mapping = cast(Mapping[str, object], section)
+    limit_value = mapping.get("limit", DEFAULT_RUN_HISTORY_LIMIT)
+    limit = (
+        limit_value
+        if isinstance(limit_value, int) and not isinstance(limit_value, bool) and limit_value > 0
+        else DEFAULT_RUN_HISTORY_LIMIT
+    )
+    return RunHistoryPolicy(enabled=bool(mapping.get("enabled", True)), limit=limit)
+
+
+def save_run_for_history(
+    record: RunRecord,
+    *,
+    policy: RunHistoryPolicy,
+    runs_dir: Path | None = None,
+) -> RunRecord | None:
+    """Save a run when history is enabled, then apply the retention limit."""
+    resolved_runs_dir = get_runs_dir_or_none() if runs_dir is None else runs_dir
+    if resolved_runs_dir is None:
+        return None
+    if not policy.enabled:
+        # Recording is off, but retention still applies to records already on disk.
+        prune_runs(resolved_runs_dir, limit=policy.limit)
+        return None
+    try:
+        stored = save_run(record, runs_dir=resolved_runs_dir)
+    except OSError:
+        return None
+    prune_runs(resolved_runs_dir, limit=policy.limit)
+    return stored
+
+
 def list_runs(*, runs_dir: Path | None = None) -> tuple[RunSummary, ...]:
     """List persisted runs newest-first.
 
@@ -355,28 +473,46 @@ def list_runs(*, runs_dir: Path | None = None) -> tuple[RunSummary, ...]:
     written before the sidecar existed is summarized in memory; listing never
     writes to the run store.
     """
+    return scan_runs(runs_dir=runs_dir).summaries
+
+
+def scan_runs(*, runs_dir: Path | None = None) -> RunScan:
+    """List readable runs and the run files this build cannot load.
+
+    A run file is skipped when its record cannot be read or belongs to another
+    schema version. A summary sidecar written by another build is ignored, so
+    listing and pruning agree on what "unreadable" means. Skipped files stay on
+    disk until ``prune_unreadable_runs`` removes them, so a user can inspect
+    them first.
+    """
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
     if not resolved_runs_dir.exists():
-        return ()
+        return RunScan()
 
     summaries: list[RunSummary] = []
+    skipped: list[SkippedRun] = []
     for path in sorted(resolved_runs_dir.glob(f"*{_RUN_JSON_SUFFIX}"), key=lambda p: p.name, reverse=True):
         run_id = path.name[: -len(_RUN_JSON_SUFFIX)]
-        summary = _load_summary(resolved_runs_dir, run_id)
-        if summary is None:
-            record = _load_run_file(path)
-            if record is None:
-                continue
-            summary = RunSummary.from_record(record)
-        summaries.append(summary)
-    return tuple(summaries)
+        summary = _read_summary_sidecar(resolved_runs_dir, run_id)
+        if summary is not None:
+            summaries.append(summary)
+            continue
+        record = _read_run_file(path, run_id)
+        if isinstance(record, RunRecord):
+            summaries.append(RunSummary.from_record(record))
+        elif record is None:
+            skipped.append(SkippedRun(run_id, "unreadable", "the run record could not be read"))
+        else:
+            skipped.append(record)
+    return RunScan(summaries=tuple(summaries), skipped=tuple(skipped))
 
 
 def load_run(run_id: str, *, runs_dir: Path | None = None) -> RunRecord | None:
     if not _is_valid_run_id(run_id):
         return None
     resolved_runs_dir = get_runs_dir() if runs_dir is None else runs_dir
-    return _load_run_file(_run_path(resolved_runs_dir, run_id))
+    record = _read_run_file(_run_path(resolved_runs_dir, run_id), run_id)
+    return record if isinstance(record, RunRecord) else None
 
 
 def delete_run(run_id: str, *, runs_dir: Path | None = None) -> bool:
@@ -450,7 +586,19 @@ def _remove_acknowledgements(runs_dir: Path, run_id: str) -> None:
     _remove_file(_acknowledged_path(runs_dir, run_id))
 
 
-def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
+def _lenient_text(payload: Mapping[str, object], key: str) -> str:
+    """A text field from a record this build may not be able to parse."""
+    value = payload.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _read_summary_sidecar(runs_dir: Path, run_id: str) -> RunSummary | None:
+    """Read a summary sidecar, ignoring one written by another build.
+
+    A missing, corrupt, or foreign sidecar returns nothing so the caller falls
+    back to the run record. That keeps the fast path for the common case while
+    making the record the single authority on whether a run can be read.
+    """
     path = _summary_path(runs_dir, run_id)
     if not path.exists():
         return None
@@ -461,8 +609,12 @@ def _load_summary(runs_dir: Path, run_id: str) -> RunSummary | None:
         return None
     if not isinstance(payload, dict):
         return None
+    payload_map = cast(dict[str, object], payload)
+    version = payload_map.get("schema_version")
+    if version is not None and version != RUN_RECORD_SCHEMA_VERSION:
+        return None
     try:
-        return RunSummary.from_dict(cast(dict[str, object], payload))
+        return RunSummary.from_dict(payload_map)
     except ValueError:
         return None
 
@@ -489,8 +641,9 @@ def _atomic_write_json(path: Path, payload: object) -> None:
 
 
 def _write_summary(runs_dir: Path, summary: RunSummary) -> None:
+    payload: dict[str, object] = {"schema_version": RUN_RECORD_SCHEMA_VERSION, **summary.to_dict()}
     try:
-        _atomic_write_json(_summary_path(runs_dir, summary.run_id), summary.to_dict())
+        _atomic_write_json(_summary_path(runs_dir, summary.run_id), payload)
     except (OSError, TypeError, ValueError):
         return
 
@@ -502,23 +655,30 @@ def _remove_summary(runs_dir: Path, run_id: str) -> None:
         return
 
 
-def _load_run_file(path: Path) -> RunRecord | None:
+def _read_run_file(path: Path, run_id: str) -> RunRecord | SkippedRun | None:
+    """Read one run record, classifying why it cannot be loaded when it cannot."""
     if not path.exists():
         return None
     try:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
     except (OSError, json.JSONDecodeError):
-        return None
+        return SkippedRun(run_id, "unreadable", "the file is not valid JSON")
     if not isinstance(payload, dict):
-        return None
+        return SkippedRun(run_id, "unreadable", "the file is not a JSON object")
     payload_map = cast(dict[str, object], payload)
-    if payload_map.get("schema_version") != RUN_RECORD_SCHEMA_VERSION:
-        return None
+    version = payload_map.get("schema_version")
+    if version != RUN_RECORD_SCHEMA_VERSION:
+        return SkippedRun(
+            run_id=run_id,
+            reason="unknown_schema",
+            detail=f"the record declares schema version {version!r}",
+            project_path=_lenient_text(payload_map, "project_path"),
+        )
     try:
         return RunRecord.from_dict(payload_map)
-    except ValueError:
-        return None
+    except ValueError as exc:
+        return SkippedRun(run_id, "unreadable", str(exc))
 
 
 __all__ = [
@@ -527,6 +687,8 @@ __all__ = [
     "RUN_OUTPUT_CHAR_LIMIT",
     "RUN_OUTPUT_LINE_LIMIT",
     "RUN_RECORD_MAX_BYTES",
+    "PruneReport",
+    "RunHistoryPolicy",
     "delete_run",
     "get_runs_dir",
     "get_runs_dir_or_none",
@@ -534,7 +696,11 @@ __all__ = [
     "load_run",
     "load_run_acknowledgements",
     "prune_runs",
+    "prune_unreadable_runs",
+    "run_history_policy",
     "runs_dir_location",
     "save_run",
     "save_run_acknowledgements",
+    "save_run_for_history",
+    "scan_runs",
 ]

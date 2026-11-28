@@ -264,6 +264,36 @@ def _build_baseline_parser(subparsers: _SubParserAction) -> None:
     _add_output_args(difference)
 
 
+def _build_runs_parser(subparsers: _SubParserAction) -> None:
+    parser = subparsers.add_parser("runs", help="Inspect stored run history.")
+    runs_sub = parser.add_subparsers(dest="runs_command", required=True)
+
+    listing = runs_sub.add_parser("list", help="List stored runs, newest first, with status and counts.")
+    _add_project_arg(listing)
+    listing.add_argument("--limit", type=_non_negative_int, metavar="N", help="Show at most N runs.")
+    _add_output_args(listing)
+
+    show = runs_sub.add_parser("show", help="Show one stored run, including analyzer and failure detail.")
+    show.add_argument(
+        "run_id",
+        nargs="?",
+        default="latest",
+        metavar="RUN_ID",
+        help="Run ID, unique prefix, or 'latest'; default 'latest'. 'latest' resolves within the project.",
+    )
+    _add_project_arg(show)
+    _add_output_args(show)
+
+    prune = runs_sub.add_parser("prune", help="Remove run records this build cannot read.")
+    prune.add_argument(
+        "--keep",
+        type=_non_negative_int,
+        metavar="N",
+        help="Also delete readable runs older than the newest N. Without it, readable runs are never deleted.",
+    )
+    _add_output_args(prune)
+
+
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = _Parser(prog="sattlint", description="Headless SattLint automation surface.")
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
@@ -274,6 +304,7 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     _build_findings_parser(subparsers)
     _build_show_parser(subparsers)
     _build_baseline_parser(subparsers)
+    _build_runs_parser(subparsers)
     return parser
 
 
@@ -285,6 +316,7 @@ def _handlers() -> dict[str, AppCommandFn]:
         "findings": commands.command_findings,
         "show": commands.command_show,
         "baseline": _dispatch_baseline,
+        "runs": _dispatch_runs,
     }
 
 
@@ -300,6 +332,14 @@ def _dispatch_baseline(args: argparse.Namespace) -> int:
     if args.baseline_command == "update":
         return commands.command_baseline_update(args)
     return commands.command_baseline_diff(args)
+
+
+def _dispatch_runs(args: argparse.Namespace) -> int:
+    if args.runs_command == "list":
+        return commands.command_runs_list(args)
+    if args.runs_command == "show":
+        return commands.command_runs_show(args)
+    return commands.command_runs_prune(args)
 
 
 def _format_from_args(args: argparse.Namespace) -> str:
@@ -371,6 +411,12 @@ def _validate_args(args: argparse.Namespace) -> None:
     if command == "baseline" and not str(getattr(args, "run", "")).strip():
         raise _UsageError(
             "--run must not be empty.",
+            code="usage_error",
+            exit_code=EXIT_USAGE_ERROR,
+        )
+    if command == "runs" and not str(getattr(args, "run_id", "latest")).strip():
+        raise _UsageError(
+            "RUN_ID must not be empty. Use 'latest', a run id, or a unique run-id prefix.",
             code="usage_error",
             exit_code=EXIT_USAGE_ERROR,
         )

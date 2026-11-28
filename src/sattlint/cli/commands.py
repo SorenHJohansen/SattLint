@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from itertools import chain
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 from ..__version__ import __version__
 from ..analyzers.catalog import (
@@ -18,7 +19,7 @@ from ..analyzers.catalog import (
     get_selectable_analyzer_keys,
 )
 from ..application.analyze import collect_checks_result, no_analyzer_selection_message
-from ..application.checks import ChecksRunResult, TargetLoadFailure, build_run_record
+from ..application.checks import AnalyzerFailure, ChecksRunResult, TargetLoadFailure, build_run_record
 from ..application.findings import format_source_location, kind_human_label
 from ..config.string_capacities import STRING_CAPACITY_KEYS
 from ..config.types import ConfigDict
@@ -32,6 +33,8 @@ from ..project.models import SattLintProjectFile
 from ..project.support import TARGET_FAILURE_DETAIL_LIMIT, TargetLoadError, get_analyzed_targets
 from ..runs import (
     BASELINE_FILENAME,
+    RUN_STATUS_FAILED,
+    RUN_STATUS_OK,
     Baseline,
     BaselineDiff,
     BaselineDiffEntry,
@@ -39,12 +42,23 @@ from ..runs import (
     BaselineInvalidError,
     BaselineNotFoundError,
     BaselineWriteError,
+    PruneReport,
+    RunAnalyzerRecord,
+    RunFailure,
     RunRecord,
+    RunStatus,
+    RunSummary,
+    SkippedRun,
     baseline_fails,
+    delete_run,
     diff_baseline,
     load_baseline,
+    prune_unreadable_runs,
     relative_source_file,
+    run_history_policy,
     save_baseline,
+    save_run_for_history,
+    scan_runs,
     utc_now_iso,
 )
 from ..utils.terminal_text import sanitize_terminal_text
@@ -91,6 +105,81 @@ from ._payloads import (
     TargetLoadFailurePayload,
 )
 from ._project import drain_config_warnings, effective_project_config, project_payload, resolve_project_file
+
+
+class _RunSummaryPayload(TypedDict):
+    run_id: str
+    started_at: str
+    finished_at: str
+    project_tag: str
+    project_path: str
+    target_count: int
+    analyzer_count: int
+    finding_count: int
+    failure_count: int
+    status: RunStatus
+
+
+class _SkippedRunPayload(TypedDict):
+    run_id: str
+    reason: str
+    detail: str
+
+
+class RunsListPayload(TypedDict):
+    schema_version: int
+    command: str
+    project: str
+    runs: list[_RunSummaryPayload]
+    skipped: list[_SkippedRunPayload]
+    skipped_count: int
+
+
+class _RunAnalyzerPayload(TypedDict):
+    target: str
+    key: str
+    name: str
+    status: str
+    finding_count: int
+    issue_count: int | None
+    duration_ms: float | None
+    summary: str | None
+    skip_reason: str | None
+
+
+class _RunFailurePayload(TypedDict):
+    kind: str
+    target: str
+    analyzer: str
+    message: str
+    path: str | None
+    line: int | None
+    column: int | None
+
+
+class RunShowPayload(TypedDict):
+    schema_version: int
+    command: str
+    run: _RunSummaryPayload
+    cancelled: bool
+    selected_analyzers: list[str]
+    truncated: bool
+    truncation_note: str
+    failure_message: str
+    failure_reason: str
+    analyzers: list[_RunAnalyzerPayload]
+    failures: list[_RunFailurePayload]
+    output_line_count: int
+
+
+class RunsPrunePayload(TypedDict):
+    schema_version: int
+    command: str
+    removed: int
+    unreadable: int
+    over_limit: int
+    kept: int
+    removed_run_ids: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,6 +429,84 @@ def _require_configured_targets(cfg: ConfigDict) -> None:
         )
 
 
+def _project_tag(cfg: ConfigDict) -> str:
+    targets = cast(list[object], cfg.get("analyzed_programs_and_libraries", []))
+    return ", ".join(str(target) for target in targets if str(target).strip())
+
+
+def _run_failure_from_load(failure: TargetLoadFailure) -> RunFailure:
+    return RunFailure(
+        kind="target",
+        message=failure.message,
+        target=failure.target_name,
+        path=failure.path,
+        line=failure.line,
+        column=failure.column,
+    )
+
+
+def _run_failure_from_analyzer(failure: AnalyzerFailure) -> RunFailure:
+    return RunFailure(
+        kind="analyzer",
+        message=failure.message,
+        target=failure.target_name,
+        analyzer=failure.analyzer_name,
+    )
+
+
+def _failure_record(
+    cfg: ConfigDict,
+    *,
+    project_path: str,
+    status: RunStatus,
+    failures: tuple[RunFailure, ...],
+    message: str,
+    result: ChecksRunResult | None = None,
+) -> RunRecord:
+    if result is None:
+        now = utc_now_iso()
+        record = RunRecord(
+            run_id="",
+            started_at=now,
+            finished_at=now,
+            project_tag=_project_tag(cfg),
+            project_path=project_path,
+        )
+    else:
+        record = _result_record(result, cfg, project_path=project_path)
+    return replace(record, status=status, failures=failures, failure_message=message or None)
+
+
+def _save_failure_record(
+    cfg: ConfigDict,
+    *,
+    project_path: str,
+    status: RunStatus,
+    failures: tuple[RunFailure, ...],
+    message: str,
+    result: ChecksRunResult | None = None,
+) -> RunRecord | None:
+    """Store a run that did not complete, so ``latest`` cannot show an older success.
+
+    A failed analysis used to leave no record, which made ``latest`` resolve to
+    the previous successful run. The stored record carries the status and the
+    failure detail that ``runs show`` reports.
+    """
+    if result is not None and result.run_id:
+        # The checks pipeline may already have stored an empty record for a run
+        # that then failed; the failure record replaces it.
+        delete_run(result.run_id)
+    record = _failure_record(
+        cfg,
+        project_path=project_path,
+        status=status,
+        failures=failures,
+        message=message,
+        result=result,
+    )
+    return save_run_for_history(record, policy=run_history_policy(cfg))
+
+
 def _capture_run(
     cfg: ConfigDict,
     keys: list[str] | None,
@@ -363,6 +530,14 @@ def _capture_run(
             progress=progress,
         )
     except TargetLoadError as exc:
+        if persist_run:
+            _save_failure_record(
+                cfg,
+                project_path=project_path,
+                status=RUN_STATUS_FAILED,
+                failures=(),
+                message=str(exc),
+            )
         raise CliError(str(exc), code="target_load_failed", exit_code=2) from exc
 
 
@@ -415,6 +590,105 @@ def _target_load_error(failures: tuple[TargetLoadFailure, ...]) -> CliError:
         exit_code=2,
         details=details,
     )
+
+
+def _admit_run_result(
+    result: ChecksRunResult,
+    cfg: ConfigDict,
+    options: _AnalyzeOptions,
+    *,
+    project_path: str,
+    keys: list[str],
+) -> tuple[TargetLoadFailure, ...]:
+    """Reject a run that cannot be reported as current, recording it first.
+
+    A run that stopped before producing a usable result set is stored with a
+    failure status, so ``findings --run latest`` cannot fall back to an older
+    successful run. A partial run is reported to the caller and stays out of
+    history, as the load-failure contract requires.
+    """
+    if not result.selected_analyzers:
+        _discard_output_file(options.output)
+        if options.persist_run:
+            _save_failure_record(
+                cfg,
+                project_path=project_path,
+                status=RUN_STATUS_FAILED,
+                failures=(),
+                message=f"No analyzers matched the request: {', '.join(keys)}.",
+                result=result,
+            )
+        raise CliError(
+            f"No analyzers matched the request: {', '.join(keys)}.",
+            code="no_analyzers",
+            exit_code=2,
+            details={"requested": list(keys)},
+        )
+    if result.failures:
+        failures = tuple(_run_failure_from_load(failure) for failure in result.failures)
+        if not _is_partial_run(result, _configured_target_count(cfg)):
+            _discard_output_file(options.output)
+            if options.output.output_format == "text":
+                _write_diagnostics(result, options)
+            if options.persist_run:
+                _save_failure_record(
+                    cfg,
+                    project_path=project_path,
+                    status=RUN_STATUS_FAILED,
+                    failures=failures,
+                    message=f"Analysis stopped because {len(result.failures)} target(s) could not be loaded.",
+                    result=result,
+                )
+            raise _target_load_error(result.failures)
+        # A partial run stays out of history: it is reported now, and it must
+        # never be mistaken for a complete stored result later.
+        return result.failures
+    if not result.targets:
+        _discard_output_file(options.output)
+        if options.persist_run:
+            _save_failure_record(
+                cfg,
+                project_path=project_path,
+                status=RUN_STATUS_FAILED,
+                failures=(),
+                message="Analysis did not produce any target results.",
+                result=result,
+            )
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+            details: Mapping[str, object] = {}
+        else:
+            details = {"output": list(result.output_lines)}
+        raise CliError(
+            "Analysis did not produce any target results.",
+            code="analysis_preflight_failed",
+            exit_code=2,
+            details=details,
+        )
+    analyzer_failures = result.analyzer_failures
+    if analyzer_failures:
+        _discard_output_file(options.output)
+        if options.output.output_format == "text":
+            _write_diagnostics(result, options)
+        if options.persist_run and not result.run_id:
+            # A stubbed or interrupted pipeline may not have stored the record;
+            # mark the failure so ``latest`` cannot fall back to an older run.
+            _save_failure_record(
+                cfg,
+                project_path=project_path,
+                status=RUN_STATUS_FAILED,
+                failures=tuple(_run_failure_from_analyzer(failure) for failure in analyzer_failures),
+                message=f"{len(analyzer_failures)} analyzer(s) failed.",
+                result=result,
+            )
+        failed_analyzers = ", ".join(failure.analyzer_name for failure in analyzer_failures)
+        raise CliError(
+            f"Analysis stopped because {len(analyzer_failures)} analyzer(s) failed: {failed_analyzers}",
+            code="analyzer_failed",
+            exit_code=2,
+            details={failure.analyzer_name: failure.message for failure in analyzer_failures},
+        )
+    return ()
 
 
 def _drain_quiet_warnings(options: _OutputOptions) -> None:
@@ -545,7 +819,7 @@ def _baseline_target_path(args: argparse.Namespace, root: Path | None) -> Path:
 def _resolve_baseline_run(args: argparse.Namespace) -> tuple[RunRecord, str | None, Path, Path]:
     """Resolve the run, its project root, and the baseline path for a command."""
     selector, project_path = _run_scope(args)
-    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    record = _resolve_query_run(selector, project_path)
     root = _resolved_project_root(record, project_path)
     path = _baseline_target_path(args, root)
     effective_root = root if root is not None else path.resolve().parent
@@ -590,47 +864,7 @@ def command_analyze(args: argparse.Namespace) -> int:
         _discard_output_file(options.output)
         _write_diagnostics(result, options)
         return 130
-    if not result.selected_analyzers:
-        _discard_output_file(options.output)
-        raise CliError(
-            f"No analyzers matched the request: {', '.join(keys)}.",
-            code="no_analyzers",
-            exit_code=2,
-            details={"requested": list(keys)},
-        )
-    partial_failures: tuple[TargetLoadFailure, ...] = ()
-    if result.failures:
-        if not _is_partial_run(result, _configured_target_count(cfg)):
-            _discard_output_file(options.output)
-            if options.output.output_format == "text":
-                _write_diagnostics(result, options)
-            raise _target_load_error(result.failures)
-        partial_failures = result.failures
-    if not result.targets:
-        _discard_output_file(options.output)
-        if options.output.output_format == "text":
-            _write_diagnostics(result, options)
-            details: Mapping[str, object] = {}
-        else:
-            details = {"output": list(result.output_lines)}
-        raise CliError(
-            "Analysis did not produce any target results.",
-            code="analysis_preflight_failed",
-            exit_code=2,
-            details=details,
-        )
-    analyzer_failures = result.analyzer_failures
-    if analyzer_failures:
-        _discard_output_file(options.output)
-        if options.output.output_format == "text":
-            _write_diagnostics(result, options)
-        failed_analyzers = ", ".join(failure.analyzer_name for failure in analyzer_failures)
-        raise CliError(
-            f"Analysis stopped because {len(analyzer_failures)} analyzer(s) failed: {failed_analyzers}",
-            code="analyzer_failed",
-            exit_code=2,
-            details={failure.analyzer_name: failure.message for failure in analyzer_failures},
-        )
+    partial_failures = _admit_run_result(result, cfg, options, project_path=project_path, keys=keys)
     _write_diagnostics(result, options)
     record = _result_record(result, cfg, project_path=project_path)
     all_findings = flat_findings(record)
@@ -759,6 +993,11 @@ def _finding_line(finding: FindingPayload) -> str:
 
 _LATEST_SELECTOR = "latest"
 
+_SKIP_REASON_LABELS = {
+    "unknown_schema": "its schema version is not supported by this build",
+    "unreadable": "the record could not be read",
+}
+
 
 def _scoped_project_path(raw: str | None) -> str | None:
     """Return the project path that scopes a stored-run query.
@@ -784,11 +1023,120 @@ def _run_scope(args: argparse.Namespace) -> tuple[str, str | None]:
     discovery and may be absent. An explicit run id already names the run, so
     it neither needs discovery nor fails because discovery is ambiguous.
     """
-    selector = str(args.run)
-    raw_project = args.project
+    return _selector_scope(str(args.run), args.project)
+
+
+def _selector_scope(selector: str, raw_project: str | None) -> tuple[str, str | None]:
     if raw_project is None and selector.strip().casefold() != _LATEST_SELECTOR:
         return selector, None
     return selector, _scoped_project_path(raw_project)
+
+
+def _same_project_path(left: str, right: str) -> bool:
+    return os.path.normcase(left) == os.path.normcase(right)
+
+
+def _in_project_scope(project_path: str, scope: str | None) -> bool:
+    """Whether a stored run belongs to the query's project scope.
+
+    Without a scope every run matches. With one, a run recorded before project
+    scoping existed has no path and never matches, mirroring ``latest``.
+    """
+    if scope is None:
+        return True
+    return bool(project_path) and _same_project_path(project_path, scope)
+
+
+def _newer_unreadable_run(run_id: str, *, project_path: str | None) -> SkippedRun | None:
+    """The newest record that outranks *run_id* but could not be resolved.
+
+    Run ids sort by the timestamp they start with, so a lexical comparison
+    finds a record newer than the one ``latest`` resolved. Two cases count: a
+    skipped record, and a listed record that ``latest`` passed over because its
+    run file could not be loaded (a summary sidecar can outlive a record that a
+    later build replaced). A record with no readable project path cannot be
+    attributed, so it is treated as inside the scope.
+    """
+    scan = scan_runs()
+    for skipped in scan.skipped:
+        if skipped.run_id <= run_id:
+            continue
+        if project_path and skipped.project_path and not _same_project_path(skipped.project_path, project_path):
+            continue
+        return skipped
+    for summary in scan.summaries:
+        if summary.run_id <= run_id:
+            continue
+        if not _in_project_scope(summary.project_path, project_path):
+            continue
+        return SkippedRun(
+            run_id=summary.run_id,
+            reason="unreadable",
+            detail="the record could not be loaded",
+            project_path=summary.project_path,
+        )
+    return None
+
+
+def _run_failure_reason(record: RunRecord) -> str:
+    if record.failure_message:
+        return record.failure_message.rstrip(".")
+    failed = record.failed_analyzers
+    if failed:
+        shown = ", ".join(analyzer.name for analyzer in failed[:3])
+        omitted = len(failed) - min(len(failed), 3)
+        return f"{len(failed)} analyzer(s) failed: {shown}" + (f", and {omitted} more" if omitted else "")
+    if record.failures:
+        return record.failures[0].message.rstrip(".")
+    if record.cancelled:
+        return "the run was cancelled"
+    return "no detail was recorded"
+
+
+def _require_complete_run(record: RunRecord) -> None:
+    """Refuse to present a failed run's stored findings as current.
+
+    A target-load failure stores no findings at all, and an analyzer failure
+    leaves an incomplete set, so the newest record is not a usable answer.
+    """
+    if record.effective_status != RUN_STATUS_FAILED:
+        return
+    raise CliError(
+        f"Run {record.run_id} did not complete: {_run_failure_reason(record)}. Its stored findings are "
+        "incomplete, so they are not returned as current. Inspect it with 'sattlint runs show', or pass "
+        "--run ID to read a specific run.",
+        code="run_failed",
+        exit_code=2,
+        details={"run_id": record.run_id, "status": record.effective_status},
+    )
+
+
+def _resolve_query_run(
+    selector: str,
+    project_path: str | None,
+    *,
+    allow_failed: bool = False,
+) -> RunRecord:
+    """Resolve a stored run for a query and refuse a misleading answer."""
+    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    if selector.strip().casefold() == _LATEST_SELECTOR:
+        unreadable = _newer_unreadable_run(record.run_id, project_path=project_path)
+        if unreadable is not None:
+            label = _SKIP_REASON_LABELS.get(unreadable.reason, unreadable.reason)
+            raise CliError(
+                f"Run {unreadable.run_id} is newer than the selected run but cannot be read: {label}. "
+                "Run 'sattlint runs prune' to remove it, or pass --run ID to read a specific run.",
+                code="run_unreadable",
+                exit_code=2,
+                details={
+                    "run_id": unreadable.run_id,
+                    "reason": unreadable.reason,
+                    "detail": unreadable.detail,
+                },
+            )
+    if not allow_failed:
+        _require_complete_run(record)
+    return record
 
 
 def command_findings(args: argparse.Namespace) -> int:
@@ -798,7 +1146,7 @@ def command_findings(args: argparse.Namespace) -> int:
         requested_analyzers = tuple(_resolve_analyzer_keys(requested_analyzers))
     selector, project_path = _run_scope(args)
     _drain_quiet_warnings(options)
-    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    record = _resolve_query_run(selector, project_path)
     flattened = flat_findings(record)
     kinds, rules = normalize_finding_filters(
         (str(value) for value in args.kind),
@@ -883,7 +1231,7 @@ def command_show(args: argparse.Namespace) -> int:
     options = _output_options(args)
     selector, project_path = _run_scope(args)
     _drain_quiet_warnings(options)
-    record = resolve_run(selector, project_path=project_path, require_project_scope=True)
+    record = _resolve_query_run(selector, project_path)
     finding_id = str(args.finding_id)
     match = next((finding for finding in flat_findings(record) if finding.id == finding_id), None)
     if match is None:
@@ -1053,12 +1401,244 @@ def _baseline_diff_text(payload: BaselineDiffPayload) -> list[str]:
     return lines
 
 
+def _run_summary_payload(summary: RunSummary) -> _RunSummaryPayload:
+    return {
+        "run_id": summary.run_id,
+        "started_at": summary.started_at,
+        "finished_at": summary.finished_at,
+        "project_tag": summary.project_tag,
+        "project_path": summary.project_path,
+        "target_count": summary.target_count,
+        "analyzer_count": summary.analyzer_count,
+        "finding_count": summary.issue_count,
+        "failure_count": summary.failure_count,
+        "status": summary.status,
+    }
+
+
+def _skipped_run_payload(skipped: SkippedRun) -> _SkippedRunPayload:
+    return {"run_id": skipped.run_id, "reason": skipped.reason, "detail": skipped.detail}
+
+
+def _skip_reason_label(reason: str) -> str:
+    return _SKIP_REASON_LABELS.get(reason, reason)
+
+
+def _run_analyzer_payload(target_name: str, analyzer: RunAnalyzerRecord) -> _RunAnalyzerPayload:
+    return {
+        "target": target_name,
+        "key": analyzer.key,
+        "name": analyzer.name,
+        "status": analyzer.status,
+        "finding_count": len(analyzer.findings),
+        "issue_count": analyzer.issue_count,
+        "duration_ms": analyzer.duration_ms,
+        "summary": analyzer.summary,
+        "skip_reason": analyzer.skip_reason,
+    }
+
+
+def _run_analyzer_payloads(record: RunRecord) -> list[_RunAnalyzerPayload]:
+    payloads = [
+        _run_analyzer_payload(target.target_name, analyzer)
+        for target in record.targets
+        for analyzer in target.analyzers
+    ]
+    payloads.extend(_run_analyzer_payload("", analyzer) for analyzer in record.project_analyzers)
+    return payloads
+
+
+def _run_failure_payload(failure: RunFailure) -> _RunFailurePayload:
+    return {
+        "kind": failure.kind,
+        "target": failure.target,
+        "analyzer": failure.analyzer,
+        "message": failure.message,
+        "path": failure.path,
+        "line": failure.line,
+        "column": failure.column,
+    }
+
+
+def command_runs_list(args: argparse.Namespace) -> int:
+    """List stored runs, newest first, scoped to the queried project."""
+    options = _output_options(args)
+    _drain_quiet_warnings(options)
+    scope = _scoped_project_path(args.project)
+    scan = scan_runs()
+    summaries = [summary for summary in scan.summaries if _in_project_scope(summary.project_path, scope)]
+    # A skipped record with no readable project path cannot be attributed, so it
+    # stays visible in every scope: it is a store-health warning, not a run.
+    skipped = [
+        entry
+        for entry in scan.skipped
+        if scope is None or not entry.project_path or _same_project_path(entry.project_path, scope)
+    ]
+    limit = args.limit
+    if limit is not None:
+        summaries = summaries[:limit]
+    payload: RunsListPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "runs list",
+        "project": scope or "",
+        "runs": [_run_summary_payload(summary) for summary in summaries],
+        "skipped": [_skipped_run_payload(entry) for entry in skipped],
+        "skipped_count": len(skipped),
+    }
+    _emit_document(options, payload=payload, text_lines=_runs_list_text(payload))
+    return 0
+
+
+def _runs_list_text(payload: RunsListPayload) -> list[str]:
+    scope = payload["project"] or "(all projects)"
+    lines = [f"Runs: {len(payload['runs'])}  Project: {scope}"]
+    if payload["runs"]:
+        lines.append(f"  {'Run ID':<30}  {'Started':<24}  {'Targets':>7}  {'Findings':>8}  Status    Project")
+        for run in payload["runs"]:
+            project = run["project_path"] or run["project_tag"] or "(unknown)"
+            lines.append(
+                f"  {run['run_id']:<30}  {run['started_at']:<24}  {run['target_count']:>7}  "
+                f"{run['finding_count']:>8}  {run['status']:<8}  {project}"
+            )
+    else:
+        lines.append("  No stored runs match this scope.")
+    if payload["skipped"]:
+        lines.append("")
+        lines.append(f"Skipped: {payload['skipped_count']} record(s) this build cannot read.")
+        for skipped in payload["skipped"]:
+            detail = f" ({skipped['detail']})" if skipped["detail"] else ""
+            lines.append(f"  - {skipped['run_id']}: {_skip_reason_label(skipped['reason'])}{detail}")
+        lines.append("Run 'sattlint runs prune' to remove them.")
+    return lines
+
+
+def command_runs_show(args: argparse.Namespace) -> int:
+    """Show one stored run, including its analyzer and failure detail."""
+    options = _output_options(args)
+    selector = str(args.run_id or "").strip()
+    if not selector:
+        raise CliError(
+            "Run selector is empty. Use 'latest', a run id, or a unique run-id prefix.",
+            code="run_invalid",
+            exit_code=2,
+        )
+    selector, project_path = _selector_scope(selector, args.project)
+    _drain_quiet_warnings(options)
+    record = _resolve_query_run(selector, project_path, allow_failed=True)
+    payload: RunShowPayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "runs show",
+        "run": _run_summary_payload(RunSummary.from_record(record)),
+        "cancelled": record.cancelled,
+        "selected_analyzers": list(record.selected_analyzers),
+        "truncated": record.truncated,
+        "truncation_note": record.truncation_note or "",
+        "failure_message": record.failure_message or "",
+        "failure_reason": "" if record.effective_status == RUN_STATUS_OK else _run_failure_reason(record),
+        "analyzers": _run_analyzer_payloads(record),
+        "failures": [_run_failure_payload(failure) for failure in record.failures],
+        "output_line_count": len(record.output_lines),
+    }
+    _emit_document(options, payload=payload, text_lines=_runs_show_text(payload))
+    return 0
+
+
+def _runs_show_text(payload: RunShowPayload) -> list[str]:
+    run = payload["run"]
+    project = run["project_path"] or run["project_tag"] or "(unknown)"
+    lines = [
+        f"Run:       {run['run_id']}",
+        f"Started:   {run['started_at']}",
+        f"Finished:  {run['finished_at']}",
+        f"Status:    {run['status']}",
+        f"Project:   {project}",
+        f"Targets:   {run['target_count']}",
+        f"Findings:  {run['finding_count']}",
+        f"Analyzers: {run['analyzer_count']}",
+    ]
+    if run["status"] != RUN_STATUS_OK:
+        lines.append(f"Reason:    {payload['failure_reason']}")
+    if payload["cancelled"]:
+        lines.append("Cancelled: yes")
+    if payload["truncated"]:
+        lines.append(f"Record:    truncated ({payload['truncation_note']})")
+    if payload["failures"]:
+        lines.append(f"Failures ({len(payload['failures'])}):")
+        lines.extend(_run_failure_text(failure) for failure in payload["failures"])
+    if payload["analyzers"]:
+        lines.append("Analyzers:")
+        lines.extend(_run_analyzer_text(analyzer) for analyzer in payload["analyzers"])
+    return lines
+
+
+def _run_failure_text(failure: _RunFailurePayload) -> str:
+    subject = failure["target"] or "(project)"
+    if failure["analyzer"]:
+        subject = f"{subject}/{failure['analyzer']}"
+    location = format_source_location(
+        file=failure["path"],
+        line=failure["line"],
+        column=failure["column"],
+        end_line=None,
+    )
+    where = f"  {location}" if location else ""
+    return f"  - [{failure['kind']}] {subject}: {failure['message']}{where}"
+
+
+def _run_analyzer_text(analyzer: _RunAnalyzerPayload) -> str:
+    target = analyzer["target"] or "(project)"
+    line = (
+        f"  {target}  {analyzer['key']} ({analyzer['name']}): {analyzer['status']}, "
+        f"{analyzer['finding_count']} finding(s)"
+    )
+    if analyzer["skip_reason"]:
+        line = f"{line}, skipped: {analyzer['skip_reason']}"
+    if analyzer["status"] == "failed" and analyzer["summary"]:
+        line = f"{line} - {analyzer['summary']}"
+    return line
+
+
+def command_runs_prune(args: argparse.Namespace) -> int:
+    """Remove run records this build cannot read, and optionally old readable ones."""
+    options = _output_options(args)
+    _drain_quiet_warnings(options)
+    report: PruneReport = prune_unreadable_runs(keep=args.keep)
+    payload: RunsPrunePayload = {
+        "schema_version": SCHEMA_VERSION,
+        "command": "runs prune",
+        "removed": report.removed,
+        "unreadable": report.unreadable,
+        "over_limit": report.over_limit,
+        "kept": report.kept,
+        "removed_run_ids": list(report.removed_run_ids),
+    }
+    _emit_document(options, payload=payload, text_lines=_runs_prune_text(payload))
+    return 0
+
+
+def _runs_prune_text(payload: RunsPrunePayload) -> list[str]:
+    lines = [
+        f"Removed: {payload['removed']} run record(s)",
+        f"  unreadable: {payload['unreadable']}",
+        f"Kept: {payload['kept']} readable run record(s)",
+    ]
+    if payload["over_limit"]:
+        lines.insert(2, f"  older than the requested keep count: {payload['over_limit']}")
+    return lines
+
+
 __all__ = [
+    "RunShowPayload",
+    "RunsListPayload",
+    "RunsPrunePayload",
     "command_analyze",
     "command_analyzers_list",
     "command_baseline_diff",
     "command_baseline_update",
     "command_findings",
     "command_project_show",
+    "command_runs_list",
+    "command_runs_prune",
+    "command_runs_show",
     "command_show",
 ]

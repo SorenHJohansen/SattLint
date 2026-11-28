@@ -1,4 +1,4 @@
-"""Run history: persistence of completed analysis runs."""
+"""Run history: persistence of completed and failed analysis runs."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from .baseline import (
 from .finding_keys import finding_acknowledgement_key
 from .io import (
     DEFAULT_RUN_HISTORY_LIMIT,
+    PruneReport,
+    RunHistoryPolicy,
     delete_run,
     get_runs_dir,
     get_runs_dir_or_none,
@@ -32,17 +34,40 @@ from .io import (
     load_run,
     load_run_acknowledgements,
     prune_runs,
+    prune_unreadable_runs,
+    run_history_policy,
     runs_dir_location,
     save_run,
     save_run_acknowledgements,
+    save_run_for_history,
+    scan_runs,
 )
-from .types import RUN_RECORD_SCHEMA_VERSION, RunAnalyzerRecord, RunModuleRecord, RunRecord, RunSummary, RunTargetRecord
+from .types import (
+    RUN_RECORD_SCHEMA_VERSION,
+    RUN_STATUS_CANCELLED,
+    RUN_STATUS_FAILED,
+    RUN_STATUS_OK,
+    RunAnalyzerRecord,
+    RunFailure,
+    RunFailureKind,
+    RunModuleRecord,
+    RunRecord,
+    RunScan,
+    RunSkipReason,
+    RunStatus,
+    RunSummary,
+    RunTargetRecord,
+    SkippedRun,
+)
 
 __all__ = [
     "BASELINE_FILENAME",
     "BASELINE_SCHEMA_VERSION",
     "DEFAULT_RUN_HISTORY_LIMIT",
     "RUN_RECORD_SCHEMA_VERSION",
+    "RUN_STATUS_CANCELLED",
+    "RUN_STATUS_FAILED",
+    "RUN_STATUS_OK",
     "Baseline",
     "BaselineDiff",
     "BaselineDiffEntry",
@@ -53,11 +78,19 @@ __all__ = [
     "BaselineNotFoundError",
     "BaselineStatus",
     "BaselineWriteError",
+    "PruneReport",
     "RunAnalyzerRecord",
+    "RunFailure",
+    "RunFailureKind",
+    "RunHistoryPolicy",
     "RunModuleRecord",
     "RunRecord",
+    "RunScan",
+    "RunSkipReason",
+    "RunStatus",
     "RunSummary",
     "RunTargetRecord",
+    "SkippedRun",
     "baseline_fails",
     "delete_run",
     "diff_baseline",
@@ -69,10 +102,14 @@ __all__ = [
     "load_run",
     "load_run_acknowledgements",
     "prune_runs",
+    "prune_unreadable_runs",
     "relative_source_file",
+    "run_history_policy",
     "runs_dir_location",
     "save_baseline",
     "save_run",
     "save_run_acknowledgements",
+    "save_run_for_history",
+    "scan_runs",
     "utc_now_iso",
 ]
