@@ -25,6 +25,8 @@ from ._project import drain_config_warnings
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 2
 
+_MACHINE_OUTPUT_FORMATS = frozenset({"json", "ndjson", "sarif"})
+
 AppCommandFn = Callable[[argparse.Namespace], int | None]
 
 _machine_logging_suppressed = False
@@ -173,7 +175,7 @@ def _build_analyze_parser(subparsers: _SubParserAction) -> None:
         action="store_true",
         help="Emit machine-readable progress records on stderr while the run is in progress.",
     )
-    _add_output_args(parser, formats=("json", "ndjson", "text"))
+    _add_output_args(parser, formats=("json", "ndjson", "sarif", "text"))
 
 
 def _build_review_parser(subparsers: _SubParserAction) -> None:
@@ -241,7 +243,7 @@ def _build_findings_parser(subparsers: _SubParserAction) -> None:
     parser.add_argument(
         "--limit", type=_non_negative_int, metavar="N", help="Return at most N findings after filtering."
     )
-    _add_output_args(parser, formats=("json", "ndjson", "text"))
+    _add_output_args(parser, formats=("json", "ndjson", "sarif", "text"))
 
 
 def _build_show_parser(subparsers: _SubParserAction) -> None:
@@ -477,7 +479,7 @@ def run_cli(argv: list[str]) -> int:
     except SystemExit as exc:
         return int(exc.code or 0)
 
-    if _format_from_args(args) in {"json", "ndjson"}:
+    if _format_from_args(args) in _MACHINE_OUTPUT_FORMATS:
         _suppress_last_resort_logging()
 
     try:
@@ -498,7 +500,7 @@ def run_cli(argv: list[str]) -> int:
     except CliError as exc:
         warnings = drain_config_warnings()
         if warnings and not _quiet_from_args(args):
-            if _format_from_args(args) in {"json", "ndjson"}:
+            if _format_from_args(args) in _MACHINE_OUTPUT_FORMATS:
                 exc.details.setdefault("warnings", list(warnings))
             else:
                 for warning in warnings:
@@ -527,7 +529,7 @@ def run_cli(argv: list[str]) -> int:
         emit_error(error, output_format=_format_from_args(args))
         return 3
     warnings = drain_config_warnings()
-    if warnings and not _quiet_from_args(args) and _format_from_args(args) not in {"json", "ndjson"}:
+    if warnings and not _quiet_from_args(args) and _format_from_args(args) not in _MACHINE_OUTPUT_FORMATS:
         for warning in warnings:
             sys.stderr.write(f"{sanitize_terminal_text(warning)}\n")
     return exit_code

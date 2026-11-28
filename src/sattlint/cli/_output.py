@@ -140,7 +140,7 @@ def emit_text(lines: Iterable[str], *, output: Path | None = None) -> None:
 
 
 def emit_error(error: CliError, *, output_format: str) -> None:
-    if output_format in {"json", "ndjson"}:
+    if output_format in {"json", "ndjson", "sarif"}:
         write_stream(sys.stderr, encode_json_document(error_payload(error)))
         return
     write_stream(sys.stderr, f"sattlint: {sanitize_terminal_text(error.message, keep_tabs=True)}\n")

@@ -176,7 +176,7 @@ Runs the selected analyzers against the project targets.
 | `--refresh-ast` | Rebuild each target's parsed project graph instead of reusing the cached one. |
 | `--jobs N` | Run per-target analyzers in `N` forked worker processes; `1` (default) runs them in order, `0` picks a count from the CPU count. |
 | `--progress` | Emit machine-readable progress records on stderr while the run is in progress. |
-| `--format {json,ndjson,text}` | Output format; default `text`. |
+| `--format {json,ndjson,sarif,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
 | `--quiet` | Suppress progress and diagnostics on stderr. |
 
@@ -360,7 +360,7 @@ Reads findings from a stored run without analyzing again.
 | `--rule RULE` | Filter by rule identifier, finding kind, or documented label; repeatable. |
 | `--group-by {none,module,analyzer,target,kind}` | Also return grouped counts; default `none`. |
 | `--limit N` | Return at most N findings after filtering. |
-| `--format {json,ndjson,text}` | Output format; default `text`. |
+| `--format {json,ndjson,sarif,text}` | Output format; default `text`. |
 | `--output PATH` | Write output to a file instead of stdout. |
 | `--quiet` | Suppress progress and diagnostics on stderr. |
 
@@ -648,6 +648,28 @@ NDJSON output writes one compact JSON object per line. For finding queries it
 starts with one envelope record that carries the run, filters, summary, and
 groups, followed by one record per finding. Records are flushed as they are
 produced, so a consumer can stream them.
+
+### SARIF
+
+`sattlint analyze --format sarif` and `sattlint findings --format sarif` write a
+SARIF 2.1.0 document for a code-scanning consumer such as GitHub Code Scanning.
+
+- One run carries the SattLint tool driver, one rule per rule ID or analyzer and
+  kind, and one result per selected finding.
+- A rule ID is the finding's rule identifier when it has one, otherwise
+  `<analyzer>.<kind>`, for example `variables.unused`.
+- `severity` maps to SARIF levels: `error` to `error`, `warning` to `warning`,
+  and `info` to `note`.
+- A finding with a source file and line gets a physical location. The path is
+  emitted as written by the analyzer, with forward slashes.
+- A finding without a usable location is emitted as a document-level result
+  with no `locations` array. The exporter never invents a line or column.
+- Each result keeps the target, analyzer, kind, severity, module, and occurrence
+  count in its `properties`.
+- `--quiet` keeps stdout to the SARIF document and drops diagnostics on stderr.
+
+A SARIF document is machine output. Its content is not part of the versioned
+CLI JSON schema; consumers should pin the SARIF 2.1.0 contract instead.
 
 ### Text and Markdown
 

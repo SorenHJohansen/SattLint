@@ -114,6 +114,7 @@ from ._payloads import (
     TargetLoadFailurePayload,
 )
 from ._project import drain_config_warnings, effective_project_config, project_payload, resolve_project_file
+from ._sarif import build_sarif
 
 
 class _RunSummaryPayload(TypedDict):
@@ -272,6 +273,12 @@ def _emit_findings(
 ) -> None:
     if options.output_format == "json":
         emit_json(payload, output=options.output)
+    elif options.output_format == "sarif":
+        run_id = payload.get("run_id")
+        emit_json(
+            build_sarif(findings, run_id=run_id if isinstance(run_id, str) else None),
+            output=options.output,
+        )
     elif options.output_format == "ndjson":
         envelope = {"record_type": "envelope", **payload}
         envelope.pop("findings", None)
